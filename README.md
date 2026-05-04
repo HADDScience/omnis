@@ -8,6 +8,20 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript)](https://www.typescriptlang.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql)](https://www.postgresql.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-omnis--omega.vercel.app-2563eb?logo=vercel)](https://omnis-omega.vercel.app)
+
+> **🚀 라이브 데모: <https://omnis-omega.vercel.app>**
+>
+> 시연용 익명 계정 · 비밀번호 모두 `demo1234`
+> | 이름 | 권한 | 비고 |
+> |------|------|------|
+> | `팀장` | ADMIN | 업무 지시·캔버스 전체 보기 |
+> | `부팀장` | ADMIN | 동일 권한 |
+> | `사원1` | MEMBER | 본인 업무·체크리스트 작성 |
+> | `사원2` | MEMBER | 동일 |
+> | `사원3` | MEMBER | 동일 |
+>
+> 더미 데이터: 5 프로젝트 · 4 제품 라인 · 15 업무 카드 · 3 카테고리. 채팅 → 업무 자동 등록(Gemini AI), 워크스페이스 캔버스, 칸반, 주간보고 모두 작동합니다.
 
 ![Omnis 비전 — 한 사람의 정보가, 모두의 정보가 됩니다](docs/screenshots/07-vision-hexa.png)
 
