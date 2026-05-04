@@ -38,7 +38,7 @@ export function PriorityRating({
               ? "cursor-pointer hover:scale-110 active:scale-95"
               : "cursor-default",
             star <= filled
-              ? "text-white"
+              ? "text-amber-500 dark:text-amber-400"
               : "text-muted-foreground/30"
           )}
         >
