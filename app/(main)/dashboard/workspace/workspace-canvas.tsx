@@ -156,8 +156,9 @@ function toInspectorData(node: Node): InspectorData {
         },
       ]
     }
+    const taskId = typeof data.taskId === "string" ? data.taskId : node.id.replace(/^task-/, "")
     return {
-      id: node.id,
+      id: taskId,
       type: "task",
       title: typeof data.name === "string" ? data.name : "업무",
       subtitle: ownerName
