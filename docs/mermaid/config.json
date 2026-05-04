@@ -1,0 +1,30 @@
+{
+  "theme": "default",
+  "themeVariables": {
+    "primaryColor": "#EFF6FF",
+    "primaryTextColor": "#1E293B",
+    "primaryBorderColor": "#2563EB",
+    "lineColor": "#2563EB",
+    "secondaryColor": "#F1F5F9",
+    "tertiaryColor": "#FAFAFA",
+    "actorBkg": "#FFFFFF",
+    "actorBorder": "#2563EB",
+    "actorTextColor": "#0F172A",
+    "actorLineColor": "#94A3B8",
+    "noteBkgColor": "#FEF3C7",
+    "noteBorderColor": "#F59E0B",
+    "noteTextColor": "#78350F",
+    "fontFamily": "-apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', sans-serif",
+    "fontSize": "16px"
+  },
+  "sequence": {
+    "diagramMarginX": 40,
+    "diagramMarginY": 24,
+    "actorMargin": 80,
+    "boxMargin": 12,
+    "noteMargin": 16,
+    "messageMargin": 36,
+    "mirrorActors": false,
+    "wrap": true
+  }
+}

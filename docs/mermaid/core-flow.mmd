@@ -1,0 +1,18 @@
+sequenceDiagram
+    autonumber
+    participant 관리자
+    participant Dock as 채팅 도크
+    participant Gemini as Gemini AI
+    participant DB as 업무 DB
+    participant 담당자
+    participant 대시보드
+
+    관리자->>Dock: "가벽 블라인드 4월 21일 용석과 협업"
+    Dock->>Dock: [업무 지시] 클릭 + 메시지 선택
+    Dock->>Gemini: structureTask(메시지, 담당자)
+    Note right of Gemini: 의도 분석<br/>채팅 한 줄 분해
+    Gemini-->>Dock: 구조화된 카드<br/>(제목·담당자·체크리스트·기대결과)
+    Dock->>DB: 업무 카드 저장
+    DB-->>담당자: 알림 + 보드 갱신
+    DB-->>대시보드: 실시간 진척률 반영
+    Note over 관리자,대시보드: 관리자 입력시간 ≈ 5초<br/>담당자 입력시간 ≈ 0초
