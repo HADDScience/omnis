@@ -1,0 +1,192 @@
+test_id,scenario_type,sender,receiver,chat_message,task_name,task_status,project_name,category,priority,checklist_items,file_path,expected_action
+T001,task_instruction,김아리,정우창,"@정우창 인증 리스트 조사해주세요. 바이오헬스 혁신기업, 소부장 전문기업, 가족친화기업 외에 보유하면 좋은 인증들까지 찾아서 대상파악해주세요.",인증 리스트 조사 및 정리,TODO,전사적 자원 관리,인허가 특허,HIGH,"바이오헬스 혁신기업 조사;소부장 전문기업 조사;가족친화기업 조사;추가 인증 항목 발굴",,task_created
+T002,task_report,정우창,김아리,"요청해주신 신청하면 좋을 인증 목록 정리해봤습니다. 노션 페이지에 표로 정리했습니다.",인증 리스트 조사 및 정리,IN_PROGRESS,전사적 자원 관리,인허가 특허,HIGH,,,status_changed
+T002c,gemini_complete,정우창,김아리,"#{task_slug} 이 업무 완전히 끝났습니다. 인증 리스트 전체 조사 및 정리 완료했습니다.",인증 리스트 조사 및 정리,DONE,전사적 자원 관리,인허가 특허,HIGH,,,complete_triggered
+T003,task_instruction,김아리,정우창,"@정우창 가산점 블록 제거하고 인증리스트를 인증리스트/주관기관/핵심요건/비용/기타 체크할내용 이것만 1페이지에 표로 만들어주세요. 현재 보유중인 인증과 지금까지 물어본 인증 포함해서요.",인증 리스트 표 통합 정리,TODO,전사적 자원 관리,인허가 특허,HIGH,"표 형식 통합;보유 인증 포함;조사 인증 포함;체크리스트DB 이동",,task_created
+T004,gemini_complete,정우창,김아리,"#{task_slug} 이 업무 완전히 끝났습니다. 표 통합 정리하고 체크리스트 DB 이동까지 완료했습니다.",인증 리스트 표 통합 정리,DONE,전사적 자원 관리,인허가 특허,HIGH,,,complete_triggered
+T005,task_instruction,김아리,박소정,"@박소정 화성시 공급망 확대 사업화 R&D 지원사업 과제목표 작성해주세요. 의료기기 제조를 통한 공급망확보를 잘 담아보세요.",화성시 공급망 과제목표 작성,TODO,화성시 공급망,과제펀딩,HIGH,"시장현황 작성;과제목표 작성;기대효과 작성",,task_created
+T006,task_report,박소정,김아리,"말씀해주신 피드백 반영해서 최대한 작성해봤습니다. 먼저 보내드리고 4시까지 저도 다시 꼼꼼히 확인하고 있겠습니다.",화성시 공급망 과제목표 작성,IN_PROGRESS,화성시 공급망,과제펀딩,HIGH,,,status_changed
+T006c,gemini_complete,박소정,김아리,"#{task_slug} 이 업무 완전히 끝났습니다. 화성시 공급망 과제목표 작성 전부 완료했습니다.",화성시 공급망 과제목표 작성,DONE,화성시 공급망,과제펀딩,HIGH,,,complete_triggered
+T007,file_share,박소정,김아리,"화성시 공급망 신청서식 v3 보내드립니다.",화성시 공급망 과제목표 작성,IN_PROGRESS,화성시 공급망,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/2. 신청서식_v3.hwp,file_attached
+T008,task_instruction,김아리,박소정,"@박소정 엑셀에 회사가 수행한 다음 내용을 2가지 엑셀로 만들어주세요. 1. 지원사업/경진대회 수상이력 2. 보유특허/상표권. 우선 템플릿 만들고 지금 아는것만 넣어서 공유해주세요.",지원사업 수상이력 및 특허 상표권 엑셀 정리,TODO,전사적 자원 관리,행정 관리,NORMAL,"지원사업 수상이력 엑셀 작성;특허 상표권 엑셀 작성;기존 자료 기입",,task_created
+T009,file_share,박소정,김아리,"확인부탁드립니다.",지원사업 수상이력 및 특허 상표권 엑셀 정리,DONE,전사적 자원 관리,행정 관리,NORMAL,,,file_attached
+T010,task_instruction,김아리,박소정,"@박소정 2차 메디바이오 실증사업 안전성평가 및 임상시험 기술지도 작성해주세요. 1차 메디바이오 참고하시고 화장품 안전성 시험에 대해 조사해서 실증시험 계획 작성해주세요.",2차 메디바이오 실증사업 안전성평가 작성,TODO,메디바이오 2차,과제펀딩,HIGH,"화장품 안전성평가 조사;실증시험 계획 작성;1차 메디바이오 참고",,task_created
+T011,task_report,박소정,김아리,"2차 메디바이오 작성한 파일 보내드립니다.",2차 메디바이오 실증사업 안전성평가 작성,IN_PROGRESS,메디바이오 2차,과제펀딩,HIGH,,,status_changed
+T012,file_share,박소정,김아리,"2차 메디바이오 필수서식 실증시험 수요기술제안서 v2 보내드립니다.",2차 메디바이오 실증사업 안전성평가 작성,IN_PROGRESS,메디바이오 2차,과제펀딩,HIGH,,/Users/jeong-uchang/HADD SCIENCE/메디바이오/docs/raw/[2차 메디바이오]+필수서식_실증시험+수요기술제안서_하드사이언스_소정우창수정.pdf,file_attached
+T013,task_instruction,김아리,박소정,"@박소정 화성시 최종본 제출했습니다. 여기 내용에 있는 과제/수상/특허 기반으로 어제 주신 엑셀 더 업데이트해주세요.",특허 상표권 엑셀 업데이트,TODO,화성시 공급망,행정 관리,NORMAL,"최종본 기반 과제 추가;수상 내역 추가;특허 정보 업데이트",/Users/jeong-uchang/Downloads/2. 신청서식_하드사이언스_260305 최종본.hwp,task_created
+T014,file_share,박소정,김아리,"업데이트한 파일 보내드립니다.",특허 상표권 엑셀 업데이트,DONE,화성시 공급망,행정 관리,NORMAL,,,file_attached
+T015,task_instruction,노혜린,박소정,"@박소정 신진 연구인력 지원사업 기대효과 1페이지 분량 작성해주세요. 연구 주제는 의료기기 2등급 뉴로힐 개발에 기여입니다.",신진연구인력 기대효과 작성,TODO,신진연구인력,과제펀딩,NORMAL,"기대효과 1페이지 작성;의료기기 2등급 개발 기여 내용;비임상 시험 기여 내용",/Users/jeong-uchang/Downloads/(양식1)2026년 연구개발계획서(신진).hwp,task_created
+T016,file_share,박소정,노혜린,"초안 보내드립니다. 수정사항 있으시면 말씀해주세요.",신진연구인력 기대효과 작성,IN_PROGRESS,신진연구인력,과제펀딩,NORMAL,,,file_attached
+T017,task_instruction,김아리,정우창,"@정우창 규격인증과 신기술인증이 무엇인지 어떤항목들이 있는지 파악해주세요. 의료기기 개발에서 주로 인증받거나 유의미한 인증으로 선별 부탁드려요.",규격인증 및 신기술인증 리스트 조사,TODO,화성시 공급망,인허가 특허,HIGH,"규격인증 리스트 조사;신기술인증 리스트 조사;의료기기 관련 선별",,task_created
+T018,task_report,정우창,김아리,"포괄적으로 의료기기 인증 목록 정리했습니다. 노션 페이지에 정리하고 PDF로도 공유드립니다.",규격인증 및 신기술인증 리스트 조사,DONE,화성시 공급망,인허가 특허,HIGH,,,status_changed
+T019,task_instruction,노혜린,정우창,"@정우창 우창님 신진연구인력 연구개발전담부서 빈칸 채워주세요. 1페이지에 있습니다.",신진연구인력 연구개발전담부서 작성,TODO,신진연구인력,과제펀딩,NORMAL,"연구개발전담부서 역할 작성;보유 역량 및 노하우 작성",,task_created
+T020,task_report,정우창,노혜린,"이렇게 작성했는데 수정할 점 있을까요? 기업 내 연구개발전담부서의 주요 역할과 보유 역량 작성했습니다.",신진연구인력 연구개발전담부서 작성,DONE,신진연구인력,과제펀딩,NORMAL,,,status_changed
+T021,task_instruction,김아리,정우창,"@정우창 피부에 화장품을 바르면 전기적인 특성으로 인해 피부가 개선되는 그림을 PPT로 만들어주세요.",바이오아이코어 화장품 그림 PPT 작성,TODO,바이오아이코어,과제펀딩,NORMAL,"피부표면 그림;화장품 적용 표현;전기적 특성 표현",,task_created
+T022,task_report,정우창,김아리,"이렇게 표현되는게 맞을까요? 그림 작성해봤습니다.",바이오아이코어 화장품 그림 PPT 작성,IN_PROGRESS,바이오아이코어,과제펀딩,NORMAL,,,status_changed
+T023,task_update,김아리,정우창,"생각한바는 아니였지만 좋네요! 완료 처리해주세요.",바이오아이코어 화장품 그림 PPT 작성,DONE,바이오아이코어,과제펀딩,NORMAL,,,status_changed
+T024,task_instruction,노혜린,박소정,"@박소정 차별성 검토보고서 파일 다운 부탁드립니다. NTIS사이트에 입력해서 차별성검토값 알아봐주세요.",NTIS 차별성검토보고서 작성,TODO,신진연구인력,과제펀딩,NORMAL,"NTIS 사이트 접속;파일 다운로드;차별성 검토값 확인",,task_created
+T025,file_share,박소정,노혜린,"파일 보내드립니다!",NTIS 차별성검토보고서 작성,DONE,신진연구인력,과제펀딩,NORMAL,,,file_attached
+T026,task_instruction,노혜린,정우창,"@정우창 바이오아이코어 외부 협력 현황 및 활용방안 작성해주세요. 협력업체 PPT 보내드립니다. 홈페이지에 용석님이 업데이트한 것도 참고해주세요.",바이오아이코어 외부 협력 현황 작성,TODO,바이오아이코어,과제펀딩,HIGH,"외부 협력 현황 조사;활용방안 작성;홈페이지 협력업체 참고",,task_created
+T027,task_report,정우창,노혜린,"외부 협력 현황 및 활용방안 파트너 조사하여 보유역량과 협업방안을 채워봤습니다. 협력 시기 정보 알려주시면 채우겠습니다.",바이오아이코어 외부 협력 현황 작성,IN_PROGRESS,바이오아이코어,과제펀딩,HIGH,,,status_changed
+T028,task_instruction,김아리,정우창,"@정우창 @박소정 하드사이언스 파이프라인 분할사업화 그림 예쁘게 그려주세요. 내일 두분은 이거 메인으로 해주세요.",바이오아이코어 파이프라인 분할사업화 그림 제작,TODO,바이오아이코어,과제펀딩,HIGH,"파이프라인 그림 제작;분할사업화 표현;비보젤 고도화 표현",,task_created
+T029,file_share,정우창,김아리,"서식파일 일단 양식에 맞게 파일명 수정해서 보내드립니다.",바이오아이코어 서식자료 취합,IN_PROGRESS,바이오아이코어,과제펀딩,HIGH,,,file_attached
+T030,task_instruction,허채정,정우창,"@정우창 의료진단 시장 조사해서 PPT 하나만 만들어주세요. 최대한 빨리 주시면 좋고 오늘 중이라도 주시면 감사합니다.",의료진단 시장조사 PPT 작성,TODO,바이오아이코어,과제펀딩,HIGH,"시장규모 조사;CAGR 포함;글씨 정돈",,task_created
+T031,task_report,정우창,허채정,"이렇게 만들어봤습니다. 수정할 내용 말씀해주시면 수정하겠습니다.",의료진단 시장조사 PPT 작성,IN_PROGRESS,바이오아이코어,과제펀딩,HIGH,,,status_changed
+T032,task_update,허채정,정우창,"내용은 좋네. CAGR이랑 우상향 화살표 넣어주고 글씨 왼쪽 맞춤 정돈만 해줘요.",의료진단 시장조사 PPT 작성,IN_PROGRESS,바이오아이코어,과제펀딩,HIGH,,,checklist_updated
+T033,task_report,박소정,허채정,"수정본 보내드립니다.",의료진단 시장조사 PPT 작성,DONE,바이오아이코어,과제펀딩,HIGH,,,status_changed
+T034,task_instruction,허채정,정우창,"@정우창 미융파+수원대 그림 수정해주세요. 1단계 유지하고 2단계 삭제 후 3단계를 2단계로. 노즐에서 스캐폴드를 프린트하는 중인것처럼 해주세요.",미융파+수원대 PPT 그림 수정,TODO,바이오아이코어,과제펀딩,HIGH,"1단계 유지;2단계 삭제 후 3단계를 2단계로;스캐폴드 프린팅 표현;3단계 뇌이식 그림 추가",,task_created
+T035,task_report,정우창,허채정,"이렇게 만들면 될까요? 그림 작성했습니다.",미융파+수원대 PPT 그림 수정,IN_PROGRESS,바이오아이코어,과제펀딩,HIGH,,,status_changed
+T036,file_share,정우창,허채정,"미융파+수원대 그림 수정본 보내드립니다.",미융파+수원대 PPT 그림 수정,DONE,바이오아이코어,과제펀딩,HIGH,,,file_attached
+T037,task_instruction,노혜린,정우창,"@정우창 바이오아이코어 서식 제4호부터 준비해주세요. 모르는 부분은 물어봐주세요!",바이오아이코어 서식 4호 이후 작성,TODO,바이오아이코어,과제펀딩,HIGH,"서식 4호 작성;서식 5~10 작성;PDF 서류 준비",,task_created
+T038,task_report,정우창,노혜린,"직인은 제외하고 서식 4 작성했습니다.",바이오아이코어 서식 4호 이후 작성,IN_PROGRESS,바이오아이코어,과제펀딩,HIGH,,,status_changed
+T039,file_share,정우창,노혜린,"서식 5~14 채웠습니다. 사업자등록증/제재확인서/유사과제 검색결과증 제외하고 작성완료했습니다.",바이오아이코어 서식 4호 이후 작성,DONE,바이오아이코어,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/2026 바이오아이코어사업 예비창업팀 지원 신청서 양식_v2.hwp,file_attached
+T040,task_instruction,김아리,박소정,"@박소정 바이오아이코어 실현가능성 파트 작성해주세요. 광교만 말고 성대를 기초로 하고 광교로 확장했다고 담기게 해주세요.",바이오아이코어 실현가능성 작성,TODO,바이오아이코어,과제펀딩,HIGH,"고도화된 연구 인프라 확보;핵심 전문 인력 및 조직 역량;성대 기초 내용 추가",,task_created
+T041,task_report,박소정,김아리,"18/19페이지 실현가능성 작성했습니다. 검토부탁드립니다.",바이오아이코어 실현가능성 작성,IN_PROGRESS,바이오아이코어,과제펀딩,HIGH,,,status_changed
+T042,task_update,김아리,박소정,"@박소정 성대 내용 추가해주세요. 그리고 예정 인원 2명도 넣고 보유역량 본인거랑 우창님거도 넣어주세요.",바이오아이코어 실현가능성 작성,IN_PROGRESS,바이오아이코어,과제펀딩,HIGH,,,checklist_updated
+T043,file_share,박소정,김아리,"실현가능성/고용인력현황/외부협력 수정했습니다.",바이오아이코어 실현가능성 작성,DONE,바이오아이코어,과제펀딩,HIGH,,,file_attached
+T044,task_instruction,허채정,주용석,"@주용석 홈페이지에 협력기관 넣기로 한 것 시간내서 2주 내로 해봐주세요.",홈페이지 협력기관 추가,TODO,전사적 자원 관리,행정 관리,NORMAL,"큐리오시스;오리엔트바이오;유용미생물 은행;오가노이드 소사이어티;라이카 코리아;라이즈 사업단",,task_created
+T045,task_report,주용석,허채정,"협력기관 유용미생물 은행은 특별한 로고가 없어서 제외 후 포스팅 완료했습니다.",홈페이지 협력기관 추가,DONE,전사적 자원 관리,행정 관리,NORMAL,,,status_changed
+T046,task_instruction,노혜린,주용석,"@주용석 홈페이지 업로드 부탁드립니다. 수원대 RISE 글로벌 프로모션 포럼 기사 포함해서요.",홈페이지 RISE 포럼 기사 업로드,TODO,전사적 자원 관리,행정 관리,NORMAL,"기사 내용 작성;행사 정보 포함;사진 포함",,task_created
+T047,task_report,주용석,노혜린,"기사 초안 작성 후 포스팅 완료했습니다!",홈페이지 RISE 포럼 기사 업로드,DONE,전사적 자원 관리,행정 관리,NORMAL,,,status_changed
+T048,task_instruction,허채정,정우창,"@정우창 뉴로힐을 ADDHEAL로 바꾸기로 했어. ADDGEL에서 ADD 글씨 따와서 HEAL 앞에 붙여줘. i만 소문자로.",ADDHEAL 로고 제작,TODO,전사적 자원 관리,행정 관리,HIGH,"ADDGEL ADD 폰트 적용;i만 소문자;글씨굵기 통일",,task_created
+T049,task_report,정우창,허채정,"수정했습니다. i만 소문자 적용하고 글씨굵기 통일했습니다.",ADDHEAL 로고 제작,DONE,전사적 자원 관리,행정 관리,HIGH,,,status_changed
+T050,task_instruction,노혜린,정우창,"@정우창 ViVOGEL을 라이브젤과 통일성있게 글자를 붙여서 만들어주세요!",ViVOGEL 로고 통일,TODO,전사적 자원 관리,행정 관리,NORMAL,"라이브젤 통일성;글자 붙이기",,task_created
+T051,task_report,정우창,노혜린,"수정했습니다.",ViVOGEL 로고 통일,DONE,전사적 자원 관리,행정 관리,NORMAL,,,status_changed
+T052,task_instruction,노혜린,정우창,"@정우창 ADDHEAL 로고로 상표권 다시 제출하려고 합니다. PPT 슬라이드2처럼 한장 만들어주세요. 목업사진도 포함해주세요.",ADDHEAL 상표권용 PPT 슬라이드 제작,TODO,전사적 자원 관리,인허가 특허,HIGH,"PPT 슬라이드 제작;목업사진 포함;기존 NEUROGEL PPT 참고",,task_created
+T053,task_instruction,정우창,,학회 포스터 수정했습니다. 검토부탁드립니다.,학회 포스터 수정,IN_PROGRESS,전사적 자원 관리,행정 관리,NORMAL,,,status_changed
+T054,task_instruction,허채정,정우창,"@정우창 명함 디자인 수정해주세요. 글씨 좀 더 키워주고 소정씨를 제품관리팀으로 적어주세요. 윤상무님은 영업마케팅팀으로.",명함 디자인 수정,TODO,전사적 자원 관리,행정 관리,NORMAL,"글씨 크기 조정;소정 부서명 변경;윤상무 부서명 변경;순서 반대로;간격 조정",,task_created
+T055,task_report,정우창,허채정,"수정했습니다. 간격 띄웠습니다!",명함 디자인 수정,IN_PROGRESS,전사적 자원 관리,행정 관리,NORMAL,,,status_changed
+T056,task_update,허채정,정우창,"됐습니다! 합격!",명함 디자인 수정,DONE,전사적 자원 관리,행정 관리,NORMAL,,,status_changed
+T057,task_instruction,노혜린,정우창,"@정우창 학회 현수막 디자인 수정해주세요. 대표님이 단어 하나 더 넣고 싶다고 하셔서 글자크기 줄여서 너비 맞춰주세요.",학회 현수막 디자인 수정,TODO,전사적 자원 관리,행정 관리,NORMAL,"단어 추가;글자크기 조정;너비 맞춤",,task_created
+T058,file_share,정우창,김아리,"학회 현수막 아웃라인 파일 보내드립니다.",학회 현수막 디자인 수정,DONE,전사적 자원 관리,행정 관리,NORMAL,,,file_attached
+T059,task_instruction,김아리,정우창,"@정우창 추가 인증 리스트 조사해주세요. 기타 우대지원 항목도 함께요.",추가 인증 및 우대지원 항목 조사,TODO,전사적 자원 관리,인허가 특허,NORMAL,"일생활균형 조사;AI챌린지 조사;성과공유 조사;청년강소 조사;비수도권 조사",,task_created
+T060,task_report,정우창,김아리,"기타 우대지원 항목 5건을 추가 조사하여 인증 리스트 템플릿에 반영했습니다.",추가 인증 및 우대지원 항목 조사,DONE,전사적 자원 관리,인허가 특허,NORMAL,,,status_changed
+T061,task_instruction,노혜린,박소정,"@박소정 신진연구인력 지원인력에 대한 계획 작성해주세요. 타 기업 진행 방식 참고하여 적어주세요. 기간은 2026~2029 3년간입니다.",신진연구인력 지원인력 계획 작성,TODO,신진연구인력,과제펀딩,NORMAL,"성과공유제도 포함;유연근무제 포함;고용 유지 계획",,task_created
+T062,task_report,박소정,노혜린,"내용 보내드립니다. 수정해야할 부분 있으면 알려주세요.",신진연구인력 지원인력 계획 작성,DONE,신진연구인력,과제펀딩,NORMAL,,,status_changed
+T063,task_instruction,허채정,주용석,"@주용석 스티커 지난 번에 얼굴 사진 지브라 해서 만든것 프린트 스티커 되게 해주세요.",스티커 프린트 제작,TODO,전사적 자원 관리,행정 관리,LOW,"와우메이커스 예약 확인;스티커 인쇄 파일 준비",,task_created
+T064,task_instruction,김아리,주용석,"@주용석 다음주에 와우메이커스 블레이드커팅기 사용 가능한지 예약할수있는지 확인해주세요.",와우메이커스 블레이드커팅기 예약 확인,TODO,전사적 자원 관리,행정 관리,LOW,"사용가능여부 확인;준비사항 확인;3.12~3.18 가능일 확인",,task_created
+T065,task_report,주용석,김아리,"담당자 분께서 부재 상태여서 전화번호 남긴 상태입니다. 예약은 네이버에서 하면 된다고 합니다. 현재 거의 모든 일자 사용가능합니다.",와우메이커스 블레이드커팅기 예약 확인,DONE,전사적 자원 관리,행정 관리,LOW,,,status_changed
+T066,task_instruction,허채정,주용석,"@주용석 FDA NAMs 가이드라인 PDF 첫장과 요약 내용 홈페이지 라이브러리에 올려주세요.",FDA NAMs 가이드라인 홈페이지 업로드,TODO,전사적 자원 관리,행정 관리,NORMAL,"PDF 첫장 캡처;요약 내용 정리;홈페이지 라이브러리 업로드",,task_created
+T067,task_instruction,노혜린,박소정,"@박소정 바이오아이코어 기본사항 입력해주세요. 투자유치실적/연혁 포함해서요.",바이오아이코어 기본사항 입력,TODO,바이오아이코어,과제펀딩,HIGH,"기본사항 입력;투자유치실적 기입;연혁 추가",,task_created
+T068,file_share,박소정,노혜린,"현재까지 입력한 파일 보내드립니다.",바이오아이코어 기본사항 입력,IN_PROGRESS,바이오아이코어,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/2026 바이오아이코어사업 예비창업팀 지원 신청서 양식_v2.hwp,file_attached
+T069,task_report,박소정,노혜린,"서식2/서식3일반현황/6-1-1기업현황/7글로벌진출전략 맡은 부분 입력완료했습니다.",바이오아이코어 기본사항 입력,DONE,바이오아이코어,과제펀딩,HIGH,,,status_changed
+T070,task_instruction,노혜린,정우창,"@정우창 NTIS 제재정보확인서 발급하고 서류 취합해주세요.",바이오아이코어 서류 취합,TODO,바이오아이코어,과제펀딩,HIGH,"NTIS 제재정보확인서 발급;서류 취합;사업자등록증 정정신고중 표기",,task_created
+T071,task_report,정우창,노혜린,"기관제재확인서 추가해서 신청서랑 서식자료모음 업데이트했습니다.",바이오아이코어 서류 취합,DONE,바이오아이코어,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/2026 바이오아이코어사업 예비창업팀 지원 신청서 양식_최종본.hwp,file_attached
+T072,task_instruction,김아리,정우창,"@정우창 노션 템플릿 다시 만들어주세요. 옮기다가 사라졌습니다. 업무타임라인과 업무상세페이지 포함시켜주세요.",노션 업무 템플릿 재작성,TODO,전사적 자원 관리,행정 관리,HIGH,"업무타임라인 포함;업무상세페이지 포함;체크리스트DB 연동",,task_created
+T073,task_report,정우창,김아리,"노션작업은 대략적으로 완성됐습니다. 가이드라인 문서 참고하시면 됩니다. 사용해보면서 불편한점 개선해나가겠습니다.",노션 업무 템플릿 재작성,DONE,전사적 자원 관리,행정 관리,HIGH,,,status_changed
+T074,task_instruction,노혜린,박소정,"@박소정 바이오아이코어 글로벌 진출 전략 보완 수정해주세요. 유병률/사망률/오가노이드 시장규모 출처도 추가해주세요.",바이오아이코어 글로벌 진출 전략 보완,TODO,바이오아이코어,과제펀딩,NORMAL,"글로벌 진출 전략 보완;출처 추가;시장규모 데이터 보강",,task_created
+T075,task_report,박소정,노혜린,"피드백 해주시면 감사드리겠습니다. 글로벌 진출 전략 보완 수정해보았습니다.",바이오아이코어 글로벌 진출 전략 보완,DONE,바이오아이코어,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/2026 바이오아이코어사업 예비창업팀 지원 신청서 양식_v4-1.hwp,file_attached
+T076,file_share,주용석,허채정,"동물협회 기사 초안 작성하였고 rise 사업은 기사 틀 잡아둔 상태입니다!",동물협회 기사 초안 작성,IN_PROGRESS,전사적 자원 관리,행정 관리,NORMAL,,,file_attached
+T077,file_share,주용석,허채정,"경쟁 제품 조사 초안 올립니다! 방향성 알려주시면 수정하겠습니다.",뉴로힐 경쟁제품 시장조사,IN_PROGRESS,전사적 자원 관리,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/NeuroHeal_경쟁제품_시장조사.pptx,file_attached
+T078,task_instruction,김아리,정우창,"셋중 정하는거는 지금 보고 오전중에 선택해줘요. 노션 이정도 인원과 내용이면 무료여도 괜찮겠죠?",노션 플랜 선택,TODO,전사적 자원 관리,행정 관리,NORMAL,"노션 요금제 비교;적정 플랜 선택",,task_created
+T079,task_instruction,노혜린,정우창,"우창님~ 하드사이언스 보유 역량에 대해서 적으면 되는데 생체소재 기반 바이오딥테크 기업+저희 개발제품들 연구 및 생산을 전담부서에서 맡아서 하고 있다고 해주세요~",하드사이언스 보유역량 작성,TODO,신진연구인력,과제펀딩,NORMAL,"연구개발전담부서 역할 작성;보유역량 기술",,task_created
+T080,task_instruction,노혜린,박소정,"소정님: 4페이지에 있습니다. 지원인력에 대한 계획 작성해주세요.",하드사이언스 보유역량 작성 (소정 파트),TODO,신진연구인력,과제펀딩,NORMAL,"지원인력 계획 작성;4페이지 내용 기입",,task_created
+T081,task_report,정우창,노혜린,"이렇게 작성했는데 수정할 점 있을까요? 기업 내 연구개발전담부서의 주요 역할과 보유 역량 작성했습니다.",하드사이언스 보유역량 작성,DONE,신진연구인력,과제펀딩,NORMAL,,,status_changed
+T082,task_report,박소정,노혜린,"내용 보내드립니다. 혹시 수정해야할 부분 있으면 알려주세요.",하드사이언스 보유역량 작성 (소정 파트),DONE,신진연구인력,과제펀딩,NORMAL,,,status_changed
+T083,task_instruction,김아리,정우창,"2페이지에 들어갈 자료이며 3페이지에 그려주세요.",바이오아이코어 PPT 그림 작성,TODO,바이오아이코어,과제펀딩,NORMAL,"PPT 그림 작성;2페이지 자료 참고;3페이지에 배치",,task_created
+T084,task_instruction,김아리,박소정,"지금은 맑은고딕인데 폰트사이즈는 못정했거든요. 우선 맑은고딕 10포인트로 해주세요!",PPT 폰트 통일 (맑은고딕 10pt),TODO,바이오아이코어,과제펀딩,NORMAL,"맑은고딕 적용;10포인트 통일",,task_created
+T085,file_share,노혜린,김아리,"바이오아이코어 최종 신청서 양식 공유합니다.",바이오아이코어 최종 신청서 공유,DONE,바이오아이코어,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/2026 바이오아이코어사업 예비창업팀 지원 신청서 양식_최종본.hwp,file_attached
+T086,file_share,노혜린,김아리,"바이오아이코어 모집 공고문 최종본 공유합니다.",바이오아이코어 모집 공고문 공유,DONE,바이오아이코어,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/2026년 바이오아이코어사업 예비 창업팀 모집 공고문_최종본.pdf,file_attached
+T087,task_instruction,김아리,박소정,"소정씨 공간내용에 광교만 있어서요. 성대를 기초로 하고 있고 광교로 확장했다고 담기게 해주세요. 즉 성대 내용 추가해주세요. 첨에 보낸 파일에 실험실은 다 성대에요.",바이오아이코어 공간 내용 보완 (성대 추가),TODO,바이오아이코어,과제펀딩,HIGH,"성대 내용 추가;광교 확장 내용 포함;실험실 정보 반영",,task_created
+T088,task_instruction,노혜린,박소정,"어제 박사님이 요청하신 예비지원과제 List(2026) 버전 다시 한번 보내주세요. 제가 만료되어서요.",예비지원과제 리스트 재전달,TODO,전사적 자원 관리,과제펀딩,NORMAL,"예비지원과제 리스트 파일 재전송",,task_created
+T089,task_instruction,노혜린,정우창,"히스토리 기반 혹시 빠진거 있거나 추가할부분 있으면 슬라이드 1번에 넣어주세요!",하드사이언스 히스토리 보완,TODO,전사적 자원 관리,행정 관리,NORMAL,"누락 항목 확인;슬라이드 1번 업데이트",,task_created
+T090,file_share,노혜린,정우창,"하드사이언스 히스토리 자료 공유합니다.",하드사이언스 히스토리 보완,IN_PROGRESS,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/Downloads/250205_하드사이언스_히스토리.xlsx,file_attached
+T091,file_share,정우창,노혜린,"하드사이언스 히스토리 수정본 보내드립니다.",하드사이언스 히스토리 보완,DONE,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/Downloads/260316_하드사이언스_히스토리.xlsx,file_attached
+T092,task_instruction,김아리,박소정,"뉴로힐 연고타입 경쟁제품 비교표 작성해주세요.",뉴로힐 경쟁제품 비교표 작성,TODO,전사적 자원 관리,과제펀딩,NORMAL,"연고타입 경쟁제품 조사;비교표 작성;패치 타입 구분",,task_created
+T093,task_report,박소정,김아리,"연고타입 경쟁제품 비교표 보내드립니다. 2 3슬라이드는 뉴로힐도 연고 패치 나눠서 만들어봤습니다. 수정사항 있으시면 말씀해주세요.",뉴로힐 경쟁제품 비교표 작성,IN_PROGRESS,전사적 자원 관리,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/뉴로힐(연고) 경쟁제품 비교표_수정.pptx,file_attached
+T094,file_share,박소정,김아리,"뉴로힐 경쟁제품 비교표 수정본 보내드립니다.",뉴로힐 경쟁제품 비교표 작성,DONE,전사적 자원 관리,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/뉴로힐(연고) 경쟁제품 비교표_수정2.pptx,file_attached
+T095,task_instruction,노혜린,박소정,"소정님이 서식1~붙임6까지 먼저 채워주세요~",바이오헬스 서식 작성,TODO,전사적 자원 관리,과제펀딩,HIGH,"서식1 작성;서식2~6 작성;붙임1~6 작성",,task_created
+T096,task_report,박소정,노혜린,"과제명 사업비 수행기간 파트너 제외하고 입력 완료했습니다.",바이오헬스 서식 작성,DONE,전사적 자원 관리,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/[신청서식] 2026년 중소기업 비즈니스 융합성장 지원사업 신청서식_기본정보.hwpx,file_attached
+T097,task_instruction,김아리,정우창,"하드가 전북에도 생길 가능성이 있어서 전북기업이다 생각하고 다시 확인해주세요(순창).",전북(순창) 기준 과제 리스트 재확인,TODO,전사적 자원 관리,과제펀딩,NORMAL,"전북 기준 과제 적용 가능 여부 확인;순창 소재 가정 재검토",,task_created
+T098,task_instruction,김아리,정우창,"사업명입니다. 공고파악하고 주관인 하드사이언스가 제출해야할 파일리스트 확인해주세요.",신규 사업 공고 파악 및 제출 파일 리스트 확인,TODO,전사적 자원 관리,과제펀딩,NORMAL,"공고 내용 파악;제출 파일 리스트 확인",,task_created
+T099,file_share,노혜린,김아리,"신규 사업 신청서식 파일 공유합니다.",신규 사업 공고 파악 및 제출 파일 리스트 확인,IN_PROGRESS,전사적 자원 관리,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/[신청서식] 2026년 중소기업 비즈니스 융합성장 지원사업 신청서식_v1.hwpx,file_attached
+T100,task_instruction,노혜린,박소정,"소정님이 적어준것중에 사소한거 몇개 바꿔둔 파일이에요! 취합부탁드릴게여.",과제 파일 소수정 취합,TODO,전사적 자원 관리,과제펀딩,NORMAL,"수정 파일 확인;취합본 작성",,task_created
+T101,task_instruction,김아리,정우창,"윤상무님이 적은 내용과 공고문 캡쳐해서 올려주세요.",윤상무님 과제 내용 캡처 공유,TODO,전사적 자원 관리,과제펀딩,NORMAL,"공고문 캡처;윤상무님 내용 정리",,task_created
+T102,task_instruction,김아리,박소정,"소정님 여기 지금 하드내용 없거든요? 오늘 오전에 하신 작업 여기에 다시 해주세요!",과제 하드사이언스 내용 추가,TODO,전사적 자원 관리,과제펀딩,NORMAL,"하드사이언스 기본 정보 기입;오전 작업 내용 반영",,task_created
+T103,task_instruction,노혜린,박소정,"윤상무님 자료 다시 왔습니다. 취합본 부탁드려요~",윤상무님 자료 취합,TODO,전사적 자원 관리,과제펀딩,NORMAL,"EAS KOREA 사업자등록증 확인;납세증명서 취합;취합본 작성",,task_created
+T104,file_share,노혜린,박소정,"EAS KOREA 서류 공유합니다.",윤상무님 자료 취합,IN_PROGRESS,전사적 자원 관리,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/EAS_KOREA_사업자등록증명원_20260319.pdf,file_attached
+T105,task_instruction,김아리,노혜린,"혜린쌤 여기에 발표자료들 있어요. 점심후에 찾을 수 있는거 찾아서 바로 뒤에 끼워넣어서 저장해주세요.",발표자료 취합 및 저장,TODO,전사적 자원 관리,과제펀딩,NORMAL,"발표자료 확인;원본 파일 취합;저장",,task_created
+T106,task_instruction,김아리,박소정,"제품화에는 우선 분류만 해주세요! 저희가 한걸 다 넣을수는 없어서(행정만 과다).",제품 분류 정리,TODO,전사적 자원 관리,행정 관리,NORMAL,"제품 분류 체계 정리;카테고리별 분류",,task_created
+T107,task_instruction,노혜린,박소정,"@박소정 오리엔트바이오 해외진출 여부 확인(동남아?) 각 국가별/대륙별 3차원 세포배양 및 오가노이드 성장 추이 분석 PPT 1장 만들어봐주세요~",오리엔트바이오 해외진출 확인 및 오가노이드 시장분석,TODO,바이오아이코어,과제펀딩,NORMAL,"오리엔트바이오 해외진출 여부 확인;국가별 오가노이드 성장 추이 분석;PPT 1장 작성",,task_created
+T108,file_share,박소정,노혜린,"오가노이드 시장분석 PPT 보내드립니다.",오리엔트바이오 해외진출 확인 및 오가노이드 시장분석,DONE,바이오아이코어,과제펀딩,NORMAL,,,file_attached
+T109,task_instruction,노혜린,정우창,"우창님 지난번 광교주소 포함 명함 수정부탁드릴게요. 흰색 버전 4인 배치 통일하는데 박사님 디자인을 기준으로 바꿔주세요. 위쪽으로 몰려있어서 중간정렬해주세요~",대표님 명함 수정 (성균관대+하드사이언스),TODO,전사적 자원 관리,행정 관리,NORMAL,"광교주소 추가;4인 배치 통일;중간정렬;하드사이언스 광교주소 추가",,task_created
+T110,task_update,노혜린,정우창,"흰색버전 대표님빼고 A. 글자가 사라졌어요! 랩스테이션 8B-2 수원대학교도 505호로 정정. 우창님과 소정님것도 추가 제작해주세요~",대표님 명함 수정 (성균관대+하드사이언스),IN_PROGRESS,전사적 자원 관리,행정 관리,NORMAL,,,checklist_updated
+T111,file_share,정우창,노혜린,"명함 수정본 보내드립니다.",대표님 명함 수정 (성균관대+하드사이언스),DONE,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/Downloads/250423_하드사이언스_명함_원본 작업데이터_광교.pdf,file_attached
+T112,file_share,박소정,김아리,"비보젤 경쟁제품 비교표 보내드립니다.",비보젤 경쟁제품 비교표 작성,DONE,전사적 자원 관리,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/비보젤 경쟁제품 비교표.pptx,file_attached
+T113,task_instruction,김아리,정우창,"DNA로 시작하는거 하나는 출원이고 하나는 등록인데 보낸 PPT 보면 번호랑 특허명 있어요 비교해봐요.",특허 출원/등록 번호 비교 확인,TODO,전사적 자원 관리,인허가 특허,NORMAL,"출원/등록 번호 비교;특허명 대조",,task_created
+T114,task_instruction,김아리,박소정,"여기안에 취합중파일 공유해주세요 두분께.",과제 취합 파일 공유,TODO,전사적 자원 관리,과제펀딩,NORMAL,"취합중 파일 공유;팀원 전달",,task_created
+T115,task_instruction,김아리,노혜린,"혜린씨 취합2 핵심기술페이지 빼고 검토좀해주세요.",바이오헬스 취합본 검토,TODO,전사적 자원 관리,과제펀딩,HIGH,"핵심기술페이지 제외;취합본 검토;피드백 정리",,task_created
+T116,task_instruction,허채정,정우창,"뒷배경 위로 올려서 아래 로고랑 안닿게 해봐주세요. 그리고 소정씨를 홍보 말고 제품관리팀으로 적어주세요.",로고/배경 디자인 수정 및 명함 부서명 변경,TODO,전사적 자원 관리,행정 관리,NORMAL,"뒷배경 위치 조정;로고 간격 확보;소정 부서명 변경",,task_created
+T117,task_report,정우창,허채정,"수정했습니다.",로고/배경 디자인 수정 및 명함 부서명 변경,DONE,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/Downloads/뉴로힐로고.zip,file_attached
+T118,task_instruction,노혜린,정우창,"성원애드피아에서 올리라는 방식으로 해주시면 돼요! 결제전 상태에서 말해주세요.",명함 인쇄 발주 (성원애드피아),TODO,전사적 자원 관리,행정 관리,NORMAL,"성원애드피아 발주;결제전 상태 확인",,task_created
+T119,task_instruction,김아리,정우창,"여기 노트에 있는 모든 회사들 정리 다시 해주세요!",협력업체 리스트 재정리,TODO,전사적 자원 관리,행정 관리,NORMAL,"협력업체 전체 목록 확인;리스트 재정리",,task_created
+T120,task_instruction,김아리,박소정,"이 조건으로 온라인 서칭좀 해줘요. 오늘 한 두시까지만 찾아보시고 유사한거 정리해서 보내주세요.",헤어토닉 용기 온라인 서칭 조사,TODO,전사적 자원 관리,행정 관리,NORMAL,"헤비블로우/유리 용기 조사;무광 코팅 확인;1000개 이하 주문 가능 업체;개당 2000원 이하",,task_created
+T121,task_instruction,김아리,정우창,"@박소정 @정우창 두분 메일로 연구윤리동의통보가 갔을거에요. 이상없다면 동의해주고 알려주세요~",연구윤리 동의서 확인 및 동의,TODO,전사적 자원 관리,행정 관리,NORMAL,"메일 확인;동의서 검토;동의 처리",,task_created
+T122,task_report,박소정,김아리,"동의했습니다!",연구윤리 동의서 확인 및 동의,DONE,전사적 자원 관리,행정 관리,NORMAL,,,status_changed
+T123,task_report,박소정,김아리,"지금까지 조사한 내용 보내드립니다. 말씀해주신 30mL~100mL 사이즈는 보통 최소수량이 5000개 이상부터네요. 아직 견적 답장 못받은 건 있는데 답장 오는대로 업데이트하겠습니다.",헤어토닉 용기 온라인 서칭 조사,IN_PROGRESS,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/Downloads/헤어토닉 도포기 용기 조사.pptx,file_attached
+T124,task_instruction,노혜린,허채정,"@허채정 대표님 해당 천포스터 디자인으로 인쇄 맡기면 될까요? 변경필요하신 부분이 있다면 말씀해주세요.",천포스터 인쇄 발주 확인,TODO,전사적 자원 관리,행정 관리,NORMAL,"천포스터 디자인 확인;인쇄 발주 승인",,task_created
+T125,task_instruction,노혜린,박소정,"보기좋게 정리부탁드리고 광교로 곧 제품들 옮기게 되면 세부적으로 작성해보는것으로 하겠습니다!!",제품 목록 정리,TODO,전사적 자원 관리,행정 관리,NORMAL,"제품 목록 보기좋게 정리;광교 이전 후 세부 작성",,task_created
+T126,task_instruction,김아리,박소정,"바이오헬스산업 기술평가-사업화 연계 지원사업 총 30페이지 이내. 목차 중 2번과 3번 소정씨랑 혜린씨 두분이 해주세요. 상의하셔서 나누시면 되겠어요.",바이오헬스산업 기술평가-사업화 연계 지원사업 작성,TODO,전사적 자원 관리,과제펀딩,HIGH,"2번 권리성 파트 작성;3번 시장성 파트 작성;30페이지 이내",,task_created
+T127,task_report,박소정,김아리,"2번 권리성 파트 작성했습니다. 피드백 부탁드립니다.",바이오헬스산업 기술평가-사업화 연계 지원사업 작성,IN_PROGRESS,전사적 자원 관리,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/2026년 바이오헬스산업 기술평가-사업화연계 지원사업 신청서 및 계획서_SJ.hwpx,file_attached
+T128,task_instruction,김아리,정우창,"4) 핵심(원천) 기술 보유 여부. 여기도 3가지로 나눠주시고 ppt 그림 만들어주세요. 1. 상처치료 2. 신경강화기술 3. 세포치료제(오가노이드 스캐폴드 포함).",핵심기술 보유 여부 PPT 작성,TODO,전사적 자원 관리,과제펀딩,HIGH,"3가지 핵심기술 분류;PPT 그림 제작;상처치료/신경강화/세포치료제",,task_created
+T129,task_instruction,김아리,박소정,"네 그렇게 하시면 될것같고 제품명 우선 다 뉴로힐로 해주세요. 아직 다 가칭이라서요.",제품명 뉴로힐 통일 적용,TODO,전사적 자원 관리,과제펀딩,NORMAL,"전체 제품명 뉴로힐로 통일",,task_created
+T130,file_share,노혜린,김아리,"시장성 작성하였고 점심먹고 1.4 작성하여 드릴게요!",제품명 뉴로힐 통일 적용,IN_PROGRESS,전사적 자원 관리,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/2026년 바이오헬스산업 기술평가-사업화연계 지원사업 신청서 및 계획서_3. 시장성.hwpx,file_attached
+T131,task_instruction,김아리,박소정,"2.1. 핵심 IP의 권리안정성 케이스타트업 반영해서 마저 수정해주세요. 핵심보유기술은 가져가서 제가 만질게요.",핵심 IP 권리안정성 수정 (케이스타트업 반영),TODO,전사적 자원 관리,과제펀딩,HIGH,"K-스타트업 원본증빙 반영;권리안정성 수정",,task_created
+T132,task_report,정우창,김아리,"ppt 보내드립니다.",핵심 IP 권리안정성 수정 (케이스타트업 반영),IN_PROGRESS,전사적 자원 관리,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/기술성숙도.pptx,file_attached
+T133,task_report,박소정,김아리,"이렇게 업데이트했습니다.",핵심 IP 권리안정성 수정 (케이스타트업 반영),DONE,전사적 자원 관리,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/2026년 바이오헬스산업 기술평가-사업화연계 지원사업 신청서 및 계획서_SJ2.hwpx,file_attached
+T134,task_instruction,김아리,박소정,"이거 좀 찾아야해서 할수있는부분만 채워주세요~",과제 수상실적 및 지원사업 자료 조사,TODO,전사적 자원 관리,과제펀딩,NORMAL,"수상실적 조사;정부지원사업 수혜 현황 기입",,task_created
+T135,file_share,노혜린,김아리,"수상실적 정부지원사업수혜 파일 업데이트했습니다.",과제 수상실적 및 지원사업 자료 조사,IN_PROGRESS,전사적 자원 관리,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/수상실적 정부지원사업수혜.xlsx,file_attached
+T136,task_instruction,노혜린,박소정,"방금 생각나는대로 업데이트하긴 했는데 참고해주세요. 취합해서 보내주세요.",과제 내용 업데이트 취합,TODO,전사적 자원 관리,과제펀딩,NORMAL,"업데이트 내용 확인;취합본 작성",,task_created
+T137,task_report,박소정,노혜린,"늦어서 죄송합니다. 취합해서 보내드립니다.",과제 내용 업데이트 취합,DONE,전사적 자원 관리,과제펀딩,NORMAL,,/Users/jeong-uchang/Downloads/2026년 바이오헬스산업 기술평가-사업화연계 지원사업 신청서 및 계획서_1-2page.hwpx,file_attached
+T138,task_instruction,김아리,노혜린,"혜린쌤 이 파일에다가 업데이트해주세요~",과제 파일 업데이트,TODO,전사적 자원 관리,과제펀딩,NORMAL,"지정 파일에 업데이트 반영",,task_created
+T139,task_instruction,노혜린,정우창,"2025년도 매출 인턴방에 전달했으니 추가 부탁드립니다.",2025년도 매출 자료 추가 반영,TODO,전사적 자원 관리,행정 관리,NORMAL,"2025년도 매출 데이터 확인;CRM 파일 업데이트",,task_created
+T140,file_share,정우창,노혜린,"매출 자료 추가 파일 보내드립니다.",2025년도 매출 자료 추가 반영,DONE,전사적 자원 관리,행정 관리,NORMAL,,,file_attached
+T141,task_instruction,허채정,정우창,"윤상무님 요거 한번 해봐주실수 있으시면 해봐주세요~~~",윤상무님 요청사항 처리,TODO,전사적 자원 관리,행정 관리,NORMAL,"윤상무님 요청 내용 확인;실행",,task_created
+T142,task_instruction,김아리,박소정,"@박소정 기름종이 외부 디자인은 다음 이미지들을 섞어서 해주세요.",기름종이 외부 디자인 제작,TODO,전사적 자원 관리,행정 관리,NORMAL,"이미지 참고;외부 디자인 합성;라이브젤 이미지 포함",,task_created
+T143,task_instruction,김아리,정우창,"내부디자인은 다음 이미지에 라이브젤 이미지 포함해서 넣어주세요. 우창님 도와주셔요.",기름종이 내부 디자인 제작,TODO,전사적 자원 관리,행정 관리,NORMAL,"내부 디자인 작성;라이브젤 이미지 포함",,task_created
+T144,task_instruction,김아리,정우창,"하나더 두줄짜리 있잖아요 오른쪽 정렬해주세요.",디자인 오른쪽 정렬 수정,TODO,전사적 자원 관리,행정 관리,LOW,"두줄짜리 텍스트 오른쪽 정렬",,task_created
+T145,task_instruction,김아리,박소정,"시제품 2종류 제작으로 해주세요.(필름형 젤형 또는 필름형의 건조정도차이 등 다른조건) 뉴로힐에 유효성분을 필름화했을때 물리적 안정성과 생물학적 안정성테스트 중심으로 보면 될것같아요.",시제품 제작 계획 (필름형/젤형),TODO,전사적 자원 관리,과제펀딩,HIGH,"시제품 2종류 제작 계획;물리적 안정성 테스트 계획;생물학적 안정성 테스트 계획",,task_created
+T146,task_report,박소정,김아리,"내용 채워봤습니다. 확인해보시고 피드백 주시면 이어서 수정하도록 하겠습니다. 제조사는 제가 전화 돌려보고 있습니다.",시제품 제작 계획 (필름형/젤형),IN_PROGRESS,전사적 자원 관리,과제펀딩,HIGH,,,status_changed
+T147,task_instruction,김아리,박소정,"물리적 생물학적 평가 준비내용으로 작성해주세요. 각 시험업체 조사 각 시험업체 견적받기 각 시험업체와 미팅진행 정도까지요.",물리적/생물학적 평가 준비 및 시험업체 조사,TODO,전사적 자원 관리,과제펀딩,HIGH,"시험업체 조사;견적 요청;미팅 진행 계획 작성",,task_created
+T148,task_instruction,김아리,박소정,"오전중으로 한건만 잡아서 해보시고 바로 저한테 내용 전달해주세요!",시험업체 견적 요청,TODO,전사적 자원 관리,과제펀딩,HIGH,"시험업체 1건 견적 요청;내용 전달",,task_created
+T149,task_instruction,노혜린,박소정,"@박소정 내일 14:00 광교 안전보건협의체 참석 부탁드려요!!",광교 안전보건협의체 참석,TODO,전사적 자원 관리,행정 관리,NORMAL,"안전보건협의체 참석;내일 14:00 광교",,task_created
+T150,task_report,박소정,노혜린,"넵 알겠습니다.",광교 안전보건협의체 참석,DONE,전사적 자원 관리,행정 관리,NORMAL,,,status_changed
+T151,task_instruction,노혜린,정우창,"@정우창 대표님께서 전달주신 전북 과제 리스트입니다. 나중에 전북 순창 이전 계획으로 인한 가능성. 한번 보고 계시고 자세한 내용은 대표님오시면 말씀드리겠습니다!",전북 과제 리스트 검토,TODO,전사적 자원 관리,과제펀딩,NORMAL,"전북 과제 리스트 확인;순창 이전 관련 가능성 검토",,task_created
+T152,task_instruction,노혜린,정우창,"@정우창 최근 대표님 명함 출력한 건. 성균관대 부분 - 생멸물리학과라고 되어있다고 합니다. 시간될때 재 수정해서 파일 보내주세요!",대표님 명함 학과명 수정,TODO,전사적 자원 관리,행정 관리,NORMAL,"성균관대 학과명 수정;파일 재전송",,task_created
+T153,task_instruction,노혜린,정우창,"우창님 해당 과제 사업설명회 일정이 어떻게 되는지 알아봐주세요! 아리박사님이 오늘 외부일정이라서 도움이 필요합니다!!",미래소재디스커버리 사업설명회 일정 확인,TODO,전사적 자원 관리,과제펀딩,NORMAL,"사업설명회 일정 조회;팀 전달",,task_created
+T154,task_instruction,김아리,박소정,"소정씨 여기 밑에 쓸 내용 작성한번 해주세요. 5) 개발기술의 사회적·경제적 필요성입니다.",바이오헬스 개발기술 사회적 경제적 필요성 작성,TODO,전사적 자원 관리,과제펀딩,HIGH,"사회적 필요성 작성;경제적 필요성 작성",,task_created
+T155,task_instruction,김아리,정우창,"우창님 ppt 그림이랑 글 하나 요청드려요. 단계별로 구현할 제품리스트와 각 제품별 연구가 병행진행중임을 한장의 그림으로 표현해줬으면합니다.",바이오헬스 제품 파이프라인 PPT 그림 작성,TODO,전사적 자원 관리,과제펀딩,HIGH,"단계별 제품리스트 그림;병행 연구 표현;글 간략 작성",,task_created
+T156,task_report,정우창,김아리,"이 부분 작업했습니다.",바이오헬스 제품 파이프라인 PPT 그림 작성,DONE,전사적 자원 관리,과제펀딩,HIGH,,/Users/jeong-uchang/Downloads/2026년 바이오헬스산업 기술평가-사업화연계 지원사업 신청서 및 계획서_h.hwpx,file_attached
+T157,task_instruction,김아리,박소정,"소정씨 1.5 인력현황 추가해줄래요?",바이오헬스 인력현황 추가,TODO,전사적 자원 관리,과제펀딩,NORMAL,"1.5 인력현황 섹션 작성",,task_created
+T158,task_instruction,허채정,정우창,"연구소 주소를 추가해주세요~ ^^",바이오헬스 연구소 주소 추가,TODO,전사적 자원 관리,과제펀딩,NORMAL,"연구소 주소 기입",,task_created
+T159,task_instruction,노혜린,정우창,"우창님 명함 광교 주소추가 부탁드립니다! 급한것은 아니고 시간될때 해주세요.",명함 광교 주소 추가,TODO,전사적 자원 관리,행정 관리,NORMAL,"광교 주소 추가;전 직원 명함 업데이트",/Users/jeong-uchang/HADD SCIENCE/명함/250423_하드사이언스_명함_원본 작업데이터_광교.ai,task_created
+T160,file_share,정우창,노혜린,"명함 광교 주소 추가했습니다.",명함 광교 주소 추가,DONE,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/HADD SCIENCE/명함/250423_하드사이언스_명함_원본 작업데이터_광교.ai,file_attached
+T161,task_instruction,노혜린,정우창,"우창님 대표님 성균관대 명함 만들어주세요.",대표님 성균관대 명함 제작,TODO,전사적 자원 관리,행정 관리,HIGH,"성균관대 명함 디자인;아웃라인 작업",/Users/jeong-uchang/HADD SCIENCE/명함/하드사이언스_성균관대_허채정대표님.ai,task_created
+T162,file_share,정우창,노혜린,"대표님 성균관대 명함 작업했습니다.",대표님 성균관대 명함 제작,DONE,전사적 자원 관리,행정 관리,HIGH,,/Users/jeong-uchang/HADD SCIENCE/명함/명함개별파일/상원애드피아_업로드/하드사이언스_성균관대_허채정대표님_아웃라인.ai,file_attached
+T163,task_instruction,노혜린,정우창,"미라지 배너 파일 수정해서 보내주세요.",미라지 배너 수정,TODO,전사적 자원 관리,행정 관리,NORMAL,"배너 디자인 수정",/Users/jeong-uchang/HADD SCIENCE/학회포스터/HADD 학회포스터 제작용 파일/화성시 ai 미라지_하드사이언스.ai,task_created
+T164,file_share,정우창,노혜린,"미라지 배너 수정본입니다.",미라지 배너 수정,DONE,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/HADD SCIENCE/학회포스터/HADD 학회포스터 제작용 파일/화성시 ai 미라지_하드사이언스.ai,file_attached
+T165,task_instruction,김아리,정우창,"라이브젤 리플렛 최종본 확인해주세요.",라이브젤 리플렛 최종 작업,TODO,전사적 자원 관리,행정 관리,HIGH,"리플렛 디자인 최종;인쇄용 아웃라인",/Users/jeong-uchang/HADD SCIENCE/스티커종합/하드사이언스 라이브젤 리플렛-final.ai,task_created
+T166,file_share,정우창,김아리,"라이브젤 리플렛 최종본 보내드립니다.",라이브젤 리플렛 최종 작업,DONE,전사적 자원 관리,행정 관리,HIGH,,/Users/jeong-uchang/HADD SCIENCE/스티커종합/하드사이언스 라이브젤 리플렛-final.ai,file_attached
+T167,task_instruction,김아리,정우창,"애드젤 라벨지 5ml 디자인 수정해주세요.",애드젤 라벨지 디자인,TODO,전사적 자원 관리,행정 관리,NORMAL,"5ml 라벨지 디자인;인쇄 규격 확인",/Users/jeong-uchang/HADD SCIENCE/스티커종합/250430_애드젤_라벨지_5ml.ai,task_created
+T168,file_share,정우창,김아리,"애드젤 라벨지 수정했습니다.",애드젤 라벨지 디자인,DONE,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/HADD SCIENCE/스티커종합/250430_애드젤_라벨지_5ml.ai,file_attached
+T169,task_instruction,노혜린,정우창,"BioKorea 학회 현수막 제작해주세요.",BioKorea 학회 현수막 제작,TODO,전사적 자원 관리,행정 관리,HIGH,"현수막 디자인;아웃라인 작업;인쇄 발주",/Users/jeong-uchang/HADD SCIENCE/BioKorea 학회 현수막/학회_현수막_아웃라인.ai,task_created
+T170,file_share,정우창,노혜린,"현수막 최종본입니다.",BioKorea 학회 현수막 제작,DONE,전사적 자원 관리,행정 관리,HIGH,,/Users/jeong-uchang/HADD SCIENCE/BioKorea 학회 현수막/학회_현수막_아웃라인.ai,file_attached
+T171,task_instruction,김아리,정우창,"명함 돋보기 굿즈 디자인 해주세요.",명함돋보기 굿즈 디자인,TODO,전사적 자원 관리,행정 관리,NORMAL,"가로형 디자인;세로형 디자인;칼선 작업",/Users/jeong-uchang/HADD SCIENCE/굿즈디자인_명함돋보기/돋보기-가로형-세로형-칼선.ai,task_created
+T172,file_share,정우창,김아리,"굿즈 디자인 완료했습니다.",명함돋보기 굿즈 디자인,DONE,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/HADD SCIENCE/굿즈디자인_명함돋보기/돋보기-가로형-세로형-칼선.ai,file_attached
+T173,task_instruction,노혜린,정우창,"우편봉투 광교주소 버전으로 만들어주세요.",우편봉투 광교주소 제작,TODO,전사적 자원 관리,행정 관리,NORMAL,"광교주소 반영;봉투 디자인",/Users/jeong-uchang/HADD SCIENCE/우편봉투/광교주소_우편봉투.ai,task_created
+T174,file_share,정우창,노혜린,"우편봉투 광교주소 버전 작업했습니다.",우편봉투 광교주소 제작,DONE,전사적 자원 관리,행정 관리,NORMAL,,/Users/jeong-uchang/HADD SCIENCE/우편봉투/광교주소_우편봉투.ai,file_attached
+T175,task_instruction,김아리,정우창,"@정우창 BioKorea 학회 포스터 디자인해주세요. 애드젤과 라이브젤 제품 중심으로 A0 사이즈로 만들어주세요.",BioKorea 학회 포스터 디자인,TODO,전사적 자원 관리,행정 관리,HIGH,"A0 사이즈 포스터;애드젤 제품 소개;라이브젤 제품 소개;회사 로고 삽입",,task_created
+T176,gemini_report,정우창,김아리,"#{task_slug} 포스터 초안 완성했습니다. 애드젤과 라이브젤 제품 사진 배치하고 회사 소개 텍스트 넣었습니다.",BioKorea 학회 포스터 디자인,IN_PROGRESS,전사적 자원 관리,행정 관리,HIGH,,/Users/jeong-uchang/HADD SCIENCE/학회포스터/학회포스터.ai,rebuild_triggered
+T177,gemini_feedback,김아리,정우창,"#{task_slug} 포스터 좋은데 QR코드 추가해주시고 하단에 연락처 정보 넣어주세요. 폰트는 페이퍼로지로 통일해주세요.",BioKorea 학회 포스터 디자인,IN_PROGRESS,전사적 자원 관리,행정 관리,HIGH,,,rebuild_triggered
+T178,gemini_report,정우창,김아리,"#{task_slug} QR코드 추가하고 연락처 정보 넣었습니다. 폰트도 페이퍼로지로 전부 교체했습니다. 최종 확인 부탁드립니다.",BioKorea 학회 포스터 디자인,IN_PROGRESS,전사적 자원 관리,행정 관리,HIGH,,,rebuild_triggered
+T179,gemini_complete,김아리,정우창,"#{task_slug} 완료! 인쇄 발주 진행해주세요.",BioKorea 학회 포스터 디자인,DONE,전사적 자원 관리,행정 관리,HIGH,,,complete_triggered
+T180,task_instruction,김아리,박소정,"@박소정 화장품 5종 안전성평가 실험계획서 작성해주세요. 스킨/앰플/로션/크림/수면젤 각각 시험항목과 방법을 정리해주세요.",화장품 안전성평가 실험계획서,TODO,메디바이오 2차,과제펀딩,HIGH,"스킨 시험항목 정리;앰플 시험항목 정리;로션 시험항목 정리;크림 시험항목 정리;수면젤 시험항목 정리;시험방법 서술",,task_created
+T181,gemini_report,박소정,김아리,"#{task_slug} 피부 자극 시험과 첩포 시험 위주로 초안 작성했습니다. 스킨과 앰플 부분 완성했고 나머지는 진행중입니다.",화장품 안전성평가 실험계획서,IN_PROGRESS,메디바이오 2차,과제펀딩,HIGH,,,rebuild_triggered
+T182,gemini_feedback,김아리,박소정,"#{task_slug} 좋습니다. 인체적용시험 가이드라인 기준으로 피부 감작성 시험도 추가해주세요. 그리고 시험 기간을 각 항목별로 명시해주세요.",화장품 안전성평가 실험계획서,IN_PROGRESS,메디바이오 2차,과제펀딩,HIGH,,,rebuild_triggered
+T183,gemini_report,박소정,김아리,"#{task_slug} 감작성 시험 추가하고 전 품목 시험기간 명시했습니다. 전체 5종 모두 작성 완료했습니다.",화장품 안전성평가 실험계획서,IN_PROGRESS,메디바이오 2차,과제펀딩,HIGH,,,rebuild_triggered
+T184,gemini_complete,김아리,박소정,"#{task_slug} 전부 확인했습니다. 최종본으로 제출하겠습니다. 수고했어요!",화장품 안전성평가 실험계획서,DONE,메디바이오 2차,과제펀딩,HIGH,,,complete_triggered
+T185,task_instruction,노혜린,정우창,"@정우창 뉴로힐 의료기기 2등급 인허가 일정표 만들어주세요. GMP 심사부터 인증 취득까지 타임라인으로요.",뉴로힐 인허가 일정표 작성,TODO,전사적 자원 관리,인허가 특허,HIGH,"GMP 심사 일정;설계검증 일정;성능시험 일정;생물학적 안전성 일정;인증 신청 일정",,task_created
+T186,gemini_report,정우창,노혜린,"#{task_slug} QMS 완성(6월) → GMP 심사(7월) → 설계검증(8월) → 성능시험(9월) → 인증 신청(10월) 일정으로 초안 만들었습니다.",뉴로힐 인허가 일정표 작성,IN_PROGRESS,전사적 자원 관리,인허가 특허,HIGH,,,rebuild_triggered
+T187,gemini_feedback,노혜린,정우창,"#{task_slug} 생물학적 안전성 시험이 빠져있어요. 8월에 병행해서 넣어주세요. 그리고 kh메디케어 컨설팅 일정도 포함시켜주세요.",뉴로힐 인허가 일정표 작성,IN_PROGRESS,전사적 자원 관리,인허가 특허,HIGH,,,rebuild_triggered
+T188,gemini_report,정우창,노혜린,"#{task_slug} 생물학적 안전성 시험 8월 병행으로 추가하고 kh메디케어 컨설팅 일정(매월 1회) 반영했습니다.",뉴로힐 인허가 일정표 작성,IN_PROGRESS,전사적 자원 관리,인허가 특허,HIGH,,,rebuild_triggered
+T189,gemini_complete,노혜린,정우창,"#{task_slug} 완벽합니다! 이대로 진행하겠습니다.",뉴로힐 인허가 일정표 작성,DONE,전사적 자원 관리,인허가 특허,HIGH,,,complete_triggered

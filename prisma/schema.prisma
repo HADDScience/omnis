@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── 사용자 ──────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  email        String?
+  role         Role     @default(MEMBER)
+  passwordHash String
+  isActive        Boolean  @default(true)
+  workspaceLayout Json?
+  createdAt       DateTime @default(now())
+
+  assignedTasks   Task[]          @relation("TaskOwner")
+  instructedTasks Task[]          @relation("TaskInstructor")
+  chatMessages    ChatMessage[]
+  checklists      Checklist[]
+  weeklyReports   WeeklyReport[]
+  omnisUpdates    OmnisCard[]
+  notifications   Notification[]
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+// ─── 채팅 ────────────────────────────────────────────────
+
+model ChatRoom {
+  id        String        @id @default(uuid())
+  name      String
+  createdAt DateTime      @default(now())
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id                String   @id @default(uuid())
+  roomId            String
+  room              ChatRoom @relation(fields: [roomId], references: [id])
+  authorId          String
+  author            User     @relation(fields: [authorId], references: [id])
+  content           String
+  taskId            String?
+  task              Task?    @relation(fields: [taskId], references: [id])
+  isTaskInstruction Boolean  @default(false)
+  kind              MessageKind @default(NORMAL)
+  createdAt         DateTime @default(now())
+
+  files    File[]
+  mentions ChatMention[]
+
+  @@index([roomId, createdAt])
+  @@index([taskId])
+}
+
+enum MessageKind {
+  NORMAL
+  TASK_CREATED
+  TASK_REBUILT
+  TASK_DONE
+}
+
+model ChatMention {
+  id        String      @id @default(uuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  type      MentionType
+  taskId    String?
+  userId    String?
+  createdAt DateTime    @default(now())
+
+  @@index([type, taskId])
+  @@index([type, userId])
+  @@index([messageId])
+}
+
+enum MentionType {
+  TASK
+  USER
+}
+
+// ─── 업무 ────────────────────────────────────────────────
+
+model Task {
+  id             String     @id @default(uuid())
+  name           String
+  slug           String     @unique
+  ownerId        String
+  owner          User       @relation("TaskOwner", fields: [ownerId], references: [id])
+  instructorId   String
+  instructor     User       @relation("TaskInstructor", fields: [instructorId], references: [id])
+  projectId      String?
+  project        Project?      @relation(fields: [projectId], references: [id])
+  productId      String?
+  product        Product?      @relation(fields: [productId], references: [id])
+  categoryId     String?
+  category       TaskCategory? @relation(fields: [categoryId], references: [id])
+  status         TaskStatus    @default(TODO)
+  priority       Priority   @default(NORMAL)
+  background     String?
+  expectedResult String?
+  deadline       DateTime?
+  workStart      DateTime?
+  workEnd        DateTime?
+  archived       Boolean    @default(false)
+  notionId       String?
+  sourceMessages Json?
+
+  checklists Checklist[]
+  messages   ChatMessage[]
+  files      File[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([ownerId, status])
+  @@index([projectId])
+  @@index([productId])
+  @@index([categoryId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+// ─── 체크리스트 ──────────────────────────────────────────
+
+model Checklist {
+  id        String   @id @default(uuid())
+  name      String
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  ownerId   String?
+  owner     User?    @relation(fields: [ownerId], references: [id])
+  done      Boolean  @default(false)
+  memo      String?
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+// ─── 제품 ────────────────────────────────────────────────
+
+model Product {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  color     String
+  sortOrder Int       @default(0)
+  projects  Project[]
+  tasks     Task[]
+}
+
+// ─── 업무 카테고리 (업무 유형) ────────────────────────────
+
+model TaskCategory {
+  id        String @id @default(uuid())
+  name      String @unique
+  icon      String?
+  color     String?
+  sortOrder Int    @default(0)
+  tasks     Task[]
+}
+
+// ─── 프로젝트 ────────────────────────────────────────────
+
+model Project {
+  id        String    @id @default(uuid())
+  name      String
+  status    String    @default("진행 중")
+  priority  Priority  @default(NORMAL)
+  purpose   String?
+  goal      String?
+  startDate DateTime?
+  deadline  DateTime?
+  archived  Boolean   @default(false)
+  notionId  String?
+  productId String?
+  product   Product?  @relation(fields: [productId], references: [id])
+
+  tasks     Task[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+}
+
+// ─── 주간 업무보고 ───────────────────────────────────────
+
+model WeeklyReport {
+  id        String   @id @default(uuid())
+  title     String
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id])
+  weekStart DateTime
+  weekEnd   DateTime
+  isoWeek   String
+  status    String   @default("작성 중")
+  content   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, weekStart])
+}
+
+// ─── 옴니스 지식 베이스 ──────────────────────────────────
+
+model OmnisCategory {
+  id        String      @id @default(uuid())
+  name      String      @unique
+  icon      String?
+  sortOrder Int         @default(0)
+  cards     OmnisCard[]
+}
+
+model OmnisCard {
+  id          String        @id @default(uuid())
+  categoryId  String
+  category    OmnisCategory @relation(fields: [categoryId], references: [id])
+  title       String
+  content     Json
+  tags        String[]
+  version     Int           @default(1)
+  updatedById String?
+  updatedBy   User?         @relation(fields: [updatedById], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([categoryId])
+}
+
+// ─── 파일 ────────────────────────────────────────────────
+
+model File {
+  id        String       @id @default(uuid())
+  name      String
+  path      String
+  size      Int
+  mimeType  String
+  messageId String?
+  message   ChatMessage? @relation(fields: [messageId], references: [id])
+  taskId    String?
+  task      Task?        @relation(fields: [taskId], references: [id])
+  createdAt DateTime     @default(now())
+}
+
+// ─── Gemini 토큰 사용 로그 ───────────────────────────────
+
+model GeminiUsage {
+  id              String   @id @default(uuid())
+  endpoint        String
+  promptTokens    Int
+  candidateTokens Int
+  totalTokens     Int
+  userId          String?
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// ─── 알림 ────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  title     String
+  content   String?
+  entityId  String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}

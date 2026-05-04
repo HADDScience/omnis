@@ -1,0 +1,1352 @@
+[
+  {
+    "notionId": "0191b3f9-71a1-8259-b4a2-81c954c94c66",
+    "name": "5월 시장확대",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-05-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "0411b3f9-71a1-8393-a994-8199784e17c4",
+    "name": "차별성 검토 보고서 다운로드",
+    "status": "완료",
+    "owner": null,
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "0701b3f9-71a1-8323-833c-01d0fe6cfa34",
+    "name": "실증 목표 등 초안 작성",
+    "status": "완료",
+    "owner": null,
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "1431b3f9-71a1-82f9-af1b-01112be7f064",
+    "name": "인증관련 조사",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-02-28",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "1621b3f9-71a1-825d-b6e9-01b693e8c069",
+    "name": "치매진단 샘플 테스트 및 평가",
+    "status": "진행 중",
+    "owner": "정우창",
+    "deadline": "2025-12-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "18e1b3f9-71a1-8311-8f59-8115eb11cea6",
+    "name": "성과 엑셀 파일 정리",
+    "status": "진행 중",
+    "owner": "박소정",
+    "deadline": "2026-06-30",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "19c1b3f9-71a1-83b6-82ed-81cf70a578f4",
+    "name": "바이오의료기술 과제",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2025-02-10",
+    "product": null,
+    "priority": "★★★"
+  },
+  {
+    "notionId": "1b51b3f9-71a1-8312-873d-01e277696d59",
+    "name": "치매극복사업과제",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2025-02-03",
+    "product": null,
+    "priority": "★★★"
+  },
+  {
+    "notionId": "1b61b3f9-71a1-8258-8dc5-01cefe1c1f86",
+    "name": "8월 경쟁력 강화",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-08-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "1ed1b3f9-71a1-8255-a393-81c59e81af11",
+    "name": "6월 판매안정화",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-06-30",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "1f71b3f9-71a1-82f7-8853-818869c66542",
+    "name": "9월 시장 포지셔닝 강화",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-09-30",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "2001b3f9-71a1-82d0-88db-811efbd5f79e",
+    "name": "지적 재산권 확보",
+    "status": "진행 중",
+    "owner": "정우창",
+    "deadline": "2025-12-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "2591b3f9-71a1-8320-a8e6-0143d8fdf933",
+    "name": "4. 결과 정리 및 최종 보고",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": "2026-06-30",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "28c1b3f9-71a1-829c-add3-01535318064d",
+    "name": "예비 지원과제 리스트업 (3건 추가)",
+    "status": "완료",
+    "owner": "박소정",
+    "deadline": "2026-03-12",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "2ad1b3f9-71a1-8385-9e22-81cfe74df063",
+    "name": "과제 제안서 초안 작성",
+    "status": "완료",
+    "owner": "박소정",
+    "deadline": "2026-03-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3171b3f9-71a1-8322-9225-01d8605f310e",
+    "name": "제안서 「개발 기술의 타겟 시장」 항목 작성",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-811d-b52a-cd83cca84f90",
+    "name": "협약기간내사업추진 작성, 바이오아이코어 제출 마무리",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-8145-97bb-c14513238e77",
+    "name": "택배 배달",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-815a-8020-f0ba5fa50a3c",
+    "name": "노션 복구",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-815f-b192-d49fb19d0df3",
+    "name": "회사 비품 사무실 이동",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-8161-b22b-f33c4d8997d7",
+    "name": "사업화 전략 인포그래픽 작업",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-817b-9191-e2eb873c4fb1",
+    "name": "바이오아이코어 사업계획서용 뇌오가노이드 인포그래픽 작업",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-8189-9d69-d9302e298758",
+    "name": "NEXT Bio 행사 참여",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-8190-8fcf-f3070de72e6b",
+    "name": "대표님 수정사항 반영 바이오아이코어 신청서 작성",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-819f-8217-c56902421096",
+    "name": "AI 활용 노코드 데이터 분석 교육 신청",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81a3-aaca-d368808dca0c",
+    "name": "부족한 서류 연락 요청 및 서식 5~14호 임시작성 완료",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81ac-b3f1-e969cebd93c2",
+    "name": "모니터 연결 마운트 조사",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81ad-8897-d4ea78a7855c",
+    "name": "바이오아이코어 신청 자료 서식 5~10호 작성 준비",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81b3-94dd-cc3645c3692c",
+    "name": "신청기관 제재확인서 문의전화 후 발급, 서식 서류 보완",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81c6-8014-c57fbf0598af",
+    "name": "떡 픽업, 스티커 붙이기, 나눠주기",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81cc-98b9-e2a9be10c820",
+    "name": "서식 5~10호 자료 수집 및 정리하여 부족한 서류 파악",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81cc-a955-c035c5ce9367",
+    "name": "바이오소재 영업망 인프라",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81de-a981-ebd7e2263ef0",
+    "name": "의료진단에서 인공지능의 활용 PPT 만들기",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-13",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81f6-bf48-c485cee6915f",
+    "name": "대표님 차량 등록 방문자 할인권 발급 방법 조사",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3271b3f9-71a1-81fa-ac7d-c0ce7275110b",
+    "name": "노션 복구 계획",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3281b3f9-71a1-81ca-86ac-e4daf555aec2",
+    "name": "인증 조사 (면접수당 지급기업, 경기도 가족친화, 노동안전보건, ESG)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3281b3f9-71a1-81e2-ac41-c3b5ec0a100d",
+    "name": "다음주 준비 인증 리스트업 및 카톡 공유",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3291b3f9-71a1-8111-b067-f67d7e11e5e0",
+    "name": "오가노이드학회 포스터 부착",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3291b3f9-71a1-8177-9a49-f1051275452d",
+    "name": "명함 추가 및 본사 주소 변경",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3291b3f9-71a1-818d-881c-e7b768091179",
+    "name": "노션 대시보드 페이지 개선",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3291b3f9-71a1-8191-aae2-cbca6229b0ab",
+    "name": "윤훈·박소정 작성 한글파일 결합",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-19",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3291b3f9-71a1-81b2-915a-e082fb79fdf1",
+    "name": "오리엔트 회사소개 PPT 수정",
+    "status": "진행 중",
+    "owner": "정우창",
+    "deadline": "2026-04-30",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3291b3f9-71a1-81b3-9b6d-e60f1dacb23e",
+    "name": "제출 단위에 맞게 파일 분할",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-19",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3291b3f9-71a1-8254-9956-817e8e130ac2",
+    "name": "미니 리플렛(4p) 제작",
+    "status": "진행 중",
+    "owner": null,
+    "deadline": "2025-02-14",
+    "product": null,
+    "priority": "★★★"
+  },
+  {
+    "notionId": "32c1b3f9-71a1-813d-9449-c06bd9bdace0",
+    "name": "hadd-notion 스킬 ID 전체 갱신",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": null
+  },
+  {
+    "notionId": "32c1b3f9-71a1-8173-bd7f-c15e175692dc",
+    "name": "[과제 리스트업] 미래소재디스커버리지원+사업 신규과제",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": "2026-05-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "32c1b3f9-71a1-817e-8ce5-c57883a00449",
+    "name": "[과제 리스트업] 경기도 공동활용 연구장비 사용료 지원",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": "2026-05-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "32c1b3f9-71a1-817e-96ee-f486b62ff7e6",
+    "name": "[과제 리스트업] 전북 돋움기업 성장사다리 동반성장 지원사업",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": "2026-05-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "32c1b3f9-71a1-817f-a54c-ec54e90fb2d2",
+    "name": "옴니스(Omnis) DB 구축",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": null
+  },
+  {
+    "notionId": "32c1b3f9-71a1-8184-a6ad-c57e9fa74baf",
+    "name": "[과제 리스트업] 미래소재디스커버리지원+사업 신규과제",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "32c1b3f9-71a1-8189-ade1-c2b6a50eb53c",
+    "name": "[과제 리스트업] 전북 돋움기업 성장사다리 동반성장 지원사업",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "32c1b3f9-71a1-81a0-9047-dfbf73c34dc9",
+    "name": "[과제 리스트업] 경기도 공동활용 연구장비 사용료 지원",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "32c1b3f9-71a1-81a3-a86c-e8f1c8c78823",
+    "name": "노션 페이지 구조 재편",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": null
+  },
+  {
+    "notionId": "32c1b3f9-71a1-81bc-9b11-ff45270138e6",
+    "name": "대시보드 전면 개편",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": null
+  },
+  {
+    "notionId": "32e1b3f9-71a1-81d1-b663-e242e280a031",
+    "name": "Raman G-peak 차이 분석 시각화",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-26",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32e1b3f9-71a1-81ff-a11f-c360ac3be8bb",
+    "name": "G-peak 분석 웹앱 배포 (0.5 단위 세분화)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-26",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8107-89db-cd1bb438c597",
+    "name": "GitHub 레포 생성 (HADDScience/omnis)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8123-af54-c72c3af9e6e5",
+    "name": "업무 상세 (체크리스트 토글, 상태 변경)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8133-84dc-ff822006a3f9",
+    "name": "NextAuth 인증 (Credentials, 5명 사용자)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8134-bdfe-e9ed15f4adcb",
+    "name": "Gemini 2.5 Flash API 연동",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8138-be26-e226c727b4bd",
+    "name": "Omnis 프로젝트 초기화 (Next.js 16 + shadcn + Prisma)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-813f-a10d-e79b66920dc4",
+    "name": "채팅 추가지시 → 체크리스트 자동 추가",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8143-afaa-d7828d338620",
+    "name": "PostgreSQL Docker + Prisma 스키마 11개 모델",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8144-8b5c-c5d03fa7d6e9",
+    "name": "[고민] 카톡→Omnis 전환 팀 적응 전략",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-814e-891a-c3a1031945e7",
+    "name": "[미완] Claude Code 스킬 연동",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8150-9d1e-c1d99084f5ad",
+    "name": "#업무 @사람 멘션 기능 (자동완성)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8155-bda0-f50227cf957b",
+    "name": "[고민] 시놀로지 NAS Docker 배포 (DDNS+SSL)",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8157-8223-dd13c2a71b8e",
+    "name": "채팅 기능 (메시지 전송/조회, polling)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-815c-b9d8-c3e2b1c313fb",
+    "name": "[미완] 모바일 반응형 최적화",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8164-aa8b-e685c70dbc8f",
+    "name": "[고민] WebSocket vs Polling 실시간 채팅 방식 결정",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-816e-bb90-cc8771226590",
+    "name": "옴니스 지식 베이스 (카테고리/카드 CRUD)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-818b-931d-ef7833282b84",
+    "name": "Sidebar 레이아웃 + 한국어 UI",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-8196-947a-c4b88b2f534f",
+    "name": "주간보고 (Gemini 초안, 마크다운 렌더링, 편집)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81a7-b30b-fcc16e2525d6",
+    "name": "[미완] 옴니스 노션 12카드 데이터 이관",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81a8-96a0-c76613b6a27a",
+    "name": "노션 데이터 마이그레이션",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81b5-a6de-e8a2446015a1",
+    "name": "대시보드 (팀원별 현황, 완료율, 최근 활동)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81bf-bf78-ed847eba2da2",
+    "name": "업무 보드 (프로젝트별 아코디언 + 검색)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81c0-8049-f7c23d07e65f",
+    "name": "글래스모피즘 채팅 패널 (FAB)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81c2-8d84-dabe54da838c",
+    "name": "업무지시 다이얼로그 (메시지 선택 → Gemini 구조화)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81d5-b151-f94020238119",
+    "name": "채팅 멘션으로 업무 상태 변경",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81e5-b127-ff43e6018350",
+    "name": "[미완] pg_dump 자동 백업 + Hyper Backup",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81e7-b4c1-f27cafd4e0e5",
+    "name": "알림 시스템 (벨 아이콘, 팝오버)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "32f1b3f9-71a1-81fa-b75e-ff650ad2e959",
+    "name": "[미완] 파일 업로드 (Synology Drive)",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "3301b3f9-71a1-8112-93eb-eead08bffaad",
+    "name": "Omnis 2차 커밋 — AI 업무재구성, 버전관리, 파일업로드",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "3301b3f9-71a1-811e-8132-e425a0db4145",
+    "name": "상원애드피아 명함 주문",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3301b3f9-71a1-816b-9c84-dbe10021c446",
+    "name": "명함 배치 수정",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3301b3f9-71a1-8184-a90a-f3d93938e686",
+    "name": "시놀로지 메신저 구축",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "3301b3f9-71a1-818a-903a-fef0bf8c4e7d",
+    "name": "과제 체크 업무 프로세스 만들기 (월 2회 자동화)",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "3301b3f9-71a1-819a-836b-d85b7bb7c7fa",
+    "name": "바이오아이코어 PPT - 단계별 수행내용 작성 및 협력 파트너십 누락 기업 추가",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-24",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "3301b3f9-71a1-81d2-b84c-c1eec8a81b5c",
+    "name": "명함 피드백 적용",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3331b3f9-71a1-81ab-b916-ca0e612c95bd",
+    "name": "옴니스에 타 업체 정보 페이지 생성 및 DB 추가",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3351b3f9-71a1-814c-bced-d5d032c390b7",
+    "name": "1.3. 국내외 유사·경쟁 제품과의 성능비교 작성",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-04-03",
+    "product": null,
+    "priority": "★★★"
+  },
+  {
+    "notionId": "3351b3f9-71a1-8189-aad7-e7f94e8a47df",
+    "name": "8회차 라만 로우데이터 G-peak 분석 프로그램 적용",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-04-04",
+    "product": null,
+    "priority": "★☆☆"
+  },
+  {
+    "notionId": "3351b3f9-71a1-81d6-a1bd-e633baf8b18e",
+    "name": "1.1/1.2 기술성숙도-제품개발 단계 다이어그램 제작",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-04-03",
+    "product": null,
+    "priority": "★★★"
+  },
+  {
+    "notionId": "33a1b3f9-71a1-8103-a03a-e2ab8ee67f76",
+    "name": "웹앱에 AI 분석 결과 반영 (코드리뷰 보정 후)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "33a1b3f9-71a1-810a-9edd-e749e00b3f33",
+    "name": "현수막 AI 파일 제작",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-30",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "33a1b3f9-71a1-816c-89af-dee0183fb320",
+    "name": "라만 분석 파이프라인 코드리뷰 (라벨 누수/치팅 검증)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "33a1b3f9-71a1-816d-9e08-e1a73e69ed35",
+    "name": "일자리 우수기업 / 청년 일하기 좋은 기업 인증 조사",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "33a1b3f9-71a1-81a0-b7c5-f174d8333b59",
+    "name": "학회포스터 마무리 수정 - ViVOGEL 글자 통일, 사업 영역 수정",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-30",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "33a1b3f9-71a1-81c5-b4d5-c377b150b03d",
+    "name": "TV 거치대 마무리",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "33a1b3f9-71a1-81cc-8801-fa0080ef8fc6",
+    "name": "오가노이드 학회 부스 설치 및 운영",
+    "status": "완료",
+    "owner": "허채정",
+    "deadline": "2026-04-03",
+    "product": null,
+    "priority": "★★★"
+  },
+  {
+    "notionId": "33a1b3f9-71a1-81e8-bba1-e84f0ff7545e",
+    "name": "오가노이드 학회 부스 준비 물자 챙기기",
+    "status": "완료",
+    "owner": "허채정",
+    "deadline": "2026-04-02",
+    "product": null,
+    "priority": "★★★"
+  },
+  {
+    "notionId": "33b1b3f9-71a1-8065-92b7-e163127c4add",
+    "name": "굿즈 후보 조사",
+    "status": "진행 중",
+    "owner": "박소정",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "33b1b3f9-71a1-806f-9682-de9a27c54ad0",
+    "name": "의료기기 인허가 창고 가벽 설치 관련 예산 조사",
+    "status": "진행 중",
+    "owner": "박소정",
+    "deadline": "2026-04-06",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "33c1b3f9-71a1-800c-a724-c37324ce826e",
+    "name": "QR 스티커 디자인",
+    "status": "진행 중",
+    "owner": "박소정",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "33c1b3f9-71a1-802d-ba8a-e5321eed9411",
+    "name": "밴드 굿즈 디자인",
+    "status": "진행 중",
+    "owner": "박소정",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "33c1b3f9-71a1-8099-badb-edc638bd0114",
+    "name": "샘플 제공 QR 응답 설문 결과 정리",
+    "status": "진행 중",
+    "owner": "박소정",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "35e1b3f9-71a1-82da-bde9-013d30aac1c8",
+    "name": "피부-화장품 전기적 작용 이미지 생성",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3ae1b3f9-71a1-83e3-bded-010d9ca99f1b",
+    "name": "이미지 디자인 수정",
+    "status": "완료",
+    "owner": null,
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "3f71b3f9-71a1-8327-a1a1-0196c7c12eff",
+    "name": "10월 사업 고도화",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-10-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "4441b3f9-71a1-83b4-9558-01f2eaa3bff0",
+    "name": "화성시공급망 확대 과제제안서 초안 작성",
+    "status": "완료",
+    "owner": null,
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "4691b3f9-71a1-82fd-8a69-011158f64210",
+    "name": "신진 연구인력 지원사업 과제 기대효과 초안 작성",
+    "status": "진행 중",
+    "owner": "노혜린",
+    "deadline": "2026-03-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "47e1b3f9-71a1-82e8-ac4e-01f9649532a8",
+    "name": "지원사업 자료 수집 및 분석",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "4e31b3f9-71a1-8261-bbf1-011c53757d09",
+    "name": "예비 지원과제 리스트업 (2건 추가) - 2,3번 과제",
+    "status": "완료",
+    "owner": "박소정",
+    "deadline": "2026-03-12",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "4f11b3f9-71a1-8308-ad17-8145626f5908",
+    "name": "To Do  test",
+    "status": "진행 중",
+    "owner": null,
+    "deadline": "2025-01-23",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "50e1b3f9-71a1-826f-b2d3-81181ad9d6b1",
+    "name": "11월 성과 분석",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-11-30",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "5181b3f9-71a1-826b-8c5d-01690081c0f8",
+    "name": "리플렛(미니, 4p) 제작",
+    "status": "진행 중",
+    "owner": null,
+    "deadline": "2025-02-10",
+    "product": null,
+    "priority": "★★★"
+  },
+  {
+    "notionId": "52d1b3f9-71a1-837e-b55c-01f88bce7858",
+    "name": "패키지 제작",
+    "status": "진행 중",
+    "owner": null,
+    "deadline": "2025-05-20",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "5311b3f9-71a1-83b1-85d0-01871bedec66",
+    "name": "예비 지원과제 통합 리스트 생성 (37건)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-12",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "5921b3f9-71a1-82bc-a88a-810f6467708c",
+    "name": "Cortical organoid with ADDGEL",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-03-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "6e91b3f9-71a1-832d-b48b-8164f8d80ca2",
+    "name": "2월 사업화 기반 구축",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-01-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "7251b3f9-71a1-828d-bd38-016b7d2d8498",
+    "name": "초기 인증 조사",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-11",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "7631b3f9-71a1-8331-9bb2-81cfad00445a",
+    "name": "1월 생산 준비 및 영업 활동 개시",
+    "status": "진행 중",
+    "owner": null,
+    "deadline": "2025-02-28",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "7651b3f9-71a1-83b9-9a75-019eaeabadfa",
+    "name": "2026년 예비 지원과제 리스트업 작성",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "7791b3f9-71a1-82b1-bb44-815e2d0c545c",
+    "name": "기대효과 및 지원인력에 대한 계획 초안 작성",
+    "status": "완료",
+    "owner": null,
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "7a91b3f9-71a1-82d2-843b-8130e69b7ee1",
+    "name": "바이오아이코어",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-03-14",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "89c1b3f9-71a1-8320-b649-815a356d421b",
+    "name": "그래핀 합성 및 평가",
+    "status": "진행 중",
+    "owner": "정우창",
+    "deadline": "2025-05-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "8d41b3f9-71a1-835f-93db-81594eef5f14",
+    "name": "이전 작업 문서화 및 인증 리스트 템플릿 작성",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "90f1b3f9-71a1-837b-a99c-8100892aedd1",
+    "name": "2026년 월별 과제 현황표 작성",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "9141b3f9-71a1-83ec-ac0a-01f4f4b404ec",
+    "name": "뉴로힐 공급망 흐름도 작성",
+    "status": "완료",
+    "owner": "박소정",
+    "deadline": "2026-03-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "9171b3f9-71a1-83fd-8de0-81571cb841d9",
+    "name": "12월 2026년 준비",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-12-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "9261b3f9-71a1-8305-a4fd-8145c2a09e3b",
+    "name": "제안서 「개발 기술의 타겟 시장」 항목 작성",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "94d1b3f9-71a1-828b-aef6-8123ade90a1e",
+    "name": "소부장 양산지원사업 첨부파일 정리",
+    "status": "중단",
+    "owner": null,
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "99e1b3f9-71a1-839b-b08c-81619244deef",
+    "name": "2025 초기창업패키지",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-02-14",
+    "product": null,
+    "priority": "★★★"
+  },
+  {
+    "notionId": "a2c1b3f9-71a1-838e-9775-011a1256cf8c",
+    "name": "2. 과제 시작 및 초기세팅",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-02-28T03:18:00.000+09:00",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "a351b3f9-71a1-83fe-b645-01a6f76e58ae",
+    "name": "4월 정식 출시",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-04-30",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "b381b3f9-71a1-82f3-8448-816e9a28e86b",
+    "name": "DB 구축",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": "2025-12-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "b9c1b3f9-71a1-83a6-b2b7-0164325ab2f0",
+    "name": "연구개발계획서 - 기업부설연구소/전담부서 주요 역할 및 기능 작성",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": "2026-03-06",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "c771b3f9-71a1-83f6-9bc2-0105b3324813",
+    "name": "IP 나래",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": "2025-05-31",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "c7d1b3f9-71a1-8307-809f-01eb44f11e81",
+    "name": "기타 우대지원 인증 추가 조사 (5건)",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "cb31b3f9-71a1-830f-8056-01c031b72b55",
+    "name": "2차 메디바이오 화장품 안전성평가 실증시험 관련 조사 및 과제제안서 작성",
+    "status": "완료",
+    "owner": null,
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "cc31b3f9-71a1-82d4-904e-8145406b76d1",
+    "name": "ISSCR 실험",
+    "status": "진행 중",
+    "owner": null,
+    "deadline": "2025-04-17",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "cfa1b3f9-71a1-831c-922e-01ad2d363ec0",
+    "name": "3월 초기판매 준비 완료",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-03-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "d9d1b3f9-71a1-82e9-bc06-01a89b5b7dc9",
+    "name": "공급망 흐름도 작성",
+    "status": "완료",
+    "owner": null,
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "dad1b3f9-71a1-83c0-aa92-8185dd995b9f",
+    "name": "T",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-01-15",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "dd51b3f9-71a1-82c3-ab77-818a81de8f64",
+    "name": "규격인증·신기술인증 항목 조사 및 보고",
+    "status": "완료",
+    "owner": "정우창",
+    "deadline": null,
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "de01b3f9-71a1-820b-8770-01e3007b7d5a",
+    "name": "평가 프로세스 개선",
+    "status": "시작 전",
+    "owner": "정우창",
+    "deadline": "2025-12-31",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "e451b3f9-71a1-8328-8dd5-8145da2d119b",
+    "name": "Lyophilization type(필름형) 제품화",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-06-30",
+    "product": null,
+    "priority": "☆☆☆"
+  },
+  {
+    "notionId": "f8e1b3f9-71a1-83a5-847e-01e155715abb",
+    "name": "FAQ 추가 및 정리",
+    "status": "진행 중",
+    "owner": null,
+    "deadline": "2025-02-07",
+    "product": null,
+    "priority": "★★☆"
+  },
+  {
+    "notionId": "fb21b3f9-71a1-830a-a7ac-81ccd5b5b9a5",
+    "name": "7월 사업 확대",
+    "status": "시작 전",
+    "owner": null,
+    "deadline": "2025-07-31",
+    "product": null,
+    "priority": "☆☆☆"
+  }
+]

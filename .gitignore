@@ -1,0 +1,58 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# env files
+.env
+.env*.local
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# prisma
+/generated/
+
+# playwright
+playwright-report/
+test-results/
+.sisyphus/
+.omc/
+.claude/
+
+# uploads
+public/uploads/
+
+# omnis card content (별도 git 저장소)
+data/omnis/
+
+# screenshots — 루트 레벨만 무시, README용은 허용
+/*.png
+/public/*.png
+!docs/screenshots/*.png
