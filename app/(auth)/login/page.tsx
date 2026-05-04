@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { DemoAccountsCard } from "@/components/layout/demo-accounts-card"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -36,7 +37,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-background p-4">
+    <div className="flex min-h-svh flex-col items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Omnis</CardTitle>
@@ -77,6 +78,7 @@ export default function LoginPage() {
           </form>
         </CardContent>
       </Card>
+      <DemoAccountsCard />
     </div>
   )
 }

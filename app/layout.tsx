@@ -3,6 +3,7 @@ import { JetBrains_Mono } from "next/font/google"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
+import { DemoBanner } from "@/components/layout/demo-banner"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
@@ -34,7 +35,10 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <DemoBanner />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   )
