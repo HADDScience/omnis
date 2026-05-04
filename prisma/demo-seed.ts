@@ -29,13 +29,13 @@ async function main() {
   await prisma.chatRoom.deleteMany()
   await prisma.user.deleteMany()
 
-  // ─── 1. 사용자 — 익명화 + 본인(정우창) ─────────────────────────
+  // ─── 1. 사용자 — 시연용 익명 5인 ────────────────────────────
   const users = [
-    { name: "A 박사", role: "ADMIN" as const },
-    { name: "B 과장", role: "ADMIN" as const },
-    { name: "정우창", role: "MEMBER" as const },
-    { name: "D 인턴", role: "MEMBER" as const },
-    { name: "E 인턴", role: "MEMBER" as const },
+    { name: "팀장", role: "ADMIN" as const },
+    { name: "부팀장", role: "ADMIN" as const },
+    { name: "사원1", role: "MEMBER" as const },
+    { name: "사원2", role: "MEMBER" as const },
+    { name: "사원3", role: "MEMBER" as const },
   ]
   for (const u of users) {
     await prisma.user.create({
@@ -100,11 +100,11 @@ async function main() {
   }
 
   // ─── 6. 데모 업무 카드 — 칸반 채우기 (할 일/진행 중/리뷰/완료) ──
-  const me = await prisma.user.findUniqueOrThrow({ where: { name: "정우창" } })
-  const aDoc = await prisma.user.findUniqueOrThrow({ where: { name: "A 박사" } })
-  const bMng = await prisma.user.findUniqueOrThrow({ where: { name: "B 과장" } })
-  const dIntern = await prisma.user.findUniqueOrThrow({ where: { name: "D 인턴" } })
-  const eIntern = await prisma.user.findUniqueOrThrow({ where: { name: "E 인턴" } })
+  const me = await prisma.user.findUniqueOrThrow({ where: { name: "사원1" } })
+  const aDoc = await prisma.user.findUniqueOrThrow({ where: { name: "팀장" } })
+  const bMng = await prisma.user.findUniqueOrThrow({ where: { name: "부팀장" } })
+  const dIntern = await prisma.user.findUniqueOrThrow({ where: { name: "사원2" } })
+  const eIntern = await prisma.user.findUniqueOrThrow({ where: { name: "사원3" } })
 
   const today = new Date()
   const addDays = (n: number) => {
