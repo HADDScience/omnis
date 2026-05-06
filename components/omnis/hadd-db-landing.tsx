@@ -90,16 +90,19 @@ export function HaddDbLanding({
           <Kbd>⌘K</Kbd>
         </button>
 
+        {/*
+          규칙 20 (omnis/CLAUDE.md): 상단 Input = 검색 전용. 카테고리 버튼은 라우트 직접 진입.
+          사용자 원본 #14 — 카테고리 클릭 → 검색 모달 대신 /omnis/c/[name] 진입.
+        */}
         <div className="mt-3.5 flex flex-wrap justify-center gap-1.5">
           {categories.map((cat) => (
-            <button
+            <Link
               key={cat.name}
-              type="button"
-              onClick={() => palette.open()}
-              className="rounded-full border bg-muted px-3 py-1 text-[12px] transition-colors hover:border-border-strong"
+              href={`/omnis/c/${encodeURIComponent(cat.name)}`}
+              className="rounded-full border bg-muted px-3 py-1 text-[12px] transition-colors hover:border-border-strong hover:bg-muted/70"
             >
               {cat.name} · {cat.count}
-            </button>
+            </Link>
           ))}
         </div>
 
