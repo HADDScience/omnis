@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { AiMagicIcon } from "@hugeicons/core-free-icons"
+import { ThreadComposer } from "@/components/chat/thread-composer"
 
 interface Message {
   id: string
@@ -33,7 +34,7 @@ function formatTime(iso: string): string {
   return d.toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
 }
 
-export function TaskSidebar({ messages, checklists }: TaskSidebarProps) {
+export function TaskSidebar({ taskId, messages, checklists }: TaskSidebarProps) {
   const systemMessages = messages.filter(
     (m) => m.kind === "TASK_REBUILT" || m.kind === "TASK_DONE" || m.kind === "TASK_CREATED"
   )
@@ -65,35 +66,38 @@ export function TaskSidebar({ messages, checklists }: TaskSidebarProps) {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="thread" className="mt-0 flex-1 overflow-auto p-3">
-          <div className="flex flex-col gap-3">
-            {threadMessages.length === 0 && (
-              <div className="rounded-md border border-dashed p-4 text-center text-[11px] text-muted-foreground">
-                스레드 메시지 없음 · Dock에서 #{" "}
-                <span className="font-mono">해당 업무</span> 멘션하여 대화
-              </div>
-            )}
-            {threadMessages.map((m) => (
-              <div key={m.id} className="flex items-start gap-2">
-                <Avatar className="h-6 w-6 shrink-0">
-                  <AvatarFallback className="text-[9px]">
-                    {m.author.name.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-[11.5px] font-semibold">{m.author.name}</span>
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {formatTime(m.createdAt)}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 whitespace-pre-wrap text-[12px] leading-[1.5]">
-                    {m.content}
+        <TabsContent value="thread" className="mt-0 flex min-h-0 flex-1 flex-col p-0">
+          <div className="flex-1 overflow-auto p-3">
+            <div className="flex flex-col gap-3">
+              {threadMessages.length === 0 && (
+                <div className="rounded-md border border-dashed p-4 text-center text-[11px] text-muted-foreground">
+                  스레드 메시지 없음 · 아래 입력창에 답장하세요.
+                </div>
+              )}
+              {threadMessages.map((m) => (
+                <div key={m.id} className="flex items-start gap-2">
+                  <Avatar className="h-6 w-6 shrink-0">
+                    <AvatarFallback className="text-[9px]">
+                      {m.author.name.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-[11.5px] font-semibold">{m.author.name}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {formatTime(m.createdAt)}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 whitespace-pre-wrap text-[12px] leading-[1.5]">
+                      {m.content}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+          {/* #10: Composer 내장 (규칙 18 — List는 Composer 동반 필수) */}
+          <ThreadComposer taskId={taskId} />
         </TabsContent>
 
         <TabsContent value="results" className="mt-0 flex-1 overflow-auto p-3">
