@@ -33,11 +33,23 @@ import { Spinner } from "@/components/ui/spinner"
 import { PillField } from "@/components/ui/pill-field"
 import { toast } from "sonner"
 import { parseSlashTask } from "./slash-command-parser"
+import { TaskCmdModalV2 } from "./task-cmd-modal-v2"
 
 interface TaskCmdModalProps {
   open: boolean
   rawCommand: string
   onClose: () => void
+}
+
+/**
+ * 라우터 — NEXT_PUBLIC_FEATURE_TASK_FORM_V2 플래그로 v1/v2 선택.
+ * v2: 인라인 폼 (Combobox/DatePicker, rhf+zod, dirtyFields 보존, #전체 게시 폐기)
+ * v1: 기존 prompt() 기반 (호환성)
+ */
+const FEATURE_V2 = process.env.NEXT_PUBLIC_FEATURE_TASK_FORM_V2 === "true"
+
+export function TaskCmdModal(props: TaskCmdModalProps) {
+  return FEATURE_V2 ? <TaskCmdModalV2 {...props} /> : <TaskCmdModalV1 {...props} />
 }
 
 interface AiFilledFields {
@@ -59,7 +71,7 @@ const PRIORITY_LABEL: Record<Priority, string> = {
   HIGH: "높음",
 }
 
-export function TaskCmdModal({ open, rawCommand, onClose }: TaskCmdModalProps) {
+function TaskCmdModalV1({ open, rawCommand, onClose }: TaskCmdModalProps) {
   const router = useRouter()
   const parsed = useMemo(() => parseSlashTask(rawCommand), [rawCommand])
 
