@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "messages 또는 rawMessage 필수" }, { status: 400 })
   }
 
-  // DB에서 프로젝트/카테고리/제품/팀원 목록 조회
-  const [projects, categories, productList, members] = await Promise.all([
+  // DB에서 프로젝트/제품/팀원 목록 조회 (#12: TaskCategory 폐기로 categories 미조회)
+  const [projects, productList, members] = await Promise.all([
     prisma.project.findMany({
       where: { archived: false },
       select: {
@@ -42,10 +42,6 @@ export async function POST(req: NextRequest) {
         product: { select: { name: true } },
       },
       orderBy: { createdAt: "desc" },
-    }),
-    prisma.taskCategory.findMany({
-      select: { id: true, name: true },
-      orderBy: { sortOrder: "asc" },
     }),
     prisma.product.findMany({
       select: { id: true, name: true },
@@ -63,7 +59,6 @@ export async function POST(req: NextRequest) {
       name: p.name,
       productName: p.product?.name ?? null,
     })),
-    categories,
     products: productList,
     members,
   }

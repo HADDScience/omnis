@@ -17,7 +17,6 @@ export async function GET(_req: NextRequest, { params }: Props) {
         orderBy: { createdAt: "asc" },
         include: { author: { select: { id: true, name: true } } },
       },
-      category: { select: { id: true, name: true, icon: true } },
       project: {
         select: {
           id: true,
@@ -35,7 +34,8 @@ export async function GET(_req: NextRequest, { params }: Props) {
 export async function PATCH(req: NextRequest, { params }: Props) {
   const { taskId } = await params
   const body = await req.json()
-  const { status, name, priority, deadline, archived, background, expectedResult, projectId, productId, categoryId } = body
+  // categoryId는 #12에서 폐기 (UI/AI 미사용). DB 컬럼은 Phase 4 drop 예정.
+  const { status, name, priority, deadline, archived, background, expectedResult, projectId, productId } = body
 
   const ALLOWED_STATUS = new Set(["TODO", "IN_PROGRESS", "REVIEW", "DONE"])
   if (status !== undefined && !ALLOWED_STATUS.has(status)) {
@@ -52,7 +52,6 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   if (expectedResult !== undefined) data.expectedResult = expectedResult
   if (projectId !== undefined) data.projectId = projectId
   if (productId !== undefined) data.productId = productId
-  if (categoryId !== undefined) data.categoryId = categoryId
 
   // 완료 시 workEnd 설정
   if (status === "DONE") data.workEnd = new Date()

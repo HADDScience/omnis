@@ -75,7 +75,6 @@ export async function structureTask(
   messages: string[],
   context?: {
     projects: { id: string; name: string; productName: string | null }[]
-    categories: { id: string; name: string }[]
     products: { id: string; name: string }[]
     members?: { id: string; name: string }[]
   },
@@ -83,10 +82,6 @@ export async function structureTask(
 ): Promise<TaskAiDraft> {
   const projectSection = context?.projects?.length
     ? `\n기존 프로젝트 목록 (가장 적합한 프로젝트의 ID를 projectId에 지정, 없으면 null):\n${context.projects.map((p) => `- ${p.id}: ${p.name}${p.productName ? ` (${p.productName})` : ""}`).join("\n")}`
-    : ""
-
-  const categorySection = context?.categories?.length
-    ? `\n업무 카테고리 목록 (가장 적합한 카테고리의 ID를 categoryId에 지정, 없으면 null):\n${context.categories.map((c) => `- ${c.id}: ${c.name}`).join("\n")}`
     : ""
 
   const productSection = context?.products?.length
@@ -107,13 +102,11 @@ export async function structureTask(
 - checklist: 수행해야 할 단계들 (2-5개, 각 항목은 짧게)
 - projectId: 가장 적합한 프로젝트의 ID (없으면 null)
 - productId: 가장 관련 있는 제품의 ID (없으면 null)
-- categoryId: 가장 적합한 카테고리의 ID (없으면 null)
 - priority: 메시지에서 추정한 우선순위 ("LOW" | "NORMAL" | "HIGH" 중 하나, 명확치 않으면 생략)
 - ownerHint: 메시지에서 언급된 담당자 이름 (팀원 목록에 있는 이름 그대로, 없으면 생략)
 - deadlineHint: 마감일 힌트. ISO 날짜(YYYY-MM-DD) 또는 한국어 상대표현("오늘"·"내일"·"이번 주 금요일" 등). 명시 없으면 생략. 오늘은 ${today} 입니다.
 ${projectSection}
 ${productSection}
-${categorySection}
 ${memberSection}
 
 메시지가 리스트 형태이면 각 항목을 체크리스트로 추출하세요.

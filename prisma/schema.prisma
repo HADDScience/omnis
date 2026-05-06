@@ -105,7 +105,9 @@ model Task {
   project        Project?      @relation(fields: [projectId], references: [id])
   productId      String?
   product        Product?      @relation(fields: [productId], references: [id])
+  /// @deprecated 2026-05-06 (Phase 2 #12) — UI/AI에서 제거됨. Phase 4에 컬럼 drop 예정.
   categoryId     String?
+  /// @deprecated Phase 2 #12 — Phase 4에 관계 drop 예정.
   category       TaskCategory? @relation(fields: [categoryId], references: [id])
   status         TaskStatus    @default(TODO)
   priority       Priority   @default(NORMAL)
@@ -171,6 +173,8 @@ model Product {
 }
 
 // ─── 업무 카테고리 (업무 유형) ────────────────────────────
+// @deprecated Phase 2 #12 (2026-05-06) — UI/AI에서 폐기됨. Phase 4에 모델 drop 예정.
+// 사용자 결정 Q1=A: "이유 없으면 지우자". 다수결로 활용 안이 채택됐으나 사용자 비전 우선.
 
 model TaskCategory {
   id        String @id @default(uuid())

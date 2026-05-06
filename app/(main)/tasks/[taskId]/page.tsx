@@ -13,14 +13,13 @@ interface Props {
 export default async function TaskDetailPage({ params }: Props) {
   const { taskId } = await params
 
-  const [task, feedbackMessages, files, projects, categories] = await Promise.all([
+  const [task, feedbackMessages, files, projects] = await Promise.all([
     prisma.task.findUnique({
       where: { id: taskId },
       include: {
         owner: { select: { id: true, name: true } },
         instructor: { select: { id: true, name: true } },
         checklists: { orderBy: { createdAt: "asc" } },
-        category: { select: { id: true, name: true, icon: true } },
         project: {
           select: {
             id: true,
@@ -47,10 +46,6 @@ export default async function TaskDetailPage({ params }: Props) {
         name: true,
         product: { select: { id: true, name: true, color: true } },
       },
-    }),
-    prisma.taskCategory.findMany({
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, name: true, icon: true },
     }),
   ])
 
@@ -94,7 +89,7 @@ export default async function TaskDetailPage({ params }: Props) {
       <Header title={task.name} />
       <div className="flex flex-1 overflow-hidden">
         <div className="min-w-0 flex-1 overflow-auto">
-          <TaskDetail task={serialized} projects={projects} categories={categories} />
+          <TaskDetail task={serialized} projects={projects} />
         </div>
         <TaskSidebar
           taskId={task.id}

@@ -7,14 +7,13 @@ export async function GET(req: NextRequest) {
   const ownerId = searchParams.get("ownerId")
   const status = searchParams.get("status")
   const projectId = searchParams.get("projectId")
-  const categoryId = searchParams.get("categoryId")
 
   const where: Record<string, unknown> = { archived: false }
   if (ownerId) where.ownerId = ownerId
   if (status) where.status = status
   if (projectId) where.projectId = projectId
-  if (categoryId) where.categoryId = categoryId
 
+  // #12: TaskCategory 폐기. category include/filter 제거.
   const tasks = await prisma.task.findMany({
     where,
     orderBy: { createdAt: "desc" },
@@ -22,7 +21,6 @@ export async function GET(req: NextRequest) {
       owner: { select: { id: true, name: true } },
       instructor: { select: { id: true, name: true } },
       checklists: { orderBy: { createdAt: "asc" } },
-      category: { select: { id: true, name: true, icon: true, color: true } },
       project: {
         select: {
           id: true,
@@ -75,6 +73,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
+  // categoryId는 #12로 폐기 (UI/AI 미사용). DB 컬럼은 Phase 4 drop 예정.
   let {
     name,
     ownerId,
@@ -83,7 +82,6 @@ export async function POST(req: NextRequest) {
     checklists,
     projectId,
     productId,
-    categoryId,
     sourceMessages,
     messageIds,
   } = body
@@ -126,7 +124,6 @@ export async function POST(req: NextRequest) {
       instructorId: session.user.id,
       projectId: projectId || null,
       productId: productId || null,
-      categoryId: categoryId || null,
       background: background || null,
       expectedResult: expectedResult || null,
       sourceMessages: sourceMessages || null,

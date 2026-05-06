@@ -5,6 +5,7 @@ import { z } from "zod"
  * 규칙 13 (omnis/CLAUDE.md): AI 응답 파싱·DB write·Form defaultValues 모두 같은 Zod 스키마 경유.
  *
  * Phase 2 #3: priority / ownerHint / deadlineHint 추가, expectedResult 제거.
+ * Phase 2 #12: categoryId 제거 (사용자 결정 Q1=A — TaskCategory 폐기).
  */
 
 export const PRIORITY_VALUES = ["LOW", "NORMAL", "HIGH"] as const
@@ -23,8 +24,6 @@ export const TaskAiDraftSchema = z.object({
   projectId: z.string().nullable().default(null),
   /** 제품 ID (없으면 null). 보통 projectId 선택 시 자동 설정 */
   productId: z.string().nullable().default(null),
-  /** 카테고리 ID (없으면 null). #12 결정에 따라 향후 제거 예정 */
-  categoryId: z.string().nullable().default(null),
   /** 우선순위 힌트 (AI 추정) — 사용자가 모달에서 확정 */
   priority: PrioritySchema.optional(),
   /** 담당자 힌트 (이름) — 사용자가 모달에서 user 매핑 */
@@ -46,7 +45,6 @@ export function normalizeAiDraft(parsed: Record<string, unknown>): TaskAiDraft {
       : [],
     projectId: (parsed.projectId ?? null) as string | null,
     productId: (parsed.productId ?? null) as string | null,
-    categoryId: (parsed.categoryId ?? null) as string | null,
     priority: (parsed.priority ?? parsed.priorityHint) as Priority | undefined,
     ownerHint: (parsed.ownerHint ?? parsed.owner ?? parsed.assignee) as string | undefined,
     deadlineHint: (parsed.deadlineHint ?? parsed.deadline ?? parsed.dueDate) as string | undefined,
@@ -62,6 +60,5 @@ export function fallbackAiDraft(messages: string[]): TaskAiDraft {
     checklist: [],
     projectId: null,
     productId: null,
-    categoryId: null,
   })
 }

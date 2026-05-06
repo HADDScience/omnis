@@ -51,7 +51,6 @@ interface Task {
   owner: { id: string; name: string }
   instructor: { id: string; name: string }
   project: { id: string; name: string; product?: { id: string; name: string; color: string } | null } | null
-  category: { id: string; name: string; icon: string | null } | null
   checklists: Checklist[]
   sourceMessages: unknown
   feedbackMessages: FeedbackMessage[]
@@ -69,23 +68,15 @@ interface Project {
   product?: { id: string; name: string; color: string } | null
 }
 
-interface Category {
-  id: string
-  name: string
-  icon: string | null
-}
-
 const STATUS_OPTIONS = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"] as const
 const PRIORITY_OPTIONS = ["LOW", "NORMAL", "HIGH"] as const
 
 export function TaskDetail({
   task: initial,
   projects = [],
-  categories = [],
 }: {
   task: Task
   projects?: Project[]
-  categories?: Category[]
 }) {
   const router = useRouter()
   const [task, setTask] = useState(initial)
@@ -339,37 +330,6 @@ export function TaskDetail({
               </Select>
             </div>
 
-            {/* 카테고리 */}
-            <div className="col-span-2">
-              <div className="text-xs text-muted-foreground mb-1">카테고리</div>
-              <Select
-                value={task.category?.id ?? "none"}
-                onValueChange={(v) => {
-                  const newCategoryId = v === "none" ? null : v
-                  patch("categoryId", newCategoryId).then(() => {
-                    const found = categories.find((c) => c.id === v) ?? null
-                    setTask((prev) => ({ ...prev, category: found }))
-                  })
-                }}
-                disabled={saving === "categoryId"}
-              >
-                <SelectTrigger className="h-7 text-xs w-full">
-                  <SelectValue placeholder="카테고리 없음">
-                    {task.category ? `${task.category.icon ?? ""} ${task.category.name}`.trim() : null}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none" label="없음" className="text-xs">
-                    없음
-                  </SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id} label={c.name} className="text-xs">
-                      {c.icon ? `${c.icon} ` : ""}{c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -380,11 +340,6 @@ export function TaskDetail({
             {task.project && (
               <Badge variant="outline" className="text-[10px]">
                 {task.project.product ? `${task.project.product.name} / ` : ""}{task.project.name}
-              </Badge>
-            )}
-            {task.category && (
-              <Badge variant="outline" className="text-[10px]">
-                {task.category.icon ? `${task.category.icon} ` : ""}{task.category.name}
               </Badge>
             )}
           </div>
