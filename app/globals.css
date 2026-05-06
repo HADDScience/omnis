@@ -55,6 +55,12 @@
     --radius-2xl: calc(var(--radius) * 2.2);
     --radius-3xl: calc(var(--radius) * 2.6);
     --radius-4xl: calc(var(--radius) * 3.0);
+    /* Z-index 토큰 (omnis/CLAUDE.md 규칙 14) */
+    --z-dock: 40;
+    --z-banner: 50;
+    --z-popover: 60;
+    --z-dialog: 100;
+    --z-toast: 120;
 }
 
 :root {

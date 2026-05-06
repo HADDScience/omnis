@@ -26,6 +26,11 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      name: "mobile",
+      testDir: "./tests/feature",
+      use: { ...devices["iPhone 13"] },
+    },
+    {
       name: "legacy",
       testDir: "./tests",
       testIgnore: /tests\/feature\//,

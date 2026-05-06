@@ -36,8 +36,10 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          <DemoBanner />
-          {children}
+          <div className="flex min-h-screen flex-col">
+            <DemoBanner />
+            <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+          </div>
         </ThemeProvider>
       </body>
     </html>

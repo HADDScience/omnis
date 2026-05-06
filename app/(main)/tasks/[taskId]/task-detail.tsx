@@ -48,7 +48,6 @@ interface Task {
   status: string
   priority: string
   background: string | null
-  expectedResult: string | null
   owner: { id: string; name: string }
   instructor: { id: string; name: string }
   project: { id: string; name: string; product?: { id: string; name: string; color: string } | null } | null
@@ -93,20 +92,17 @@ export function TaskDetail({
   // 편집 상태
   const [editingName, setEditingName] = useState(false)
   const [editingBackground, setEditingBackground] = useState(false)
-  const [editingExpectedResult, setEditingExpectedResult] = useState(false)
   const [editingDeadline, setEditingDeadline] = useState(false)
 
   // 편집 중 임시값
   const [draftName, setDraftName] = useState(task.name)
   const [draftBackground, setDraftBackground] = useState(task.background ?? "")
-  const [draftExpectedResult, setDraftExpectedResult] = useState(task.expectedResult ?? "")
   const [draftDeadline, setDraftDeadline] = useState(
     task.deadline ? task.deadline.slice(0, 10) : ""
   )
 
   const nameRef = useRef<HTMLInputElement>(null)
   const backgroundRef = useRef<HTMLTextAreaElement>(null)
-  const expectedResultRef = useRef<HTMLInputElement>(null)
   const deadlineRef = useRef<HTMLInputElement>(null)
 
   async function patch(field: string, value: unknown) {
@@ -174,15 +170,6 @@ export function TaskDetail({
     }
   }
 
-  // 기대 결과 저장
-  function commitExpectedResult() {
-    setEditingExpectedResult(false)
-    const val = draftExpectedResult.trim() || null
-    if (val !== task.expectedResult) {
-      patch("expectedResult", val)
-    }
-  }
-
   // 마감일 저장
   function commitDeadline() {
     setEditingDeadline(false)
@@ -198,7 +185,7 @@ export function TaskDetail({
   const feedbackMsgs = task.feedbackMessages.filter((m) => !m.isTaskInstruction && !m.content.startsWith("🤖"))
 
   return (
-    <div className="flex flex-col gap-4 p-4 max-w-2xl">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
       {/* 업무명 */}
       <Card>
         <CardContent className="pt-6">
@@ -432,36 +419,6 @@ export function TaskDetail({
             )}
           </div>
 
-          {/* 기대 결과 */}
-          <div>
-            <div className="text-xs font-medium text-muted-foreground mb-1">기대 결과</div>
-            {editingExpectedResult ? (
-              <Input
-                ref={expectedResultRef}
-                autoFocus
-                value={draftExpectedResult}
-                onChange={(e) => setDraftExpectedResult(e.target.value)}
-                onBlur={commitExpectedResult}
-                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === "Enter") commitExpectedResult()
-                  if (e.key === "Escape") { setEditingExpectedResult(false); setDraftExpectedResult(task.expectedResult ?? "") }
-                }}
-                className="text-sm h-8"
-                placeholder="기대 결과를 입력하세요"
-                disabled={saving === "expectedResult"}
-              />
-            ) : (
-              <div
-                className="group flex items-center gap-2 cursor-pointer rounded p-2 hover:bg-muted -mx-2"
-                onClick={() => { setDraftExpectedResult(task.expectedResult ?? ""); setEditingExpectedResult(true) }}
-              >
-                <p className="text-sm flex-1 min-h-[1.25rem]">
-                  {task.expectedResult ?? <span className="text-muted-foreground text-xs">클릭하여 기대 결과 입력</span>}
-                </p>
-                <HugeiconsIcon icon={PencilEdit01Icon} size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-              </div>
-            )}
-          </div>
         </CardContent>
       </Card>
 
