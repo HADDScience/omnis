@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import {
   ReactFlow,
   Background,
@@ -211,6 +212,7 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
   const [edges, , onEdgesChange] = useEdgesState(initialEdges)
   const [active, setActive] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const router = useRouter()
   const [groupMode, setGroupMode] = useState<GroupMode>("product")
   const [autoArrange, setAutoArrange] = useState(false)
   const [haddLinkMode, setHaddLinkMode] = useState(false)
@@ -351,6 +353,16 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
         onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onNodeClick={(_, node) => setSelectedId(node.id)}
+        onNodeDoubleClick={(_, node) => {
+          // 핫픽스: 워크스페이스 task/project 노드 더블클릭 → 상세 라우트 직접 이동
+          const data = node.data as Record<string, unknown>
+          if (node.id.startsWith("task-")) {
+            const taskId = typeof data.taskId === "string" ? data.taskId : node.id.replace(/^task-/, "")
+            router.push(`/tasks/${taskId}`)
+          } else if (node.id.startsWith("project-")) {
+            // 프로젝트 노드는 인스펙터에 머무름 (전용 라우트 없음)
+          }
+        }}
         onPaneClick={() => setSelectedId(null)}
         onMoveEnd={() => { if (userInteractedRef.current) saveLayout() }}
         nodeTypes={nodeTypes}

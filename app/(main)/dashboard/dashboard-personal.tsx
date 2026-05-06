@@ -22,6 +22,8 @@ interface PersonalTask {
   deadline: string | null
   updatedAt?: string
   createdAt?: string
+  ownerId?: string
+  ownerName?: string | null
 }
 
 interface DashboardPersonalProps {
@@ -81,6 +83,11 @@ function BoardCard({ task, onComplete, onArchive }: {
             </span>
           )}
         </div>
+        {task.ownerName && (
+          <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+            {task.ownerName}
+          </div>
+        )}
       </Link>
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         {!isDone && (

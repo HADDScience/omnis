@@ -48,7 +48,7 @@ import { useCommandPalette } from "@/components/layout/command-palette-context"
 
 const navItems = [
   { href: "/dashboard", label: "워크스페이스", icon: DashboardSpeed02Icon },
-  { href: "/tasks", label: "내 업무", icon: Task01Icon },
+  { href: "/tasks", label: "업무", icon: Task01Icon },
   { href: "/omnis", label: "HADD DB", icon: BookOpen01Icon },
   { href: "/reports", label: "보고서", icon: FileAttachmentIcon },
 ] as const
