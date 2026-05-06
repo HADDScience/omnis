@@ -2,10 +2,11 @@ import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { DashboardPersonal } from "../dashboard/dashboard-personal"
 import { TaskCreateButton } from "@/components/chat/task-create-button"
 import { TasksViews } from "./tasks-views"
 import type { KanbanTask } from "./tasks-board"
+import { TaskRowsView } from "@/components/tasks/task-rows-view"
+import type { TaskCardData } from "@/components/tasks/task-card"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
@@ -66,29 +67,29 @@ export default async function TasksPage({ searchParams }: Props) {
     orderBy: { updatedAt: "desc" },
   })
 
-  const serialized = tasks.map((t) => ({
+  const cardData: TaskCardData[] = tasks.map((t) => ({
     id: t.id,
-    name: t.name,
     slug: t.slug,
+    name: t.name,
     status: t.status,
     priority: t.priority,
-    deadline: t.deadline?.toISOString() ?? null,
-    updatedAt: t.updatedAt.toISOString(),
-    createdAt: t.createdAt.toISOString(),
-    ownerId: t.ownerId,
-    ownerName: t.owner?.name ?? null,
-  }))
-
-  const boardTasks: KanbanTask[] = tasks.map((t) => ({
-    id: t.id,
-    slug: t.slug,
-    name: t.name,
-    status: t.status,
     ownerName: t.owner?.name ?? null,
     projectName: t.project?.name ?? null,
     productName: t.project?.product?.name ?? null,
     productColor: t.project?.product?.color ?? null,
     deadline: t.deadline?.toISOString() ?? null,
+  }))
+
+  const boardTasks: KanbanTask[] = cardData.map((t) => ({
+    id: t.id,
+    slug: t.slug,
+    name: t.name,
+    status: t.status as KanbanTask["status"],
+    ownerName: t.ownerName,
+    projectName: t.projectName,
+    productName: t.productName,
+    productColor: t.productColor,
+    deadline: t.deadline,
   }))
 
   const activeFilterLabel = filter ? FILTER_LABEL[filter] : null
@@ -123,9 +124,7 @@ export default async function TasksPage({ searchParams }: Props) {
         <div className="flex-1 overflow-hidden">
           <TasksViews
             boardTasks={boardTasks}
-            listSlot={
-              <DashboardPersonal currentUserId={currentUserId} tasks={serialized} />
-            }
+            listSlot={<TaskRowsView tasks={cardData} />}
           />
         </div>
       </div>
