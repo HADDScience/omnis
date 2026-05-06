@@ -1,17 +1,18 @@
 import { prisma } from "@/lib/db"
+import {
+  fallbackAiDraft,
+  normalizeAiDraft,
+  type TaskAiDraft,
+} from "@/lib/schemas/task-ai"
 
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
-interface TaskDraft {
-  name: string
-  background: string
-  expectedResult: string
-  checklist: string[]
-  projectId: string | null
-  productId: string | null
-  categoryId: string | null
-}
+/**
+ * @deprecated `TaskAiDraft`(lib/schemas/task-ai.ts)를 사용하세요. expectedResult 제거됨.
+ * 외부에서 import 하지 마세요.
+ */
+export type TaskDraft = TaskAiDraft
 
 function cleanCodeBlocks(text: string): string {
   return text
@@ -76,9 +77,10 @@ export async function structureTask(
     projects: { id: string; name: string; productName: string | null }[]
     categories: { id: string; name: string }[]
     products: { id: string; name: string }[]
+    members?: { id: string; name: string }[]
   },
   userId?: string
-): Promise<TaskDraft> {
+): Promise<TaskAiDraft> {
   const projectSection = context?.projects?.length
     ? `\n기존 프로젝트 목록 (가장 적합한 프로젝트의 ID를 projectId에 지정, 없으면 null):\n${context.projects.map((p) => `- ${p.id}: ${p.name}${p.productName ? ` (${p.productName})` : ""}`).join("\n")}`
     : ""
@@ -91,22 +93,31 @@ export async function structureTask(
     ? `\n제품 목록 (이 업무와 가장 관련 있는 제품의 ID를 productId에 지정, 없으면 null):\n${context.products.map((p) => `- ${p.id}: ${p.name}`).join("\n")}`
     : ""
 
+  const memberSection = context?.members?.length
+    ? `\n팀원 목록 (메시지에 언급된 담당자 이름이 있으면 그 이름 그대로 ownerHint에 지정, 없으면 생략):\n${context.members.map((m) => `- ${m.name}`).join("\n")}`
+    : ""
+
+  const today = new Date().toISOString().slice(0, 10)
   const prompt = `다음 채팅 메시지들은 관리자가 작업자에게 내린 업무 지시입니다.
 이 메시지들을 분석하여 아래 JSON 형식으로 구조화해주세요.
 
 규칙:
 - name: 업무를 한 줄로 요약 (15자 이내)
 - background: 업무의 배경이나 맥락 (2-3문장)
-- expectedResult: 기대하는 결과물 (1-2문장)
 - checklist: 수행해야 할 단계들 (2-5개, 각 항목은 짧게)
 - projectId: 가장 적합한 프로젝트의 ID (없으면 null)
 - productId: 가장 관련 있는 제품의 ID (없으면 null)
 - categoryId: 가장 적합한 카테고리의 ID (없으면 null)
+- priority: 메시지에서 추정한 우선순위 ("LOW" | "NORMAL" | "HIGH" 중 하나, 명확치 않으면 생략)
+- ownerHint: 메시지에서 언급된 담당자 이름 (팀원 목록에 있는 이름 그대로, 없으면 생략)
+- deadlineHint: 마감일 힌트. ISO 날짜(YYYY-MM-DD) 또는 한국어 상대표현("오늘"·"내일"·"이번 주 금요일" 등). 명시 없으면 생략. 오늘은 ${today} 입니다.
 ${projectSection}
 ${productSection}
 ${categorySection}
+${memberSection}
 
 메시지가 리스트 형태이면 각 항목을 체크리스트로 추출하세요.
+priority/ownerHint/deadlineHint는 메시지에서 명확히 추론 가능할 때만 채우세요. 추측하지 말고 생략하세요.
 
 반드시 JSON만 반환하세요. 마크다운 코드블록 없이 순수 JSON만 반환하세요.
 
@@ -120,26 +131,10 @@ JSON:`
   try {
     const jsonMatch = raw.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error("JSON 파싱 실패")
-    const parsed = JSON.parse(jsonMatch[0])
-    return {
-      name: parsed.name ?? messages[0]?.slice(0, 30) ?? "새 업무",
-      background: parsed.background ?? "",
-      expectedResult: parsed.expectedResult ?? parsed.expected_result ?? "",
-      checklist: parsed.checklist ?? [],
-      projectId: parsed.projectId ?? null,
-      productId: parsed.productId ?? null,
-      categoryId: parsed.categoryId ?? null,
-    }
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+    return normalizeAiDraft(parsed)
   } catch {
-    return {
-      name: messages[0]?.slice(0, 30) ?? "새 업무",
-      background: messages.join(" ").slice(0, 200),
-      expectedResult: "",
-      checklist: [],
-      projectId: null,
-      productId: null,
-      categoryId: null,
-    }
+    return fallbackAiDraft(messages)
   }
 }
 

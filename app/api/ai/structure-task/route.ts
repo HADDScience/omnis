@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { structureTask } from "@/lib/ai"
+import { fallbackAiDraft } from "@/lib/schemas/task-ai"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -31,8 +32,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "messages 또는 rawMessage 필수" }, { status: 400 })
   }
 
-  // DB에서 프로젝트/카테고리/제품 목록 조회
-  const [projects, categories, productList] = await Promise.all([
+  // DB에서 프로젝트/카테고리/제품/팀원 목록 조회
+  const [projects, categories, productList, members] = await Promise.all([
     prisma.project.findMany({
       where: { archived: false },
       select: {
@@ -50,6 +51,10 @@ export async function POST(req: NextRequest) {
       select: { id: true, name: true },
       orderBy: { sortOrder: "asc" },
     }),
+    prisma.user.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ])
 
   const context = {
@@ -60,6 +65,7 @@ export async function POST(req: NextRequest) {
     })),
     categories,
     products: productList,
+    members,
   }
 
   // "기타" 제품 ID (AI가 분류 못하면 기본값)
@@ -68,14 +74,10 @@ export async function POST(req: NextRequest) {
 
   // Gemini API 키가 없으면 fallback
   if (!process.env.GEMINI_API_KEY) {
+    const draft = fallbackAiDraft(messages)
     return NextResponse.json({
-      name: messages[0]?.slice(0, 30) ?? "새 업무",
-      background: messages.join(" ").slice(0, 200),
-      expectedResult: "",
-      checklist: [],
-      projectId: null,
+      ...draft,
       productId: fallbackProductId,
-      categoryId: null,
       _fallback: true,
     })
   }
@@ -86,14 +88,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(draft)
   } catch (err) {
     console.error("Gemini API 오류:", err)
+    const draft = fallbackAiDraft(messages)
     return NextResponse.json({
-      name: messages[0]?.slice(0, 30) ?? "새 업무",
-      background: messages.join(" ").slice(0, 200),
-      expectedResult: "",
-      checklist: [],
-      projectId: null,
+      ...draft,
       productId: fallbackProductId,
-      categoryId: null,
       _fallback: true,
     })
   }
