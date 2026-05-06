@@ -42,7 +42,11 @@ export default async function TaskDetailPage({ params }: Props) {
     }),
     prisma.project.findMany({
       where: { archived: false },
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        product: { select: { id: true, name: true, color: true } },
+      },
     }),
     prisma.taskCategory.findMany({
       orderBy: { sortOrder: "asc" },

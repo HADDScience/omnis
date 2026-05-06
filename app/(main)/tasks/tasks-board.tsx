@@ -33,6 +33,9 @@ export interface KanbanTask {
   status: Status
   ownerName: string | null
   projectName: string | null
+  /** 1-hop project.product (CLAUDE.md 규칙 21) */
+  productName: string | null
+  productColor: string | null
   deadline: string | null
 }
 
@@ -129,15 +132,15 @@ function TaskCard({ task }: { task: KanbanTask }) {
             <AvatarFallback className="text-[9px]">{task.ownerName.charAt(0)}</AvatarFallback>
           </Avatar>
         )}
-        {task.projectName && (
+        {(task.productName || task.projectName) && (
           <span
             className={[
-              "inline-flex h-4 max-w-[120px] items-center truncate rounded-full border px-1.5 text-[9px] font-medium leading-none",
-              projectColorClass(task.projectName),
+              "inline-flex h-4 max-w-[160px] items-center truncate rounded-full border px-1.5 text-[9px] font-medium leading-none",
+              projectColorClass(task.productName ?? task.projectName ?? ""),
             ].join(" ")}
-            title={task.projectName}
+            title={[task.productName, task.projectName].filter(Boolean).join(" / ")}
           >
-            {task.projectName}
+            {task.productName ? `${task.productName} / ` : ""}{task.projectName ?? "-"}
           </span>
         )}
         {deadlineInfo && (

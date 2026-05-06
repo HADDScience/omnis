@@ -24,7 +24,12 @@ export default async function TasksPage() {
       updatedAt: true,
       createdAt: true,
       owner: { select: { name: true } },
-      project: { select: { name: true } },
+      project: {
+        select: {
+          name: true,
+          product: { select: { id: true, name: true, color: true } },
+        },
+      },
     },
     orderBy: { updatedAt: "desc" },
   })
@@ -48,6 +53,8 @@ export default async function TasksPage() {
     status: t.status,
     ownerName: t.owner?.name ?? null,
     projectName: t.project?.name ?? null,
+    productName: t.project?.product?.name ?? null,
+    productColor: t.project?.product?.color ?? null,
     deadline: t.deadline?.toISOString() ?? null,
   }))
 

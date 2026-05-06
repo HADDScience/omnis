@@ -65,6 +65,8 @@ interface Task {
 interface Project {
   id: string
   name: string
+  /** 1-hop project.product (CLAUDE.md 규칙 21) — 프로젝트 선택 시 자동 표시 */
+  product?: { id: string; name: string; color: string } | null
 }
 
 interface Category {
@@ -323,7 +325,13 @@ export function TaskDetail({
                     없음
                   </SelectItem>
                   {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id} label={p.name} className="text-xs">
+                    <SelectItem
+                      key={p.id}
+                      value={p.id}
+                      label={p.product ? `${p.product.name} / ${p.name}` : p.name}
+                      className="text-xs"
+                    >
+                      {p.product ? <span className="text-muted-foreground">{p.product.name} / </span> : null}
                       {p.name}
                     </SelectItem>
                   ))}
