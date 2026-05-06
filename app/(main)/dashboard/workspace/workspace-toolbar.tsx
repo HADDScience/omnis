@@ -13,6 +13,12 @@ import {
   Refresh01Icon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 export type GroupMode = "product" | "project" | "status" | "owner"
 
@@ -73,32 +79,62 @@ export function WorkspaceToolbar({
 
       <div className="h-4 w-px bg-border" />
 
-      <Button variant="ghost" size="sm" className="h-7 gap-1 text-[11px]">
-        <HugeiconsIcon icon={FilterIcon} size={11} />
-        필터
-      </Button>
+      {/*
+        규칙 12 (omnis/CLAUDE.md): 빈 onClick 금지. 미구현 UI는 disabled + Tooltip.
+        필터/자동정렬/HADD 카드 연결은 핸들러가 canvas에 연결되지 않은 상태(상태만 토글).
+        Phase 4에서 사용 로그 검증 후 활용/제거 결정.
+      */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button variant="ghost" size="sm" className="h-7 gap-1 text-[11px]" disabled />
+            }
+          >
+            <HugeiconsIcon icon={FilterIcon} size={11} />
+            필터
+          </TooltipTrigger>
+          <TooltipContent>곧 제공 예정</TooltipContent>
+        </Tooltip>
 
-      <div className="h-4 w-px bg-border" />
+        <div className="h-4 w-px bg-border" />
 
-      {/* 모드 토글 */}
-      <Button
-        variant={autoArrange ? "default" : "outline"}
-        size="sm"
-        className="h-7 gap-1 text-[11px]"
-        onClick={onToggleAutoArrange}
-      >
-        <HugeiconsIcon icon={MagnetIcon} size={11} />
-        자동 정렬
-      </Button>
-      <Button
-        variant={haddLinkMode ? "default" : "outline"}
-        size="sm"
-        className="h-7 gap-1 text-[11px]"
-        onClick={onToggleHaddLink}
-      >
-        <HugeiconsIcon icon={Link04Icon} size={11} />
-        HADD 카드 연결
-      </Button>
+        {/* 모드 토글 — 비활성 상태 */}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={autoArrange ? "default" : "outline"}
+                size="sm"
+                className="h-7 gap-1 text-[11px]"
+                onClick={onToggleAutoArrange}
+                disabled
+              />
+            }
+          >
+            <HugeiconsIcon icon={MagnetIcon} size={11} />
+            자동 정렬
+          </TooltipTrigger>
+          <TooltipContent>곧 제공 예정</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={haddLinkMode ? "default" : "outline"}
+                size="sm"
+                className="h-7 gap-1 text-[11px]"
+                onClick={onToggleHaddLink}
+                disabled
+              />
+            }
+          >
+            <HugeiconsIcon icon={Link04Icon} size={11} />
+            HADD 카드 연결
+          </TooltipTrigger>
+          <TooltipContent>곧 제공 예정</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <div className="flex-1" />
 
