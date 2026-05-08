@@ -50,12 +50,26 @@ export function ThreadComposer({
           taskId, // 자동 주입 → 멘션 없이도 이 업무 스레드로 연결
         }),
       })
-      if (!res.ok) throw new Error("전송 실패")
+      if (res.status === 401) {
+        toast.error("세션이 만료되었습니다. 다시 로그인해주세요.", {
+          action: {
+            label: "로그인",
+            onClick: () => {
+              window.location.href = "/login"
+            },
+          },
+        })
+        return
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? "전송 실패")
+      }
       setValue("")
       onSent?.()
       router.refresh()
-    } catch {
-      toast.error("메시지 전송 실패")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "메시지 전송 실패")
     } finally {
       setSending(false)
     }

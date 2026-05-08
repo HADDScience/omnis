@@ -95,11 +95,6 @@ export default async function TaskDetailPage({ params }: Props) {
           taskId={task.id}
           taskName={task.name}
           messages={sidebarMessages}
-          checklists={task.checklists.map((c) => ({
-            id: c.id,
-            name: c.name,
-            done: c.done,
-          }))}
         />
       </div>
     </>

@@ -46,11 +46,13 @@ export function WorkspaceToolbar({
   const { zoomIn, zoomOut, setViewport } = useReactFlow()
   const [zoom, setZoom] = useState(100)
 
-  const groups: { key: GroupMode; label: string }[] = [
-    { key: "product", label: "제품별" },
-    { key: "project", label: "프로젝트별" },
-    { key: "status", label: "상태별" },
-    { key: "owner", label: "담당자별" },
+  // implemented: 현재 useWorkspaceNodes는 product→project→task 트리만 지원.
+  // 나머지 모드는 layout 미구현 → 규칙 12(빈 onClick 금지)에 따라 disabled + Tooltip.
+  const groups: { key: GroupMode; label: string; implemented: boolean }[] = [
+    { key: "product", label: "제품별", implemented: true },
+    { key: "project", label: "프로젝트별", implemented: false },
+    { key: "status", label: "상태별", implemented: false },
+    { key: "owner", label: "담당자별", implemented: false },
   ]
 
   return (
@@ -59,23 +61,42 @@ export function WorkspaceToolbar({
       onClick={(e) => e.stopPropagation()}
     >
       {/* 그룹핑 탭 */}
-      <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 p-0.5">
-        {groups.map((g) => (
-          <button
-            key={g.key}
-            type="button"
-            onClick={() => onGroupChange(g.key)}
-            className={cn(
-              "rounded-sm px-2 py-0.5 text-[11px] font-medium transition-colors",
-              groupMode === g.key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {g.label}
-          </button>
-        ))}
-      </div>
+      <TooltipProvider>
+        <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 p-0.5">
+          {groups.map((g) =>
+            g.implemented ? (
+              <button
+                key={g.key}
+                type="button"
+                onClick={() => onGroupChange(g.key)}
+                className={cn(
+                  "rounded-sm px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  groupMode === g.key
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {g.label}
+              </button>
+            ) : (
+              <Tooltip key={g.key}>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      disabled
+                      className="cursor-not-allowed rounded-sm px-2 py-0.5 text-[11px] font-medium text-muted-foreground/50"
+                    />
+                  }
+                >
+                  {g.label}
+                </TooltipTrigger>
+                <TooltipContent>곧 제공 예정</TooltipContent>
+              </Tooltip>
+            ),
+          )}
+        </div>
+      </TooltipProvider>
 
       <div className="h-4 w-px bg-border" />
 

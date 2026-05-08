@@ -29,6 +29,8 @@ interface ChatPanelProps {
   currentUserId: string
   onTaskUpdated?: () => void
   onSlashTaskCommand?: (raw: string) => void
+  /** ?taskId= URL 필터 — 해당 업무 관련 메시지만 노출 */
+  filterTaskId?: string | null
 }
 
 export function ChatPanel({
@@ -37,6 +39,7 @@ export function ChatPanel({
   currentUserId,
   onTaskUpdated,
   onSlashTaskCommand,
+  filterTaskId,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [users, setUsers] = useState<User[]>([])
@@ -221,10 +224,14 @@ export function ChatPanel({
 
   const ownerName = users.find((u) => u.id === ownerId)?.name ?? ""
 
+  const visibleMessages = filterTaskId
+    ? messages.filter((m) => m.task?.id === filterTaskId)
+    : messages
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <MessageList
-        messages={messages}
+        messages={visibleMessages}
         currentUserId={currentUserId}
         selectionMode={selectionMode}
         selectedIds={selectedIds}

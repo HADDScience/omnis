@@ -319,7 +319,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
               />
             </div>
 
-            <div>
+            <div className="sm:col-span-2">
               <label className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
                 프로젝트 (제품 자동 매핑)
               </label>
@@ -327,7 +327,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                 value={projectId ?? "none"}
                 onValueChange={(v) => setValue("projectId", !v || v === "none" ? null : v, { shouldDirty: true })}
               >
-                <SelectTrigger className="h-9 text-[13px]">
+                <SelectTrigger className="h-9 w-full text-[13px]">
                   <SelectValue placeholder="프로젝트 없음">
                     {selectedProject ? (
                       <span>

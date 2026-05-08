@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowUp01Icon, ArrowDown01Icon } from "@hugeicons/core-free-icons"
+import { ArrowUp01Icon, ArrowDown01Icon, Cancel01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ChatPanel } from "./chat-panel"
@@ -54,6 +55,30 @@ export function ChatDock({
   initialMessages,
   onTaskUpdated,
 }: ChatDockProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const taskFilterId = searchParams.get("taskId")
+
+  // 필터된 업무명 (initialMessages에서 추출, 없으면 ID 일부 표시)
+  const taskFilterLabel = useMemo(() => {
+    if (!taskFilterId) return null
+    const found = initialMessages.find((m) => m.task?.id === taskFilterId)
+    return found?.task?.name ?? taskFilterId.slice(0, 8)
+  }, [taskFilterId, initialMessages])
+
+  // 필터 활성화 시 dock 자동 열기
+  useEffect(() => {
+    if (taskFilterId && !open) setOpen(true)
+  }, [taskFilterId, open, setOpen])
+
+  function clearTaskFilter() {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("taskId")
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname)
+  }
+
   const [activeView, setActiveView] = useState<ThreadView>("all")
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [taskModalRaw, setTaskModalRaw] = useState("")
@@ -212,6 +237,23 @@ export function ChatDock({
         </Button>
 
         <div className="flex flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+          {taskFilterLabel && (
+            <span
+              className="inline-flex h-[26px] items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 text-[11.5px] font-medium text-primary whitespace-nowrap"
+              title={`이 업무 메시지만 표시: ${taskFilterLabel}`}
+            >
+              <span className="text-[10px] text-primary/80">#</span>
+              <span className="max-w-[140px] truncate">{taskFilterLabel}</span>
+              <button
+                type="button"
+                onClick={clearTaskFilter}
+                aria-label="업무 필터 해제"
+                className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded hover:bg-primary/20"
+              >
+                <HugeiconsIcon icon={Cancel01Icon} size={10} />
+              </button>
+            </span>
+          )}
           {tabs.map((t) => {
             const selected = activeView === t.key && open
             return (
@@ -257,6 +299,7 @@ export function ChatDock({
             initialMessages={initialMessages}
             currentUserId={currentUserId}
             onTaskUpdated={onTaskUpdated}
+            filterTaskId={taskFilterId}
             onSlashTaskCommand={(raw) => {
               setTaskModalRaw(raw)
               setTaskModalOpen(true)

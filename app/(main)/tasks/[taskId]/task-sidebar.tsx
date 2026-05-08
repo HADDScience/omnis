@@ -16,17 +16,10 @@ interface Message {
   kind?: string
 }
 
-interface Checklist {
-  id: string
-  name: string
-  done: boolean
-}
-
 interface TaskSidebarProps {
   taskId: string
   taskName: string
   messages: Message[]
-  checklists: Checklist[]
 }
 
 function formatTime(iso: string): string {
@@ -34,29 +27,22 @@ function formatTime(iso: string): string {
   return d.toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
 }
 
-export function TaskSidebar({ taskId, messages, checklists }: TaskSidebarProps) {
+export function TaskSidebar({ taskId, messages }: TaskSidebarProps) {
   const systemMessages = messages.filter(
     (m) => m.kind === "TASK_REBUILT" || m.kind === "TASK_DONE" || m.kind === "TASK_CREATED"
   )
   const threadMessages = messages.filter((m) => m.kind !== "TASK_REBUILT")
 
-  const doneCount = checklists.filter((c) => c.done).length
-
   return (
     <aside className="flex h-full w-80 shrink-0 flex-col border-l bg-card">
       <Tabs defaultValue="thread" className="flex h-full flex-col">
-        <TabsList className="grid h-10 w-full shrink-0 grid-cols-3 rounded-none border-b bg-transparent p-0">
+        {/* #9: "결과" 탭 제거 — task-detail에 동일 체크리스트 존재 (중복 제거) */}
+        <TabsList className="grid h-10 w-full shrink-0 grid-cols-2 rounded-none border-b bg-transparent p-0">
           <TabsTrigger
             value="thread"
             className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
           >
             스레드
-          </TabsTrigger>
-          <TabsTrigger
-            value="results"
-            className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
-          >
-            결과
           </TabsTrigger>
           <TabsTrigger
             value="history"
@@ -98,43 +84,6 @@ export function TaskSidebar({ taskId, messages, checklists }: TaskSidebarProps) 
           </div>
           {/* #10: Composer 내장 (규칙 18 — List는 Composer 동반 필수) */}
           <ThreadComposer taskId={taskId} />
-        </TabsContent>
-
-        <TabsContent value="results" className="mt-0 flex-1 overflow-auto p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11.5px] font-semibold">체크리스트</span>
-            <span className="font-mono text-[10.5px] text-muted-foreground">
-              {doneCount}/{checklists.length}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {checklists.length === 0 && (
-              <div className="rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground">
-                아직 체크리스트 없음
-              </div>
-            )}
-            {checklists.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-start gap-2 rounded-md border px-2.5 py-1.5"
-              >
-                <span
-                  className={[
-                    "mt-0.5 inline-block h-3.5 w-3.5 shrink-0 rounded-sm border",
-                    c.done ? "border-primary bg-primary" : "border-border",
-                  ].join(" ")}
-                />
-                <span
-                  className={[
-                    "text-[12px]",
-                    c.done ? "text-muted-foreground line-through" : "text-foreground",
-                  ].join(" ")}
-                >
-                  {c.name}
-                </span>
-              </div>
-            ))}
-          </div>
         </TabsContent>
 
         <TabsContent value="history" className="mt-0 flex-1 overflow-auto p-3">
