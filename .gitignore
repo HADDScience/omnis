@@ -56,3 +56,4 @@ data/omnis/
 /*.png
 /public/*.png
 !docs/screenshots/*.png
+.vercel

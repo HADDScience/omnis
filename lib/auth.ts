@@ -35,11 +35,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (user) {
         token.id = user.id
         token.role = (user as { role?: string }).role
+      } else if (token.id) {
+        // 방어 코드: DB가 reseed되어 token.id가 더 이상 존재하지 않으면 세션 무효화
+        // (그러지 않으면 후속 write에서 FK violation 발생)
+        const exists = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { id: true },
+        })
+        if (!exists) return {}
       }
       return token
     },
     async session({ session, token }) {
-      if (session.user) {
+      if (session.user && token.id) {
         session.user.id = token.id as string
         ;(session.user as { role?: string }).role = token.role as string
       }
