@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { HaddDbLanding } from "@/components/omnis/hadd-db-landing"
+import { CreateCardDialog } from "@/components/omnis/create-card-dialog"
 import { getCardVersion } from "@/lib/omnis-git"
 
 export const dynamic = "force-dynamic"
@@ -59,14 +60,19 @@ export default async function OmnisPage() {
   const popular = [...recent].sort((a, b) => b.version - a.version).slice(0, 4)
 
   return (
-    <HaddDbLanding
-      totalCards={totalCards}
-      categoryCount={categories.length}
-      categories={categories.map((c) => ({ name: c.name, count: c._count.cards }))}
-      recent={recent.map(withVersion)}
-      popular={popular.map(withVersion)}
-      mine={mine.map(withVersion)}
-    />
+    <>
+      <HaddDbLanding
+        totalCards={totalCards}
+        categoryCount={categories.length}
+        categories={categories.map((c) => ({ name: c.name, count: c._count.cards }))}
+        recent={recent.map(withVersion)}
+        popular={popular.map(withVersion)}
+        mine={mine.map(withVersion)}
+      />
+      <CreateCardDialog
+        categories={categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon }))}
+      />
+    </>
   )
 }
 

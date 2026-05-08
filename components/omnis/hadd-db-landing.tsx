@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { BookOpen01Icon, Search01Icon } from "@hugeicons/core-free-icons"
+import { BookOpen01Icon, Search01Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
 import { Kbd } from "@/components/ui/kbd"
 import { useCommandPalette } from "@/components/layout/command-palette-context"
 
@@ -80,15 +80,25 @@ export function HaddDbLanding({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => palette.open()}
-          className="flex w-full items-center gap-3 rounded-lg border bg-card px-5 py-4 text-[15px] text-muted-foreground shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-colors hover:border-border-strong"
-        >
-          <HugeiconsIcon icon={Search01Icon} size={16} />
-          <span className="flex-1 text-left">검색 · &quot;{topTrigger}&quot;</span>
-          <Kbd>⌘K</Kbd>
-        </button>
+        <div className="flex items-stretch gap-2">
+          <button
+            type="button"
+            onClick={() => palette.open()}
+            className="flex flex-1 items-center gap-3 rounded-lg border bg-card px-5 py-4 text-[15px] text-muted-foreground shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-colors hover:border-border-strong"
+          >
+            <HugeiconsIcon icon={Search01Icon} size={16} />
+            <span className="flex-1 text-left">검색 · &quot;{topTrigger}&quot;</span>
+            <Kbd>⌘K</Kbd>
+          </button>
+          <Link
+            href="/omnis?create=1"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border bg-primary px-4 py-4 text-[13.5px] font-semibold text-primary-foreground shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-opacity hover:opacity-90"
+            aria-label="새 지식카드 만들기"
+          >
+            <HugeiconsIcon icon={PlusSignIcon} size={15} />
+            새 카드
+          </Link>
+        </div>
 
         {/*
           규칙 20 (omnis/CLAUDE.md): 상단 Input = 검색 전용. 카테고리 버튼은 라우트 직접 진입.
