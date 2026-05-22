@@ -27,10 +27,12 @@ import {
 interface TaskDraft {
   name: string
   background: string
-  expectedResult: string
   checklist: string[]
   projectId: string | null
-  categoryId: string | null
+  productId: string | null
+  priority?: "LOW" | "NORMAL" | "HIGH"
+  ownerHint?: string
+  deadlineHint?: string
 }
 
 interface Project {
@@ -38,12 +40,6 @@ interface Project {
   name: string
   status: string
   product?: { id: string; name: string; color: string } | null
-}
-
-interface Category {
-  id: string
-  name: string
-  icon: string | null
 }
 
 interface SourceMessage {
@@ -78,9 +74,7 @@ export function TaskInstructionDialog({
   const [creating, setCreating] = useState(false)
 
   const [projects, setProjects] = useState<Project[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("")
   const [newProjectName, setNewProjectName] = useState("")
 
   useEffect(() => {
@@ -89,7 +83,6 @@ export function TaskInstructionDialog({
     }
     if (open) {
       fetchProjects()
-      fetchCategories()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -99,17 +92,6 @@ export function TaskInstructionDialog({
       const res = await fetch("/api/projects")
       if (res.ok) {
         setProjects(await res.json())
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  async function fetchCategories() {
-    try {
-      const res = await fetch("/api/categories")
-      if (res.ok) {
-        setCategories(await res.json())
       }
     } catch {
       // ignore
@@ -129,9 +111,8 @@ export function TaskInstructionDialog({
       if (res.ok) {
         const data = await res.json()
         setDraft(data)
-        // Gemini 추천 프로젝트/카테고리 자동 선택
+        // Gemini 추천 프로젝트 자동 선택
         if (data.projectId) setSelectedProjectId(data.projectId)
-        if (data.categoryId) setSelectedCategoryId(data.categoryId)
       }
     } finally {
       setLoading(false)
@@ -159,6 +140,8 @@ export function TaskInstructionDialog({
       } else if (selectedProjectId) {
         projectId = selectedProjectId
       }
+      const selectedProject = projects.find((p) => p.id === projectId)
+      const productId = selectedProject?.product?.id ?? draft.productId ?? null
 
       const res = await fetch("/api/tasks", {
         method: "POST",
@@ -167,12 +150,11 @@ export function TaskInstructionDialog({
           name: draft.name,
           ownerId,
           background: draft.background,
-          expectedResult: draft.expectedResult,
           checklists: draft.checklist.map((name) => ({ name })),
           messageIds,
           sourceMessages: selectedMessages,
           projectId,
-          categoryId: selectedCategoryId || null,
+          productId,
         }),
       })
       if (res.ok) {
@@ -254,32 +236,6 @@ export function TaskInstructionDialog({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs">카테고리</Label>
-              <Select
-                value={selectedCategoryId}
-                onValueChange={(value) => setSelectedCategoryId(value ?? "")}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="카테고리 선택 (선택사항)">
-                    {selectedCategoryId
-                      ? (() => {
-                          const cat = categories.find((c) => c.id === selectedCategoryId)
-                          return cat ? `${cat.icon ?? ""} ${cat.name}`.trim() : null
-                        })()
-                      : null}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id} label={c.name}>
-                      {c.icon ? `${c.icon} ` : ""}{c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
               <Label className="text-xs">배경</Label>
               <Textarea
                 value={draft.background}
@@ -287,17 +243,6 @@ export function TaskInstructionDialog({
                   setDraft({ ...draft, background: e.target.value })
                 }
                 rows={2}
-                className="text-sm"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs">기대 결과</Label>
-              <Input
-                value={draft.expectedResult}
-                onChange={(e) =>
-                  setDraft({ ...draft, expectedResult: e.target.value })
-                }
                 className="text-sm"
               />
             </div>
@@ -356,7 +301,11 @@ export function TaskInstructionDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             취소
           </Button>
-          <Button onClick={handleCreate} disabled={creating || loading || !draft}>
+          <Button
+            onClick={handleCreate}
+            disabled={creating || loading || !draft}
+            className="ai-rainbow-border"
+          >
             {creating ? <Spinner /> : "업무 생성"}
           </Button>
         </DialogFooter>

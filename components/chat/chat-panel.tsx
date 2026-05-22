@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Task01Icon, CheckmarkCircle02Icon, Cancel01Icon } from "@hugeicons/core-free-icons"
+import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 interface Message {
   id: string
@@ -42,6 +43,8 @@ export function ChatPanel({
   filterTaskId,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
+  const [hasMoreOlder, setHasMoreOlder] = useState(true)
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const [users, setUsers] = useState<User[]>([])
   const [tasks, setTasks] = useState<{ id: string; name: string; slug: string }[]>([])
   const [uploadedFiles, setUploadedFiles] = useState<{ id: string; name: string; path: string; mimeType: string }[]>([])
@@ -60,20 +63,21 @@ export function ChatPanel({
   const fetchMessages = useCallback(async () => {
     if (pausePolling.current) return
     try {
-      const url = lastFetchedAt.current
-        ? `/api/chat/messages?roomId=${roomId}&after=${encodeURIComponent(lastFetchedAt.current)}`
-        : `/api/chat/messages?roomId=${roomId}`
+      const params = new URLSearchParams({ roomId })
+      if (lastFetchedAt.current) params.set("after", lastFetchedAt.current)
+      if (filterTaskId) params.set("taskId", filterTaskId)
 
-      const res = await fetch(url)
+      const res = await fetch(`/api/chat/messages?${params.toString()}`)
       if (!res.ok) return
       const newMsgs = await res.json()
 
       if (!lastFetchedAt.current) {
-        // 초기 로드: 전체 교체
+        // 초기 로드: 최신 페이지로 교체
         setMessages(newMsgs)
         if (newMsgs.length > 0) {
           lastFetchedAt.current = newMsgs[newMsgs.length - 1].createdAt
         }
+        setHasMoreOlder(newMsgs.length >= CHAT_PAGE_SIZE)
       } else if (newMsgs.length > 0) {
         // 이후: 새 메시지만 추가
         setMessages((prev) => {
@@ -86,12 +90,46 @@ export function ChatPanel({
     } catch {
       /* ignore */
     }
-  }, [roomId])
+  }, [roomId, filterTaskId])
+
+  // 무한 스크롤 — 현재 가장 오래된 메시지보다 이전 메시지 한 페이지를 앞에 붙임
+  const loadOlder = useCallback(async () => {
+    if (loadingOlder || !hasMoreOlder) return
+    const oldest = messages[0]
+    if (!oldest) return
+    setLoadingOlder(true)
+    try {
+      const params = new URLSearchParams({ roomId, before: oldest.createdAt })
+      if (filterTaskId) params.set("taskId", filterTaskId)
+      const res = await fetch(`/api/chat/messages?${params.toString()}`)
+      if (!res.ok) return
+      const older: Message[] = await res.json()
+      if (older.length < CHAT_PAGE_SIZE) setHasMoreOlder(false)
+      if (older.length > 0) {
+        setMessages((prev) => {
+          const ids = new Set(prev.map((m) => m.id))
+          const fresh = older.filter((m) => !ids.has(m.id))
+          return fresh.length > 0 ? [...fresh, ...prev] : prev
+        })
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingOlder(false)
+    }
+  }, [loadingOlder, hasMoreOlder, messages, roomId, filterTaskId])
 
   useEffect(() => {
     const id = setInterval(fetchMessages, 3000)
     return () => clearInterval(id)
   }, [fetchMessages])
+
+  useEffect(() => {
+    lastFetchedAt.current = ""
+    setMessages([])
+    setHasMoreOlder(true)
+    fetchMessages()
+  }, [filterTaskId, fetchMessages])
 
   useEffect(() => {
     fetch("/api/users")
@@ -171,6 +209,7 @@ export function ChatPanel({
         body: JSON.stringify({
           roomId,
           content,
+          taskId: filterTaskId ?? undefined,
           fileIds: uploadedFiles.map((f) => f.id),
           fileNames: uploadedFiles.map((f) => f.name),
         }),
@@ -191,7 +230,7 @@ export function ChatPanel({
       setProcessing(null)
       pausePolling.current = false
     },
-    [roomId]
+    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated]
   )
 
   function toggleSelect(id: string) {
@@ -238,6 +277,9 @@ export function ChatPanel({
         onToggleSelect={toggleSelect}
         tasks={tasks}
         processingSlug={processing}
+        onLoadOlder={loadOlder}
+        hasMoreOlder={hasMoreOlder}
+        loadingOlder={loadingOlder}
       />
 
       <div className="shrink-0 border-t">
@@ -294,7 +336,7 @@ export function ChatPanel({
             </Button>
           )}
         </div>
-        <MessageInput onSend={handleSend} disabled={selectionMode} tasks={tasks} users={users} files={uploadedFiles} />
+        <MessageInput onSend={handleSend} disabled={selectionMode} tasks={tasks} files={uploadedFiles} />
       </div>
 
       <TaskInstructionDialog

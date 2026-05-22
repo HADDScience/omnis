@@ -5,9 +5,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowUp01Icon, ArrowDown01Icon, Cancel01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { ChatPanel } from "./chat-panel"
 import { TaskCmdModal } from "./task-cmd-modal"
+import { OmnisAsk } from "@/components/omnis/omnis-ask"
 
 interface Message {
   id: string
@@ -28,11 +28,10 @@ interface ChatDockProps {
 
 type ThreadView = "all" | "ai"
 
-interface ThreadTab {
-  key: ThreadView
-  label: string
-  prefix?: string
-  unread: number
+interface RecentThread {
+  id: string
+  name: string
+  slug: string
 }
 
 const DOCK_HEIGHT_KEY = "omnis:dock-height"
@@ -46,6 +45,15 @@ function clampOpenHeight(value: number): number {
   }
   const max = Math.max(DOCK_MIN_OPEN_HEIGHT, Math.floor(window.innerHeight * 0.6))
   return Math.max(DOCK_MIN_OPEN_HEIGHT, Math.min(max, value))
+}
+
+function tabClass(selected: boolean): string {
+  return [
+    "inline-flex h-[26px] items-center gap-1.5 rounded-md border px-2.5 text-[12px] text-foreground transition-colors whitespace-nowrap",
+    selected
+      ? "border-border bg-muted"
+      : "border-transparent bg-transparent hover:bg-muted/50",
+  ].join(" ")
 }
 
 export function ChatDock({
@@ -79,9 +87,30 @@ export function ChatDock({
     router.replace(qs ? `${pathname}?${qs}` : pathname)
   }
 
+  function setTaskFilter(id: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("taskId", id)
+    router.replace(`${pathname}?${params.toString()}`)
+  }
+
   const [activeView, setActiveView] = useState<ThreadView>("all")
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [taskModalRaw, setTaskModalRaw] = useState("")
+  const [recentThreads, setRecentThreads] = useState<RecentThread[]>([])
+
+  // 최근 대화한 스레드 3개 로드 (마운트 + dock 열림 시 갱신)
+  const loadRecentThreads = useCallback(() => {
+    fetch("/api/chat/threads/recent")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) setRecentThreads(data as RecentThread[])
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    loadRecentThreads()
+  }, [loadRecentThreads, open])
 
   // 열린 상태에서의 높이(드래그로 조정). 닫힌 상태에선 40px.
   const [openHeight, setOpenHeight] = useState<number>(DOCK_DEFAULT_OPEN_HEIGHT)
@@ -189,12 +218,9 @@ export function ChatDock({
     [],
   )
 
-  const tabs: ThreadTab[] = [
-    { key: "all", label: "전체", unread: 0 },
-    { key: "ai", label: "Omnis AI", prefix: "✦", unread: 0 },
-  ]
-
   const currentHeight = open ? openHeight : DOCK_CLOSED_HEIGHT
+  const filterInTabs =
+    !!taskFilterId && recentThreads.some((t) => t.id === taskFilterId)
 
   return (
     <div
@@ -237,7 +263,7 @@ export function ChatDock({
         </Button>
 
         <div className="flex flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
-          {taskFilterLabel && (
+          {taskFilterLabel && !filterInTabs && (
             <span
               className="inline-flex h-[26px] items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 text-[11.5px] font-medium text-primary whitespace-nowrap"
               title={`이 업무 메시지만 표시: ${taskFilterLabel}`}
@@ -254,32 +280,71 @@ export function ChatDock({
               </button>
             </span>
           )}
-          {tabs.map((t) => {
-            const selected = activeView === t.key && open
+
+          {/* 전체 */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveView("all")
+              if (taskFilterId) clearTaskFilter()
+              if (!open) setOpen(true)
+            }}
+            className={tabClass(open && activeView === "all" && !taskFilterId)}
+          >
+            <span className="text-[11px] text-muted-foreground">·</span>
+            <span
+              className={
+                open && activeView === "all" && !taskFilterId
+                  ? "font-medium"
+                  : "font-normal"
+              }
+            >
+              전체
+            </span>
+          </button>
+
+          {/* Omnis AI — 사내 지식 RAG 질의 */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveView("ai")
+              if (!open) setOpen(true)
+            }}
+            className={`${tabClass(open && activeView === "ai")} ai-rainbow-border`}
+          >
+            <span className="text-[11px] text-muted-foreground">✦</span>
+            <span
+              className={open && activeView === "ai" ? "font-medium" : "font-normal"}
+            >
+              Omnis AI
+            </span>
+          </button>
+
+          {/* 최근 대화한 스레드 3개 */}
+          {recentThreads.map((thread) => {
+            const selected =
+              open && activeView === "all" && taskFilterId === thread.id
             return (
               <button
-                key={t.key}
+                key={thread.id}
                 type="button"
                 onClick={() => {
-                  setActiveView(t.key)
+                  setActiveView("all")
+                  setTaskFilter(thread.id)
                   if (!open) setOpen(true)
                 }}
-                className={[
-                  "inline-flex h-[26px] items-center gap-1.5 rounded-md border px-2.5 text-[12px] text-foreground transition-colors whitespace-nowrap",
-                  selected
-                    ? "border-border bg-muted"
-                    : "border-transparent bg-transparent hover:bg-muted/50",
-                ].join(" ")}
+                className={tabClass(selected)}
+                title={`#${thread.name} 스레드만 보기`}
               >
-                <span className="text-[11px] text-muted-foreground">
-                  {t.prefix ?? "·"}
+                <span className="text-[11px] text-muted-foreground">#</span>
+                <span
+                  className={[
+                    "max-w-[110px] truncate",
+                    selected ? "font-medium" : "font-normal",
+                  ].join(" ")}
+                >
+                  {thread.name}
                 </span>
-                <span className={selected ? "font-medium" : "font-normal"}>{t.label}</span>
-                {t.unread > 0 && (
-                  <Badge variant="destructive" className="h-4 px-1.5 text-[9px] leading-none">
-                    {t.unread}
-                  </Badge>
-                )}
               </button>
             )
           })}
@@ -294,17 +359,21 @@ export function ChatDock({
 
       {open && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <ChatPanel
-            roomId="default-room"
-            initialMessages={initialMessages}
-            currentUserId={currentUserId}
-            onTaskUpdated={onTaskUpdated}
-            filterTaskId={taskFilterId}
-            onSlashTaskCommand={(raw) => {
-              setTaskModalRaw(raw)
-              setTaskModalOpen(true)
-            }}
-          />
+          {activeView === "ai" ? (
+            <OmnisAsk variant="dock" />
+          ) : (
+            <ChatPanel
+              roomId="default-room"
+              initialMessages={initialMessages}
+              currentUserId={currentUserId}
+              onTaskUpdated={onTaskUpdated}
+              filterTaskId={taskFilterId}
+              onSlashTaskCommand={(raw) => {
+                setTaskModalRaw(raw)
+                setTaskModalOpen(true)
+              }}
+            />
+          )}
         </div>
       )}
 

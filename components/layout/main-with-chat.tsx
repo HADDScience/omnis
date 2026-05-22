@@ -30,7 +30,13 @@ export function MainWithChat({
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+      // Cmd/Ctrl/Alt 조합(복사·붙여넣기 등)은 단축키로 가로채지 않음
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      )
         return
       if (e.key === "c" || e.key === "C" || e.key === "ㅊ") {
         e.preventDefault()

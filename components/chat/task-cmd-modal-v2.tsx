@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -33,7 +33,8 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { PriorityRating } from "@/components/ui/priority-rating"
 import { toast } from "sonner"
-import { parseSlashTask } from "./slash-command-parser"
+import { format } from "date-fns"
+import { parseSlashTask, resolveDeadline } from "./slash-command-parser"
 import { PrioritySchema } from "@/lib/schemas/task-ai"
 
 interface TaskCmdModalV2Props {
@@ -53,16 +54,36 @@ interface ProjectOption {
   product: { id: string; name: string; color: string } | null
 }
 
+interface ProductOption {
+  id: string
+  name: string
+  color: string
+}
+
+/** 프로젝트 Select에서 "신규 프로젝트 생성"을 의미하는 sentinel 값 */
+const NEW_PROJECT_VALUE = "__new__"
+
 /** 폼 스키마 — TaskAiDraft 기반 + 사용자 입력 필수 필드 */
-const TaskFormSchema = z.object({
-  name: z.string().min(1, "제목을 입력하세요").max(120),
-  ownerId: z.string().min(1, "담당자를 선택하세요"),
-  projectId: z.string().nullable(),
-  priority: PrioritySchema,
-  deadline: z.string().nullable(), // YYYY-MM-DD
-  background: z.string(),
-  checklist: z.array(z.string()),
-})
+const TaskFormSchema = z
+  .object({
+    name: z.string().min(1, "제목을 입력하세요").max(120),
+    ownerId: z.string().min(1, "담당자를 선택하세요"),
+    projectId: z.string().nullable(),
+    productId: z.string().nullable(),
+    priority: PrioritySchema,
+    deadline: z.string().nullable(), // YYYY-MM-DD
+    background: z.string(),
+    checklist: z.array(z.string()),
+    // 신규 프로젝트 생성 시에만 사용 (projectId === NEW_PROJECT_VALUE)
+    newProjectName: z.string(),
+    newProjectProductId: z.string().nullable(),
+    newProjectPurpose: z.string(),
+    newProjectGoal: z.string(),
+  })
+  .refine(
+    (v) => v.projectId !== NEW_PROJECT_VALUE || v.newProjectName.trim().length > 0,
+    { message: "프로젝트명을 입력하세요", path: ["newProjectName"] },
+  )
 type TaskFormValues = z.infer<typeof TaskFormSchema>
 
 const PRIORITY_LABEL: Record<z.infer<typeof PrioritySchema>, string> = {
@@ -77,8 +98,19 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
 
   const [users, setUsers] = useState<UserOption[]>([])
   const [projects, setProjects] = useState<ProjectOption[]>([])
+  const [products, setProducts] = useState<ProductOption[]>([])
   const [aiLoading, setAiLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [glowFields, setGlowFields] = useState<Set<string>>(new Set())
+  const glowTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** 자동 채워진 필드 테두리를 잠깐 빛나게 한다 */
+  const flashGlow = useCallback((fields: string[]) => {
+    if (fields.length === 0) return
+    if (glowTimer.current) clearTimeout(glowTimer.current)
+    setGlowFields(new Set(fields))
+    glowTimer.current = setTimeout(() => setGlowFields(new Set()), 1700)
+  }, [])
 
   const form = useForm<TaskFormValues>({
     resolver: zodResolver(TaskFormSchema),
@@ -86,10 +118,15 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
       name: "",
       ownerId: "",
       projectId: null,
+      productId: null,
       priority: "NORMAL",
       deadline: null,
       background: "",
       checklist: [],
+      newProjectName: "",
+      newProjectProductId: null,
+      newProjectPurpose: "",
+      newProjectGoal: "",
     },
   })
   const {
@@ -104,6 +141,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
   const projectId = watch("projectId")
   const priority = watch("priority")
   const ownerId = watch("ownerId")
+  const newProjectProductId = watch("newProjectProductId")
 
   // 모달 열림 시: 옵션 로딩 + 슬래시 파싱 결과로 초기화
   useEffect(() => {
@@ -112,11 +150,13 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     Promise.all([
       fetch("/api/users").then((r) => (r.ok ? r.json() : [])),
       fetch("/api/projects").then((r) => (r.ok ? r.json() : [])),
+      fetch("/api/products").then((r) => (r.ok ? r.json() : [])),
     ])
-      .then(([userList, projectList]) => {
+      .then(([userList, projectList, productList]) => {
         if (cancelled) return
         setUsers(userList)
         setProjects(projectList)
+        setProducts(productList)
         // 슬래시 파싱 결과로 초기화 (이름 → id 매핑)
         const ownerByName = parsed?.ownerName
           ? userList.find((u: UserOption) => u.name === parsed.ownerName)
@@ -128,11 +168,25 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           name: parsed?.title ?? "",
           ownerId: ownerByName?.id ?? "",
           projectId: projectByName?.id ?? null,
+          productId: projectByName?.product?.id ?? null,
           priority: "NORMAL",
-          deadline: parsed?.deadlineLabel ?? null,
+          deadline: parsed?.deadline
+            ? format(parsed.deadline, "yyyy-MM-dd")
+            : null,
           background: "",
           checklist: [],
+          newProjectName: "",
+          newProjectProductId: null,
+          newProjectPurpose: "",
+          newProjectGoal: "",
         })
+        // 슬래시 명령에서 자동 추출된 필드 글로우
+        const preFilled: string[] = []
+        if (parsed?.title) preFilled.push("name")
+        if (ownerByName) preFilled.push("ownerId")
+        if (projectByName) preFilled.push("projectId")
+        if (parsed?.deadline) preFilled.push("deadline")
+        flashGlow(preFilled)
       })
       .catch(() => {
         toast.error("옵션 로딩 실패")
@@ -140,7 +194,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     return () => {
       cancelled = true
     }
-  }, [open, parsed, reset])
+  }, [open, parsed, reset, flashGlow])
 
   /** R11: AI 응답이 도착해도 사용자가 이미 입력(dirtyFields)한 필드는 덮지 않음 */
   async function runAi() {
@@ -154,31 +208,67 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
       if (!res.ok) throw new Error("AI 호출 실패")
       const ai = await res.json()
 
-      // dirtyFields에 없는 필드만 적용
-      if (!dirtyFields.name && ai.name) setValue("name", ai.name, { shouldDirty: false })
+      // dirtyFields에 없는 필드만 적용 + 채운 필드 기록(글로우용)
+      const filled: string[] = []
+      if (!dirtyFields.name && ai.name) {
+        setValue("name", ai.name, { shouldDirty: false })
+        filled.push("name")
+      }
       if (!dirtyFields.background && ai.background) {
         setValue("background", ai.background, { shouldDirty: false })
+        filled.push("background")
       }
       if (!dirtyFields.priority && ai.priority) {
         setValue("priority", ai.priority, { shouldDirty: false })
+        filled.push("priority")
       }
       if (!dirtyFields.ownerId && ai.ownerHint) {
         const found = users.find((u) => u.name === ai.ownerHint)
-        if (found) setValue("ownerId", found.id, { shouldDirty: false })
+        if (found) {
+          setValue("ownerId", found.id, { shouldDirty: false })
+          filled.push("ownerId")
+        }
       }
-      if (!dirtyFields.projectId && ai.projectId) {
-        setValue("projectId", ai.projectId, { shouldDirty: false })
+      if (!dirtyFields.projectId) {
+        if (ai.newProject) {
+          // AI가 신규 프로젝트 생성을 제안 → 신규 프로젝트 모드 전환 + 필드 채움
+          setValue("projectId", NEW_PROJECT_VALUE, { shouldDirty: false })
+          setValue("newProjectName", ai.newProject.name ?? "", { shouldDirty: false })
+          setValue("newProjectPurpose", ai.newProject.purpose ?? "", { shouldDirty: false })
+          setValue("newProjectGoal", ai.newProject.goal ?? "", { shouldDirty: false })
+          if (ai.newProject.productId) {
+            setValue("newProjectProductId", ai.newProject.productId, { shouldDirty: false })
+          }
+          filled.push("projectId")
+        } else if (ai.projectId) {
+          setValue("projectId", ai.projectId, { shouldDirty: false })
+          filled.push("projectId")
+        }
+      }
+      if (!dirtyFields.productId && ai.productId) {
+        setValue("productId", ai.productId, { shouldDirty: false })
       }
       if (!dirtyFields.deadline && ai.deadlineHint) {
-        // 이미 ISO YYYY-MM-DD 형태면 그대로 사용. 상대표현은 사용자가 직접 확정.
+        // ISO(YYYY-MM-DD)면 그대로, 한국어 상대표현이면 날짜로 변환
+        let ymd: string | null = null
         if (/^\d{4}-\d{2}-\d{2}$/.test(ai.deadlineHint)) {
-          setValue("deadline", ai.deadlineHint, { shouldDirty: false })
+          ymd = ai.deadlineHint
+        } else {
+          const resolved = resolveDeadline(ai.deadlineHint)
+          if (resolved) ymd = format(resolved, "yyyy-MM-dd")
+        }
+        if (ymd) {
+          setValue("deadline", ymd, { shouldDirty: false })
+          filled.push("deadline")
         }
       }
       if (!dirtyFields.checklist && Array.isArray(ai.checklist) && ai.checklist.length > 0) {
         setValue("checklist", ai.checklist, { shouldDirty: false })
+        filled.push("checklist")
       }
-      toast.success("AI 자동완성 완료")
+      flashGlow(filled)
+      if (ai._fallback && ai.message) toast.info(ai.message)
+      else toast.success("AI 자동완성 완료")
     } catch {
       toast.error("AI 자동완성 실패")
     } finally {
@@ -190,7 +280,33 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     setSubmitting(true)
     try {
       const owner = users.find((u) => u.id === values.ownerId)
-      const project = projects.find((p) => p.id === values.projectId)
+
+      // 프로젝트 결정: 신규 생성 / 기존 선택 / 없음
+      let finalProjectId: string | null = null
+      let finalProductId: string | null = values.productId ?? null
+      const isNewProject = values.projectId === NEW_PROJECT_VALUE
+
+      if (isNewProject) {
+        const projRes = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: values.newProjectName,
+            productId: values.newProjectProductId,
+            purpose: values.newProjectPurpose,
+            goal: values.newProjectGoal,
+          }),
+        })
+        if (!projRes.ok) throw new Error("프로젝트 생성 실패")
+        const proj = await projRes.json()
+        finalProjectId = proj.id
+        finalProductId = proj.product?.id ?? values.newProjectProductId ?? null
+      } else if (values.projectId) {
+        const project = projects.find((p) => p.id === values.projectId)
+        finalProjectId = values.projectId
+        finalProductId = project?.product?.id ?? values.productId ?? null
+      }
+
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -198,8 +314,8 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           name: values.name,
           ownerName: owner?.name ?? null,
           deadlineLabel: values.deadline,
-          projectName: project?.name ?? null,
-          productName: project?.product?.name ?? null,
+          projectId: finalProjectId,
+          productId: finalProductId,
           priority: values.priority,
           participants: [],
           instruction: values.background,
@@ -210,7 +326,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         }),
       })
       if (!res.ok) throw new Error("업무 생성 실패")
-      toast.success("업무 생성 완료")
+      toast.success(isNewProject ? "신규 프로젝트와 업무 생성 완료" : "업무 생성 완료")
       onClose()
       router.refresh()
     } catch {
@@ -272,7 +388,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
               id="task-name"
               {...register("name")}
               placeholder="업무 한 줄 요약"
-              className={`h-9 text-[13px] ${errors.name ? "border-destructive" : ""}`}
+              className={`h-9 text-[13px] ${errors.name ? "border-destructive" : ""} ${glowFields.has("name") ? "ai-fill-glow" : ""}`}
               autoComplete="off"
             />
             {errors.name && (
@@ -286,7 +402,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                 담당자 <span className="text-destructive">*</span>
               </label>
               <Select value={ownerId || ""} onValueChange={(v) => setValue("ownerId", v ?? "", { shouldDirty: true })}>
-                <SelectTrigger className={`h-9 text-[13px] ${errors.ownerId ? "border-destructive" : ""}`}>
+                <SelectTrigger className={`h-9 text-[13px] ${errors.ownerId ? "border-destructive" : ""} ${glowFields.has("ownerId") ? "ai-fill-glow" : ""}`}>
                   <SelectValue placeholder="담당자 선택">
                     {ownerId ? users.find((u) => u.id === ownerId)?.name : null}
                   </SelectValue>
@@ -315,7 +431,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                 id="task-deadline"
                 type="date"
                 {...register("deadline")}
-                className="h-9 text-[13px]"
+                className={`h-9 text-[13px] ${glowFields.has("deadline") ? "ai-fill-glow" : ""}`}
               />
             </div>
 
@@ -327,9 +443,11 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                 value={projectId ?? "none"}
                 onValueChange={(v) => setValue("projectId", !v || v === "none" ? null : v, { shouldDirty: true })}
               >
-                <SelectTrigger className="h-9 w-full text-[13px]">
+                <SelectTrigger className={`h-9 w-full text-[13px] ${glowFields.has("projectId") ? "ai-fill-glow" : ""}`}>
                   <SelectValue placeholder="프로젝트 없음">
-                    {selectedProject ? (
+                    {projectId === NEW_PROJECT_VALUE ? (
+                      <span className="font-medium text-primary">+ 신규 프로젝트 생성</span>
+                    ) : selectedProject ? (
                       <span>
                         {selectedProject.product ? (
                           <span className="text-muted-foreground">
@@ -338,12 +456,24 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                         ) : null}
                         {selectedProject.name}
                       </span>
-                    ) : null}
+                    ) : (
+                      "프로젝트 없음"
+                    )}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none" label="프로젝트 없음" className="text-[13px]">
                     프로젝트 없음
+                  </SelectItem>
+                  <SelectItem
+                    value={NEW_PROJECT_VALUE}
+                    label="+ 신규 프로젝트 생성"
+                    className="text-[13px]"
+                  >
+                    <span className="inline-flex items-center gap-1 font-medium text-primary">
+                      <HugeiconsIcon icon={PlusSignIcon} size={12} />
+                      신규 프로젝트 생성
+                    </span>
                   </SelectItem>
                   {projects.map((p) => (
                     <SelectItem
@@ -360,13 +490,108 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                   ))}
                 </SelectContent>
               </Select>
+
+              {projectId === NEW_PROJECT_VALUE && (
+                <div className="mt-2 flex flex-col gap-2.5 rounded-md border border-dashed border-primary/40 bg-primary/[0.03] p-3">
+                  <p className="text-[11px] font-semibold text-primary">신규 프로젝트 정보</p>
+
+                  <div>
+                    <label
+                      htmlFor="new-project-name"
+                      className="mb-1 block text-[11px] font-medium text-muted-foreground"
+                    >
+                      프로젝트명 <span className="text-destructive">*</span>
+                    </label>
+                    <Input
+                      id="new-project-name"
+                      {...register("newProjectName")}
+                      placeholder="예: 전사 자원관리 시스템 구축"
+                      className={`h-8 text-[12.5px] ${errors.newProjectName ? "border-destructive" : ""}`}
+                      autoComplete="off"
+                    />
+                    {errors.newProjectName && (
+                      <p className="mt-1 text-[11px] text-destructive">
+                        {errors.newProjectName.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                      제품
+                    </label>
+                    <Select
+                      value={newProjectProductId ?? "none"}
+                      onValueChange={(v) =>
+                        setValue("newProjectProductId", !v || v === "none" ? null : v, {
+                          shouldDirty: true,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-full text-[12.5px]">
+                        <SelectValue placeholder="제품 없음">
+                          {newProjectProductId
+                            ? products.find((p) => p.id === newProjectProductId)?.name
+                            : "제품 없음"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none" label="제품 없음" className="text-[12.5px]">
+                          제품 없음
+                        </SelectItem>
+                        {products.map((p) => (
+                          <SelectItem
+                            key={p.id}
+                            value={p.id}
+                            label={p.name}
+                            className="text-[12.5px]"
+                          >
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="new-project-purpose"
+                      className="mb-1 block text-[11px] font-medium text-muted-foreground"
+                    >
+                      목적
+                    </label>
+                    <Textarea
+                      id="new-project-purpose"
+                      {...register("newProjectPurpose")}
+                      placeholder="이 프로젝트를 왜 하는지 (1-2문장)"
+                      className="min-h-[52px] text-[12.5px] leading-relaxed"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="new-project-goal"
+                      className="mb-1 block text-[11px] font-medium text-muted-foreground"
+                    >
+                      목표
+                    </label>
+                    <Input
+                      id="new-project-goal"
+                      {...register("newProjectGoal")}
+                      placeholder="달성하려는 결과 한 줄"
+                      className="h-8 text-[12.5px]"
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
                 우선순위
               </label>
-              <div className="flex h-9 items-center gap-2 rounded-md border bg-background px-3">
+              <div className={`flex h-9 items-center gap-2 rounded-md border bg-background px-3 ${glowFields.has("priority") ? "ai-fill-glow" : ""}`}>
                 <PriorityRating
                   value={priority ?? "NORMAL"}
                   onChange={(v) => setValue("priority", v as z.infer<typeof PrioritySchema>, { shouldDirty: true })}
@@ -387,7 +612,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
               id="task-background"
               {...register("background")}
               placeholder="배경, 주의사항, 참고 문서 등을 적어주세요."
-              className="min-h-[88px] text-[12.5px] leading-relaxed"
+              className={`min-h-[88px] text-[12.5px] leading-relaxed ${glowFields.has("background") ? "ai-fill-glow" : ""}`}
             />
           </div>
 
@@ -397,7 +622,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                 체크리스트 ({(checklist ?? []).filter((c) => c.trim() !== "").length}개)
               </label>
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 rounded-md ${glowFields.has("checklist") ? "ai-fill-glow" : ""}`}>
               {(checklist ?? []).map((item, i) => (
                 <div
                   key={i}
@@ -441,7 +666,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
             size="sm"
             onClick={runAi}
             disabled={aiLoading}
-            className="gap-1.5"
+            className="gap-1.5 ai-rainbow-border"
           >
             {aiLoading ? <Spinner className="h-3 w-3" /> : <HugeiconsIcon icon={AiMagicIcon} size={12} />}
             AI 자동완성

@@ -36,6 +36,11 @@ export const REPORT_STATUS = {
   SUBMITTED: "제출 완료",
 } as const
 
+// ─── 채팅 ────────────────────────────────────────────────
+
+/** 채팅 메시지 페이지 크기 — 초기 로드 및 무한 스크롤 1페이지 단위 */
+export const CHAT_PAGE_SIZE = 30
+
 // ─── 네비게이션 ──────────────────────────────────────────
 
 export const NAV_ITEMS = [

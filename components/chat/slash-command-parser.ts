@@ -1,3 +1,5 @@
+import { addDays, addWeeks, addMonths, endOfWeek, endOfMonth } from "date-fns"
+
 export interface ParsedTaskCommand {
   raw: string
   title: string | null
@@ -9,7 +11,9 @@ export interface ParsedTaskCommand {
 
 const USER_RE = /@([A-Za-z0-9가-힣_]+)/
 const PROJECT_RE = /#([A-Za-z0-9가-힣_-]+)/
-const DEADLINE_RE = /(D-\d+|오늘|내일|\d{4}-\d{2}-\d{2})/
+// "이번주까지"처럼 뒤에 "까지"가 붙어도 핵심 표현(그룹 1)만 추출
+const DEADLINE_RE =
+  /(D-\d+|오늘|내일|모레|이번\s?주|다음\s?주|차주|이번\s?달|다음\s?달|\d{4}-\d{2}-\d{2})(?:까지)?/
 
 export function parseSlashTask(raw: string): ParsedTaskCommand | null {
   const trimmed = raw.trim()
@@ -45,22 +49,38 @@ export function parseSlashTask(raw: string): ParsedTaskCommand | null {
   }
 }
 
-function resolveDeadline(label: string): Date | null {
-  const now = new Date()
-  now.setHours(23, 59, 59, 999)
-  if (label === "오늘") return now
-  if (label === "내일") {
-    const d = new Date(now)
-    d.setDate(d.getDate() + 1)
-    return d
+/**
+ * 한국어 상대 마감일 표현을 실제 날짜로 변환한다.
+ * "오늘"·"내일"·"모레"·"이번 주"·"다음 주"·"이번 달"·"다음 달"·"D-N"·ISO(YYYY-MM-DD) 지원.
+ * 슬래시 명령 파싱과 AI 자동완성(deadlineHint)에서 공용으로 쓰인다.
+ */
+export function resolveDeadline(label: string): Date | null {
+  const base = new Date()
+  base.setHours(23, 59, 59, 999)
+  const key = label.replace(/\s+/g, "")
+
+  switch (key) {
+    case "오늘":
+      return base
+    case "내일":
+      return addDays(base, 1)
+    case "모레":
+      return addDays(base, 2)
+    case "이번주":
+      return endOfWeek(base, { weekStartsOn: 1 })
+    case "다음주":
+    case "차주":
+      return endOfWeek(addWeeks(base, 1), { weekStartsOn: 1 })
+    case "이번달":
+      return endOfMonth(base)
+    case "다음달":
+      return endOfMonth(addMonths(base, 1))
   }
-  const dDay = label.match(/^D-(\d+)$/)
-  if (dDay) {
-    const d = new Date(now)
-    d.setDate(d.getDate() + Number(dDay[1]))
-    return d
-  }
-  const iso = label.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+
+  const dDay = key.match(/^D-(\d+)$/)
+  if (dDay) return addDays(base, Number(dDay[1]))
+
+  const iso = key.match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (iso) {
     return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]), 23, 59, 59, 999)
   }

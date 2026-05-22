@@ -1,12 +1,15 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useLayoutEffect, useRef } from "react"
 import Link from "next/link"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Spinner } from "@/components/ui/spinner"
 import { format } from "date-fns"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Task01Icon } from "@hugeicons/core-free-icons"
+import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS } from "@/lib/constants"
 
 interface FileInfo {
   id: string
@@ -24,7 +27,16 @@ interface Message {
   isTaskInstruction: boolean
   _isSystem?: boolean
   author: { id: string; name: string }
-  task?: { id: string; name: string; slug: string } | null
+  task?: {
+    id: string
+    name: string
+    slug: string
+    status?: string
+    priority?: string
+    deadline?: string | null
+    owner?: { id: string; name: string } | null
+    _count?: { checklists: number }
+  } | null
   files?: FileInfo[]
 }
 
@@ -42,6 +54,12 @@ interface MessageListProps {
   onToggleSelect?: (id: string) => void
   tasks?: TaskRef[]
   processingSlug?: string | null
+  /** 위로 스크롤 시 이전 메시지 로드 요청 */
+  onLoadOlder?: () => void
+  /** 더 불러올 이전 메시지가 있는지 */
+  hasMoreOlder?: boolean
+  /** 이전 메시지 로딩 중 */
+  loadingOlder?: boolean
 }
 
 export function MessageList({
@@ -52,12 +70,45 @@ export function MessageList({
   onToggleSelect,
   tasks = [],
   processingSlug,
+  onLoadOlder,
+  hasMoreOlder = false,
+  loadingOlder = false,
 }: MessageListProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const prevFirstIdRef = useRef<string | null>(null)
+  const anchorRef = useRef<{ height: number; top: number } | null>(null)
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages.length])
+  // 이전 메시지(prepend)면 스크롤 위치 유지, 그 외(새 메시지·초기 로드)는 맨 아래로
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const firstId = messages[0]?.id ?? null
+    const prevFirstId = prevFirstIdRef.current
+    const isPrepend =
+      prevFirstId != null &&
+      firstId !== prevFirstId &&
+      messages.some((m) => m.id === prevFirstId)
+
+    if (isPrepend && anchorRef.current) {
+      // prepend된 높이만큼 스크롤을 내려 시야를 그대로 유지
+      el.scrollTop =
+        el.scrollHeight - anchorRef.current.height + anchorRef.current.top
+      anchorRef.current = null
+    } else {
+      el.scrollTop = el.scrollHeight
+    }
+    prevFirstIdRef.current = firstId
+  }, [messages])
+
+  function handleScroll() {
+    const el = scrollRef.current
+    if (!el || !onLoadOlder) return
+    if (el.scrollTop < 80 && hasMoreOlder && !loadingOlder) {
+      // prepend 직전 스크롤 상태를 기록 → useLayoutEffect에서 위치 복원
+      anchorRef.current = { height: el.scrollHeight, top: el.scrollTop }
+      onLoadOlder()
+    }
+  }
 
   if (messages.length === 0) {
     return (
@@ -68,11 +119,37 @@ export function MessageList({
   }
 
   return (
-    <ScrollArea className="min-h-0 flex-1 px-4">
+    <div
+      ref={scrollRef}
+      onScroll={handleScroll}
+      className="min-h-0 flex-1 overflow-y-auto px-4"
+    >
       <div className="flex flex-col gap-3 py-4">
+        {loadingOlder && (
+          <div className="flex justify-center py-1">
+            <Spinner className="h-4 w-4" />
+          </div>
+        )}
+        {!hasMoreOlder && !loadingOlder && (
+          <div className="py-1 text-center text-[10px] text-muted-foreground">
+            — 대화의 시작 —
+          </div>
+        )}
         {messages.map((msg) => {
           const isMe = msg.author.id === currentUserId
           const isSelected = selectedIds?.has(msg.id) ?? false
+
+          // 업무 생성 카드 — content가 `__TASK_CREATED__:<taskId>` 형태
+          if (msg.content.startsWith("__TASK_CREATED__:")) {
+            return (
+              <TaskCreatedCard
+                key={msg.id}
+                task={msg.task ?? null}
+                fallbackId={msg.content.slice("__TASK_CREATED__:".length)}
+                createdAt={msg.createdAt}
+              />
+            )
+          }
 
           // 시스템 메시지 (구분선 스타일)
           if (msg._isSystem || msg.author.id === "system" || msg.content.startsWith("🤖")) {
@@ -197,9 +274,8 @@ export function MessageList({
             </span>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
-    </ScrollArea>
+    </div>
   )
 }
 
@@ -249,4 +325,77 @@ function MessageContent({ content, tasks, isMe = false }: { content: string; tas
   }
 
   return <>{parts}</>
+}
+
+/** 업무 생성 시 채팅에 표시되는 프리뷰 카드 */
+function TaskCreatedCard({
+  task,
+  fallbackId,
+  createdAt,
+}: {
+  task: Message["task"]
+  fallbackId: string
+  createdAt: string
+}) {
+  const href = `/tasks/${task?.id ?? fallbackId}`
+  const statusLabel = task?.status ? TASK_STATUS_LABELS[task.status] ?? task.status : null
+  const deadlineLabel = task?.deadline ? format(new Date(task.deadline), "M월 d일") : null
+  const checklistCount = task?._count?.checklists ?? 0
+
+  return (
+    <div className="flex flex-col items-center gap-1 py-1">
+      <Link
+        href={href}
+        onClick={(e) => e.stopPropagation()}
+        className="group flex w-full max-w-[88%] flex-col gap-2 rounded-xl border border-primary/25 bg-primary/[0.04] px-3.5 py-3 transition-colors hover:border-primary/45 hover:bg-primary/[0.07]"
+      >
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-primary">
+          <HugeiconsIcon icon={Task01Icon} size={13} />
+          새 업무가 생성되었습니다
+        </div>
+
+        <div className="text-[13px] font-semibold leading-snug text-foreground">
+          {task?.name ?? "업무"}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {task?.slug && (
+            <Badge variant="outline" className="text-[10px]">
+              #{task.slug}
+            </Badge>
+          )}
+          {statusLabel && (
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                (task?.status && TASK_STATUS_COLORS[task.status]) ||
+                "bg-muted text-muted-foreground"
+              }`}
+            >
+              {statusLabel}
+            </span>
+          )}
+          {task?.priority && (
+            <span className="text-[10px] text-muted-foreground">
+              {PRIORITY_LABELS[task.priority] ?? task.priority}
+            </span>
+          )}
+        </div>
+
+        {(task?.owner || deadlineLabel || checklistCount > 0) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-muted-foreground">
+            {task?.owner && <span>담당 {task.owner.name}</span>}
+            {deadlineLabel && <span>마감 {deadlineLabel}</span>}
+            {checklistCount > 0 && <span>체크리스트 {checklistCount}개</span>}
+          </div>
+        )}
+
+        <span className="text-[10.5px] font-medium text-primary opacity-70 transition-opacity group-hover:opacity-100">
+          업무 상세 보기 →
+        </span>
+      </Link>
+      <span className="text-[10px] text-muted-foreground">
+        {format(new Date(createdAt), "HH:mm")}
+      </span>
+    </div>
+  )
 }

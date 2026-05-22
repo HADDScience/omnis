@@ -18,11 +18,10 @@ interface MessageInputProps {
   onSend: (content: string, files?: File[]) => Promise<void>
   disabled?: boolean
   tasks?: { id: string; name: string; slug: string }[]
-  users?: { id: string; name: string }[]
   files?: { id: string; name: string; path: string; mimeType: string }[]
 }
 
-export function MessageInput({ onSend, disabled, tasks = [], users = [], files = [] }: MessageInputProps) {
+export function MessageInput({ onSend, disabled, tasks = [], files = [] }: MessageInputProps) {
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
@@ -55,20 +54,15 @@ export function MessageInput({ onSend, disabled, tasks = [], users = [], files =
         .map((t) => ({ id: t.slug, label: t.name, type: "task" as const }))
       setMentionItems(filtered)
     } else {
-      const filteredUsers = users
-        .filter((u) => u.name.toLowerCase().includes(query))
-        .slice(0, 3)
-        .map((u) => ({ id: u.name, label: u.name, type: "user" as const }))
-
       const filteredFiles = files
         .filter((f) => f.name.toLowerCase().includes(query))
         .slice(0, 3)
         .map((f) => ({ id: f.name, label: f.name, type: "file" as const }))
 
-      setMentionItems([...filteredUsers, ...filteredFiles])
+      setMentionItems(filteredFiles)
     }
     setMentionIndex(0)
-  }, [mentionQuery, mentionType, tasks, users, files])
+  }, [mentionQuery, mentionType, tasks, files])
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const value = e.target.value
@@ -261,34 +255,10 @@ export function MessageInput({ onSend, disabled, tasks = [], users = [], files =
             <div className="text-[10px] text-muted-foreground px-2 py-1">업무 선택</div>
           )}
           {mentionType === "user" && (() => {
-            const userItems = mentionItems.filter((item) => item.type === "user")
             const fileItems = mentionItems.filter((item) => item.type === "file")
             const allItems = mentionItems
             return (
               <>
-                {userItems.length > 0 && (
-                  <>
-                    <div className="text-[10px] text-muted-foreground px-2 py-1">사람</div>
-                    {userItems.map((item) => {
-                      const i = allItems.indexOf(item)
-                      return (
-                        <button
-                          key={`user-${item.id}`}
-                          className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left ${
-                            i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                          }`}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            insertMention(item)
-                          }}
-                        >
-                          <span className="text-xs text-muted-foreground">@</span>
-                          <span className="truncate">{item.label}</span>
-                        </button>
-                      )
-                    })}
-                  </>
-                )}
                 {fileItems.length > 0 && (
                   <>
                     <div className="text-[10px] text-muted-foreground px-2 py-1 mt-0.5">파일</div>
@@ -297,9 +267,8 @@ export function MessageInput({ onSend, disabled, tasks = [], users = [], files =
                       return (
                         <button
                           key={`file-${item.id}`}
-                          className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left ${
-                            i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                          }`}
+                          className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left ${i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                            }`}
                           onMouseDown={(e) => {
                             e.preventDefault()
                             insertMention(item)
@@ -318,9 +287,8 @@ export function MessageInput({ onSend, disabled, tasks = [], users = [], files =
           {mentionType === "task" && mentionItems.map((item, i) => (
             <button
               key={item.id}
-              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left ${
-                i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-              }`}
+              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left ${i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                }`}
               onMouseDown={(e) => {
                 e.preventDefault()
                 insertMention(item)
@@ -397,7 +365,7 @@ export function MessageInput({ onSend, disabled, tasks = [], users = [], files =
         >
           <HugeiconsIcon icon={Attachment01Icon} size={18} />
         </Button>
-        <div className="flex-1">
+        <div className="flex-1 max-h-[30px]">
           <Textarea
             ref={textareaRef}
             value={content}
@@ -405,7 +373,7 @@ export function MessageInput({ onSend, disabled, tasks = [], users = [], files =
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="메시지 입력... (#업무 @사람/파일 멘션 가능)"
-            className="min-h-[44px] max-h-[120px] resize-none text-sm"
+            className="min-h-[30px] resize-none text-sm"
             rows={1}
             disabled={disabled || sending}
           />
