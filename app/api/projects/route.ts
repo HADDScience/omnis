@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { name, productId } = body
+  const { name, productId, purpose, goal } = body
 
   if (!name?.trim()) {
     return NextResponse.json({ error: "name 필수" }, { status: 400 })
@@ -40,6 +40,8 @@ export async function POST(req: NextRequest) {
       name: name.trim(),
       status: "진행 중",
       productId: productId || null,
+      purpose: purpose?.trim() || null,
+      goal: goal?.trim() || null,
     },
     select: {
       id: true,
