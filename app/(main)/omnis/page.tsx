@@ -8,10 +8,19 @@ export const dynamic = "force-dynamic"
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
-export default async function OmnisPage() {
-  const session = await auth()
+interface Props {
+  searchParams: Promise<{ filter?: string }>
+}
 
-  const [categories, totalCards, recent, mine] = await Promise.all([
+export default async function OmnisPage({ searchParams }: Props) {
+  const session = await auth()
+  const { filter } = await searchParams
+  const activeFilter = filter === "bookmarks" ? "bookmarks" : "all"
+  const now = Date.now()
+
+  const userId = session?.user?.id as string | undefined
+
+  const [categories, totalCards, recent, popular, mine, bookmarks, recentViews, activityLogs] = await Promise.all([
     prisma.omnisCategory.findMany({
       orderBy: { sortOrder: "asc" },
       include: { _count: { select: { cards: true } } },
@@ -23,20 +32,72 @@ export default async function OmnisPage() {
       include: {
         category: { select: { name: true } },
         updatedBy: { select: { name: true } },
+        _count: { select: { viewLogs: true } },
       },
     }),
-    session?.user?.id
+    prisma.omnisCard.findMany({
+      orderBy: [{ viewLogs: { _count: "desc" } }, { updatedAt: "desc" }],
+      take: 4,
+      include: {
+        category: { select: { name: true } },
+        updatedBy: { select: { name: true } },
+        _count: { select: { viewLogs: true } },
+      },
+    }),
+    userId
       ? prisma.omnisCard.findMany({
-          where: { updatedById: session.user.id as string },
+          where: { updatedById: userId },
           orderBy: { updatedAt: "desc" },
           take: 4,
           include: {
             category: { select: { name: true } },
             updatedBy: { select: { name: true } },
+            _count: { select: { viewLogs: true } },
           },
         })
       : Promise.resolve([]),
+    userId
+      ? prisma.bookmark.findMany({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+          include: {
+            card: {
+              include: {
+                category: { select: { name: true } },
+                updatedBy: { select: { name: true } },
+                _count: { select: { viewLogs: true } },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    userId
+      ? prisma.omnisViewLog.findMany({
+          where: { userId },
+          distinct: ["cardId"],
+          orderBy: { viewedAt: "desc" },
+          take: 4,
+          include: {
+            card: {
+              include: {
+                category: { select: { name: true } },
+                updatedBy: { select: { name: true } },
+                _count: { select: { viewLogs: true } },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    prisma.activityLog.findMany({
+      where: { entity: { in: ["OMNIS_CARD", "TASK", "OMNIS_QUERY"] } },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      include: { user: { select: { name: true } } },
+    }),
   ])
+
+  const bookmarkedIds = new Set(bookmarks.map((b) => b.cardId))
 
   const withVersion = (c: (typeof recent)[number]) => {
     let version = c.version
@@ -52,12 +113,12 @@ export default async function OmnisPage() {
       authorName: c.updatedBy?.name ?? null,
       updatedAt: c.updatedAt.toISOString(),
       version,
-      fresh: Date.now() - c.updatedAt.getTime() < ONE_DAY_MS,
-      meta: `${c.category?.name ?? "—"} · ${c.updatedBy?.name ?? "—"} · ${formatRelative(c.updatedAt)}`,
+      viewCount: c._count.viewLogs,
+      bookmarked: bookmarkedIds.has(c.id),
+      fresh: now - c.updatedAt.getTime() < ONE_DAY_MS,
+      meta: `${c.category?.name ?? "—"} · ${c.updatedBy?.name ?? "—"} · ${formatRelative(c.updatedAt, now)}`,
     }
   }
-
-  const popular = [...recent].sort((a, b) => b.version - a.version).slice(0, 4)
 
   return (
     <>
@@ -65,9 +126,22 @@ export default async function OmnisPage() {
         totalCards={totalCards}
         categoryCount={categories.length}
         categories={categories.map((c) => ({ name: c.name, count: c._count.cards }))}
+        activeFilter={activeFilter}
         recent={recent.map(withVersion)}
         popular={popular.map(withVersion)}
         mine={mine.map(withVersion)}
+        bookmarks={bookmarks.map((b) => withVersion(b.card))}
+        recentViews={recentViews.map((v) => ({
+          ...withVersion(v.card),
+          meta: `${v.card.category?.name ?? "—"} · 열람 ${formatRelative(v.viewedAt, now)}`,
+        }))}
+        activityLogs={activityLogs.map((log) => ({
+          id: log.id,
+          title: log.title,
+          action: log.action,
+          userName: log.user?.name ?? null,
+          createdAt: log.createdAt.toISOString(),
+        }))}
       />
       <CreateCardDialog
         categories={categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon }))}
@@ -76,8 +150,8 @@ export default async function OmnisPage() {
   )
 }
 
-function formatRelative(d: Date): string {
-  const diff = Date.now() - d.getTime()
+function formatRelative(d: Date, now: number): string {
+  const diff = now - d.getTime()
   const days = Math.floor(diff / ONE_DAY_MS)
   if (days < 1) return "오늘"
   if (days === 1) return "어제"

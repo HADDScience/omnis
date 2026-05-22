@@ -24,6 +24,7 @@ interface Props {
 export default async function OmnisCategoryPage({ params }: Props) {
   const { categorySlug } = await params
   const decoded = decodeURIComponent(categorySlug)
+  const now = Date.now()
 
   const category = await prisma.omnisCategory.findUnique({
     where: { name: decoded },
@@ -50,7 +51,7 @@ export default async function OmnisCategoryPage({ params }: Props) {
       authorName: c.updatedBy?.name ?? null,
       updatedAt: c.updatedAt,
       version,
-      fresh: Date.now() - c.updatedAt.getTime() < ONE_DAY_MS,
+      fresh: now - c.updatedAt.getTime() < ONE_DAY_MS,
     }
   })
 

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { OmnisCardDetail } from "./card-detail"
 import { VersionHistory } from "@/components/omnis/version-history"
+import { auth } from "@/lib/auth"
+import { writeActivity } from "@/lib/api"
 
 export const dynamic = "force-dynamic"
 
@@ -12,8 +14,10 @@ interface Props {
 
 export default async function OmnisCardPage({ params }: Props) {
   const { cardId } = await params
+  const session = await auth()
+  const userId = session?.user?.id as string | undefined
 
-  const [card, allCards] = await Promise.all([
+  const [card, allCards, bookmark] = await Promise.all([
     prisma.omnisCard.findUnique({
       where: { id: cardId },
       include: {
@@ -25,9 +29,28 @@ export default async function OmnisCardPage({ params }: Props) {
       where: { id: { not: cardId } },
       select: { id: true, title: true },
     }),
+    userId
+      ? prisma.bookmark.findUnique({
+          where: { userId_cardId: { userId, cardId } },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
   ])
 
   if (!card) notFound()
+
+  if (userId) {
+    await prisma.omnisViewLog.create({
+      data: { cardId: card.id, userId },
+    })
+    await writeActivity({
+      userId,
+      action: "omnis.viewed",
+      entity: "OMNIS_CARD",
+      entityId: card.id,
+      title: `카드 열람: ${card.title}`,
+    })
+  }
 
   return (
     <>
@@ -41,6 +64,7 @@ export default async function OmnisCardPage({ params }: Props) {
               updatedAt: card.updatedAt.toISOString(),
             }}
             allCards={allCards}
+            initialBookmarked={!!bookmark}
           />
         </div>
         <VersionHistory cardId={card.id} />

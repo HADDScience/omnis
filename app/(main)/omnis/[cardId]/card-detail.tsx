@@ -2,15 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Edit02Icon,
@@ -18,7 +15,7 @@ import {
   ArrowUp01Icon,
   ArrowDown01Icon,
   Add01Icon,
-  Delete02Icon,
+  StarIcon,
 } from "@hugeicons/core-free-icons"
 import { format } from "date-fns"
 import {
@@ -59,13 +56,14 @@ interface OmnisCardProps {
     updatedAt: string
   }
   allCards: CardInfo[]
+  initialBookmarked: boolean
 }
 
 // ═══════════════════════════════════════════════════════════
 //  OmnisCardDetail
 // ═══════════════════════════════════════════════════════════
 
-export function OmnisCardDetail({ card, allCards }: OmnisCardProps) {
+export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCardProps) {
   const router = useRouter()
   const cardContent = migrateContent(card.content)
   const status = cardContent.status || ""
@@ -75,11 +73,11 @@ export function OmnisCardDetail({ card, allCards }: OmnisCardProps) {
   const [editSections, setEditSections] = useState<Section[]>(cardContent.sections)
   const [editTags, setEditTags] = useState(card.tags.join(", "))
   const [saving, setSaving] = useState(false)
+  const [bookmarked, setBookmarked] = useState(initialBookmarked)
+  const [bookmarking, setBookmarking] = useState(false)
 
   // 버전 히스토리
   const [history, setHistory] = useState<VersionEntry[]>([])
-  const [previewHash, setPreviewHash] = useState<string | null>(null)
-  const [previewContent, setPreviewContent] = useState("")
   const [rolling, setRolling] = useState(false)
   const [timeMachineHash, setTimeMachineHash] = useState<string | null>(null)
   const [timeMachineContent, setTimeMachineContent] = useState("")
@@ -160,18 +158,24 @@ export function OmnisCardDetail({ card, allCards }: OmnisCardProps) {
     setEditTags(card.tags.join(", "))
   }
 
-  // ─── 버전 관련 ─────────────────────────────────────────
-
-  async function loadVersion(hash: string) {
-    if (previewHash === hash) {
-      setPreviewHash(null)
-      return
+  async function toggleBookmark() {
+    setBookmarking(true)
+    try {
+      const res = await fetch(bookmarked ? `/api/bookmarks/${card.id}` : "/api/bookmarks", {
+        method: bookmarked ? "DELETE" : "POST",
+        headers: bookmarked ? undefined : { "Content-Type": "application/json" },
+        body: bookmarked ? undefined : JSON.stringify({ cardId: card.id }),
+      })
+      if (res.ok) {
+        setBookmarked((v) => !v)
+        router.refresh()
+      }
+    } finally {
+      setBookmarking(false)
     }
-    const res = await fetch(`/api/omnis/cards/history?cardId=${card.id}&hash=${hash}`)
-    const data = await res.json()
-    setPreviewContent(data.content || "")
-    setPreviewHash(hash)
   }
+
+  // ─── 버전 관련 ─────────────────────────────────────────
 
   async function enterTimeMachine(hash: string) {
     if (timeMachineHash === hash) {
@@ -217,7 +221,6 @@ export function OmnisCardDetail({ card, allCards }: OmnisCardProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cardId: card.id, hash }),
       })
-      setPreviewHash(null)
       router.refresh()
     } finally {
       setRolling(false)
@@ -254,15 +257,27 @@ export function OmnisCardDetail({ card, allCards }: OmnisCardProps) {
               v{card.version} · {card.updatedBy?.name} · {format(new Date(card.updatedAt), "yy.MM.dd")}
             </span>
             {!editing && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => setEditing(true)}
-              >
-                <HugeiconsIcon icon={Edit02Icon} size={14} />
-                편집
-              </Button>
+              <>
+                <Button
+                  variant={bookmarked ? "default" : "outline"}
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={bookmarking}
+                  onClick={toggleBookmark}
+                >
+                  <HugeiconsIcon icon={StarIcon} size={14} />
+                  즐겨찾기
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setEditing(true)}
+                >
+                  <HugeiconsIcon icon={Edit02Icon} size={14} />
+                  편집
+                </Button>
+              </>
             )}
           </div>
         </CardContent>
