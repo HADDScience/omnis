@@ -11,12 +11,11 @@ import type {
   TaskNodeData,
 } from "@/lib/workspace-types"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FlowNode = {
   id: string
   type: string
   position: { x: number; y: number }
-  data: any
+  data: ProductRoomNodeData | ProjectCardNodeData | TaskNodeData
   draggable?: boolean
   selectable?: boolean
   zIndex?: number
@@ -42,34 +41,6 @@ const CANVAS_TOP = 50
 // ─── 엣지 스타일 ────────────────────────────────────────
 
 const EDGE_COLOR = "var(--color-border-strong)"
-
-// ─── linkedCards mock (Inspector "연결된 HADD 카드" 검증용) ─────
-// 실제 Task-OmnisCard 연결 스키마가 도입되기 전까지 projectName + 제품명 기반 임시 mock.
-function mockLinkedCardsFor(params: {
-  taskId: string
-  projectId: string | null
-  projectName: string | null
-  productName: string | null
-}): { id: string; title: string; checked: boolean }[] {
-  const { taskId, projectId, projectName, productName } = params
-  if (!projectName && !productName) return []
-  const cards: { id: string; title: string; checked: boolean }[] = []
-  if (projectName) {
-    cards.push({
-      id: `hadd-${projectId ?? taskId}-proj`,
-      title: `${projectName} — 관련 HADD 카드`,
-      checked: false,
-    })
-  }
-  if (productName) {
-    cards.push({
-      id: `hadd-${taskId}-prod`,
-      title: `${productName} 제품 개요`,
-      checked: false,
-    })
-  }
-  return cards.slice(0, 2)
-}
 
 function edgeStyle(width = 1.5, dashed = false) {
   return {
@@ -99,17 +70,26 @@ export function useWorkspaceNodes({
   return useMemo(() => {
     const nodes: FlowNode[] = []
     const edges: Edge[] = []
+    const unassignedTasks = tasks.filter((t) => t.productId === null)
+    const productsWithUnassigned: WorkspaceProduct[] = [
+      ...products,
+      ...(unassignedTasks.length > 0 && !selectedProductId
+        ? [{ id: "__unassigned__", name: "미분류", color: "#9ca3af" }]
+        : []),
+    ]
 
     const visibleProducts = selectedProductId
-      ? products.filter((p) => p.id === selectedProductId)
-      : products
+      ? productsWithUnassigned.filter((p) => p.id === selectedProductId)
+      : productsWithUnassigned
 
     // 각 제품별로 평탄한 tree 배치
     let runningY = CANVAS_TOP
 
     visibleProducts.forEach((product) => {
       // 이 제품의 모든 task (프로젝트 유무 무관)
-      const productTasks = tasks.filter((t) => t.productId === product.id)
+      const productTasks = product.id === "__unassigned__"
+        ? unassignedTasks
+        : tasks.filter((t) => t.productId === product.id)
 
       // projectId 기준 그룹
       const projectIdSet = new Set<string>()
@@ -218,17 +198,12 @@ export function useWorkspaceNodes({
             projectId: task.projectId,
             productId: task.productId,
           }
-          // Inspector 매핑용 부가 필드 (projectName + HADD linkedCards mock)
+          // Inspector 매핑용 부가 필드. 실제 HADD 카드 연결 모델이 없어 linkedCards는 비워 둔다.
           const taskDataExtra = {
             ...taskData,
             projectName: block.project.name,
             productName: product.name,
-            linkedCards: mockLinkedCardsFor({
-              taskId: task.id,
-              projectId: task.projectId,
-              projectName: block.project.name,
-              productName: product.name,
-            }),
+            linkedCards: [],
           }
           nodes.push({
             id: `task-${task.id}`,
@@ -274,12 +249,7 @@ export function useWorkspaceNodes({
             ...taskData,
             projectName: task.projectName ?? null,
             productName: product.name,
-            linkedCards: mockLinkedCardsFor({
-              taskId: task.id,
-              projectId: null,
-              projectName: task.projectName ?? null,
-              productName: product.name,
-            }),
+            linkedCards: [],
           }
           nodes.push({
             id: `task-${task.id}`,
@@ -313,7 +283,7 @@ export function useWorkspaceNodes({
         (productBlockStartY + productBlockEndY) / 2 - ROW_H / 2
 
       const roomData: ProductRoomNodeData = {
-        productId: product.id,
+        productId: product.id === "__unassigned__" ? null : product.id,
         name: product.name,
         color: product.color,
         activeProjectCount: projectBlocks.filter((b) => !b.isDone).length,

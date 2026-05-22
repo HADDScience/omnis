@@ -12,7 +12,7 @@ export default async function DashboardPage() {
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
 
-  const [allTasks, users, gajumCard, gwajaeCard, products, categories, allProjects, , geminiAggregate, geminiByEndpoint] = await Promise.all([
+  const [allTasks, users, gajumCard, gwajaeCard, products, allProjects, , geminiAggregate, geminiByEndpoint] = await Promise.all([
     prisma.task.findMany({
       where: { archived: false },
       select: {
@@ -24,8 +24,6 @@ export default async function DashboardPage() {
         ownerId: true,
         deadline: true,
         updatedAt: true,
-        categoryId: true,
-        category: { select: { id: true, name: true, icon: true, color: true } },
         productId: true,
         product: { select: { id: true, name: true, color: true } },
         project: {
@@ -46,7 +44,6 @@ export default async function DashboardPage() {
     prisma.omnisCard.findFirst({ where: { title: "가점항목 리스트" } }),
     prisma.omnisCard.findFirst({ where: { title: "과제 리스트" } }),
     prisma.product.findMany({ orderBy: { sortOrder: "asc" } }),
-    prisma.taskCategory.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.project.findMany({
       where: { archived: false },
       select: { id: true, name: true, productId: true },
@@ -144,14 +141,6 @@ export default async function DashboardPage() {
     color: p.color,
   }))
 
-  const workspaceCategories = categories.map((c) => ({
-    id: c.id,
-    name: c.name,
-    icon: c.icon,
-    color: c.color,
-    sortOrder: c.sortOrder,
-  }))
-
   const workspaceProjects = allProjects.map((p) => ({
     id: p.id,
     name: p.name,
@@ -171,8 +160,8 @@ export default async function DashboardPage() {
       slug: t.slug,
       status: t.status,
       priority: t.priority,
-      categoryId: t.categoryId,
-      categoryName: t.category?.name ?? null,
+      categoryId: null,
+      categoryName: null,
       productId: t.productId ?? t.project?.product?.id ?? null,
       projectId: t.project?.id ?? null,
       projectName: t.project?.name ?? null,
@@ -207,9 +196,9 @@ export default async function DashboardPage() {
         gajumMarkdown={gajumMarkdown}
         gwajaeMarkdown={gwajaeMarkdown}
         workspaceProducts={workspaceProducts}
-        workspaceCategories={workspaceCategories}
         workspaceProjects={workspaceProjects}
         workspaceTasks={workspaceTasks}
+        geminiUsageData={geminiUsageData}
       />
     </>
   )

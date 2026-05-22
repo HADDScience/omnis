@@ -12,21 +12,18 @@ import { TaskContextMenu } from "./workspace/task-context-menu"
 import { useWorkspaceNodes } from "./workspace/use-workspace-nodes"
 import type {
   WorkspaceProduct,
-  WorkspaceCategory,
   WorkspaceTaskItem,
   WorkspaceProject,
 } from "@/lib/workspace-types"
 
 interface DashboardWorkspaceProps {
   products: WorkspaceProduct[]
-  categories: WorkspaceCategory[]
   projects: WorkspaceProject[]
   tasks: WorkspaceTaskItem[]
 }
 
 export function DashboardWorkspace({
   products,
-  categories,
   projects,
   tasks,
 }: DashboardWorkspaceProps) {
@@ -65,7 +62,7 @@ export function DashboardWorkspace({
   })
 
   const handleContextMenuSave = useCallback(
-    async (taskId: string, updates: { categoryId?: string; projectId?: string; productId?: string }) => {
+    async (taskId: string, updates: { projectId?: string; productId?: string | null }) => {
       try {
         await fetch(`/api/tasks/${taskId}`, {
           method: "PATCH",
@@ -163,8 +160,8 @@ export function DashboardWorkspace({
             name: contextTask.name,
             status: contextTask.status,
             priority: "",
-            categoryId: contextTask.categoryId,
-            categoryName: contextTask.categoryName,
+            categoryId: null,
+            categoryName: null,
             productId: contextTask.productId,
             productName: null,
             projectId: contextTask.projectId,
@@ -174,7 +171,6 @@ export function DashboardWorkspace({
             ownerName: contextTask.ownerName,
           }}
           products={products}
-          categories={categories}
           projects={projects}
           onClose={() => setContextMenu(null)}
           onSave={handleContextMenuSave}

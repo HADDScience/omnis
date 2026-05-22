@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { MainWithChat } from "@/components/layout/main-with-chat"
 import { CommandPaletteProvider } from "@/components/layout/command-palette-context"
+import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 export default async function MainLayout({
   children,
@@ -17,10 +18,11 @@ export default async function MainLayout({
     redirect("/login")
   }
 
-  const messages = await prisma.chatMessage.findMany({
+  // 최신 메시지 한 페이지를 가져와 화면 표시용 오름차순으로 정렬
+  const recentMessages = await prisma.chatMessage.findMany({
     where: { roomId: "default-room" },
-    orderBy: { createdAt: "asc" },
-    take: 100,
+    orderBy: { createdAt: "desc" },
+    take: CHAT_PAGE_SIZE,
     include: {
       author: { select: { id: true, name: true } },
       task: { select: { id: true, name: true, slug: true } },
@@ -28,7 +30,7 @@ export default async function MainLayout({
     },
   })
 
-  const serializedMessages = messages.map((m) => ({
+  const serializedMessages = recentMessages.reverse().map((m) => ({
     ...m,
     createdAt: m.createdAt.toISOString(),
   }))

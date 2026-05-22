@@ -7,9 +7,12 @@ import { Progress } from "@/components/ui/progress"
 import { DashboardMembers } from "./dashboard-members"
 import { DashboardLists } from "./dashboard-lists"
 import { DashboardWorkspace } from "./dashboard-workspace"
+import {
+  DashboardGeminiUsage,
+  type GeminiUsageData,
+} from "./dashboard-gemini-usage"
 import type {
   WorkspaceProduct,
-  WorkspaceCategory,
   WorkspaceTaskItem,
   WorkspaceProject,
 } from "@/lib/workspace-types"
@@ -50,9 +53,9 @@ interface DashboardViewProps {
   gajumMarkdown: string
   gwajaeMarkdown: string
   workspaceProducts: WorkspaceProduct[]
-  workspaceCategories: WorkspaceCategory[]
   workspaceProjects: WorkspaceProject[]
   workspaceTasks: WorkspaceTaskItem[]
+  geminiUsageData: GeminiUsageData
 }
 
 const PERIOD_LABELS: Record<PeriodKey, string> = {
@@ -68,9 +71,9 @@ export function DashboardView({
   gajumMarkdown,
   gwajaeMarkdown,
   workspaceProducts,
-  workspaceCategories,
   workspaceProjects,
   workspaceTasks,
+  geminiUsageData,
 }: DashboardViewProps) {
   const [period, setPeriod] = useState<PeriodKey>("week")
 
@@ -131,10 +134,12 @@ export function DashboardView({
         </CardContent>
       </Card>
 
+      {/* AI(Gemini) 사용량 */}
+      <DashboardGeminiUsage data={geminiUsageData} />
+
       {/* 워크스페이스 */}
       <DashboardWorkspace
         products={workspaceProducts}
-        categories={workspaceCategories}
         projects={workspaceProjects}
         tasks={workspaceTasks}
       />

@@ -3,29 +3,57 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { rebuildTask } from "@/lib/ai"
 import { persistMentions } from "@/lib/mentions"
+import { syncEmbeddings, syncEmbeddingsSafe } from "@/lib/embeddings"
+import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 export async function GET(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "인증 필요" }, { status: 401 })
+  }
+
   const { searchParams } = new URL(req.url)
   const roomId = searchParams.get("roomId")
   if (!roomId) return NextResponse.json({ error: "roomId 필수" }, { status: 400 })
 
   const after = searchParams.get("after")
+  const before = searchParams.get("before")
+  const taskId = searchParams.get("taskId")
+
+  // after: 폴링(새 메시지) / before: 무한 스크롤(이전 메시지) / 둘 다 없음: 초기 로드(최신 페이지)
+  const isPolling = !!after
 
   const messages = await prisma.chatMessage.findMany({
     where: {
       roomId,
+      ...(taskId ? { taskId } : {}),
       ...(after ? { createdAt: { gt: new Date(after) } } : {}),
+      ...(before ? { createdAt: { lt: new Date(before) } } : {}),
     },
-    orderBy: { createdAt: "asc" },
-    take: 200,
+    // 폴링은 오름차순 누적, 그 외에는 최신순 한 페이지를 가져온 뒤 뒤집어 반환
+    orderBy: { createdAt: isPolling ? "asc" : "desc" },
+    take: isPolling ? 200 : CHAT_PAGE_SIZE,
     include: {
       author: { select: { id: true, name: true } },
-      task: { select: { id: true, name: true, slug: true } },
+      // TASK_CREATED 메시지가 생성된 업무의 프리뷰 카드를 그릴 수 있도록 핵심 필드 포함
+      task: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          status: true,
+          priority: true,
+          deadline: true,
+          owner: { select: { id: true, name: true } },
+          _count: { select: { checklists: true } },
+        },
+      },
       files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
     },
   })
 
-  return NextResponse.json(messages)
+  // 초기 로드·이전 메시지는 desc로 가져왔으므로 화면 표시용 오름차순으로 정렬
+  return NextResponse.json(isPolling ? messages : messages.reverse())
 }
 
 function extractMentionSlug(content: string): { slug: string; restText: string } | null {
@@ -44,17 +72,22 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { roomId, content, taskId, fileIds, fileNames } = body
+  const { roomId, content, taskId, fileIds } = body
 
   if (!roomId || !content?.trim()) {
     return NextResponse.json({ error: "roomId, content 필수" }, { status: 400 })
   }
 
   const trimmedContent = content.trim()
-  const attachedFileNames: string[] = fileNames || []
+  await prisma.chatRoom.upsert({
+    where: { id: roomId },
+    update: {},
+    create: { id: roomId, name: roomId === "default-room" ? "하드사이언스 인턴방" : "새 채팅방" },
+  })
+
   const mention = extractMentionSlug(trimmedContent)
   let linkedTaskId = taskId || null
-  let taskUpdate: { action: string; statusLabel?: string; summary?: string } | null = null
+  let taskUpdate: { action: string; statusLabel?: string; summary?: string; kind?: "TASK_REBUILT" | "TASK_DONE" } | null = null
 
   // 먼저 메시지 저장 (즉시 응답을 위해)
   const message = await prisma.chatMessage.create({
@@ -144,7 +177,7 @@ export async function POST(req: NextRequest) {
             where: { taskId: task.id, done: false },
             data: { done: true },
           })
-          taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${mention.slug} 업무 전체 완료 처리 · 체크리스트 전부 체크` }
+          taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${mention.slug} 업무 전체 완료 처리 · 체크리스트 전부 체크`, kind: "TASK_DONE" }
           await createNotification(notifyUserId, "task_status_changed", "업무 완료", `${session.user.name}님이 #${mention.slug} 업무를 완료했습니다.`, task.id)
 
         } else if (result.action === "pause") {
@@ -215,6 +248,7 @@ export async function POST(req: NextRequest) {
             action: "rebuild",
             statusLabel: "업무 업데이트됨",
             summary: `#${mention.slug} 재구성 · ${changes.join(" · ") || "내용 갱신"}`,
+            kind: "TASK_REBUILT",
           }
           await createNotification(notifyUserId, "task_rebuilt", `업무 업데이트: #${mention.slug}`, `${session.user.name}님의 메시지로 업무 카드가 재구성되었습니다.`, task.id)
         }
@@ -225,9 +259,12 @@ export async function POST(req: NextRequest) {
         if (action === "complete") {
           await prisma.task.update({ where: { id: task.id }, data: { status: "DONE", workEnd: new Date() } })
           await prisma.checklist.updateMany({ where: { taskId: task.id, done: false }, data: { done: true } })
-          taskUpdate = { action: "complete", statusLabel: "완료" }
+          taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${mention.slug} 업무 전체 완료 처리`, kind: "TASK_DONE" }
         }
       }
+
+      // 멘션으로 변경된 업무 카드·체크리스트를 임베딩에 반영
+      await syncEmbeddingsSafe("TASK", task.id)
     } else if (task) {
       await prisma.chatMessage.update({ where: { id: message.id }, data: { taskId: task.id } })
     }
@@ -244,6 +281,7 @@ export async function POST(req: NextRequest) {
           authorId: systemUser.id,
           content: `🤖 ${taskUpdate.summary || taskUpdate.statusLabel || "업무 업데이트"}`,
           taskId: linkedTaskId,
+          kind: taskUpdate.kind ?? "NORMAL",
         },
       })
     }
@@ -258,6 +296,11 @@ export async function POST(req: NextRequest) {
       files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
     },
   })
+
+  // 채팅 메시지 임베딩은 백그라운드로 처리 — 메시지 전송 응답을 지연시키지 않음
+  void syncEmbeddings("CHAT_MESSAGE", message.id).catch((err) =>
+    console.error("[embeddings] 채팅 메시지 동기화 실패", err)
+  )
 
   return NextResponse.json(
     { ...updatedMessage, _taskUpdate: taskUpdate },

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react"
 import type {
   WorkspaceProduct,
-  WorkspaceCategory,
   WorkspaceProject,
   TaskBadgeNodeData,
 } from "@/lib/workspace-types"
@@ -13,10 +12,9 @@ interface TaskContextMenuProps {
   y: number
   task: TaskBadgeNodeData
   products: WorkspaceProduct[]
-  categories: WorkspaceCategory[]
   projects: WorkspaceProject[]
   onClose: () => void
-  onSave: (taskId: string, updates: { categoryId?: string; projectId?: string }) => void
+  onSave: (taskId: string, updates: { projectId?: string; productId?: string | null }) => void
 }
 
 export function TaskContextMenu({
@@ -24,12 +22,10 @@ export function TaskContextMenu({
   y,
   task,
   products,
-  categories,
   projects,
   onClose,
   onSave,
 }: TaskContextMenuProps) {
-  const [categoryId, setCategoryId] = useState(task.categoryId ?? "")
   const [projectId, setProjectId] = useState(task.projectId ?? "")
   const [saving, setSaving] = useState(false)
 
@@ -56,14 +52,17 @@ export function TaskContextMenu({
 
   const handleSave = useCallback(async () => {
     setSaving(true)
-    const updates: { categoryId?: string; projectId?: string } = {}
-    if (categoryId && categoryId !== task.categoryId) updates.categoryId = categoryId
+    const updates: { projectId?: string; productId?: string | null } = {}
+    const selectedProject = projects.find((p) => p.id === projectId)
     if (projectId !== (task.projectId ?? "")) updates.projectId = projectId || undefined
+    if ((selectedProject?.productId ?? null) !== task.productId) {
+      updates.productId = selectedProject?.productId ?? null
+    }
     if (Object.keys(updates).length > 0) {
       onSave(task.taskId, updates)
     }
     onClose()
-  }, [categoryId, projectId, task, onSave, onClose])
+  }, [projectId, projects, task, onSave, onClose])
 
   // 제품 변경 = 프로젝트 변경으로 처리 (프로젝트가 제품에 연결됨)
   const selectedProject = projects.find((p) => p.id === projectId)
@@ -78,25 +77,6 @@ export function TaskContextMenu({
       <div className="mb-2 truncate text-xs font-bold">{task.name}</div>
       <div className="mb-3 text-[10px] text-muted-foreground">
         {task.ownerName}
-      </div>
-
-      {/* 카테고리 */}
-      <div className="mb-2">
-        <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">
-          카테고리
-        </label>
-        <select
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-          className="w-full rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-        >
-          <option value="">미배정</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.icon ? `${c.icon} ` : ""}{c.name}
-            </option>
-          ))}
-        </select>
       </div>
 
       {/* 프로젝트 (제품 연결) */}

@@ -127,9 +127,6 @@ function toInspectorData(node: Node): InspectorData {
           day: "numeric",
         })
       : undefined
-    // 범위 외: Task-OmnisCard 연결 스키마 없음 → mock
-    // use-workspace-nodes에서 주입한 data.linkedCards 우선 사용, 없으면 projectName 기반 폴백
-    const projectIdRaw = typeof data.projectId === "string" ? data.projectId : null
     const rawLinked = Array.isArray((data as { linkedCards?: unknown }).linkedCards)
       ? ((data as { linkedCards: unknown[] }).linkedCards as unknown[])
       : null
@@ -148,14 +145,6 @@ function toInspectorData(node: Node): InspectorData {
           }
         })
         .filter((c): c is { id: string; title: string; checked: boolean } => c !== null)
-    } else if (projectName && projectIdRaw) {
-      linkedCards = [
-        {
-          id: projectIdRaw,
-          title: `${projectName} — 관련 HADD 카드`,
-          checked: false,
-        },
-      ]
     }
     const taskId = typeof data.taskId === "string" ? data.taskId : node.id.replace(/^task-/, "")
     return {
@@ -214,8 +203,6 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const router = useRouter()
   const [groupMode, setGroupMode] = useState<GroupMode>("product")
-  const [autoArrange, setAutoArrange] = useState(false)
-  const [haddLinkMode, setHaddLinkMode] = useState(false)
   const { setViewport, getViewport, fitView } = useReactFlow()
   const savedLayoutRef = useRef<SavedLayout | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -329,10 +316,6 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
       <WorkspaceToolbar
         groupMode={groupMode}
         onGroupChange={setGroupMode}
-        autoArrange={autoArrange}
-        onToggleAutoArrange={() => setAutoArrange((v) => !v)}
-        haddLinkMode={haddLinkMode}
-        onToggleHaddLink={() => setHaddLinkMode((v) => !v)}
         stats={stats}
         onReset={handleResetLayout}
       />

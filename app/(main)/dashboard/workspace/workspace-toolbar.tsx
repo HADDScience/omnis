@@ -5,30 +5,17 @@ import { useReactFlow } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  FilterIcon,
-  MagnetIcon,
-  Link04Icon,
   ZoomInAreaIcon,
   ZoomOutAreaIcon,
   Refresh01Icon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
-export type GroupMode = "product" | "project" | "status" | "owner"
+export type GroupMode = "product"
 
 interface ToolbarProps {
   groupMode: GroupMode
   onGroupChange: (m: GroupMode) => void
-  autoArrange: boolean
-  onToggleAutoArrange: () => void
-  haddLinkMode: boolean
-  onToggleHaddLink: () => void
   stats: { totalNodes: number; overdueCount: number; inProgressCount: number }
   onReset?: () => void
 }
@@ -36,23 +23,14 @@ interface ToolbarProps {
 export function WorkspaceToolbar({
   groupMode,
   onGroupChange,
-  autoArrange,
-  onToggleAutoArrange,
-  haddLinkMode,
-  onToggleHaddLink,
   stats,
   onReset,
 }: ToolbarProps) {
   const { zoomIn, zoomOut, setViewport } = useReactFlow()
   const [zoom, setZoom] = useState(100)
 
-  // implemented: 현재 useWorkspaceNodes는 product→project→task 트리만 지원.
-  // 나머지 모드는 layout 미구현 → 규칙 12(빈 onClick 금지)에 따라 disabled + Tooltip.
-  const groups: { key: GroupMode; label: string; implemented: boolean }[] = [
-    { key: "product", label: "제품별", implemented: true },
-    { key: "project", label: "프로젝트별", implemented: false },
-    { key: "status", label: "상태별", implemented: false },
-    { key: "owner", label: "담당자별", implemented: false },
+  const groups: { key: GroupMode; label: string }[] = [
+    { key: "product", label: "제품별" },
   ]
 
   return (
@@ -61,101 +39,23 @@ export function WorkspaceToolbar({
       onClick={(e) => e.stopPropagation()}
     >
       {/* 그룹핑 탭 */}
-      <TooltipProvider>
-        <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 p-0.5">
-          {groups.map((g) =>
-            g.implemented ? (
-              <button
-                key={g.key}
-                type="button"
-                onClick={() => onGroupChange(g.key)}
-                className={cn(
-                  "rounded-sm px-2 py-0.5 text-[11px] font-medium transition-colors",
-                  groupMode === g.key
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {g.label}
-              </button>
-            ) : (
-              <Tooltip key={g.key}>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      disabled
-                      className="cursor-not-allowed rounded-sm px-2 py-0.5 text-[11px] font-medium text-muted-foreground/50"
-                    />
-                  }
-                >
-                  {g.label}
-                </TooltipTrigger>
-                <TooltipContent>곧 제공 예정</TooltipContent>
-              </Tooltip>
-            ),
-          )}
-        </div>
-      </TooltipProvider>
-
-      <div className="h-4 w-px bg-border" />
-
-      {/*
-        규칙 12 (omnis/CLAUDE.md): 빈 onClick 금지. 미구현 UI는 disabled + Tooltip.
-        필터/자동정렬/HADD 카드 연결은 핸들러가 canvas에 연결되지 않은 상태(상태만 토글).
-        Phase 4에서 사용 로그 검증 후 활용/제거 결정.
-      */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-[11px]" disabled />
-            }
+      <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 p-0.5">
+        {groups.map((g) => (
+          <button
+            key={g.key}
+            type="button"
+            onClick={() => onGroupChange(g.key)}
+            className={cn(
+              "rounded-sm px-2 py-0.5 text-[11px] font-medium transition-colors",
+              groupMode === g.key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
           >
-            <HugeiconsIcon icon={FilterIcon} size={11} />
-            필터
-          </TooltipTrigger>
-          <TooltipContent>곧 제공 예정</TooltipContent>
-        </Tooltip>
-
-        <div className="h-4 w-px bg-border" />
-
-        {/* 모드 토글 — 비활성 상태 */}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={autoArrange ? "default" : "outline"}
-                size="sm"
-                className="h-7 gap-1 text-[11px]"
-                onClick={onToggleAutoArrange}
-                disabled
-              />
-            }
-          >
-            <HugeiconsIcon icon={MagnetIcon} size={11} />
-            자동 정렬
-          </TooltipTrigger>
-          <TooltipContent>곧 제공 예정</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={haddLinkMode ? "default" : "outline"}
-                size="sm"
-                className="h-7 gap-1 text-[11px]"
-                onClick={onToggleHaddLink}
-                disabled
-              />
-            }
-          >
-            <HugeiconsIcon icon={Link04Icon} size={11} />
-            HADD 카드 연결
-          </TooltipTrigger>
-          <TooltipContent>곧 제공 예정</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+            {g.label}
+          </button>
+        ))}
+      </div>
 
       <div className="flex-1" />
 
