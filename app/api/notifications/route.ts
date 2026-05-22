@@ -35,10 +35,13 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (id) {
-    await prisma.notification.update({
-      where: { id },
+    const result = await prisma.notification.updateMany({
+      where: { id, userId: session.user.id },
       data: { read: true },
     })
+    if (result.count === 0) {
+      return NextResponse.json({ error: "알림 없음" }, { status: 404 })
+    }
     return NextResponse.json({ ok: true })
   }
 
@@ -63,7 +66,12 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (id) {
-    await prisma.notification.delete({ where: { id } })
+    const result = await prisma.notification.deleteMany({
+      where: { id, userId: session.user.id },
+    })
+    if (result.count === 0) {
+      return NextResponse.json({ error: "알림 없음" }, { status: 404 })
+    }
     return NextResponse.json({ ok: true })
   }
 

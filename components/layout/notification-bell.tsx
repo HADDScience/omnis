@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +16,7 @@ interface Notification {
   type: string
   title: string
   content: string | null
+  entityId: string | null
   read: boolean
   createdAt: string
 }
@@ -22,6 +24,7 @@ interface Notification {
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [open, setOpen] = useState(false)
+  const router = useRouter()
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -68,6 +71,14 @@ export function NotificationBell() {
   async function deleteAll() {
     await fetch("/api/notifications?all=true", { method: "DELETE" })
     setNotifications([])
+  }
+
+  async function openNotification(notification: Notification) {
+    if (!notification.read) await markRead(notification.id)
+    if (notification.entityId && notification.type.startsWith("task_")) {
+      setOpen(false)
+      router.push(`/tasks/${notification.entityId}?from=notification`)
+    }
   }
 
   return (
@@ -126,7 +137,7 @@ export function NotificationBell() {
                 >
                   <button
                     className="flex-1 flex flex-col gap-0.5 text-left"
-                    onClick={() => { if (!n.read) markRead(n.id) }}
+                    onClick={() => openNotification(n)}
                   >
                     <span className={`text-xs ${!n.read ? "font-medium" : "text-muted-foreground"}`}>
                       {n.title}
