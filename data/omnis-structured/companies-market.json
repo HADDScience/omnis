@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0.0",
+  "extracted_at": "2026-05-11",
+  "source": [
+    "타업체정보/docs/processed/HADD 공유_타 업체 정보.md (2024.05.13 update)",
+    "2026년-경기도-바이오기업-소재개발-실증연구지원/docs/research/market_size_research.md (2026.04.24)",
+    "바이오아이코어사업/docs/processed/2026 바이오아이코어사업 예비창업팀 지원 신청서 양식_최종본(하드사이언스).md",
+    "메디바이오/docs/processed/[2차 메디바이오]+필수서식_실증시험+수요기술제안서_하드사이언스.md"
+  ],
+  "description": "경쟁사·시장 데이터. 카테고리별 국내·글로벌 플레이어 + 시장 규모 + 수요처 채널.",
+  "competitors_domestic": {
+    "3d_culture_organoid": [
+      {"name": "강스템바이오텍", "founded": 2010, "employees": 114, "capital_krw": 28000000000, "revenue_krw": 5910000000, "products": ["줄기세포배양액", "PSC 기반 오가노이드"]},
+      {"name": "티앤알바이오팹", "founded": 2013, "employees": 90, "capital_krw": 10590000000, "revenue_krw": 5750000000, "products": ["3D 오가노이드", "3D 바이오프린팅"]},
+      {"name": "오가노이드사이언스", "founded": 2018, "employees": 68, "capital_krw": 1430000000, "revenue_krw": 1620000000, "products": ["IBD/Xerostomia/자궁내막 오가노이드"]},
+      {"name": "그래디언트바이오컨버전스", "founded": 2022, "employees": 37, "products": ["AI 기반 400여종 환자 유래 오가노이드"]},
+      {"name": "넥스트앤바이오", "founded": 2018, "employees": 27, "capital_krw": 70000000, "revenue_krw": 250000000, "products": ["미니어처 브레인"]},
+      {"name": "셀투인", "founded": 2016, "employees": 20, "capital_krw": 160000000, "revenue_krw": 270000000, "products": ["FreSHtracer 글루타치온 측정"]},
+      {"name": "셀로이드", "founded": 2021, "employees": 9, "capital_krw": 360000000, "revenue_krw": 10000000, "products": ["자동화 3D 세포배양"]}
+    ],
+    "3d_culture_chip_dish": [
+      {"name": "싸이토젠", "founded": 2010, "employees": 55, "revenue_krw": 610000000, "products": ["CTC Liquid Biopsy CHIP"]},
+      {"name": "넥셀", "founded": 2012, "employees": 52, "revenue_krw": 1720000000, "products": ["3D 조직 Plate kit"]},
+      {"name": "다인바이오", "founded": 1999, "employees": 28, "revenue_krw": 9260000000, "products": ["StemFIT 3D 플레이트"]},
+      {"name": "스페바이오", "founded": 2020, "employees": 15, "revenue_krw": 340000000, "products": ["3D 바이오프린팅 세포응집체"]},
+      {"name": "셀라메스", "founded": 2022, "employees": 8, "products": ["Electro cell chip"]},
+      {"name": "휴먼에이스", "founded": 2021, "employees": 4, "products": ["Organ on a chip 심장모사칩"]}
+    ],
+    "cro_organoid": [
+      {"name": "바이오톡스텍", "founded": 2000, "employees": 230, "revenue_krw": 30450000000, "animal_alternative": true},
+      {"name": "바이오솔루션", "founded": 2019, "employees": 95, "revenue_krw": 10500000000, "animal_alternative": true},
+      {"name": "바이오솔빅스", "founded": 2023, "employees": 14, "animal_alternative": true, "products": ["IPS Organoid CRO"]}
+    ],
+    "media_culture_gel": [
+      {"name": "써모피셔사이언티픽 코리아", "founded": 2003, "employees": 274, "revenue_krw": 181000000000, "products": ["분석기기", "배양젤"]},
+      {"name": "아미코젠", "founded": 2000, "employees": 232, "revenue_krw": 39700000000, "products": ["세포응집 저해제 배양액"]},
+      {"name": "비욘드셀", "founded": 2020, "employees": 19, "revenue_krw": 280000000, "products": ["세포 배양 배지 분말·액상"]},
+      {"name": "웅비메디텍", "founded": 1996, "employees": 54, "revenue_krw": 43500000000, "products": ["3D 제노프리 하이드로겔"]},
+      {"name": "세포바이오", "founded": 2011, "employees": 36, "products": ["초대배양세포 배지"]},
+      {"name": "메디팹", "founded": 2016, "employees": 29, "revenue_krw": 1350000000, "products": ["바이오잉크"]},
+      {"name": "세라트젠", "founded": 2020, "employees": 21, "revenue_krw": 230000000, "products": ["오가노이드·스페로이드 하이드로 배양겔"]},
+      {"name": "더웰바이오사이언스", "founded": 2017, "employees": 10, "products": ["Xeno-free hydrogels (US 본사)"]},
+      {"name": "리제마", "founded": 2022, "employees": 3, "products": ["줄기세포·ECM 오가노이드 배양겔"]}
+    ]
+  },
+  "competitors_global": [
+    {"name": "Corning Incorporated", "country": "US", "key_product": "Matrigel", "position": "동물 종양 유래 ECM 시장 지배자"},
+    {"name": "Merck KGaA", "country": "DE"},
+    {"name": "Avantor", "country": "US"},
+    {"name": "3D Biotec", "country": "US"},
+    {"name": "Tecan Trading", "country": "CH"},
+    {"name": "Kirkstall", "country": "UK"},
+    {"name": "PromoCell", "country": "DE"},
+    {"name": "REPROCELL", "country": "JP"},
+    {"name": "MIMETAS BV", "country": "NL"},
+    {"name": "Greiner Bio-One", "country": "AT"},
+    {"name": "CN Bio Innovations", "country": "UK"},
+    {"name": "Emulate", "country": "US"},
+    {"name": "InSphero", "country": "CH"},
+    {"name": "TissUse", "country": "DE"},
+    {"name": "Acro Biosystems"},
+    {"name": "Lonza Group", "country": "CH"}
+  ],
+  "market_size": {
+    "sleep_aid_global": {"y2024_usd_b": 7.85, "y2031_usd_b": 11.8, "cagr_pct": 6.0, "source": "Cognitive Market Research 2024"},
+    "melatonin_global": {"y2024_usd_b": 2.84, "y2034_usd_b": 11.42, "cagr_pct": 14.9, "source": "GMInsights 2025"},
+    "natural_sleep_share_pct": 58.4,
+    "sleep_market_korea_krw_2022": 50000000000,
+    "sleep_market_korea_cagr_pct": 15.0,
+    "sleep_patients_korea_y2022": 800000,
+    "health_supplements_korea": {"y2024_krw": 6080000000000, "y2028_krw": 7500000000000},
+    "advanced_wound_care_global": {"y2024_usd_b": 12.48, "y2030_usd_b": 19.32, "cagr_pct": 7.6, "source": "MarketsandMarkets 2025"},
+    "biomaterial_wound_dressing_global": {"y2024_usd_b": 6.63, "y2033_usd_b": 13.02, "cagr_pct": 7.92},
+    "wound_dressing_korea_y2023_usd_b": 0.228,
+    "wound_dressing_korea_y2030_usd_b": 0.324,
+    "wound_care_korea_y2024_usd_b": 0.592,
+    "wound_care_korea_y2035_usd_b": 1.178,
+    "herbal_extract_global": {"y2024_usd_b": 32.11, "y2030_usd_b": 53.43, "cagr_pct": 8.2},
+    "herbal_supplements_global": {"y2024_usd_b": 42.33, "y2033_usd_b": 90.24, "cagr_pct": 8.89, "apac_cagr_pct": 10.33},
+    "neural_scaffold_korea": {"y2026_krw": 4400000000000, "y2030_krw": 7500000000000, "cagr_pct": 14}
+  },
+  "ecm_competitive_context": {
+    "matrigel_price_per_10ml_krw": 800000,
+    "domestic_import_dependence_pct": 95,
+    "regulatory_drivers": [
+      "FDA Modernization Act 2.0 (2023.01) — 동물실험 의무 폐지",
+      "첨단재생바이오법(첨생법, 2025.02.21 시행)",
+      "12대 국가전략기술 첨단바이오"
+    ]
+  },
+  "demand_channels": {
+    "clinical_target": {
+      "domestic": ["서울대학교병원", "서울아산병원", "삼성서울병원", "세브란스병원", "분당서울대학교병원"],
+      "global": ["Barrow Neurological Institute", "Montreal Neurological Institute", "Mayo Clinic"]
+    },
+    "research_market_neuro": {
+      "domestic": ["한국뇌연구원", "기초과학연구원", "KAIST"],
+      "global": ["Max Planck Institute for Brain Research", "Allen Institute for Brain Science"]
+    },
+    "b2b_cell_therapy": {
+      "domestic": ["메디포스트", "CHA Biotech", "강스템바이오텍"],
+      "global": ["BlueRock Therapeutics", "Aspen Neuroscience"]
+    },
+    "research_market_organoid": {
+      "domestic": ["OrganoidScience", "ROKIT Healthcare", "CellinCells"],
+      "global": ["Hubrecht Organoid Technology", "DefiniGEN"]
+    }
+  },
+  "export_targets": {
+    "phase1": ["일본(뷰티 디바이스 동반)", "태국(2026.03 전시회)"],
+    "phase2": ["미국(FDA OTC, INCI)", "EU(CPNP)"]
+  }
+}

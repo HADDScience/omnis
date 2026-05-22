@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "extracted_at": "2026-05-09",
+  "source": "CRM/HADDScience_CRM_260508.xlsx > 기관마스터",
+  "summary": {
+    "total": 18,
+    "by_type": {"대학": 9, "연구원": 3, "병원": 2, "기업": 4}
+  },
+  "organizations": [
+    {"code": "ORG001", "name": "Brainics lab", "type": "기업", "address": null, "note": null},
+    {"code": "ORG002", "name": "(주)국일그래핀", "type": "기업", "address": null, "note": null},
+    {"code": "ORG003", "name": "한국뇌연구원", "type": "연구원", "address": null, "note": null},
+    {"code": "ORG004", "name": "울산대학교", "type": "대학", "address": null, "note": null},
+    {"code": "ORG005", "name": "가천대학교 의과대학", "type": "대학", "address": null, "note": null},
+    {"code": "ORG006", "name": "서울대학교 의과대학", "type": "대학", "address": null, "note": null},
+    {"code": "ORG007", "name": "성균관대학교", "type": "대학", "address": null, "note": null},
+    {"code": "ORG008", "name": "서울대병원 CMI 공동기기실", "type": "병원", "address": null, "note": "Confocal"},
+    {"code": "ORG009", "name": "서울대학교 암연구소 공동기기실", "type": "대학", "address": null, "note": "Confocal"},
+    {"code": "ORG010", "name": "한양대학교 의대 공동기기실", "type": "대학", "address": null, "note": "Confocal"},
+    {"code": "ORG011", "name": "KIST", "type": "연구원", "address": null, "note": "Confocal, 오가노이드 유저"},
+    {"code": "ORG012", "name": "서울대병원 의학연구혁신센터", "type": "병원", "address": "서울시 종로구 대학로 71, 서울대병원 의학연구혁신센터 지하 3층 뇌은행", "note": null},
+    {"code": "ORG013", "name": "충북대학교", "type": "대학", "address": null, "note": null},
+    {"code": "ORG014", "name": "연세대학교 의과대학", "type": "대학", "address": "연세대학교 의과대학", "note": null},
+    {"code": "ORG015", "name": "대구경북과학기술원(DGIST)", "type": "연구원", "address": null, "note": null},
+    {"code": "ORG016", "name": "이에이에스(EAS)", "type": "기업", "address": null, "note": null},
+    {"code": "ORG017", "name": "가천대학교 산학협력단", "type": "대학", "address": null, "note": null},
+    {"code": "ORG018", "name": "포항공과대학교(POSTECH)", "type": "대학", "address": null, "note": "이승우 교수 연구실"}
+  ]
+}

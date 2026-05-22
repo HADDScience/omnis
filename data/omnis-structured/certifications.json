@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "extracted_at": "2026-05-09",
+  "source": "2026년-경기도-바이오기업-소재개발-실증연구지원/docs/raw/기타서식첨부_하드사이언스/선택서류/기업인증/ + 중소기업확인서",
+  "summary": {"total_held": 4, "all_verified_from_certificate_pdf": true},
+  "actual_office_address": "경기도 화성시 봉담읍 와우안길 17, 수원대학교 창업보육센터 505호",
+  "address_note": "여러 인증서·표준재무제표에 '514호'로 표기되어 있으나, 실제 사용 호수는 505호. 514호 표기는 인증 발급기관 측 오기. 차후 갱신 시 정정 대상.",
+  "certifications": [
+    {
+      "name": "연구개발전담부서 인정서",
+      "category": "R&D",
+      "issuer": "한국산업기술진흥협회 (과학기술정보통신부)",
+      "document_no": "제2025154707호",
+      "doc_serial": "koWF-LsNP-ZFWY-biif",
+      "issued_date": "2025-08-07",
+      "filing_date": "2025-07-18",
+      "valid_from": null,
+      "valid_to": null,
+      "department_name": "연구개발전담부서",
+      "address": "경기도 화성시 봉담읍 와우안길 17 (창업보육센터 514호)(수원대학교)",
+      "legal_basis": "기초연구진흥 및 기술개발지원에 관한 법률 제14조의2제1항"
+    },
+    {
+      "name": "벤처기업확인서",
+      "category": "기업인증",
+      "issuer": "(사)벤처기업협회",
+      "type": "혁신성장유형",
+      "company": "하드사이언스",
+      "business_no": "503-52-46329",
+      "ceo": "허채정",
+      "address": "경기도 화성시 봉담읍 와우안길 17 514",
+      "issued_date": "2025-05-15",
+      "valid_from": "2025-05-13",
+      "valid_to": "2028-05-12",
+      "legal_basis": "벤처기업육성에 관한 특별법 제25조"
+    },
+    {
+      "name": "여성기업 확인서",
+      "category": "기업인증",
+      "issuer": "경기지방중소벤처기업청장",
+      "document_no": "제0118-2024-35851호",
+      "company": "하드사이언스",
+      "business_no": "503-52-46329",
+      "industry": "전문, 과학 및 기술 서비스업",
+      "ceo": "허채정",
+      "address_at_issue": "경기도 화성시 동탄기흥로 593-8 우정바이오신약클러스터 10층 1009호",
+      "issued_date": "2024-10-07",
+      "valid_from": "2024-10-07",
+      "valid_to": "2027-10-06",
+      "legal_basis": "여성기업지원에 관한 법률 제2조"
+    },
+    {
+      "name": "중소기업확인서",
+      "category": "기업인증",
+      "subtype": "소기업(소상공인)",
+      "issuer": "중소벤처기업부장관",
+      "document_no": "0010-2025-319783",
+      "company": "하드사이언스",
+      "business_no": "503-52-46329",
+      "ceo": "허채정",
+      "address": "경기 화성시 봉담읍 와우안길 17 514호",
+      "issued_date": "2025-04-14",
+      "valid_from": "2025-04-01",
+      "valid_to": "2026-03-31",
+      "purpose": "공공기관 입찰용",
+      "legal_basis": "중소기업기본법 제2조 및 소상공인기본법 제2조",
+      "note": "유효기간 만료 임박 (~2026-03-31), 갱신 필요"
+    }
+  ]
+}

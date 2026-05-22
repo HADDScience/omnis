@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "extracted_at": "2026-05-09",
+  "source": "CRM/HADDScience_CRM_260508.xlsx > 컨택포인트",
+  "summary": {"total": 18},
+  "contacts": [
+    {"id": "CT001", "org_code": "ORG001", "org_name": "Brainics lab", "name": "허채정", "title": "교수", "phone": null, "email": null, "note": null},
+    {"id": "CT002", "org_code": "ORG002", "org_name": "(주)국일그래핀", "name": "채승진", "title": "소장", "phone": null, "email": null, "note": null},
+    {"id": "CT003", "org_code": "ORG003", "org_name": "한국뇌연구원", "name": "정성진", "title": "박사", "phone": null, "email": null, "note": null},
+    {"id": "CT004", "org_code": "ORG004", "org_name": "울산대학교", "name": "윤석준", "title": "교수", "phone": null, "email": null, "note": null},
+    {"id": "CT005", "org_code": "ORG005", "org_name": "가천대학교 의과대학", "name": "김광민", "title": "교수", "phone": null, "email": null, "note": null},
+    {"id": "CT006", "org_code": "ORG006", "org_name": "서울대학교 의과대학", "name": "이지연", "title": "교수", "phone": null, "email": null, "note": "이원석 담당"},
+    {"id": "CT007", "org_code": "ORG003", "org_name": "한국뇌연구원", "name": "김명진", "title": "박사", "phone": null, "email": null, "note": null},
+    {"id": "CT008", "org_code": "ORG007", "org_name": "성균관대학교", "name": "박성하", "title": "교수", "phone": null, "email": null, "note": null},
+    {"id": "CT009", "org_code": "ORG008", "org_name": "서울대병원 CMI 공동기기실", "name": "윤근영", "title": "선생님", "phone": null, "email": null, "note": null},
+    {"id": "CT010", "org_code": "ORG009", "org_name": "서울대학교 암연구소 공동기기실", "name": "하동현", "title": "선생님", "phone": null, "email": null, "note": null},
+    {"id": "CT011", "org_code": "ORG010", "org_name": "한양대학교 의대 공동기기실", "name": "이상훈", "title": "박사", "phone": null, "email": null, "note": null},
+    {"id": "CT012", "org_code": "ORG003", "org_name": "한국뇌연구원", "name": "신혜련", "title": "박사", "phone": null, "email": null, "note": null},
+    {"id": "CT013", "org_code": "ORG012", "org_name": "서울대병원 의학연구혁신센터", "name": "심유미", "title": "박사", "phone": "02-2072-4681 / 010-5122-6249", "email": "rest_yumi@snu.ac.kr", "note": "아리박사님 회사메일로 요청"},
+    {"id": "CT014", "org_code": "ORG013", "org_name": "충북대학교", "name": "이은옥", "title": "박사", "phone": "010-9428-0010", "email": "y21c486@naver.com", "note": "박유신 교수님 소속"},
+    {"id": "CT015", "org_code": "ORG011", "org_name": "KIST", "name": null, "title": null, "phone": null, "email": null, "note": "Confocal, 오가노이드 유저"},
+    {"id": "CT016", "org_code": "ORG014", "org_name": "연세대학교 의과대학", "name": "박준혁", "title": "교수", "phone": null, "email": "jhpark@gmail.com", "note": null},
+    {"id": "CT017", "org_code": "ORG016", "org_name": "이에이에스(EAS)", "name": "김경훈", "title": "대표", "phone": null, "email": "khkim@eas.or.kr", "note": "PDF 세금계산서에서 확인"},
+    {"id": "CT018", "org_code": "ORG018", "org_name": "포항공과대학교(POSTECH)", "name": "박수빈", "title": "연구원", "phone": null, "email": null, "note": "이승우 교수님 연구실"}
+  ]
+}

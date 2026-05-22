@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0.0",
+  "extracted_at": "2026-05-11",
+  "source": [
+    "바이오아이코어사업/docs/processed/2026 바이오아이코어사업 예비창업팀 지원 신청서 양식_최종본(하드사이언스).md",
+    "시책 설명회 리스트업/2026년_월별_과제_현황표.md",
+    "가점항목-리스트_ebf0113d.md",
+    "2026년-AI-기반-바이오-소재-융복합-제품의-적용검증-및-시장진출-사업/",
+    "2026년-바이오헬스산업-기술평가-사업화연계-지원사업/",
+    "2026년-경기도-바이오기업-소재개발-실증연구지원/",
+    "메디바이오/"
+  ],
+  "description": "지원사업 추진·검토 이력 통합 데이터. 완료 사업(awarded/in_progress)과 검토 사업(reviewing/applied) 구분.",
+  "history": [
+    {"date": "2024-04", "name": "예비창업패키지 사업", "status": "awarded", "note": "예비창업패키지 본 사업 선정"},
+    {"date": "2024-05", "name": "딥사이언스 창업활성화 사업", "status": "awarded"},
+    {"date": "2024-08", "name": "IP디딤돌 출원사업", "status": "awarded"},
+    {"date": "2024-10", "name": "여성기업 인증", "status": "certified"},
+    {"date": "2024-10", "name": "전북 마이크로바이옴은행 참여기업", "status": "selected"},
+    {"date": "2025-03", "name": "예비창업패키지 최우수 기업", "status": "awarded", "note": "최우수 선정"},
+    {"date": "2025-04", "name": "차세대 유망 SEED 기술실용화 패스트트랙", "status": "agreement"},
+    {"date": "2025-04", "name": "중소기업 인증", "status": "certified"},
+    {"date": "2025-05", "name": "화성시 딥테크 시제품 제작지원사업", "status": "selected"},
+    {"date": "2025-05", "name": "벤처기업 인증(혁신성장형)", "status": "certified"},
+    {"date": "2025-06", "name": "여성창업경진대회", "status": "awarded", "prize": "이사장상"},
+    {"date": "2025-06", "name": "G스타오디션", "status": "shortlisted", "round": "본선"},
+    {"date": "2025-07", "name": "K-스타트업", "status": "shortlisted", "round": "본선"},
+    {"date": "2025-07", "name": "경기 GG바이오허브 창업경진대회", "status": "awarded", "prize": "최우수상"},
+    {"date": "2025-08", "name": "창업성장 R&D 디딤돌", "status": "agreement"},
+    {"date": "2025-08", "name": "연구개발전담부서 설립", "status": "certified", "approval_date": "2025-07-18"},
+    {"date": "2025-09", "name": "광교 바이오허브 랩스테이션 입주", "status": "selected", "note": "최종선정"},
+    {"date": "2025-11", "name": "창업인큐베이팅경진대회", "status": "awarded", "prize": "중소벤처기업부 장관상(대상)"},
+    {"date": "2025-11", "name": "BRIDGE 3.0 사업(성균관대학교 기술지주)", "status": "selected"},
+    {"date": "2025-12", "name": "경기지방중소벤처기업청장 표창", "status": "awarded"},
+    {"date": "2025-12", "name": "화성특례시 시장 표창(중소기업지원 자문단 유공)", "status": "awarded"},
+    {"date": "2025-12", "name": "광교 랩스테이션(2기) 입주 협약", "status": "agreement"},
+    {"date": "2026-03", "name": "바이오아이코어사업 예비창업팀 모집(NRF)", "status": "applied", "deadline": "2026-03-11", "max_amount_krw": 225000000, "note": "예비창업 4천만원/글로벌 최대 2.25억원"},
+    {"date": "2026-03", "name": "메디바이오 실증시험지원 1차·2차(대구테크노파크)", "status": "applied"},
+    {"date": "2026-03", "name": "BIO KOREA 2026", "status": "selected"}
+  ],
+  "in_review": [
+    {"month": "2026-01", "name": "창업성장기술개발 디딤돌 첫걸음", "agency": "TIPA", "max_amount_krw": 200000000, "duration_years": 1.5},
+    {"month": "2026-01", "name": "민관공동기술사업화 - 기술이전사업화", "stages": [{"stage": 1, "amount_krw": 100000000}, {"stage": 2, "amount_krw": 1000000000}]},
+    {"month": "2026-01", "name": "산학연 Collabo R&D", "amount_range_krw": [260000000, 1040000000], "duration_years": 2},
+    {"month": "2026-01", "name": "중소기업 기술혁신개발 - 유망기술(국가전략·바이오)", "max_amount_krw": 10000000000, "duration_years": 3},
+    {"month": "2026-01", "name": "기술닥터", "amount_range_krw": [2900000, 50000000]},
+    {"month": "2026-02", "name": "초기창업패키지", "agency": "수원대 창업지원단", "max_amount_krw": 100000000, "duration_months": 10},
+    {"month": "2026-02", "name": "지식재산 창출지원", "agency": "경기지식재산센터"},
+    {"month": "2026-02", "name": "스타기업 육성", "agency": "경기도경제과학진흥원", "max_amount_krw": 76000000},
+    {"month": "2026-02", "name": "ESG지원", "agency": "화성상공회의소", "components": ["컨설팅 2M", "인증 2M"]},
+    {"month": "2026-02", "name": "해외전시회 참가 지원", "agency": "경기중기청", "max_amount_krw": 6000000},
+    {"month": "2026-02", "name": "국내전시회 참가 지원", "agency": "화성산업진흥원", "max_amount_krw": 3000000},
+    {"month": "2026-02", "name": "바이오산업 지원 - GMP교육비", "agency": "화성상공회의소", "max_amount_krw": 2000000},
+    {"month": "2026-03", "name": "민관공동기술사업화 - TRL점프업", "agency": "TIPA", "max_amount_krw": 1000000000, "duration_years": 2},
+    {"month": "2026-03", "name": "경기도 기술개발사업", "agency": "경기테크노파크", "max_amount_krw": 150000000},
+    {"month": "2026-03", "name": "중소기업 개발생산판로 맞춤형", "agency": "경기도경제과학진흥원", "max_amount_krw": 20000000},
+    {"month": "2026-03", "name": "소재·부품·장비 양산성능평가 지원사업", "agency": "KIAT", "per_project_krw": 250000000, "period": "년"},
+    {"month": "2026-04", "name": "중소기업 연구인력지원 - 신진채용", "agency": "한국산업기술진흥원", "support_rate": "기준연봉 50%", "duration_years": 3},
+    {"month": "2026-04", "name": "2026년 경기도 바이오기업 소재개발 실증연구지원", "agency": "경기도경제과학진흥원", "status": "in_progress"},
+    {"month": "2026-04", "name": "2026년 AI 기반 바이오 소재 융복합 제품 적용·검증 및 시장진출 사업", "agency": "KoTHEA 제2026-014호", "submission_window": ["2026-04-22", "2026-05-12"], "agreement_end": "2026-10-31", "tracks": [{"id": "P1", "amount_per_case_krw": 30000000, "cases": 6, "agency": "범부처통합헬스케어협회", "fit": "★★★ ADDGEL 적합"}, {"id": "P2", "amount_per_case_krw": 40000000, "cases": 3, "agency": "광주대 산학협력단", "fit": "부적합(양산 미보유)"}, {"id": "P3", "amount_per_case_krw": 45000000, "cases": 2, "agency": "대구테크노파크", "fit": "★★★ 뉴로힐 최우선"}], "priority_order": ["P3(애드힐)", "P1(ADDGEL)", "P3(PDRN 화장품)"]}
+  ],
+  "always_open": [
+    {"name": "TIPS 일반 트랙", "max_amount_krw": 800000000, "duration_years": 2},
+    {"name": "TIPS 딥테크 트랙", "max_amount_krw": 1500000000, "duration_years": 3},
+    {"name": "혁신창업사업화자금 - 창업기반지원", "facility_krw": 6000000000, "working_krw": 500000000},
+    {"name": "혁신창업사업화자금 - 청년전용창업자금", "age_limit": "만 39세 이하"},
+    {"name": "중소기업 특례보증 지원", "max_amount_krw": 300000000}
+  ],
+  "investment_history": {
+    "total_krw": 2620000000,
+    "as_of": "2026-03",
+    "rounds": [
+      {"date": "2024-09", "investor": "EAS(이에이에스)", "amount_krw": 1420000000},
+      {"date": null, "investor": "(주)SM 국일그래핀", "amount_krw": 1200000000}
+    ]
+  },
+  "national_rnd": {
+    "agreement_amount_krw": 1942000000,
+    "period": "2025-04 ~ 2029-03",
+    "duration_years": 4,
+    "hadd_participation_from": "2027"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "extracted_at": "2026-05-09",
+  "source": "CRM/HADDScience_CRM_260508.xlsx > HRP Membership",
+  "description": "HRP(HADD Research Partnership) 협력 회원 - 활성 시 1회 거래당 자동 400,000원 할인",
+  "summary": {"total_active": 9, "discount_per_transaction_krw": 400000},
+  "members": [
+    {"hrp_no": "HRP260001", "org_code": "ORG001", "org_name": "Brainics lab", "contact_id": "CT001", "contact_name": "허채정", "status": "활성", "discount_amount": 400000},
+    {"hrp_no": "HRP260002", "org_code": "ORG002", "org_name": "(주)국일그래핀", "contact_id": "CT002", "contact_name": "채승진", "status": "활성", "discount_amount": 400000},
+    {"hrp_no": "HRP260003", "org_code": "ORG003", "org_name": "한국뇌연구원", "contact_id": "CT003", "contact_name": "정성진", "status": "활성", "discount_amount": 400000},
+    {"hrp_no": "HRP260004", "org_code": "ORG004", "org_name": "울산대학교", "contact_id": "CT004", "contact_name": "윤석준", "status": "활성", "discount_amount": 400000},
+    {"hrp_no": "HRP260005", "org_code": "ORG005", "org_name": "가천대학교 의과대학", "contact_id": "CT005", "contact_name": "김광민", "status": "활성", "discount_amount": 400000},
+    {"hrp_no": "HRP260006", "org_code": "ORG006", "org_name": "서울대학교 의과대학", "contact_id": "CT006", "contact_name": "이지연", "status": "활성", "discount_amount": 400000},
+    {"hrp_no": "HRP260007", "org_code": "ORG003", "org_name": "한국뇌연구원", "contact_id": "CT007", "contact_name": "김명진", "status": "활성", "discount_amount": 400000},
+    {"hrp_no": "HRP260008", "org_code": "ORG007", "org_name": "성균관대학교", "contact_id": "CT008", "contact_name": "박성하", "status": "활성", "discount_amount": 400000},
+    {"hrp_no": "HRP260009", "org_code": "ORG014", "org_name": "연세대학교 의과대학", "contact_id": "CT016", "contact_name": "박준혁", "status": "활성", "discount_amount": 400000}
+  ]
+}

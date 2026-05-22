@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "extracted_at": "2026-05-09",
+  "source": "CRM/HADDScience_CRM_260508.xlsx > 샘플요청",
+  "summary": {"total": 8, "all_dispatched": true},
+  "sample_requests": [
+    {"no": "HADD251202-001", "request_date": "2025-12-02", "org_code": "ORG008", "org": "서울대병원 CMI 공동기기실", "contact_id": "CT009", "contact": "윤근영", "product": "라이브젤 (Live Gel)", "request_detail": "라이브젤 샘플 및 카다로그 요청", "referral": "아리박사님 지인", "status": "발송완료"},
+    {"no": "HADD251202-002", "request_date": "2025-12-02", "org_code": "ORG009", "org": "서울대학교 암연구소 공동기기실", "contact_id": "CT010", "contact": "하동현", "product": "라이브젤 (Live Gel)", "request_detail": "라이브젤 샘플 및 카다로그 요청", "referral": null, "status": "발송완료"},
+    {"no": "HADD251202-003", "request_date": "2025-12-02", "org_code": "ORG010", "org": "한양대학교 의대 공동기기실", "contact_id": "CT011", "contact": "이상훈", "product": "라이브젤 (Live Gel)", "request_detail": "라이브젤 샘플 요청", "referral": null, "status": "발송완료"},
+    {"no": "HADD251219-004", "request_date": "2025-12-19", "org_code": "ORG011", "org": "KIST", "contact_id": null, "contact": null, "product": "라이브젤 (Live Gel)", "request_detail": "라이브젤 샘플 및 브로셔 요청", "referral": null, "status": "발송완료", "note": "Confocal, 오가노이드 유저"},
+    {"no": "HADD251219-005", "request_date": "2025-12-19", "org_code": "ORG012", "org": "서울대병원 의학연구혁신센터", "contact_id": "CT013", "contact": "심유미", "product": "고정제", "request_detail": "대뇌 오가노이드 MEA 분석용 고정제 요청 / Zoom 미팅 요청", "referral": "아리박사님 회사메일", "status": "발송완료"},
+    {"no": "HADD260115-006", "request_date": "2026-01-15", "org_code": "ORG013", "org": "충북대학교", "contact_id": "CT014", "contact": "이은옥", "product": "라이브젤 (Live Gel)", "request_detail": "라이브젤 1ml, 3ml 견적 문의", "referral": "혜린 전화", "status": "발송완료"},
+    {"no": "HADD260508-007", "request_date": "2026-05-07", "org_code": "ORG018", "org": "포항공과대학교(POSTECH)", "contact_id": "CT018", "contact": "박수빈", "product": "애드젤 (ADD GEL 1%)", "request_detail": "애드젤 2ml 샘플 2개", "referral": "오가노이드 학회", "status": "발송완료", "dispatched_date": "2026-05-07"},
+    {"no": "HADD260508-008", "request_date": "2026-05-07", "org_code": "ORG018", "org": "포항공과대학교(POSTECH)", "contact_id": "CT018", "contact": "박수빈", "product": "라이브젤 (Live Gel)", "request_detail": "라이브젤 3ml 샘플 1개", "referral": "오가노이드 학회", "status": "발송완료", "dispatched_date": "2026-05-07"}
+  ]
+}

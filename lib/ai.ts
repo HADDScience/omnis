@@ -100,7 +100,10 @@ export async function structureTask(
 - name: 업무를 한 줄로 요약 (15자 이내)
 - background: 업무의 배경이나 맥락 (2-3문장)
 - checklist: 수행해야 할 단계들 (2-5개, 각 항목은 짧게)
-- projectId: 가장 적합한 프로젝트의 ID (없으면 null)
+- projectId: 기존 프로젝트 목록 중 가장 적합한 프로젝트의 ID. 적합한 기존 프로젝트가 없으면 null.
+- newProject: 기존 프로젝트 목록 중 적합한 것이 없고, 이 업무가 새로운 프로젝트로 묶여야 한다고 판단될 때만 신규 프로젝트 정보를 객체로 제안. 그렇지 않으면 null.
+  형식: { "name": "프로젝트명(20자 이내)", "purpose": "프로젝트 목적 1-2문장", "goal": "프로젝트 목표 1문장", "productId": "관련 제품 ID 또는 null" }
+  주의: projectId와 newProject는 동시에 채우지 마세요. 둘 중 하나만 사용하고 나머지는 null로 두세요. 단순 단발성 업무라면 둘 다 null로 두어도 됩니다.
 - productId: 가장 관련 있는 제품의 ID (없으면 null)
 - priority: 메시지에서 추정한 우선순위 ("LOW" | "NORMAL" | "HIGH" 중 하나, 명확치 않으면 생략)
 - ownerHint: 메시지에서 언급된 담당자 이름 (팀원 목록에 있는 이름 그대로, 없으면 생략)
@@ -304,14 +307,128 @@ export async function generateWeeklyReport(
 - 업무1: 결과 요약
 - 업무2: 결과 요약
 
-## 차주 계획
-- 계획1
-- 계획2
-
 업무 목록:
 ${tasks.map((t) => `- ${t.name} (${t.status})`).join("\n")}
 
 보고서:`
 
   return callGemini(prompt, "weeklyReport")
+}
+
+// ─── 임베딩 (벡터 검색용) ────────────────────────────────
+
+const GEMINI_EMBED_MODEL = "gemini-embedding-001"
+const GEMINI_BATCH_EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_EMBED_MODEL}:batchEmbedContents`
+
+/** 임베딩 차원. 마이그레이션의 vector(768) 및 EmbeddingChunk 스키마와 일치해야 함. */
+export const EMBEDDING_DIM = 768
+
+/** Gemini batchEmbedContents 1회 요청당 최대 텍스트 수 */
+const EMBED_BATCH_SIZE = 100
+
+/** 임베딩 입력 길이 상한 (모델 토큰 한도 보호) */
+const MAX_EMBED_CHARS = 8000
+
+export type EmbedTaskType = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"
+
+function l2normalize(v: number[]): number[] {
+  let norm = 0
+  for (const x of v) norm += x * x
+  norm = Math.sqrt(norm)
+  if (norm === 0) return v
+  return v.map((x) => x / norm)
+}
+
+/**
+ * 텍스트 배열을 Gemini 임베딩 벡터로 변환한다.
+ * - taskType: 저장용 청크는 RETRIEVAL_DOCUMENT, 검색 질의는 RETRIEVAL_QUERY
+ * - 768차원으로 truncate 후 L2 정규화 (코사인 유사도용)
+ */
+export async function embedTexts(
+  texts: string[],
+  taskType: EmbedTaskType
+): Promise<number[][]> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다")
+  if (texts.length === 0) return []
+
+  const out: number[][] = []
+  for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
+    const batch = texts.slice(i, i + EMBED_BATCH_SIZE)
+    const res = await fetch(`${GEMINI_BATCH_EMBED_URL}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: batch.map((text) => ({
+          model: `models/${GEMINI_EMBED_MODEL}`,
+          content: { parts: [{ text: text.slice(0, MAX_EMBED_CHARS) }] },
+          taskType,
+          outputDimensionality: EMBEDDING_DIM,
+        })),
+      }),
+    })
+
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`Gemini 임베딩 API 오류: ${res.status} ${err}`)
+    }
+
+    const data = await res.json()
+    const embeddings = data.embeddings as { values: number[] }[] | undefined
+    if (!embeddings || embeddings.length !== batch.length) {
+      throw new Error("Gemini 임베딩 응답 형식 오류")
+    }
+    for (const e of embeddings) out.push(l2normalize(e.values))
+  }
+  return out
+}
+
+// ─── 옴니스 RAG 답변 ─────────────────────────────────────
+
+/**
+ * 검색된 청크를 근거로 질문에 답한다 (RAG의 generation 단계).
+ * chunks가 비어 있으면 Gemini를 호출하지 않고 안내 메시지를 반환한다.
+ */
+export async function answerWithOmnis(
+  question: string,
+  chunks: { title: string; content: string; sourceLabel: string }[],
+  taskOverview?: string,
+  userId?: string
+): Promise<string> {
+  if (chunks.length === 0 && !taskOverview) {
+    return "참고할 만한 사내 자료를 찾지 못했어요. 질문을 더 구체적으로 바꾸거나, 옴니스 카드에 관련 내용을 추가해 주세요."
+  }
+
+  const references =
+    chunks.length > 0
+      ? chunks
+          .map((c, i) => `[${i + 1}] (${c.sourceLabel} · ${c.title})\n${c.content}`)
+          .join("\n\n")
+      : "(검색된 문서 없음)"
+
+  const overviewSection = taskOverview
+    ? `\n\n[업무 현황 — 현재 비보관 업무 전체 목록]\n${taskOverview}`
+    : ""
+
+  const today = new Date().toISOString().slice(0, 10)
+  const prompt = `당신은 HADD Science의 사내 지식 비서 "옴니스"입니다.
+오늘 날짜는 ${today}입니다.
+아래 [참고 자료]와 [업무 현황]을 근거로 직원의 질문에 답하세요.
+
+규칙:
+- 주어진 자료에 있는 내용만 사용하세요. 답할 수 없으면 추측하지 말고 "관련 내용을 찾지 못했습니다"라고만 답하세요.
+- [참고 자료]를 근거로 쓰면 문장 끝에 [1], [2]처럼 번호를 표기하세요. [업무 현황]을 근거로 할 때는 번호 표기가 필요 없습니다.
+- [업무 현황]은 현재 비보관 업무 전체 목록입니다. 업무·마감일·지연·진행 상태를 묻는 질문은 이 목록을 근거로 하나도 빠뜨리지 말고 모두 답하세요.
+- "지연된 업무"는 마감일이 오늘보다 이전인데 아직 완료되지 않은 업무입니다. 해당 업무를 전부 나열하세요.
+- 한국어로 간결하고 명확하게 답하세요. 항목이 여러 개면 마크다운 목록이나 표를 쓰세요.
+
+[참고 자료]
+${references}${overviewSection}
+
+[질문]
+${question}
+
+[답변]`
+
+  return callGemini(prompt, "omnisAsk", userId, 0.3)
 }

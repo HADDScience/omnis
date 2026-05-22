@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "extracted_at": "2026-05-09",
+  "source": "하드사이언스_정리할거/2024~2025 세금계산서 정리.xlsx",
+  "currency": "KRW",
+  "summary": {
+    "transaction_count": 15,
+    "product_only_count": 13,
+    "service_count": 2,
+    "total_amount": 342206705,
+    "product_total": 42206705,
+    "service_total": 300000000,
+    "first_sale_date": "2024-09-30",
+    "last_sale_date": "2025-12-12"
+  },
+  "transactions": [
+    {"no": 1, "buyer": "한국뇌연구원", "product": "ADDGEL", "variant": "Syringe", "category": "product", "issued_date": "2024-09-30", "amount": 990000},
+    {"no": 2, "buyer": "(주)국일그래핀", "product": "ADDGEL", "variant": "Syringe", "category": "product", "issued_date": "2024-10-02", "amount": 990000},
+    {"no": 3, "buyer": "울산대학교 산학협력단", "product": "ADDGEL", "variant": "Syringe", "category": "product", "issued_date": "2024-10-28", "amount": 990000},
+    {"no": 4, "buyer": "대구경북과학기술원(DGIST)", "product": "ADDGEL", "variant": "Syringe", "category": "product", "issued_date": "2024-11-25", "amount": 990000},
+    {"no": 5, "buyer": "(주)국일그래핀", "product": "ADDGEL", "variant": "Bottle", "category": "product", "issued_date": "2025-02-04", "amount": 3465000},
+    {"no": 6, "buyer": "가천대학교 의과대학", "product": "ADDGEL", "variant": "Bottle", "category": "product", "issued_date": "2025-03-05", "amount": 1980000},
+    {"no": 7, "buyer": "한국뇌연구원", "product": "ADDGEL", "variant": "Bottle", "category": "product", "issued_date": "2025-03-20", "amount": 3465000},
+    {"no": 8, "buyer": "(주)국일그래핀", "product": "기술개발 용역비", "variant": null, "category": "service", "issued_date": "2025-04-22", "amount": 200000000, "note": "SM국일그래핀 기술용역 1차"},
+    {"no": 9, "buyer": "이에이에스(EAS)", "product": "ADDGEL", "variant": "Bottle&Syringe", "category": "product", "issued_date": "2025-06-24", "amount": 22000000},
+    {"no": 10, "buyer": "이에이에스(EAS)", "product": "ADDGEL", "variant": "Bottle", "category": "product", "issued_date": "2025-07-01", "amount": 913000},
+    {"no": 11, "buyer": "성균관대학교", "product": "ADDGEL", "variant": "Bottle", "category": "product", "issued_date": "2025-08-26", "amount": 495000},
+    {"no": 12, "buyer": "가천대학교 산학협력단", "product": "ADDGEL", "variant": "Syringe", "category": "product", "issued_date": "2025-09-23", "amount": 990000},
+    {"no": 13, "buyer": "(주)국일그래핀", "product": "기술개발 용역비", "variant": null, "category": "service", "issued_date": "2025-11-04", "amount": 100000000, "note": "SM국일그래핀 기술용역 2차"},
+    {"no": 14, "buyer": "한국뇌연구원", "product": "ADDGEL", "variant": "Syringe", "category": "product", "issued_date": "2025-12-12", "amount": 2498705},
+    {"no": 15, "buyer": "한국뇌연구원", "product": "ADDGEL", "variant": "Lyophilized", "category": "product", "issued_date": "2025-12-12", "amount": 2420000}
+  ]
+}

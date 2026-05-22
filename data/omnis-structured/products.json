@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.1",
+  "extracted_at": "2026-05-09",
+  "primary_source": "Downloads/HD_PRICE_GUIDE.docx (사용자 지정 SSOT, 2026-05 PRICE GUIDE)",
+  "secondary_source": "CRM/HADDScience_CRM_260508.xlsx > 제품마스터 (구 SKU 매핑용)",
+  "currency": "KRW",
+  "summary": {"total_skus": 4, "total_variants": 7, "promotion_active": true},
+  "notes": [
+    "PRICE GUIDE는 공식 단가표(SSOT). 신규 견적은 이 가격을 사용.",
+    "CRM 제품마스터의 단가는 거래 시점 가격이며 historical record.",
+    "출시 프로모션 가격은 정가보다 낮음. 적용 종료 시점 미명시 — 영업팀 확인 필요."
+  ],
+  "products": [
+    {
+      "sku": "HS-ADG-S10ML",
+      "product_line": "ADDGEL",
+      "type": "Syringe Type",
+      "spec": "10ml",
+      "list_price_krw": 450000,
+      "promo_price_krw": 350000,
+      "promo_label": "출시 프로모션",
+      "category": "연구전용 세포배양 시약",
+      "crm_legacy_codes": ["PRD001"],
+      "note": "이전 SKU 5ml(1ml x 5ea) 시린지 단종/대체 가능성"
+    },
+    {
+      "sku": "HS-ADG-B10ML",
+      "product_line": "ADDGEL",
+      "type": "Bottle Type",
+      "spec": "10ml",
+      "list_price_krw": 450000,
+      "promo_price_krw": 350000,
+      "promo_label": "출시 프로모션",
+      "category": "연구전용 세포배양 시약",
+      "crm_legacy_codes": ["PRD002", "PRD007", "PRD009"],
+      "note": null
+    },
+    {
+      "sku": "HS-ADG-L10ML",
+      "product_line": "ADDGEL",
+      "type": "Lyophilized Type",
+      "spec": "10ml",
+      "list_price_krw": 550000,
+      "promo_price_krw": 450000,
+      "promo_label": "출시 프로모션",
+      "category": "연구전용 세포배양 시약 (동결건조)",
+      "crm_legacy_codes": ["PRD008"],
+      "note": null
+    },
+    {
+      "sku": "HS-LVG-B75",
+      "product_line": "LiVEGEL",
+      "type": "Dropper Type",
+      "category": "연구전용 세포배양 시약",
+      "crm_legacy_codes": ["PRD003", "PRD004"],
+      "variants": [
+        {"variant_id": "HS-LVG-B75-3ML-2", "spec": "3ml", "qty_per_unit": 2, "price_krw": 100000},
+        {"variant_id": "HS-LVG-B75-3ML-5", "spec": "3ml", "qty_per_unit": 5, "price_krw": 250000},
+        {"variant_id": "HS-LVG-B75-5ML-2", "spec": "5ml", "qty_per_unit": 2, "price_krw": 150000},
+        {"variant_id": "HS-LVG-B75-5ML-5", "spec": "5ml", "qty_per_unit": 5, "price_krw": 350000}
+      ]
+    }
+  ],
+  "raw_materials": [
+    {"code": "PRD005", "name": "DNA 5g", "spec": "5g", "category": "원료", "note": "하이드로젤 원료, 비매품(내부 재고)"},
+    {"code": "PRD006", "name": "DNA 4.5g", "spec": "4.5g", "category": "원료", "note": "하이드로젤 원료, 비매품(내부 재고)"}
+  ],
+  "samples_or_aux": [
+    {"code": "PRD010", "name": "고정제", "category": "시약", "note": "대뇌 오가노이드 MEA 분석용, 샘플 제공용"}
+  ]
+}

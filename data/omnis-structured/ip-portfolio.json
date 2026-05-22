@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "extracted_at": "2026-05-09",
+  "source": "하드사이언스_정리할거/특허 및 상표권_260402.xlsx (기준일 2026-04-02)",
+  "summary": {
+    "patents_filed": 6,
+    "patents_registered": 2,
+    "trademarks_registered": 4,
+    "trademarks_filed": 1,
+    "total": 13
+  },
+  "patents": [
+    {
+      "no": 1,
+      "type": "출원",
+      "title": "연어 DNA를 유효성분으로 포함하는 신경세포구 분화 촉진용 조성물",
+      "application_no": "10-2024-0002802",
+      "filing_date": "2024-01-08",
+      "applicant": "성균관대학교",
+      "note": null
+    },
+    {
+      "no": 2,
+      "type": "출원",
+      "title": "친수화된 그래핀층을 포함하는 치매진단용 분광분석용 기판 및 이를 포함하는 분광장치",
+      "application_no": "10-2024-0193694",
+      "filing_date": "2024-12-23",
+      "applicant": "(주)국일그래핀",
+      "note": null
+    },
+    {
+      "no": 3,
+      "type": "출원",
+      "title": "DNA를 통한 3차원 배양 배지 제조방법",
+      "application_no": "10-2024-0173279",
+      "filing_date": "2024-11-28",
+      "applicant": "허채정",
+      "note": null
+    },
+    {
+      "no": 4,
+      "type": "출원→등록",
+      "title": "상처치유용 젤의 제조방법 및 이의 용도",
+      "application_no": "10-2024-0184906",
+      "registration_no": "10-2877163",
+      "filing_date": "2024-12-12",
+      "applicant": "허채정",
+      "note": "등록 완료"
+    },
+    {
+      "no": 5,
+      "type": "출원",
+      "title": "동적 배양 조건에서 다층 3차원 세포 조직체와 오가노이드를 제조하는 방법",
+      "application_no": "10-2025-0150930",
+      "filing_date": "2025-10-17",
+      "applicant": "허채정 & 성균관대학교",
+      "note": null
+    },
+    {
+      "no": 6,
+      "type": "출원",
+      "title": "수막으로 감싸진 인간 뇌와 유사한 형태의 뇌 오가노이드를 제조하는 방법",
+      "application_no": "10-2025-0150976",
+      "filing_date": "2025-10-17",
+      "applicant": "허채정 & 성균관대학교",
+      "note": null
+    },
+    {
+      "no": 7,
+      "type": "등록",
+      "title": "DNA 성분을 첨가한 액상 물질의 젤화 전환을 통한 배양 배지 제조방법",
+      "registration_no": "10-2877163",
+      "registration_date": "2025-10-22",
+      "applicant": "허채정",
+      "note": null
+    },
+    {
+      "no": 8,
+      "type": "등록",
+      "title": "탈세포화된 조직 지지체로부터 세포외 기질을 효과적으로 추출하는 방법",
+      "registration_no": "10-2766706",
+      "registration_date": "2025-02-07",
+      "applicant": "허채정",
+      "note": null
+    }
+  ],
+  "trademarks": [
+    {
+      "no": 1,
+      "type": "등록",
+      "name": "ADDGEL",
+      "class": "제 01류",
+      "scope": "과학 및 연구용 세포배양시약 등 10건",
+      "registration_no": "40-2359918",
+      "registration_date": "2025-05-15",
+      "owner": "허채정"
+    },
+    {
+      "no": 2,
+      "type": "등록",
+      "name": "HADD",
+      "class": "제 42류",
+      "scope": "과학 연구 목적의 세포 배양업 등 6건",
+      "registration_no": "40-2359919",
+      "registration_date": "2025-05-15",
+      "owner": "허채정"
+    },
+    {
+      "no": 3,
+      "type": "등록",
+      "name": "HADD 로고",
+      "class": "제 42류",
+      "scope": "과학 연구 목적의 세포 배양업 등 6건",
+      "registration_no": "40-2369640",
+      "registration_date": "2025-06-07",
+      "owner": "허채정"
+    },
+    {
+      "no": 4,
+      "type": "등록",
+      "name": "LiVE GEL",
+      "class": "제 01류",
+      "scope": "과학 및 연구용 세포배양시약 등 6건",
+      "registration_no": "40-2475905",
+      "registration_date": "2025-12-18",
+      "owner": "허채정"
+    },
+    {
+      "no": 5,
+      "type": "출원",
+      "name": "NEUROHEAL",
+      "class": null,
+      "scope": null,
+      "application_no": "40-2025-0124087",
+      "filing_date": "2025-07-11",
+      "owner": "허채정"
+    }
+  ]
+}

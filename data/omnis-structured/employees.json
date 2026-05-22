@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.0.0",
+  "extracted_at": "2026-05-11",
+  "source": [
+    "명함/명함_데이터.csv (2026.03 기준)",
+    "바이오아이코어사업/docs/processed/2026 바이오아이코어사업 예비창업팀 지원 신청서 양식_최종본(하드사이언스).md",
+    "바이오아이코어사업/docs/processed/NTIS 제재정보확인서[책임자] - 허채정(26.03.09).md 등 NTIS 7건",
+    "2026인증계획/docs/raw/KakaoTalk_Chat_하드사이언스 인턴방_2026-03-19-12-54-09.md",
+    "메디바이오/docs/processed/[2차 메디바이오]+필수서식_실증시험+수요기술제안서_하드사이언스.md"
+  ],
+  "description": "직원 명함 + 학력·경력·NTIS 등록·직무 통합 데이터.",
+  "common_address": {
+    "headquarters": "(18323) 경기도 화성시 봉담읍 와우안길 17, 수원대학교 창업보육센터 5층 505호",
+    "lab": "(16229) 경기도 수원시 영통구 광교로 147, 경기바이오센터 8층 랩스테이션 8B-6",
+    "phone_main": "+82 31 8055 3780",
+    "fax": "+82 31 8055 3780",
+    "homepage": "www.haddscience.com",
+    "address_note": "사업자등록증·인증서에 '514호'로 표기된 것은 발급기관 오기. 정식 호수는 505호 — 2026-05-09 정정"
+  },
+  "members": [
+    {
+      "name_ko": "허채정",
+      "name_en": "Chaejeong HEO",
+      "role": "CEO·CTO",
+      "department": "대표",
+      "degree": "Ph.D.",
+      "background": "의대 약리학 박사, 24년간 치매·파킨슨병 등 신경질환 연구",
+      "research_focus": "뇌 오가노이드 배양 및 신경세포 증강",
+      "concurrent_position": "성균관대학교 연구교수",
+      "dob": "1975-08-14",
+      "email_corp": "neuroheo@haddscience.com",
+      "email_personal": "neuroheo@gmail.com",
+      "mobile": "+82 10 8362 0862",
+      "ntis_registered": true,
+      "ntis_role": "책임자",
+      "ntis_registration_date": "2026-03-09"
+    },
+    {
+      "name_ko": "김아리",
+      "name_en": "Ari KIM",
+      "role": "팀장",
+      "department": "연구개발팀",
+      "degree": "Ph.D.",
+      "degree_field": "바이오메디컬엔지니어링",
+      "email_corp": "arikim@haddscience.com",
+      "mobile": "+82 10 4012 0310",
+      "ntis_registered": true,
+      "notes": "인턴방 관리자"
+    },
+    {
+      "name_ko": "윤훈",
+      "name_en": "Hoon YUN",
+      "role": "상무",
+      "department": "영업마케팅팀",
+      "email_corp": "hyun@haddscience.com",
+      "mobile": "+82 10 9361 0838"
+    },
+    {
+      "name_ko": "노혜린",
+      "name_en": "Hyerin NOH",
+      "role": "과장",
+      "department": "제품개발팀",
+      "degree": "Master (약학)",
+      "certifications": ["실험동물기술원"],
+      "experience": "생명과학 연구 7년",
+      "responsibilities": ["시제품 생산 프로토콜", "품질 테스트", "생산 시스템 구축", "초기 공정 조건 확보"],
+      "email_corp": "hyerinnoh@haddscience.com",
+      "mobile": "+82 10 3947 4305",
+      "office_phone": "031-8055-3780",
+      "ntis_registered": true,
+      "additional_roles": ["메디바이오 실증시험 실무책임자"]
+    },
+    {
+      "name_ko": "김경훈",
+      "name_en": "Kyounghoon KIM",
+      "role": "COO·CMO",
+      "department": "경영",
+      "email_corp": "khkim@haddscience.com",
+      "mobile": "+82 10 2881 8418"
+    },
+    {
+      "name_ko": "허찬",
+      "name_en": "Chan HEO",
+      "role": "팀장",
+      "department": "연구지원/재무팀",
+      "degree": "학사",
+      "degree_field": "전자전기공학",
+      "responsibilities": ["연구비 집행", "정산 업무 총괄"],
+      "email_corp": "chanheo@haddscience.com",
+      "mobile": "+82 10 9770 0855",
+      "ntis_registered": true,
+      "ntis_role": "책임자"
+    },
+    {
+      "name_ko": "박소정",
+      "name_en": "Sojeong PARK",
+      "role": "사원",
+      "department": "제품관리팀",
+      "degree": "Master",
+      "degree_field": "화학공학",
+      "responsibilities": ["제품 인증", "제품화 프로세스"],
+      "email_personal": "sojeong5345@gmail.com",
+      "mobile": "+82 10 4699 5345",
+      "ntis_registered": true,
+      "join_date": "2026-03-03"
+    },
+    {
+      "name_ko": "정우창",
+      "name_en": "Woochang JEONG",
+      "role": "인턴",
+      "department": "AI개발팀",
+      "degree": "학사",
+      "degree_field": "데이터사이언스",
+      "responsibilities": ["바이오 데이터 분석", "정보 조사"],
+      "email_personal": "woochang4882@gmail.com",
+      "mobile": "+82 10 3855 4671",
+      "ntis_registered": true,
+      "join_date": "2026-02-25"
+    },
+    {
+      "name_ko": "주용석",
+      "name_en": null,
+      "role": "인턴",
+      "department": "(데과21)",
+      "email_personal": "ja020730ha@gmail.com",
+      "mobile": "010-2370-5939",
+      "join_date": "2026-02-25"
+    },
+    {
+      "name_ko": "현 튜이",
+      "name_en": "Thuy",
+      "role": "연구원",
+      "department": "연구개발팀",
+      "degree": "Ph.D. (예정)",
+      "degree_field": "생명물리 정밀의학",
+      "ntis_registered": true
+    }
+  ],
+  "headcount": {
+    "as_of": "2026-04",
+    "regular": 5,
+    "researchers": 2,
+    "by_role_2026_03_application": {"경영직": 1, "연구·기술직": 2, "사무·영업직": 2, "total": 5},
+    "by_degree_2026_03_application": {"박사": 1, "석사": 2, "학사": 1, "전문학사": 1, "total": 5}
+  },
+  "ntis_registered_count": 7,
+  "ntis_registration_date": "2026-03-09",
+  "ntis_members": ["허채정(책임자)", "허찬(책임자)", "김아리", "노혜린", "박소정", "정우창", "현 튜이(Thuy)"]
+}
