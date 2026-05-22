@@ -44,6 +44,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         })
         if (!exists) return {}
       }
+      token.lastActiveAt = Date.now()
       return token
     },
     async session({ session, token }) {
@@ -51,6 +52,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.id as string
         ;(session.user as { role?: string }).role = token.role as string
       }
+      ;(session as { lastActiveAt?: number }).lastActiveAt = token.lastActiveAt as number | undefined
       return session
     },
   },
@@ -59,5 +61,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   session: {
     strategy: "jwt",
+    maxAge: 90 * 24 * 60 * 60,
+    updateAge: 60,
+  },
+  jwt: {
+    maxAge: 90 * 24 * 60 * 60,
   },
 })
