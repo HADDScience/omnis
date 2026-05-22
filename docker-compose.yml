@@ -1,6 +1,7 @@
 services:
   omnis-db:
-    image: postgres:16-alpine
+    # pgvector 확장 포함 (벡터 검색용). PostgreSQL 16 데이터 디렉터리 호환.
+    image: pgvector/pgvector:pg16
     container_name: omnis-db
     restart: unless-stopped
     environment:

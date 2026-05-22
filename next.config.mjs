@@ -1,11 +1,15 @@
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Vercel handles deployment — `standalone` was for Docker
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     ignoreBuildErrors: false,
+  },
+  turbopack: {
+    root: __dirname,
   },
 }
 

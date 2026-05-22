@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import { JetBrains_Mono } from "next/font/google"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -11,11 +10,6 @@ export const metadata: Metadata = {
   description: "HADD Science 채팅 기반 업무 관리 시스템",
 }
 
-const fontMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -25,7 +19,7 @@ export default function RootLayout({
     <html
       lang="ko"
       suppressHydrationWarning
-      className={cn("antialiased", fontMono.variable, "font-sans")}
+      className={cn("antialiased", "font-sans")}
     >
       <head>
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />

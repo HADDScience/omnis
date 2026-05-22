@@ -10,10 +10,114 @@
   100% { width: 0%; }
 }
 
+/* ─── AI 기능 무지개 테두리 ─────────────────────────────── */
+/* AI 자동생성 버튼·Omnis AI 탭 등에 .ai-rainbow-border 클래스로 적용 */
+
+@property --ai-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes ai-rainbow-spin {
+  to {
+    --ai-angle: 360deg;
+  }
+}
+
+.ai-rainbow-border {
+  position: relative;
+}
+.ai-rainbow-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--ai-angle),
+    #ff3d81,
+    #ff8a00,
+    #ffd60a,
+    #34d399,
+    #38bdf8,
+    #a855f7,
+    #ff3d81
+  );
+  /* 가장자리 링만 남기고 안쪽은 마스크로 투명 처리 */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: ai-rainbow-spin 4s linear infinite;
+}
+
+/* AI 자동완성이 채운 입력 필드에 적용되는 글로우 — 무지개색으로 두 번 깜빡 */
+@keyframes ai-fill-glow {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.72 0.21 25 / 0.85);
+  }
+  18% {
+    box-shadow: 0 0 0 5px oklch(0.81 0.18 95 / 0.6);
+  }
+  36% {
+    box-shadow: 0 0 0 1px oklch(0.74 0.2 160 / 0.1);
+  }
+  58% {
+    box-shadow: 0 0 0 5px oklch(0.68 0.18 250 / 0.6);
+  }
+  80% {
+    box-shadow: 0 0 0 2px oklch(0.66 0.21 320 / 0.28);
+  }
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+.ai-fill-glow {
+  animation: ai-fill-glow 1.3s ease-in-out;
+}
+
+/* RAG 답변 본문의 [N] 각주 배지 */
+.omnis-citation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15em;
+  height: 1.15em;
+  margin-inline: 0.12em;
+  padding-inline: 0.3em;
+  border-radius: 0.45em;
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 0.66em;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 0.32em;
+  letter-spacing: 0;
+}
+.omnis-citation--link {
+  cursor: pointer;
+  border: 0;
+  transition: background-color 0.12s ease;
+}
+.omnis-citation--link:hover {
+  background: color-mix(in oklch, var(--primary) 32%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-rainbow-border::before,
+  .ai-fill-glow {
+    animation: none;
+  }
+}
+
 @theme inline {
     --font-heading: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-    --font-mono: var(--font-mono);
+    --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     --color-warn: oklch(0.68 0.17 65);
     --color-success: oklch(0.55 0.15 155);
     --color-border-strong: var(--border-strong);
