@@ -2,17 +2,24 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { getHistory, getVersionContent, getDiff, rollback } from "@/lib/omnis-git"
+import { syncEmbeddingsSafe } from "@/lib/embeddings"
+import { apiError, parseJson, writeActivity } from "@/lib/api"
 
 export async function GET(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return apiError(401, "인증 필요")
+  }
+
   const { searchParams } = new URL(req.url)
   const cardId = searchParams.get("cardId")
   const hash = searchParams.get("hash")
   const diff = searchParams.get("diff")
 
-  if (!cardId) return NextResponse.json({ error: "cardId 필수" }, { status: 400 })
+  if (!cardId) return apiError(400, "cardId 필수")
 
   const card = await prisma.omnisCard.findUnique({ where: { id: cardId }, select: { title: true } })
-  if (!card) return NextResponse.json({ error: "카드 없음" }, { status: 404 })
+  if (!card) return apiError(404, "카드 없음")
 
   // 특정 버전 내용 조회
   if (hash) {
@@ -35,31 +42,55 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "인증 필요" }, { status: 401 })
+    return apiError(401, "인증 필요")
   }
+  const userId = session.user.id
 
-  const body = await req.json()
+  const body = await parseJson<{ cardId?: string; hash?: string }>(req)
+  if (!body) return apiError(400, "잘못된 JSON 요청")
   const { cardId, hash } = body
 
   if (!cardId || !hash) {
-    return NextResponse.json({ error: "cardId, hash 필수" }, { status: 400 })
+    return apiError(400, "cardId, hash 필수")
   }
 
   const card = await prisma.omnisCard.findUnique({ where: { id: cardId } })
-  if (!card) return NextResponse.json({ error: "카드 없음" }, { status: 404 })
+  if (!card) return apiError(404, "카드 없음")
 
   const userName = session.user.name || "unknown"
   const restoredContent = rollback(cardId, card.title, hash, userName)
+  const restoredJson = JSON.parse(restoredContent)
 
-  // DB도 업데이트
-  await prisma.omnisCard.update({
-    where: { id: cardId },
-    data: {
-      content: { text: restoredContent, status: String((card.content as Record<string, unknown>)?.status || "") },
-      version: card.version + 1,
-      updatedById: session.user.id,
-    },
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.omnisCard.update({
+      where: { id: cardId },
+      data: {
+        content: restoredJson,
+        version: card.version + 1,
+        updatedById: userId,
+      },
+    })
+
+    await tx.omnisCardVersion.create({
+      data: {
+        cardId,
+        content: restoredJson,
+        version: updated.version,
+        restoredFromHash: hash,
+        createdById: userId,
+      },
+    })
   })
 
-  return NextResponse.json({ ok: true, content: restoredContent })
+  await syncEmbeddingsSafe("OMNIS_CARD", cardId)
+  await writeActivity({
+    userId,
+    action: "omnis.restored",
+    entity: "OMNIS_CARD",
+    entityId: cardId,
+    title: `카드 복원: ${card.title}`,
+    metadata: { hash },
+  })
+
+  return NextResponse.json({ ok: true, content: restoredJson })
 }
