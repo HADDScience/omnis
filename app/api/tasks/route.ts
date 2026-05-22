@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
+import { syncEmbeddingsSafe } from "@/lib/embeddings"
+import { apiError, parseJson, writeActivity } from "@/lib/api"
+import type { Prisma, Priority } from "@/generated/prisma/client"
 
 export async function GET(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return apiError(401, "인증 필요")
+  }
+
   const { searchParams } = new URL(req.url)
   const ownerId = searchParams.get("ownerId")
   const status = searchParams.get("status")
@@ -66,26 +74,44 @@ function resolveDeadlineLabel(label: string | null | undefined): Date | null {
   return null
 }
 
+interface CreateTaskBody {
+  name?: string
+  background?: string
+  productId?: string
+  priority?: Priority
+  sourceMessages?: Prisma.InputJsonValue
+  messageIds?: string[]
+  ownerId?: string
+  checklists?: { name: string }[]
+  projectId?: string
+  ownerName?: string
+  projectName?: string
+  deadlineLabel?: string
+  checklist?: string[]
+  rawCommand?: string
+  postToChat?: boolean
+  instruction?: string
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "인증 필요" }, { status: 401 })
+    return apiError(401, "인증 필요")
   }
 
-  const body = await req.json()
+  const body = await parseJson<CreateTaskBody>(req)
+  if (!body) return apiError(400, "잘못된 JSON 요청")
   // categoryId는 #12로 폐기 (UI/AI 미사용). DB 컬럼은 Phase 4 drop 예정.
-  let {
+  const {
     name,
-    ownerId,
     background,
-    expectedResult,
-    checklists,
-    projectId,
     productId,
+    priority,
     sourceMessages,
     messageIds,
   } = body
-  const { ownerName, projectName, deadlineLabel, checklist, rawCommand, postToChat } = body
+  let { ownerId, checklists, projectId } = body
+  const { ownerName, projectName, deadlineLabel, checklist, rawCommand, postToChat, instruction } = body
 
   // TaskCmdModal에서 이름 기반으로 전달된 경우 ID 해석
   if (!ownerId && ownerName) {
@@ -101,7 +127,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!name?.trim() || !ownerId) {
-    return NextResponse.json({ error: "name, ownerId 필수" }, { status: 400 })
+    return apiError(400, "name, ownerId 필수")
   }
 
   // TaskCmdModal이 보낸 `checklist: string[]` → `checklists: {name}[]` 정규화
@@ -124,9 +150,9 @@ export async function POST(req: NextRequest) {
       instructorId: session.user.id,
       projectId: projectId || null,
       productId: productId || null,
-      background: background || null,
-      expectedResult: expectedResult || null,
-      sourceMessages: sourceMessages || null,
+      priority: priority || "NORMAL",
+      background: background || instruction || null,
+      sourceMessages: sourceMessages ?? undefined,
       deadline: deadline || null,
       status: "TODO",
       checklists: checklists?.length
@@ -175,6 +201,11 @@ export async function POST(req: NextRequest) {
   // TaskCmdModal의 postToChat=true → 두 메시지(원본 /업무 + 생성 카드) 게시
   if (postToChat && rawCommand) {
     const roomId = "default-room"
+    await prisma.chatRoom.upsert({
+      where: { id: roomId },
+      update: {},
+      create: { id: roomId, name: "하드사이언스 인턴방" },
+    })
     const raw = await prisma.chatMessage.create({
       data: {
         roomId,
@@ -198,6 +229,15 @@ export async function POST(req: NextRequest) {
     await persistMentions(raw.id, rawCommand).catch(() => {})
     await persistMentions(card.id, `#${task.slug}`).catch(() => {})
   }
+
+  await syncEmbeddingsSafe("TASK", task.id)
+  await writeActivity({
+    userId: session.user.id,
+    action: "task.created",
+    entity: "TASK",
+    entityId: task.id,
+    title: `업무 생성: ${task.name}`,
+  })
 
   return NextResponse.json(task, { status: 201 })
 }
