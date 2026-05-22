@@ -12,6 +12,22 @@ export const PRIORITY_VALUES = ["LOW", "NORMAL", "HIGH"] as const
 export const PrioritySchema = z.enum(PRIORITY_VALUES)
 export type Priority = z.infer<typeof PrioritySchema>
 
+/**
+ * AI가 신규 프로젝트 생성을 제안할 때의 초안.
+ * 기존 프로젝트 중 적합한 것이 없을 때 projectId 대신 채워진다.
+ */
+export const NewProjectDraftSchema = z.object({
+  /** 프로젝트명 */
+  name: z.string().min(1).max(120),
+  /** 프로젝트 목적 */
+  purpose: z.string().default(""),
+  /** 프로젝트 목표 */
+  goal: z.string().default(""),
+  /** 관련 제품 ID (없으면 null) */
+  productId: z.string().nullable().default(null),
+})
+export type NewProjectDraft = z.infer<typeof NewProjectDraftSchema>
+
 /** AI structureTask가 반환할 카드 초안 */
 export const TaskAiDraftSchema = z.object({
   /** 업무명 (15자 이내 권장) */
@@ -22,6 +38,8 @@ export const TaskAiDraftSchema = z.object({
   checklist: z.array(z.string().min(1)).default([]),
   /** 프로젝트 ID (없으면 null). 사용자/AI가 매핑 시 설정 */
   projectId: z.string().nullable().default(null),
+  /** 신규 프로젝트 제안 (기존 프로젝트가 적합하지 않을 때). projectId와 동시에 채우지 않음 */
+  newProject: NewProjectDraftSchema.nullable().default(null),
   /** 제품 ID (없으면 null). 보통 projectId 선택 시 자동 설정 */
   productId: z.string().nullable().default(null),
   /** 우선순위 힌트 (AI 추정) — 사용자가 모달에서 확정 */
@@ -33,8 +51,26 @@ export const TaskAiDraftSchema = z.object({
 })
 export type TaskAiDraft = z.infer<typeof TaskAiDraftSchema>
 
+/** Gemini가 newProject(또는 new_project) 키로 반환한 신규 프로젝트 제안을 정규화 */
+function normalizeNewProject(parsed: Record<string, unknown>): NewProjectDraft | null {
+  const raw = (parsed.newProject ?? parsed.new_project) as Record<string, unknown> | null | undefined
+  if (!raw || typeof raw !== "object") return null
+  const name = (raw.name ?? raw.title ?? "") as string
+  // projectId가 이미 있으면 신규 제안은 무시 (둘 중 하나만 유효)
+  if (!name.trim()) return null
+  return {
+    name: name.trim(),
+    purpose: (raw.purpose ?? raw.description ?? "") as string,
+    goal: (raw.goal ?? "") as string,
+    productId: (raw.productId ?? null) as string | null,
+  }
+}
+
 /** Gemini 응답이 다른 키 이름을 쓸 수 있어 미리 정규화하는 헬퍼 */
 export function normalizeAiDraft(parsed: Record<string, unknown>): TaskAiDraft {
+  const projectId = (parsed.projectId ?? null) as string | null
+  // projectId가 지정되면 newProject는 무시. 그렇지 않을 때만 신규 제안 채택.
+  const newProject = projectId ? null : normalizeNewProject(parsed)
   const safe = {
     name: (parsed.name ?? parsed.title ?? "새 업무") as string,
     background: (parsed.background ?? parsed.context ?? "") as string,
@@ -43,7 +79,8 @@ export function normalizeAiDraft(parsed: Record<string, unknown>): TaskAiDraft {
           .map((c) => (typeof c === "string" ? c : (c as { name?: string; description?: string }).name ?? (c as { description?: string }).description ?? ""))
           .filter((s): s is string => typeof s === "string" && s.length > 0)
       : [],
-    projectId: (parsed.projectId ?? null) as string | null,
+    projectId,
+    newProject,
     productId: (parsed.productId ?? null) as string | null,
     priority: (parsed.priority ?? parsed.priorityHint) as Priority | undefined,
     ownerHint: (parsed.ownerHint ?? parsed.owner ?? parsed.assignee) as string | undefined,

@@ -22,6 +22,7 @@ interface Report {
   weekStart: string
   weekEnd: string
   createdAt: string
+  submittedAt?: string | null
 }
 
 export function ReportList({ reports: initial }: { reports: Report[] }) {
@@ -48,7 +49,12 @@ export function ReportList({ reports: initial }: { reports: Report[] }) {
         <h2 className="text-sm font-medium text-muted-foreground">
           {initial.length}건의 보고서
         </h2>
-        <Button size="sm" onClick={handleCreate} disabled={creating}>
+        <Button
+          size="sm"
+          onClick={handleCreate}
+          disabled={creating}
+          className="ai-rainbow-border"
+        >
           {creating ? <Spinner /> : "주간보고 생성"}
         </Button>
       </div>

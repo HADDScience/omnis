@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { ViewToggle } from "./view-toggle"
 import { TasksBoard, type KanbanTask } from "./tasks-board"
 
@@ -12,12 +12,10 @@ interface TasksViewsProps {
 const STORAGE_KEY = "omnis:tasks-view"
 
 export function TasksViews({ boardTasks, listSlot }: TasksViewsProps) {
-  const [view, setView] = useState<"list" | "board">("board")
-
-  useEffect(() => {
+  const [view, setView] = useState<"list" | "board">(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null
-    if (saved === "list" || saved === "board") setView(saved)
-  }, [])
+    return saved === "list" || saved === "board" ? saved : "board"
+  })
 
   function handleChange(next: "list" | "board") {
     setView(next)

@@ -23,6 +23,7 @@ interface Report {
   weekEnd: string
   createdAt: string
   updatedAt: string
+  submittedAt: string | null
 }
 
 export function ReportDetail({ report }: { report: Report }) {
@@ -76,6 +77,11 @@ export function ReportDetail({ report }: { report: Report }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {report.submittedAt && (
+              <span className="text-xs text-muted-foreground">
+                제출 {new Date(report.submittedAt).toLocaleString("ko-KR")}
+              </span>
+            )}
             <Badge variant={report.status === "제출 완료" ? "default" : "secondary"}>
               {report.status}
             </Badge>

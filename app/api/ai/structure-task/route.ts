@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
       ...draft,
       productId: fallbackProductId,
       _fallback: true,
+      message: "GEMINI_API_KEY가 설정되지 않아 입력 내용을 기반으로 기본 초안을 만들었습니다.",
     })
   }
 
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
       ...draft,
       productId: fallbackProductId,
       _fallback: true,
+      message: "AI 구조화에 실패해 입력 내용을 기반으로 기본 초안을 만들었습니다.",
     })
   }
 }

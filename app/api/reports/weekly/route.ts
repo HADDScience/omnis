@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { generateWeeklyReport } from "@/lib/ai"
+import { syncEmbeddingsSafe, deleteEmbeddingsSafe } from "@/lib/embeddings"
 import { startOfWeek, endOfWeek, format } from "date-fns"
 import { ko } from "date-fns/locale"
 
 export async function GET() {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "인증 필요" }, { status: 401 })
+  }
+
   const reports = await prisma.weeklyReport.findMany({
+    where: { ownerId: session.user.id },
     orderBy: { weekStart: "desc" },
     include: { owner: { select: { id: true, name: true } } },
   })
@@ -32,14 +39,20 @@ export async function POST(req: NextRequest) {
     where: {
       ownerId: session.user.id,
       archived: false,
+      OR: [
+        { createdAt: { gte: weekStart, lte: weekEnd } },
+        { updatedAt: { gte: weekStart, lte: weekEnd } },
+        { workStart: { gte: weekStart, lte: weekEnd } },
+        { workEnd: { gte: weekStart, lte: weekEnd } },
+        { deadline: { gte: weekStart, lte: weekEnd } },
+      ],
     },
     select: { name: true, status: true },
   })
 
-  const content: { completed: string[]; inProgress: string[]; planned: string[]; notes: string; draft: string } = {
+  const content: { completed: string[]; inProgress: string[]; notes: string; draft: string } = {
     completed: tasks.filter((t) => t.status === "DONE").map((t) => t.name),
     inProgress: tasks.filter((t) => t.status === "IN_PROGRESS").map((t) => t.name),
-    planned: [],
     notes: "",
     draft: "",
   }
@@ -59,8 +72,15 @@ export async function POST(req: NextRequest) {
     select: { name: true },
   })
 
-  const report = await prisma.weeklyReport.create({
-    data: {
+  const report = await prisma.weeklyReport.upsert({
+    where: { ownerId_isoWeek: { ownerId: session.user.id, isoWeek } },
+    update: {
+      title: `${isoWeek} 주간보고 - ${user?.name ?? ""}`,
+      weekStart,
+      weekEnd,
+      content,
+    },
+    create: {
       title: `${isoWeek} 주간보고 - ${user?.name ?? ""}`,
       ownerId: session.user.id,
       weekStart,
@@ -70,6 +90,8 @@ export async function POST(req: NextRequest) {
     },
     include: { owner: { select: { id: true, name: true } } },
   })
+
+  await syncEmbeddingsSafe("WEEKLY_REPORT", report.id)
 
   return NextResponse.json(report, { status: 201 })
 }
@@ -85,7 +107,7 @@ export async function PATCH(req: NextRequest) {
 
   if (!id) return NextResponse.json({ error: "id 필수" }, { status: 400 })
 
-  const existing = await prisma.weeklyReport.findUnique({ where: { id } })
+  const existing = await prisma.weeklyReport.findFirst({ where: { id, ownerId: session.user.id } })
   if (!existing) return NextResponse.json({ error: "보고서 없음" }, { status: 404 })
 
   const data: Record<string, unknown> = {}
@@ -97,6 +119,8 @@ export async function PATCH(req: NextRequest) {
 
   if (status !== undefined) {
     data.status = status
+    if (status === "제출 완료") data.submittedAt = new Date()
+    else data.submittedAt = null
   }
 
   const updated = await prisma.weeklyReport.update({
@@ -104,6 +128,8 @@ export async function PATCH(req: NextRequest) {
     data,
     include: { owner: { select: { id: true, name: true } } },
   })
+
+  await syncEmbeddingsSafe("WEEKLY_REPORT", updated.id)
 
   return NextResponse.json(updated)
 }
@@ -118,6 +144,10 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id 필수" }, { status: 400 })
 
+  const existing = await prisma.weeklyReport.findFirst({ where: { id, ownerId: session.user.id }, select: { id: true } })
+  if (!existing) return NextResponse.json({ error: "보고서 없음" }, { status: 404 })
+
   await prisma.weeklyReport.delete({ where: { id } })
+  await deleteEmbeddingsSafe("WEEKLY_REPORT", id)
   return NextResponse.json({ ok: true })
 }

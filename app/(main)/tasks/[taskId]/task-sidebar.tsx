@@ -27,6 +27,14 @@ function formatTime(iso: string): string {
   return d.toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
 }
 
+/** TASK_CREATED 메시지는 `__TASK_CREATED__:<id>` sentinel이므로 사람이 읽을 라벨로 치환 */
+function displayContent(m: Message): string {
+  if (m.kind === "TASK_CREATED" || m.content.startsWith("__TASK_CREATED__:")) {
+    return "업무가 생성되었습니다"
+  }
+  return m.content
+}
+
 export function TaskSidebar({ taskId, messages }: TaskSidebarProps) {
   const systemMessages = messages.filter(
     (m) => m.kind === "TASK_REBUILT" || m.kind === "TASK_DONE" || m.kind === "TASK_CREATED"
@@ -75,7 +83,7 @@ export function TaskSidebar({ taskId, messages }: TaskSidebarProps) {
                       </span>
                     </div>
                     <div className="mt-0.5 whitespace-pre-wrap text-[12px] leading-[1.5]">
-                      {m.content}
+                      {displayContent(m)}
                     </div>
                   </div>
                 </div>
@@ -116,7 +124,7 @@ export function TaskSidebar({ taskId, messages }: TaskSidebarProps) {
                       {formatTime(m.createdAt)}
                     </span>
                   </div>
-                  <div className="mt-0.5 text-[11.5px] leading-[1.5]">{m.content}</div>
+                  <div className="mt-0.5 text-[11.5px] leading-[1.5]">{displayContent(m)}</div>
                 </div>
               </div>
             ))}
