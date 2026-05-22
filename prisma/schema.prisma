@@ -28,7 +28,12 @@ model User {
   checklists      Checklist[]
   weeklyReports   WeeklyReport[]
   omnisUpdates    OmnisCard[]
+  omnisVersions    OmnisCardVersion[]
+  omnisQueries    OmnisQuery[]
   notifications   Notification[]
+  omnisViewLogs   OmnisViewLog[]
+  bookmarks       Bookmark[]
+  activityLogs    ActivityLog[]
 }
 
 enum Role {
@@ -219,11 +224,13 @@ model WeeklyReport {
   weekEnd   DateTime
   isoWeek   String
   status    String   @default("작성 중")
+  submittedAt DateTime?
   content   Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([ownerId, weekStart])
+  @@unique([ownerId, isoWeek])
 }
 
 // ─── 옴니스 지식 베이스 ──────────────────────────────────
@@ -246,10 +253,81 @@ model OmnisCard {
   version     Int           @default(1)
   updatedById String?
   updatedBy   User?         @relation(fields: [updatedById], references: [id])
+  versions    OmnisCardVersion[]
+  viewLogs    OmnisViewLog[]
+  bookmarks   Bookmark[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
   @@index([categoryId])
+}
+
+model OmnisCardVersion {
+  id               String    @id @default(uuid())
+  cardId           String
+  card             OmnisCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  content          Json
+  version          Int
+  restoredFromHash String?
+  createdById      String?
+  createdBy        User?     @relation(fields: [createdById], references: [id])
+  createdAt        DateTime  @default(now())
+
+  @@index([cardId, version])
+  @@index([createdById])
+}
+
+// 옴니스 RAG 질문·답변 내역 (사용자별)
+model OmnisQuery {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  question  String
+  answer    String
+  /// 답변 근거 출처 배열 [{ id, source, sourceId, title, sourceLabel, similarity }]
+  sources   Json
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model OmnisViewLog {
+  id        String    @id @default(uuid())
+  cardId    String
+  card      OmnisCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id])
+  viewedAt  DateTime  @default(now())
+
+  @@index([cardId, viewedAt])
+  @@index([userId, viewedAt])
+}
+
+model Bookmark {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cardId    String
+  card      OmnisCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, cardId])
+  @@index([userId, createdAt])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  title     String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId, createdAt])
+  @@index([userId, createdAt])
 }
 
 // ─── 파일 ────────────────────────────────────────────────
@@ -295,4 +373,31 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId, read])
+}
+
+// ─── 임베딩 (pgvector 벡터 검색) ─────────────────────────
+// 옴니스 카드·업무·주간보고·채팅을 청크 단위로 임베딩해 RAG 검색에 사용.
+// embedding 컬럼은 Prisma 미지원 타입이라 raw SQL(lib/embeddings.ts)로 read/write.
+
+enum EmbeddingSource {
+  OMNIS_CARD
+  TASK
+  WEEKLY_REPORT
+  CHAT_MESSAGE
+}
+
+model EmbeddingChunk {
+  id          String          @id @default(uuid())
+  source      EmbeddingSource
+  sourceId    String
+  chunkIndex  Int             @default(0)
+  title       String
+  content     String
+  contentHash String
+  embedding   Unsupported("vector(768)")?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([source, sourceId, chunkIndex])
+  @@index([source, sourceId])
 }
