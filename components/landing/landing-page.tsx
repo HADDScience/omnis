@@ -23,7 +23,10 @@ export function LandingPage() {
   return (
     <div className="bg-background text-foreground">
       {/* Top Nav */}
-      <nav className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/70 backdrop-blur-xl">
+      <nav
+        className="fixed inset-x-0 border-b border-border/60 bg-background/70 backdrop-blur-xl"
+        style={{ top: "var(--demo-banner-height, 0px)", zIndex: "var(--z-dock)" }}
+      >
         <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-6 px-6">
           <Link href="/" className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-[14px] font-bold text-primary-foreground">
@@ -32,7 +35,7 @@ export function LandingPage() {
             <span className="text-[14px] font-semibold">Omnis</span>
           </Link>
           <div className="hidden items-center gap-5 text-[13px] text-muted-foreground md:flex">
-            <a href="#features" className="hover:text-foreground">기능</a>
+            <a href="#features" className="hover:text-foreground">해결 과제</a>
             <a href="#workflow" className="hover:text-foreground">워크플로</a>
             <a href="#knowledge" className="hover:text-foreground">HADD DB</a>
             <a href="#metrics" className="hover:text-foreground">성과</a>
@@ -67,20 +70,21 @@ export function LandingPage() {
         <div className="relative z-10 mx-auto max-w-[900px] px-6 py-28 text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-[11px] text-muted-foreground backdrop-blur">
             <HugeiconsIcon icon={AiMagicIcon} size={11} className="text-primary" />
-            HADD Science AI 워크스페이스
+            Notion + Slack + 지식베이스 통합 운영 도구
           </div>
           <h1 className="text-[clamp(40px,7vw,80px)] font-bold leading-[1.05] tracking-[-0.035em]">
-            채팅 한 줄로,
+            흩어진 업무를,
             <br />
-            <AuroraText>업무가 완성됩니다.</AuroraText>
+            <AuroraText>실행 가능한 카드로 바꿉니다.</AuroraText>
           </h1>
           <p className="mx-auto mt-5 max-w-[620px] text-[15px] leading-[1.65] text-muted-foreground">
-            Omnis는 HADD Science의 전사 지식·업무·커뮤니케이션을 하나로 잇는 AI 워크스페이스입니다.
-            메시지에 <span className="font-mono text-foreground">/업무</span>만 쓰면, 나머지는 AI가 채웁니다.
+            Omnis는 HADD Science의 채팅 지시, 업무 카드, 보고서, 사내 지식을 한 화면에 묶는
+            AI 운영 워크스페이스입니다. 메시지에 <span className="font-mono text-foreground">/업무</span>를 쓰면
+            담당자·마감·체크리스트가 채워지고, 완료 이력은 HADD DB에 남습니다.
           </p>
           <div className="mt-8 flex items-center justify-center gap-2.5">
             <BorderBeamButton href="/login" variant="primary">
-              무료로 시작하기 <HugeiconsIcon icon={ArrowRight01Icon} size={13} />
+              내부 계정으로 시작하기 <HugeiconsIcon icon={ArrowRight01Icon} size={13} />
             </BorderBeamButton>
             <a
               href="#workflow"
@@ -91,7 +95,7 @@ export function LandingPage() {
             </a>
           </div>
           <p className="mt-6 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-            HADD 전 구성원 사용 중
+            업무 지시 · 지식 검색 · 보고 초안을 하나의 흐름으로
           </p>
         </div>
       </section>
@@ -100,18 +104,21 @@ export function LandingPage() {
       <section id="features" className="mx-auto max-w-[1200px] px-6 py-24">
         <div className="mb-10 text-center">
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
-            왜 Omnis인가
+            해결 과제
           </div>
           <h2 className="text-[36px] font-bold tracking-[-0.02em]">
-            과학자가 만든, 과학을 위한 도구
+            채팅, 문서, 보고가 따로 놀지 않게
           </h2>
+          <p className="mx-auto mt-3 max-w-[640px] text-[14px] leading-[1.6] text-muted-foreground">
+            실무자는 대화하듯 지시하고, 관리자는 누락 없이 추적하며, 반복 질문은 사내 지식 검색으로 줄입니다.
+          </p>
         </div>
         <div className="grid grid-cols-6 gap-4">
           <BentoCard
             className="col-span-6 lg:col-span-4"
             icon={Message01Icon}
             title="채팅 → 업무 자동화"
-            description="/업무 @담당 '샘플 재검' D-0 한 줄이면 끝. 빈칸은 AI가 맥락으로 채웁니다."
+            description="/업무 @담당 '샘플 재검' D-0 한 줄이면 업무명, 담당자, 마감, 체크리스트를 AI가 구조화합니다."
             beam
           >
             <MockSlashDemo />
@@ -120,7 +127,7 @@ export function LandingPage() {
             className="col-span-6 lg:col-span-2"
             icon={BookOpen01Icon}
             title="HADD DB 통합 검색"
-            description="⌘K로 카드·업무·보고서를 한 번에. 33개 결과를 0.02초에."
+            description="⌘K로 제품, 인증, 지원사업, 업무, 보고서를 한 번에 찾아 같은 질문 반복을 줄입니다."
           >
             <MockCommandK />
           </BentoCard>
@@ -128,7 +135,7 @@ export function LandingPage() {
             className="col-span-6 lg:col-span-2"
             icon={TimeQuarterPassIcon}
             title="git 기반 버전관리"
-            description="모든 편집이 commit. 언제든 이전 버전으로 복원."
+            description="카드 편집 이력을 자동 저장해 변경 이유를 추적하고 이전 버전으로 복원합니다."
           >
             <MockVersionHistory />
           </BentoCard>
@@ -136,7 +143,7 @@ export function LandingPage() {
             className="col-span-6 lg:col-span-4"
             icon={AiMagicIcon}
             title="스레드 대화로 업무 재구성"
-            description="#업무명 멘션하면 전체 스레드를 Gemini가 다시 구조화합니다."
+            description="#업무명을 멘션하면 흩어진 대화 맥락을 다시 읽어 다음 액션과 체크리스트로 정리합니다."
           >
             <MockRebuild />
           </BentoCard>
@@ -144,13 +151,13 @@ export function LandingPage() {
             className="col-span-6 lg:col-span-3"
             icon={FileAttachmentIcon}
             title="주간 보고 자동 초안"
-            description="이번 주 완료/진행 업무를 요약해 한 문장으로 전송."
+            description="완료·진행·지연 업무를 모아 주간 보고 초안을 만들고 빠진 업데이트를 확인합니다."
           />
           <BentoCard
             className="col-span-6 lg:col-span-3"
             icon={Task01Icon}
             title="통합 스레드 뷰"
-            description="하나의 메시지가 여러 스레드에 동시 출현. 뷰 관점의 자유."
+            description="같은 메시지를 업무, 담당자, 프로젝트 관점에서 다시 묶어 필요한 맥락만 빠르게 봅니다."
           />
         </div>
       </section>
@@ -164,15 +171,18 @@ export function LandingPage() {
                 워크플로
               </div>
               <h2 className="mb-4 text-[32px] font-bold tracking-[-0.02em]">
-                5초 업무 지시, 0초 문서화
+                지시는 채팅처럼, 관리는 카드처럼
               </h2>
+              <p className="mb-6 max-w-[520px] text-[14px] leading-[1.65] text-muted-foreground">
+                별도 양식을 열지 않아도 채팅 입력에서 업무가 생성되고, 담당자의 진행 상황은 대시보드와 보고서로 이어집니다.
+              </p>
               <ol className="flex flex-col gap-4 text-[13.5px] text-muted-foreground">
                 {[
-                  ["01", "Dock 입력창에 /업무 한 줄"],
-                  ["02", "AI 자동생성으로 빈칸 채우기"],
-                  ["03", "최종 확인 → 채팅에 업무 카드 게시"],
-                  ["04", "담당자가 체크리스트 완료 → DONE 자동 전이"],
-                  ["05", "#업무명 대화로 언제든 재구성"],
+                  ["01", "Dock 입력창에 /업무로 지시 작성"],
+                  ["02", "AI가 담당자, 마감, 체크리스트 후보 생성"],
+                  ["03", "최종 확인 후 채팅과 업무 보드에 카드 게시"],
+                  ["04", "담당자가 체크리스트를 완료하면 상태 자동 전이"],
+                  ["05", "#업무명 멘션으로 관련 대화와 이력을 재구성"],
                 ].map(([n, t]) => (
                   <li key={n} className="flex items-baseline gap-3">
                     <span className="font-mono text-[11px] text-primary">{n}</span>
@@ -206,8 +216,11 @@ export function LandingPage() {
               HADD DB
             </div>
             <h2 className="mb-4 text-[32px] font-bold tracking-[-0.02em]">
-              회사의 모든 지식을 한 번의 검색으로
+              회사 지식은 찾을 수 있어야 자산이 됩니다
             </h2>
+            <p className="mb-5 max-w-[520px] text-[14px] leading-[1.65] text-muted-foreground">
+              인증, 지원사업, 고객사, 제품 자료처럼 반복해서 묻는 정보를 HADD DB 카드로 정리하고 업무 흐름 안에서 바로 참조합니다.
+            </p>
             <ul className="flex flex-col gap-3 text-[13.5px] text-muted-foreground">
               <li className="flex items-baseline gap-2">
                 <span className="text-primary">●</span>
@@ -237,7 +250,7 @@ export function LandingPage() {
             기술 스택
           </div>
           <h2 className="mb-10 text-[32px] font-bold tracking-[-0.02em]">
-            검증된 스택, 안전한 온프레미스
+            내부 데이터 흐름에 맞춘 검증된 스택
           </h2>
           <AnimatedBeamHub />
         </div>
@@ -246,10 +259,10 @@ export function LandingPage() {
       {/* Metrics */}
       <section id="metrics" className="mx-auto max-w-[1200px] px-6 py-24">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-          <MetricCard value={80} suffix="%" label="업무 작성 시간 단축" />
-          <MetricCard value={10} suffix="×" label="지식 검색 속도" />
-          <MetricCard value={95} suffix="%" label="반복 질문 감소" />
-          <MetricCard value={0} suffix="초" label="문서화 오버헤드" />
+          <MetricCard value={80} suffix="%" label="업무 카드 작성 시간 단축" />
+          <MetricCard value={10} suffix="×" label="사내 지식 탐색 속도" />
+          <MetricCard value={95} suffix="%" label="반복 질문 감소 목표" />
+          <MetricCard value={0} suffix="초" label="보고 초안 취합 대기" />
         </div>
       </section>
 
@@ -264,12 +277,12 @@ export function LandingPage() {
         />
         <div className="relative mx-auto max-w-[1200px] px-6 py-28 text-center">
           <h2 className="mb-5 text-[clamp(32px,5vw,56px)] font-bold tracking-[-0.025em]">
-            지식이 흐르는 조직,
+            채팅에서 끝나던 일을,
             <br />
-            <AuroraText>지금 시작하세요.</AuroraText>
+            <AuroraText>추적 가능한 운영 흐름으로.</AuroraText>
           </h2>
           <p className="mx-auto mb-8 max-w-[500px] text-[14px] text-muted-foreground">
-            HADD Science 내부 계정으로 바로 로그인하세요.
+            HADD Science 내부 계정으로 로그인해 업무 지시, 지식 검색, 보고 초안을 바로 연결하세요.
           </p>
           <BorderBeamButton href="/login" variant="primary">
             시작하기 <HugeiconsIcon icon={ArrowRight01Icon} size={13} />
