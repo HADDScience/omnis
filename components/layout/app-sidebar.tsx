@@ -14,7 +14,6 @@ import {
   Sun01Icon,
   Search01Icon,
   Notification03Icon,
-  Settings02Icon,
   UserIcon,
   UserGroupIcon,
   ArrowUp01Icon,
@@ -206,7 +205,10 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={(e) => {
+                e.preventDefault()
+                signOut({ callbackUrl: "/", redirectTo: "/" })
+              }}
               className="text-destructive data-[highlighted]:text-destructive"
             >
               <HugeiconsIcon icon={Logout01Icon} size={14} />
