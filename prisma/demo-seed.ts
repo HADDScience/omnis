@@ -10,6 +10,7 @@ import { PrismaClient } from "../generated/prisma/client"
 import { hashSync } from "bcryptjs"
 
 const prisma = new PrismaClient()
+const DEMO_PASSWORD = "demo1234"
 
 async function main() {
   // ─── 0. 기존 데이터 정리 (FK 의존 순서) ────────────────────────
@@ -39,7 +40,7 @@ async function main() {
   ]
   for (const u of users) {
     await prisma.user.create({
-      data: { name: u.name, role: u.role, passwordHash: hashSync(process.env.SEED_PASSWORD ?? "changeme", 10) },
+      data: { name: u.name, role: u.role, passwordHash: hashSync(DEMO_PASSWORD, 10) },
     })
   }
 

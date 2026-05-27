@@ -158,9 +158,10 @@ cp .env.example .env
 DATABASE_URL="postgresql://omnis:omnis_dev_2026@localhost:5432/omnis"
 NEXTAUTH_SECRET="$(openssl rand -base64 32 결과 붙여넣기)"
 NEXTAUTH_URL="http://localhost:3000"
+NEXT_PUBLIC_IS_DEMO=true
 GEMINI_API_KEY="발급받은 키"
 SEED_PASSWORD="원하는-개발용-비밀번호"
-E2E_PASSWORD="원하는-개발용-비밀번호"
+E2E_PASSWORD="demo1234"
 ```
 
 > **참고:** `DATABASE_URL`의 비밀번호는 `docker-compose.yml`의 `POSTGRES_PASSWORD`와 일치시켜야 합니다.
@@ -171,7 +172,7 @@ E2E_PASSWORD="원하는-개발용-비밀번호"
 npm install
 npm run docker:up        # PostgreSQL 컨테이너 기동
 npm run db:migrate       # Prisma 스키마 적용
-npm run db:seed          # 사용자 5명 + 카테고리 + 제품 + 기본 프로젝트 시드
+npm run db:seed:demo     # 공모전 데모용 익명 사용자 + 데모 데이터 시드
 ```
 
 ### 4. 개발 서버 시작
@@ -180,12 +181,12 @@ npm run db:seed          # 사용자 5명 + 카테고리 + 제품 + 기본 프�
 npm run dev
 ```
 
-브라우저에서 [http://localhost:3000](http://localhost:3000) 접속. 로그인 화면에서 시드된 사용자 이름과 `SEED_PASSWORD`로 로그인합니다.
+브라우저에서 [http://localhost:3000](http://localhost:3000) 접속. 로그인 화면에서 시연용 익명 계정과 비밀번호 `demo1234`로 로그인합니다.
 
 | 이름 | 권한 |
 |------|------|
-| 김아리 / 노혜린 | 관리자 (ADMIN) |
-| 정우창 / 주용석 / 박소정 | 팀원 (MEMBER) |
+| 팀장 / 부팀장 | 관리자 (ADMIN) |
+| 사원1 / 사원2 / 사원3 | 팀원 (MEMBER) |
 
 ---
 
@@ -201,6 +202,7 @@ npm run dev
 | `npm run format` | Prettier 포매팅 |
 | `npm run db:studio` | Prisma Studio (DB GUI) |
 | `npm run db:seed` | 시드 데이터 재적용 |
+| `npm run db:seed:demo` | 공모전 데모용 익명 시드 데이터 재적용 |
 | `npm run docker:up` / `down` | PostgreSQL 컨테이너 기동·정지 |
 
 ---
