@@ -28,6 +28,16 @@ export const NewProjectDraftSchema = z.object({
 })
 export type NewProjectDraft = z.infer<typeof NewProjectDraftSchema>
 
+/**
+ * AI가 신규 제품 생성을 제안할 때의 초안.
+ * 제품 목록에 없는 제품·소재명이 메시지에 명시됐을 때 productId 대신 채워진다.
+ */
+export const NewProductDraftSchema = z.object({
+  /** 제품명 */
+  name: z.string().min(1).max(80),
+})
+export type NewProductDraft = z.infer<typeof NewProductDraftSchema>
+
 /** AI structureTask가 반환할 카드 초안 */
 export const TaskAiDraftSchema = z.object({
   /** 업무명 (15자 이내 권장) */
@@ -42,6 +52,8 @@ export const TaskAiDraftSchema = z.object({
   newProject: NewProjectDraftSchema.nullable().default(null),
   /** 제품 ID (없으면 null). 보통 projectId 선택 시 자동 설정 */
   productId: z.string().nullable().default(null),
+  /** 신규 제품 제안 (제품 목록에 적합한 것이 없을 때). productId와 동시에 채우지 않음 */
+  newProduct: NewProductDraftSchema.nullable().default(null),
   /** 우선순위 힌트 (AI 추정) — 사용자가 모달에서 확정 */
   priority: PrioritySchema.optional(),
   /** 담당자 힌트 (이름) — 사용자가 모달에서 user 매핑 */
@@ -66,11 +78,27 @@ function normalizeNewProject(parsed: Record<string, unknown>): NewProjectDraft |
   }
 }
 
+/** Gemini가 newProduct(또는 new_product) 키로 반환한 신규 제품 제안을 정규화 */
+function normalizeNewProduct(parsed: Record<string, unknown>): NewProductDraft | null {
+  const raw = parsed.newProduct ?? parsed.new_product
+  if (!raw) return null
+  // 객체({name}) 또는 문자열로 올 수 있음
+  const name =
+    typeof raw === "string"
+      ? raw
+      : ((raw as Record<string, unknown>).name ?? (raw as Record<string, unknown>).title ?? "") as string
+  if (typeof name !== "string" || !name.trim()) return null
+  return { name: name.trim() }
+}
+
 /** Gemini 응답이 다른 키 이름을 쓸 수 있어 미리 정규화하는 헬퍼 */
 export function normalizeAiDraft(parsed: Record<string, unknown>): TaskAiDraft {
   const projectId = (parsed.projectId ?? null) as string | null
   // projectId가 지정되면 newProject는 무시. 그렇지 않을 때만 신규 제안 채택.
   const newProject = projectId ? null : normalizeNewProject(parsed)
+  const productId = (parsed.productId ?? null) as string | null
+  // productId가 지정되면 newProduct는 무시. 그렇지 않을 때만 신규 제안 채택.
+  const newProduct = productId ? null : normalizeNewProduct(parsed)
   const safe = {
     name: (parsed.name ?? parsed.title ?? "새 업무") as string,
     background: (parsed.background ?? parsed.context ?? "") as string,
@@ -81,7 +109,8 @@ export function normalizeAiDraft(parsed: Record<string, unknown>): TaskAiDraft {
       : [],
     projectId,
     newProject,
-    productId: (parsed.productId ?? null) as string | null,
+    productId,
+    newProduct,
     priority: (parsed.priority ?? parsed.priorityHint) as Priority | undefined,
     ownerHint: (parsed.ownerHint ?? parsed.owner ?? parsed.assignee) as string | undefined,
     deadlineHint: (parsed.deadlineHint ?? parsed.deadline ?? parsed.dueDate) as string | undefined,

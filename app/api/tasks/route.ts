@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { syncEmbeddingsSafe } from "@/lib/embeddings"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
+import { normalizeName } from "@/lib/name-match"
 import type { Prisma, Priority } from "@/generated/prisma/client"
 
 export async function GET(req: NextRequest) {
@@ -114,8 +115,16 @@ export async function POST(req: NextRequest) {
   const { ownerName, projectName, deadlineLabel, checklist, rawCommand, postToChat, instruction } = body
 
   // TaskCmdModal에서 이름 기반으로 전달된 경우 ID 해석
-  if (!ownerId && ownerName) {
-    const owner = await prisma.user.findFirst({ where: { name: ownerName }, select: { id: true } })
+  // 존칭("우창님")·약칭("우창")도 흡수 — 완전 일치 우선, 없으면 정규화한 이름의 부분 일치
+  if (!ownerId && ownerName?.trim()) {
+    const exactName = ownerName.trim()
+    const norm = normalizeName(exactName)
+    const owner = await prisma.user.findFirst({
+      where: norm
+        ? { OR: [{ name: exactName }, { name: { contains: norm } }] }
+        : { name: exactName },
+      select: { id: true },
+    })
     if (owner) ownerId = owner.id
   }
   if (!projectId && projectName) {

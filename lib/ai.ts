@@ -99,7 +99,7 @@ export async function structureTask(
     : ""
 
   const memberSection = context?.members?.length
-    ? `\n팀원 목록 (메시지에 언급된 담당자 이름이 있으면 그 이름 그대로 ownerHint에 지정, 없으면 생략):\n${context.members.map((m) => `- ${m.name}`).join("\n")}`
+    ? `\n팀원 목록 (메시지의 담당자를 아래 정식 이름 중 하나로 매핑해 ownerHint에 지정):\n${context.members.map((m) => `- ${m.name}`).join("\n")}`
     : ""
 
   const today = new Date().toISOString().slice(0, 10)
@@ -111,12 +111,14 @@ export async function structureTask(
 - background: 업무의 배경이나 맥락 (2-3문장)
 - checklist: 수행해야 할 단계들 (2-5개, 각 항목은 짧게)
 - projectId: 기존 프로젝트 목록 중 가장 적합한 프로젝트의 ID. 적합한 기존 프로젝트가 없으면 null.
-- newProject: 기존 프로젝트 목록 중 적합한 것이 없고, 이 업무가 새로운 프로젝트로 묶여야 한다고 판단될 때만 신규 프로젝트 정보를 객체로 제안. 그렇지 않으면 null.
-  형식: { "name": "프로젝트명(20자 이내)", "purpose": "프로젝트 목적 1-2문장", "goal": "프로젝트 목표 1문장", "productId": "관련 제품 ID 또는 null" }
-  주의: projectId와 newProject는 동시에 채우지 마세요. 둘 중 하나만 사용하고 나머지는 null로 두세요. 단순 단발성 업무라면 둘 다 null로 두어도 됩니다.
-- productId: 가장 관련 있는 제품의 ID (없으면 null)
+- newProject: 기존 프로젝트 목록에 없는 프로젝트·고객사·캠페인 이름이 메시지에 명시되어 있거나, 이 업무가 새로운 프로젝트로 묶여야 할 때 신규 프로젝트를 객체로 제안. 그렇지 않으면 null.
+  형식: { "name": "프로젝트명(20자 이내)", "purpose": "프로젝트 목적 1-2문장", "goal": "프로젝트 목표 1문장" }
+  주의: projectId와 newProject는 동시에 채우지 마세요. 둘 중 하나만 사용하세요.
+- productId: 제품 목록 중 가장 관련 있는 제품의 ID (없으면 null)
+- newProduct: 제품 목록에 없는 제품·소재·물질 이름이 메시지에 명시되어 있으면 신규 제품을 객체로 제안. 형식: { "name": "제품명" }. 그렇지 않으면 null.
+  주의: productId와 newProduct는 동시에 채우지 마세요. 둘 중 하나만 사용하세요.
 - priority: 메시지에서 추정한 우선순위 ("LOW" | "NORMAL" | "HIGH" 중 하나, 명확치 않으면 생략)
-- ownerHint: 메시지에서 언급된 담당자 이름 (팀원 목록에 있는 이름 그대로, 없으면 생략)
+- ownerHint: 메시지에서 언급된 담당자. 존칭("우창님")·약칭("우창")이 쓰였어도 팀원 목록의 정식 이름으로 변환해 지정(예: "우창님" → "정우창"). 언급이 없으면 생략
 - deadlineHint: 마감일 힌트. ISO 날짜(YYYY-MM-DD) 또는 한국어 상대표현("오늘"·"내일"·"이번 주 금요일" 등). 명시 없으면 생략. 오늘은 ${today} 입니다.
 ${projectSection}
 ${productSection}

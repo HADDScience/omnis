@@ -36,6 +36,7 @@ import { toast } from "sonner"
 import { format } from "date-fns"
 import { parseSlashTask, resolveDeadline } from "./slash-command-parser"
 import { PrioritySchema } from "@/lib/schemas/task-ai"
+import { matchUserByName } from "@/lib/name-match"
 
 interface TaskCmdModalV2Props {
   open: boolean
@@ -62,6 +63,8 @@ interface ProductOption {
 
 /** 프로젝트 Select에서 "신규 프로젝트 생성"을 의미하는 sentinel 값 */
 const NEW_PROJECT_VALUE = "__new__"
+/** 제품 Select에서 "신규 제품 생성"을 의미하는 sentinel 값 */
+const NEW_PRODUCT_VALUE = "__new_product__"
 
 /** 폼 스키마 — TaskAiDraft 기반 + 사용자 입력 필수 필드 */
 const TaskFormSchema = z
@@ -76,13 +79,18 @@ const TaskFormSchema = z
     checklist: z.array(z.string()),
     // 신규 프로젝트 생성 시에만 사용 (projectId === NEW_PROJECT_VALUE)
     newProjectName: z.string(),
-    newProjectProductId: z.string().nullable(),
     newProjectPurpose: z.string(),
     newProjectGoal: z.string(),
+    // 신규 제품 생성 시에만 사용 (productId === NEW_PRODUCT_VALUE)
+    newProductName: z.string(),
   })
   .refine(
     (v) => v.projectId !== NEW_PROJECT_VALUE || v.newProjectName.trim().length > 0,
     { message: "프로젝트명을 입력하세요", path: ["newProjectName"] },
+  )
+  .refine(
+    (v) => v.productId !== NEW_PRODUCT_VALUE || v.newProductName.trim().length > 0,
+    { message: "제품명을 입력하세요", path: ["newProductName"] },
   )
 type TaskFormValues = z.infer<typeof TaskFormSchema>
 
@@ -124,9 +132,9 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
       background: "",
       checklist: [],
       newProjectName: "",
-      newProjectProductId: null,
       newProjectPurpose: "",
       newProjectGoal: "",
+      newProductName: "",
     },
   })
   const {
@@ -139,9 +147,9 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
   } = form
   const checklist = watch("checklist")
   const projectId = watch("projectId")
+  const productId = watch("productId")
   const priority = watch("priority")
   const ownerId = watch("ownerId")
-  const newProjectProductId = watch("newProjectProductId")
 
   // 모달 열림 시: 옵션 로딩 + 슬래시 파싱 결과로 초기화
   useEffect(() => {
@@ -176,9 +184,9 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           background: "",
           checklist: [],
           newProjectName: "",
-          newProjectProductId: null,
           newProjectPurpose: "",
           newProjectGoal: "",
+          newProductName: "",
         })
         // 슬래시 명령에서 자동 추출된 필드 글로우
         const preFilled: string[] = []
@@ -223,7 +231,8 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         filled.push("priority")
       }
       if (!dirtyFields.ownerId && ai.ownerHint) {
-        const found = users.find((u) => u.name === ai.ownerHint)
+        // 존칭("우창님")·약칭("우창")도 흡수해 팀원과 매칭
+        const found = matchUserByName(ai.ownerHint, users)
         if (found) {
           setValue("ownerId", found.id, { shouldDirty: false })
           filled.push("ownerId")
@@ -236,17 +245,26 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           setValue("newProjectName", ai.newProject.name ?? "", { shouldDirty: false })
           setValue("newProjectPurpose", ai.newProject.purpose ?? "", { shouldDirty: false })
           setValue("newProjectGoal", ai.newProject.goal ?? "", { shouldDirty: false })
-          if (ai.newProject.productId) {
-            setValue("newProjectProductId", ai.newProject.productId, { shouldDirty: false })
-          }
           filled.push("projectId")
         } else if (ai.projectId) {
           setValue("projectId", ai.projectId, { shouldDirty: false })
           filled.push("projectId")
         }
       }
-      if (!dirtyFields.productId && ai.productId) {
-        setValue("productId", ai.productId, { shouldDirty: false })
+      if (!dirtyFields.productId) {
+        if (ai.newProduct?.name) {
+          // AI가 신규 제품 생성을 제안 → 신규 제품 모드 전환 + 제품명 채움
+          setValue("productId", NEW_PRODUCT_VALUE, { shouldDirty: false })
+          setValue("newProductName", ai.newProduct.name, { shouldDirty: false })
+          filled.push("productId")
+        } else if (ai.productId) {
+          setValue("productId", ai.productId, { shouldDirty: false })
+          filled.push("productId")
+        } else if (ai.newProject?.productId) {
+          // 신규 프로젝트가 기존 제품을 참조한 경우 그 제품을 업무 제품으로 사용
+          setValue("productId", ai.newProject.productId, { shouldDirty: false })
+          filled.push("productId")
+        }
       }
       if (!dirtyFields.deadline && ai.deadlineHint) {
         // ISO(YYYY-MM-DD)면 그대로, 한국어 상대표현이면 날짜로 변환
@@ -280,19 +298,34 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     setSubmitting(true)
     try {
       const owner = users.find((u) => u.id === values.ownerId)
-
-      // 프로젝트 결정: 신규 생성 / 기존 선택 / 없음
-      let finalProjectId: string | null = null
-      let finalProductId: string | null = values.productId ?? null
       const isNewProject = values.projectId === NEW_PROJECT_VALUE
+      const isNewProduct = values.productId === NEW_PRODUCT_VALUE
 
+      // 1. 제품 결정: 신규 생성 / 기존 선택 / 없음
+      let finalProductId: string | null = null
+      if (isNewProduct) {
+        const prodRes = await fetch("/api/products", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: values.newProductName.trim() }),
+        })
+        if (!prodRes.ok) throw new Error("제품 생성 실패")
+        const prod = await prodRes.json()
+        finalProductId = prod.id
+      } else {
+        finalProductId = values.productId ?? null
+      }
+
+      // 2. 프로젝트 결정: 신규 생성 / 기존 선택 / 없음
+      //    신규 프로젝트의 제품은 위에서 결정한 finalProductId를 그대로 사용
+      let finalProjectId: string | null = null
       if (isNewProject) {
         const projRes = await fetch("/api/projects", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             name: values.newProjectName,
-            productId: values.newProjectProductId,
+            productId: finalProductId,
             purpose: values.newProjectPurpose,
             goal: values.newProjectGoal,
           }),
@@ -300,11 +333,8 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         if (!projRes.ok) throw new Error("프로젝트 생성 실패")
         const proj = await projRes.json()
         finalProjectId = proj.id
-        finalProductId = proj.product?.id ?? values.newProjectProductId ?? null
       } else if (values.projectId) {
-        const project = projects.find((p) => p.id === values.projectId)
         finalProjectId = values.projectId
-        finalProductId = project?.product?.id ?? values.productId ?? null
       }
 
       const res = await fetch("/api/tasks", {
@@ -326,7 +356,14 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         }),
       })
       if (!res.ok) throw new Error("업무 생성 실패")
-      toast.success(isNewProject ? "신규 프로젝트와 업무 생성 완료" : "업무 생성 완료")
+      const created = [isNewProject && "프로젝트", isNewProduct && "제품"].filter(
+        Boolean,
+      )
+      toast.success(
+        created.length > 0
+          ? `신규 ${created.join("·")}와 업무 생성 완료`
+          : "업무 생성 완료",
+      )
       onClose()
       router.refresh()
     } catch {
@@ -441,7 +478,15 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
               </label>
               <Select
                 value={projectId ?? "none"}
-                onValueChange={(v) => setValue("projectId", !v || v === "none" ? null : v, { shouldDirty: true })}
+                onValueChange={(v) => {
+                  const next = !v || v === "none" ? null : v
+                  setValue("projectId", next, { shouldDirty: true })
+                  // 기존 프로젝트 선택 시 제품을 그 프로젝트의 제품으로 자동 매핑
+                  if (next && next !== NEW_PROJECT_VALUE) {
+                    const proj = projects.find((p) => p.id === next)
+                    setValue("productId", proj?.product?.id ?? null, { shouldDirty: true })
+                  }
+                }}
               >
                 <SelectTrigger className={`h-9 w-full text-[13px] ${glowFields.has("projectId") ? "ai-fill-glow" : ""}`}>
                   <SelectValue placeholder="프로젝트 없음">
@@ -517,43 +562,6 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
-                      제품
-                    </label>
-                    <Select
-                      value={newProjectProductId ?? "none"}
-                      onValueChange={(v) =>
-                        setValue("newProjectProductId", !v || v === "none" ? null : v, {
-                          shouldDirty: true,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="h-8 w-full text-[12.5px]">
-                        <SelectValue placeholder="제품 없음">
-                          {newProjectProductId
-                            ? products.find((p) => p.id === newProjectProductId)?.name
-                            : "제품 없음"}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none" label="제품 없음" className="text-[12.5px]">
-                          제품 없음
-                        </SelectItem>
-                        {products.map((p) => (
-                          <SelectItem
-                            key={p.id}
-                            value={p.id}
-                            label={p.name}
-                            className="text-[12.5px]"
-                          >
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
                     <label
                       htmlFor="new-project-purpose"
                       className="mb-1 block text-[11px] font-medium text-muted-foreground"
@@ -583,6 +591,66 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                       autoComplete="off"
                     />
                   </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
+                제품
+              </label>
+              <Select
+                value={productId ?? "none"}
+                onValueChange={(v) =>
+                  setValue("productId", !v || v === "none" ? null : v, { shouldDirty: true })
+                }
+              >
+                <SelectTrigger className={`h-9 w-full text-[13px] ${glowFields.has("productId") ? "ai-fill-glow" : ""}`}>
+                  <SelectValue placeholder="제품 없음">
+                    {productId === NEW_PRODUCT_VALUE ? (
+                      <span className="font-medium text-primary">+ 신규 제품 생성</span>
+                    ) : productId ? (
+                      products.find((p) => p.id === productId)?.name ?? "제품 없음"
+                    ) : (
+                      "제품 없음"
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none" label="제품 없음" className="text-[13px]">
+                    제품 없음
+                  </SelectItem>
+                  <SelectItem
+                    value={NEW_PRODUCT_VALUE}
+                    label="+ 신규 제품 생성"
+                    className="text-[13px]"
+                  >
+                    <span className="inline-flex items-center gap-1 font-medium text-primary">
+                      <HugeiconsIcon icon={PlusSignIcon} size={12} />
+                      신규 제품 생성
+                    </span>
+                  </SelectItem>
+                  {products.map((p) => (
+                    <SelectItem key={p.id} value={p.id} label={p.name} className="text-[13px]">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {productId === NEW_PRODUCT_VALUE && (
+                <div className="mt-2">
+                  <Input
+                    {...register("newProductName")}
+                    aria-label="신규 제품명"
+                    placeholder="신규 제품명 (예: 비보젤)"
+                    className={`h-8 text-[12.5px] ${errors.newProductName ? "border-destructive" : ""}`}
+                    autoComplete="off"
+                  />
+                  {errors.newProductName && (
+                    <p className="mt-1 text-[11px] text-destructive">
+                      {errors.newProductName.message}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
