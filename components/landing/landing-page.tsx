@@ -12,8 +12,6 @@ import {
   PlayIcon,
   ArrowRight01Icon,
 } from "@hugeicons/core-free-icons"
-import { HeroVideo } from "./hero-video"
-import { AuroraText } from "./aurora-text"
 import { BentoCard } from "./bento-card"
 import { BorderBeamButton } from "./border-beam-button"
 import { AnimatedBeamHub } from "./animated-beam-hub"
@@ -52,49 +50,48 @@ export function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="relative flex min-h-screen items-center justify-center overflow-hidden pt-14">
-        <HeroVideo src="/hero.mp4" />
+      {/* Hero — 로그인 페이지와 동일한 다크 그라디언트 톤 */}
+      <section className="relative flex min-h-screen items-center justify-center overflow-hidden pt-14 text-white">
+        {/* base gradient */}
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,#0b1020_0%,#172554_46%,#4f46e5_100%)]" />
+        {/* dot grid overlay */}
+        <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:44px_44px]" />
+        {/* decorative rings */}
+        <div className="pointer-events-none absolute right-[-160px] top-24 h-[420px] w-[420px] rounded-full border border-white/12" />
+        <div className="pointer-events-none absolute bottom-[-180px] left-[-120px] h-[520px] w-[520px] rounded-full border border-cyan-200/15" />
+        <div className="pointer-events-none absolute right-[10%] top-1/2 h-32 w-32 rotate-45 border border-white/12" />
 
-        {/* grid overlay */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.12]"
-          style={{
-            backgroundImage:
-              "linear-gradient(var(--foreground) 1px, transparent 1px), linear-gradient(90deg, var(--foreground) 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-            maskImage: "radial-gradient(ellipse at center, black 40%, transparent 80%)",
-          }}
-        />
-
-        <div className="relative z-10 mx-auto max-w-[900px] px-6 py-28 text-center">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-[11px] text-muted-foreground backdrop-blur">
-            <HugeiconsIcon icon={AiMagicIcon} size={11} className="text-primary" />
-            Notion + Slack + 지식베이스 통합 운영 도구
+        <div className="relative z-10 mx-auto max-w-[860px] px-6 py-28 text-center">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-medium text-white/85 backdrop-blur">
+            <HugeiconsIcon icon={AiMagicIcon} size={12} />
+            Internal workspace · Notion + Slack + 지식베이스
           </div>
-          <h1 className="text-[clamp(40px,7vw,80px)] font-bold leading-[1.05] tracking-[-0.035em]">
+          <h1 className="text-[clamp(32px,4.5vw,52px)] font-semibold leading-[1.1] tracking-[-0.02em] text-white">
             흩어진 업무를,
             <br />
-            <AuroraText>실행 가능한 카드로 바꿉니다.</AuroraText>
+            실행 가능한 카드로 바꿉니다.
           </h1>
-          <p className="mx-auto mt-5 max-w-[620px] text-[15px] leading-[1.65] text-muted-foreground">
+          <p className="mx-auto mt-5 max-w-[600px] text-[14.5px] leading-7 text-white/70">
             Omnis는 HADD Science의 채팅 지시, 업무 카드, 보고서, 사내 지식을 한 화면에 묶는
-            AI 운영 워크스페이스입니다. 메시지에 <span className="font-mono text-foreground">/업무</span>를 쓰면
+            AI 운영 워크스페이스입니다. 메시지에 <span className="font-mono text-white">/업무</span>를 쓰면
             담당자·마감·체크리스트가 채워지고, 완료 이력은 HADD DB에 남습니다.
           </p>
           <div className="mt-8 flex items-center justify-center gap-2.5">
-            <BorderBeamButton href="/login" variant="primary">
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-1.5 rounded-md bg-white px-4 py-2 text-[13px] font-semibold text-[#0b1020] shadow-lg shadow-black/20 transition-colors hover:bg-white/90"
+            >
               내부 계정으로 시작하기 <HugeiconsIcon icon={ArrowRight01Icon} size={13} />
-            </BorderBeamButton>
+            </Link>
             <a
               href="#workflow"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-4 py-2 text-[13px] font-medium transition-colors hover:border-border-strong"
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/8 px-4 py-2 text-[13px] font-medium text-white backdrop-blur transition-colors hover:bg-white/14"
             >
               <HugeiconsIcon icon={PlayIcon} size={11} />
               데모 보기
             </a>
           </div>
-          <p className="mt-6 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+          <p className="mt-6 font-mono text-[11px] uppercase tracking-wider text-white/55">
             업무 지시 · 지식 검색 · 보고 초안을 하나의 흐름으로
           </p>
         </div>
@@ -266,27 +263,30 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="relative overflow-hidden border-t">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-30"
-          style={{
-            background:
-              "radial-gradient(ellipse at top, color-mix(in oklch, var(--primary) 25%, transparent), transparent 60%)",
-          }}
-        />
-        <div className="relative mx-auto max-w-[1200px] px-6 py-28 text-center">
-          <h2 className="mb-5 text-[clamp(32px,5vw,56px)] font-bold tracking-[-0.025em]">
+      {/* Final CTA — 히어로와 같은 다크 그라디언트로 마무리 */}
+      <section className="relative overflow-hidden border-t text-white">
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,#0b1020_0%,#172554_46%,#4f46e5_100%)]" />
+        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:44px_44px]" />
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-[420px] w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/12" />
+
+        <div className="relative mx-auto max-w-[860px] px-6 py-24 text-center">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-white/65">
+            Ready when you are
+          </p>
+          <h2 className="mb-5 text-[clamp(28px,4vw,44px)] font-semibold leading-[1.15] tracking-[-0.02em] text-white">
             채팅에서 끝나던 일을,
             <br />
-            <AuroraText>추적 가능한 운영 흐름으로.</AuroraText>
+            추적 가능한 운영 흐름으로.
           </h2>
-          <p className="mx-auto mb-8 max-w-[500px] text-[14px] text-muted-foreground">
+          <p className="mx-auto mb-8 max-w-[480px] text-[14px] leading-7 text-white/70">
             HADD Science 내부 계정으로 로그인해 업무 지시, 지식 검색, 보고 초안을 바로 연결하세요.
           </p>
-          <BorderBeamButton href="/login" variant="primary">
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-1.5 rounded-md bg-white px-5 py-2.5 text-[13px] font-semibold text-[#0b1020] shadow-lg shadow-black/20 transition-colors hover:bg-white/90"
+          >
             시작하기 <HugeiconsIcon icon={ArrowRight01Icon} size={13} />
-          </BorderBeamButton>
+          </Link>
         </div>
       </section>
 
