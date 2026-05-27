@@ -165,6 +165,7 @@
     --z-popover: 60;
     --z-dialog: 100;
     --z-toast: 120;
+    --demo-banner-height: 0px;
 }
 
 :root {

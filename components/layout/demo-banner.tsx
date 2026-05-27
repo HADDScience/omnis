@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
 
@@ -23,16 +23,46 @@ function writeDismissCookie() {
 }
 
 export function DemoBanner() {
+  const bannerRef = useRef<HTMLDivElement>(null)
   const [dismissed, setDismissed] = useState(true)
 
   useEffect(() => {
     setDismissed(readDismissCookie())
   }, [])
 
+  useEffect(() => {
+    if (!IS_DEMO || dismissed) {
+      document.documentElement.style.setProperty("--demo-banner-height", "0px")
+      return
+    }
+
+    const banner = bannerRef.current
+    if (!banner) return
+
+    const updateBannerHeight = () => {
+      document.documentElement.style.setProperty(
+        "--demo-banner-height",
+        `${banner.getBoundingClientRect().height}px`
+      )
+    }
+
+    updateBannerHeight()
+    const resizeObserver = new ResizeObserver(updateBannerHeight)
+    resizeObserver.observe(banner)
+    window.addEventListener("resize", updateBannerHeight)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener("resize", updateBannerHeight)
+      document.documentElement.style.setProperty("--demo-banner-height", "0px")
+    }
+  }, [dismissed])
+
   if (!IS_DEMO || dismissed) return null
 
   return (
     <div
+      ref={bannerRef}
       role="status"
       aria-label="시연용 데모 사이트 안내"
       className="sticky top-0 flex items-center justify-center gap-3 border-b border-blue-400/40 bg-blue-600 px-4 py-1.5 text-xs font-medium text-white shadow-sm sm:text-sm dark:border-blue-300/30 dark:bg-blue-700"
