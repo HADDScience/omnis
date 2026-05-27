@@ -230,7 +230,7 @@ export async function POST(req: NextRequest) {
     await persistMentions(card.id, `#${task.slug}`).catch(() => {})
   }
 
-  await syncEmbeddingsSafe("TASK", task.id)
+  await syncEmbeddingsSafe("TASK", task.id, session.user.id)
   await writeActivity({
     userId: session.user.id,
     action: "task.created",

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { rollback } from "@/lib/omnis-git"
+import { getVersionContent, saveAndCommit } from "@/lib/omnis-git"
 import { syncEmbeddingsSafe } from "@/lib/embeddings"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
+import type { Prisma } from "@/generated/prisma/client"
 
 export const runtime = "nodejs"
 
@@ -26,8 +27,22 @@ export async function POST(
   })
   if (!card) return apiError(404, "카드 없음")
 
-  const restoredContent = rollback(card.id, card.title, hash, session.user.name ?? "unknown")
-  const restoredJson = JSON.parse(restoredContent)
+  let restoredContent = ""
+  try {
+    restoredContent = getVersionContent(card.id, card.title, hash)
+  } catch (err) {
+    console.error("[omnis/restore] 복원 버전 조회 실패", { cardId, hash, err })
+    return apiError(400, "잘못된 버전 해시입니다")
+  }
+  if (!restoredContent) return apiError(404, "복원할 버전 내용을 찾을 수 없습니다")
+
+  let restoredJson: Prisma.InputJsonValue
+  try {
+    restoredJson = JSON.parse(restoredContent) as Prisma.InputJsonValue
+  } catch (err) {
+    console.error("[omnis/restore] 복원 JSON 파싱 실패", { cardId, hash, err })
+    return apiError(422, "이 버전의 내용이 JSON 형식이 아니어서 복원할 수 없습니다")
+  }
   const userId = session.user.id as string
 
   const restoredCard = await prisma.$transaction(async (tx) => {
@@ -53,7 +68,15 @@ export async function POST(
     return updated
   })
 
-  await syncEmbeddingsSafe("OMNIS_CARD", cardId)
+  saveAndCommit(
+    card.id,
+    card.title,
+    restoredContent,
+    session.user.name ?? "unknown",
+    `${card.title} 롤백 (${hash.slice(0, 7)})`
+  )
+
+  await syncEmbeddingsSafe("OMNIS_CARD", cardId, userId)
   await writeActivity({
     userId,
     action: "omnis.restored",

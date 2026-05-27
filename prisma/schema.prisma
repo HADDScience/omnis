@@ -34,6 +34,7 @@ model User {
   omnisViewLogs   OmnisViewLog[]
   bookmarks       Bookmark[]
   activityLogs    ActivityLog[]
+  geminiUsages    GeminiUsage[]
 }
 
 enum Role {
@@ -354,9 +355,11 @@ model GeminiUsage {
   candidateTokens Int
   totalTokens     Int
   userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt       DateTime @default(now())
 
   @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 // ─── 알림 ────────────────────────────────────────────────

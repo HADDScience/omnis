@@ -96,7 +96,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   })
 
   // archived 처리 시 syncEmbeddings가 임베딩을 삭제, 그 외에는 갱신
-  await syncEmbeddingsSafe("TASK", taskId)
+  await syncEmbeddingsSafe("TASK", taskId, session.user.id)
   await writeActivity({
     userId: session.user.id,
     action: "task.updated",

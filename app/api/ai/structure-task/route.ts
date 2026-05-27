@@ -83,7 +83,11 @@ export async function POST(req: NextRequest) {
     if (!draft.productId) draft.productId = fallbackProductId
     return NextResponse.json(draft)
   } catch (err) {
-    console.error("Gemini API 오류:", err)
+    console.error("[ai/structure-task] Gemini API 오류", {
+      userId: session.user.id,
+      messageCount: messages.length,
+      err,
+    })
     const draft = fallbackAiDraft(messages)
     return NextResponse.json({
       ...draft,

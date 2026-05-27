@@ -1,18 +1,18 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { startOfDay } from "date-fns"
+import {
+  currentGeminiUsageWindow,
+  GEMINI_USAGE_LIMITS,
+} from "@/lib/gemini-usage"
 
-const DAILY_CALL_LIMIT = 500
-const DAILY_TOKEN_LIMIT = 1_000_000 // 일일 누적 토큰 참고 한도
-
-export async function GET(req: NextRequest) {
+export async function GET() {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: "인증 필요" }, { status: 401 })
   }
 
-  const today = startOfDay(new Date())
+  const today = currentGeminiUsageWindow()
   const userId = session.user.id
 
   const [teamAggregate, myAggregate] = await Promise.all([
@@ -33,10 +33,10 @@ export async function GET(req: NextRequest) {
   const myCalls = myAggregate._count
   const myTokens = myAggregate._sum.totalTokens ?? 0
 
-  const teamCallPct = Math.round((teamCalls / DAILY_CALL_LIMIT) * 100)
-  const teamTokenPct = Math.round((teamTokens / DAILY_TOKEN_LIMIT) * 100)
-  const myCallPct = Math.round((myCalls / DAILY_CALL_LIMIT) * 100)
-  const myTokenPct = Math.round((myTokens / DAILY_TOKEN_LIMIT) * 100)
+  const teamCallPct = Math.round((teamCalls / GEMINI_USAGE_LIMITS.dailyCalls) * 100)
+  const teamTokenPct = Math.round((teamTokens / GEMINI_USAGE_LIMITS.dailyTokens) * 100)
+  const myCallPct = Math.round((myCalls / GEMINI_USAGE_LIMITS.dailyCalls) * 100)
+  const myTokenPct = Math.round((myTokens / GEMINI_USAGE_LIMITS.dailyTokens) * 100)
 
   return NextResponse.json({
     team: {
@@ -54,8 +54,7 @@ export async function GET(req: NextRequest) {
       pct: Math.max(myCallPct, myTokenPct),
     },
     limits: {
-      dailyCalls: DAILY_CALL_LIMIT,
-      dailyTokens: DAILY_TOKEN_LIMIT,
+      ...GEMINI_USAGE_LIMITS,
     },
   })
 }

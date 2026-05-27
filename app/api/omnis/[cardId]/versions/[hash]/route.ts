@@ -20,6 +20,13 @@ export async function GET(
   })
   if (!card) return apiError(404, "카드 없음")
 
-  const content = getVersionContent(card.id, card.title, hash)
+  let content = ""
+  try {
+    content = getVersionContent(card.id, card.title, hash)
+  } catch (err) {
+    console.error("[omnis/versions] 버전 조회 실패", { cardId, hash, err })
+    return apiError(400, "잘못된 버전 해시입니다")
+  }
+  if (!content) return apiError(404, "버전 내용을 찾을 수 없습니다")
   return NextResponse.json({ hash, content })
 }

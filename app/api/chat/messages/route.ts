@@ -165,7 +165,8 @@ export async function POST(req: NextRequest) {
             author: m.author.name,
             content: m.content,
             files: m.files.map((f) => f.name),
-          }))
+          })),
+          session.user.id
         )
 
         if (result.action === "complete") {
@@ -264,7 +265,7 @@ export async function POST(req: NextRequest) {
       }
 
       // 멘션으로 변경된 업무 카드·체크리스트를 임베딩에 반영
-      await syncEmbeddingsSafe("TASK", task.id)
+      await syncEmbeddingsSafe("TASK", task.id, session.user.id)
     } else if (task) {
       await prisma.chatMessage.update({ where: { id: message.id }, data: { taskId: task.id } })
     }
@@ -298,7 +299,7 @@ export async function POST(req: NextRequest) {
   })
 
   // 채팅 메시지 임베딩은 백그라운드로 처리 — 메시지 전송 응답을 지연시키지 않음
-  void syncEmbeddings("CHAT_MESSAGE", message.id).catch((err) =>
+  void syncEmbeddings("CHAT_MESSAGE", message.id, session.user.id).catch((err) =>
     console.error("[embeddings] 채팅 메시지 동기화 실패", err)
   )
 

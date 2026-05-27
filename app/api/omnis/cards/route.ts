@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   const contentForGit = JSON.stringify(content || {}, null, 2)
   initCardFile(card.id, card.title, contentForGit)
 
-  await syncEmbeddingsSafe("OMNIS_CARD", card.id)
+  await syncEmbeddingsSafe("OMNIS_CARD", card.id, userId)
   await writeActivity({
     userId,
     action: "omnis.created",
@@ -112,7 +112,7 @@ export async function PATCH(req: NextRequest) {
   const contentForGit = JSON.stringify(data.content ?? existing.content, null, 2)
   saveAndCommit(id, card.title, contentForGit, user?.name || "unknown")
 
-  await syncEmbeddingsSafe("OMNIS_CARD", id)
+  await syncEmbeddingsSafe("OMNIS_CARD", id, userId)
   await writeActivity({
     userId,
     action: "omnis.updated",

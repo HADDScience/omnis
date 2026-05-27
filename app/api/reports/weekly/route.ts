@@ -60,10 +60,14 @@ export async function POST(req: NextRequest) {
   // Gemini 초안 생성
   if (generateDraft && process.env.GEMINI_API_KEY) {
     try {
-      const draft = await generateWeeklyReport(tasks)
+      const draft = await generateWeeklyReport(tasks, session.user.id)
       content.draft = draft
     } catch (err) {
-      console.error("주간보고 Gemini 오류:", err)
+      console.error("[reports/weekly] Gemini 초안 생성 실패", {
+        userId: session.user.id,
+        taskCount: tasks.length,
+        err,
+      })
     }
   }
 
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest) {
     include: { owner: { select: { id: true, name: true } } },
   })
 
-  await syncEmbeddingsSafe("WEEKLY_REPORT", report.id)
+  await syncEmbeddingsSafe("WEEKLY_REPORT", report.id, session.user.id)
 
   return NextResponse.json(report, { status: 201 })
 }
@@ -129,7 +133,7 @@ export async function PATCH(req: NextRequest) {
     include: { owner: { select: { id: true, name: true } } },
   })
 
-  await syncEmbeddingsSafe("WEEKLY_REPORT", updated.id)
+  await syncEmbeddingsSafe("WEEKLY_REPORT", updated.id, session.user.id)
 
   return NextResponse.json(updated)
 }

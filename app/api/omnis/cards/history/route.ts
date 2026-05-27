@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { getHistory, getVersionContent, getDiff, rollback } from "@/lib/omnis-git"
+import { getHistory, getVersionContent, getDiff, saveAndCommit } from "@/lib/omnis-git"
 import { syncEmbeddingsSafe } from "@/lib/embeddings"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
+import type { Prisma } from "@/generated/prisma/client"
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -23,14 +24,28 @@ export async function GET(req: NextRequest) {
 
   // 특정 버전 내용 조회
   if (hash) {
-    const content = getVersionContent(cardId, card.title, hash)
+    let content = ""
+    try {
+      content = getVersionContent(cardId, card.title, hash)
+    } catch (err) {
+      console.error("[omnis/cards/history] 버전 조회 실패", { cardId, hash, err })
+      return apiError(400, "잘못된 버전 해시입니다")
+    }
+    if (!content) return apiError(404, "버전 내용을 찾을 수 없습니다")
     return NextResponse.json({ hash, content })
   }
 
   // 두 버전 diff 조회
   if (diff) {
     const [h1, h2] = diff.split("..")
-    const diffText = getDiff(cardId, card.title, h1, h2)
+    if (!h1 || !h2) return apiError(400, "diff는 hash1..hash2 형식이어야 합니다")
+    let diffText = ""
+    try {
+      diffText = getDiff(cardId, card.title, h1, h2)
+    } catch (err) {
+      console.error("[omnis/cards/history] diff 조회 실패", { cardId, diff, err })
+      return apiError(400, "잘못된 diff 해시입니다")
+    }
     return NextResponse.json({ diff: diffText })
   }
 
@@ -58,8 +73,22 @@ export async function POST(req: NextRequest) {
   if (!card) return apiError(404, "카드 없음")
 
   const userName = session.user.name || "unknown"
-  const restoredContent = rollback(cardId, card.title, hash, userName)
-  const restoredJson = JSON.parse(restoredContent)
+  let restoredContent = ""
+  try {
+    restoredContent = getVersionContent(cardId, card.title, hash)
+  } catch (err) {
+    console.error("[omnis/cards/history] 복원 버전 조회 실패", { cardId, hash, err })
+    return apiError(400, "잘못된 버전 해시입니다")
+  }
+  if (!restoredContent) return apiError(404, "복원할 버전 내용을 찾을 수 없습니다")
+
+  let restoredJson: Prisma.InputJsonValue
+  try {
+    restoredJson = JSON.parse(restoredContent) as Prisma.InputJsonValue
+  } catch (err) {
+    console.error("[omnis/cards/history] 복원 JSON 파싱 실패", { cardId, hash, err })
+    return apiError(422, "이 버전의 내용이 JSON 형식이 아니어서 복원할 수 없습니다")
+  }
 
   await prisma.$transaction(async (tx) => {
     const updated = await tx.omnisCard.update({
@@ -82,7 +111,9 @@ export async function POST(req: NextRequest) {
     })
   })
 
-  await syncEmbeddingsSafe("OMNIS_CARD", cardId)
+  saveAndCommit(cardId, card.title, restoredContent, userName, `${card.title} 롤백 (${hash.slice(0, 7)})`)
+
+  await syncEmbeddingsSafe("OMNIS_CARD", cardId, userId)
   await writeActivity({
     userId,
     action: "omnis.restored",

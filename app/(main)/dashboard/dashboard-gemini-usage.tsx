@@ -22,6 +22,8 @@ const ENDPOINT_LABELS: Record<string, string> = {
   rebuildTask: "업무 재구성",
   weeklyReport: "주간보고",
   omnisAsk: "옴니스 질문",
+  "embedTexts.RETRIEVAL_DOCUMENT": "문서 임베딩",
+  "embedTexts.RETRIEVAL_QUERY": "질문 임베딩",
 }
 
 export function DashboardGeminiUsage({ data }: { data: GeminiUsageData }) {

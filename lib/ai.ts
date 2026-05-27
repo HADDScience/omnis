@@ -1,9 +1,13 @@
-import { prisma } from "@/lib/db"
 import {
   fallbackAiDraft,
   normalizeAiDraft,
   type TaskAiDraft,
 } from "@/lib/schemas/task-ai"
+import {
+  assertGeminiUsageAllowed,
+  estimateGeminiTokens,
+  recordGeminiUsage,
+} from "@/lib/gemini-usage"
 
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
@@ -29,6 +33,13 @@ async function callGemini(
 ): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다")
+  const maxOutputTokens = 8192
+
+  await assertGeminiUsageAllowed({
+    endpoint,
+    userId,
+    estimatedTokens: estimateGeminiTokens([prompt]) + maxOutputTokens,
+  })
 
   const res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
     method: "POST",
@@ -37,35 +48,34 @@ async function callGemini(
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         temperature,
-        maxOutputTokens: 8192,
+        maxOutputTokens,
       },
     }),
   })
 
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Gemini API 오류: ${res.status} ${err}`)
+    throw new Error(`Gemini API 오류 (${endpoint}): ${res.status} ${err}`)
   }
 
   const data = await res.json()
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
   const usage = data.usageMetadata
 
-  // 토큰 사용량 DB 기록
   if (usage) {
     try {
-      await prisma.geminiUsage.create({
-        data: {
-          endpoint,
-          promptTokens: usage.promptTokenCount ?? 0,
-          candidateTokens: usage.candidatesTokenCount ?? 0,
-          totalTokens: usage.totalTokenCount ?? 0,
-          userId: userId ?? null,
-        },
+      await recordGeminiUsage({
+        endpoint,
+        promptTokens: usage.promptTokenCount ?? 0,
+        candidateTokens: usage.candidatesTokenCount ?? 0,
+        totalTokens: usage.totalTokenCount ?? 0,
+        userId,
       })
-    } catch {
-      // 토큰 기록 실패 시 무시 (핵심 기능 차단 방지)
+    } catch (err) {
+      console.error("[gemini-usage] 사용량 기록 실패", { endpoint, userId, err })
     }
+  } else {
+    console.warn("[gemini-usage] Gemini 응답에 usageMetadata가 없습니다", { endpoint, userId })
   }
 
   return cleanCodeBlocks(text)
@@ -129,7 +139,8 @@ JSON:`
     if (!jsonMatch) throw new Error("JSON 파싱 실패")
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
     return normalizeAiDraft(parsed)
-  } catch {
+  } catch (err) {
+    console.error("[ai/structureTask] 응답 파싱 실패, fallback 사용", { userId, err })
     return fallbackAiDraft(messages)
   }
 }
@@ -146,7 +157,8 @@ export interface MentionIntent {
 export async function classifyMention(
   taskName: string,
   message: string,
-  checklists: { id: string; name: string; done: boolean }[] = []
+  checklists: { id: string; name: string; done: boolean }[] = [],
+  userId?: string
 ): Promise<MentionIntent> {
   const checklistContext = checklists.length > 0
     ? `\n\n현재 체크리스트:\n${checklists.map((c, i) => `${i + 1}. [${c.done ? "x" : " "}] ${c.name}`).join("\n")}`
@@ -179,11 +191,12 @@ export async function classifyMention(
 반드시 JSON만 반환. 마크다운 코드블록 없이 순수 JSON만.`
 
   try {
-    const raw = await callGemini(prompt, "classifyMention")
+    const raw = await callGemini(prompt, "classifyMention", userId)
     const match = raw.match(/\{[\s\S]*\}/)
     if (!match) return { action: "none", summary: "" }
     return JSON.parse(match[0]) as MentionIntent
-  } catch {
+  } catch (err) {
+    console.error("[ai/classifyMention] 분류 실패", { taskName, userId, err })
     return { action: "none", summary: "" }
   }
 }
@@ -202,7 +215,8 @@ export async function rebuildTask(
   background: string | null,
   expectedResult: string | null,
   checklists: { name: string; done: boolean }[],
-  allMessages: { author: string; content: string; files?: string[] }[]
+  allMessages: { author: string; content: string; files?: string[] }[],
+  userId?: string
 ): Promise<TaskRebuildResult> {
   const messagesText = allMessages
     .map((m) => {
@@ -272,7 +286,7 @@ ${messagesText}
 - 체크리스트 항목은 name 키 필수 (description 등 다른 키 금지)`
 
   try {
-    const raw = await callGemini(prompt, "rebuildTask", undefined, 0)
+    const raw = await callGemini(prompt, "rebuildTask", userId, 0)
     const match = raw.match(/\{[\s\S]*\}/)
     if (!match) return { action: "none" }
     const parsed = JSON.parse(match[0])
@@ -292,13 +306,15 @@ ${messagesText}
       checklist,
       statusLabel: parsed.statusLabel,
     } as TaskRebuildResult
-  } catch {
+  } catch (err) {
+    console.error("[ai/rebuildTask] 재구성 실패", { taskName, userId, err })
     return { action: "none" }
   }
 }
 
 export async function generateWeeklyReport(
-  tasks: { name: string; status: string }[]
+  tasks: { name: string; status: string }[],
+  userId?: string
 ): Promise<string> {
   const prompt = `다음은 이번 주 업무 목록입니다. 주간 업무보고 초안을 작성해주세요.
 
@@ -312,7 +328,7 @@ ${tasks.map((t) => `- ${t.name} (${t.status})`).join("\n")}
 
 보고서:`
 
-  return callGemini(prompt, "weeklyReport")
+  return callGemini(prompt, "weeklyReport", userId)
 }
 
 // ─── 임베딩 (벡터 검색용) ────────────────────────────────
@@ -346,7 +362,8 @@ function l2normalize(v: number[]): number[] {
  */
 export async function embedTexts(
   texts: string[],
-  taskType: EmbedTaskType
+  taskType: EmbedTaskType,
+  userId?: string
 ): Promise<number[][]> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다")
@@ -355,6 +372,12 @@ export async function embedTexts(
   const out: number[][] = []
   for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
     const batch = texts.slice(i, i + EMBED_BATCH_SIZE)
+    const endpoint = `embedTexts.${taskType}`
+    await assertGeminiUsageAllowed({
+      endpoint,
+      userId,
+      estimatedTokens: estimateGeminiTokens(batch),
+    })
     const res = await fetch(`${GEMINI_BATCH_EMBED_URL}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -370,7 +393,7 @@ export async function embedTexts(
 
     if (!res.ok) {
       const err = await res.text()
-      throw new Error(`Gemini 임베딩 API 오류: ${res.status} ${err}`)
+      throw new Error(`Gemini 임베딩 API 오류 (${taskType}): ${res.status} ${err}`)
     }
 
     const data = await res.json()
@@ -378,6 +401,35 @@ export async function embedTexts(
     if (!embeddings || embeddings.length !== batch.length) {
       throw new Error("Gemini 임베딩 응답 형식 오류")
     }
+
+    const usage = data.usageMetadata
+    if (usage) {
+      try {
+        await recordGeminiUsage({
+          endpoint,
+          promptTokens: usage.promptTokenCount ?? usage.totalTokenCount ?? 0,
+          candidateTokens: 0,
+          totalTokens: usage.totalTokenCount ?? usage.promptTokenCount ?? 0,
+          userId,
+        })
+      } catch (err) {
+        console.error("[gemini-usage] 임베딩 사용량 기록 실패", { endpoint, userId, err })
+      }
+    } else {
+      const estimated = estimateGeminiTokens(batch)
+      try {
+        await recordGeminiUsage({
+          endpoint,
+          promptTokens: estimated,
+          candidateTokens: 0,
+          totalTokens: estimated,
+          userId,
+        })
+      } catch (err) {
+        console.error("[gemini-usage] 임베딩 추정 사용량 기록 실패", { endpoint, userId, err })
+      }
+    }
+
     for (const e of embeddings) out.push(l2normalize(e.values))
   }
   return out

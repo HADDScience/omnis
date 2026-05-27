@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: Props) {
     },
   })
 
-  await syncEmbeddingsSafe("TASK", taskId)
+  await syncEmbeddingsSafe("TASK", taskId, session.user.id)
   await writeActivity({
     userId: session.user.id,
     action: "checklist.created",
@@ -62,7 +62,7 @@ export async function PATCH(req: NextRequest) {
   })
 
   // 항목명 변경 시에만 재임베딩 발생 (done 토글은 contentHash 동일 → 무시)
-  await syncEmbeddingsSafe("TASK", checklist.taskId)
+  await syncEmbeddingsSafe("TASK", checklist.taskId, session.user.id)
   await writeActivity({
     userId: session.user.id,
     action: "checklist.updated",
@@ -83,7 +83,7 @@ export async function DELETE(req: NextRequest) {
   if (!id) return apiError(400, "id 필수")
 
   const deleted = await prisma.checklist.delete({ where: { id } })
-  await syncEmbeddingsSafe("TASK", deleted.taskId)
+  await syncEmbeddingsSafe("TASK", deleted.taskId, session.user.id)
   await writeActivity({
     userId: session.user.id,
     action: "checklist.deleted",

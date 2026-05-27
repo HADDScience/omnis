@@ -1,5 +1,5 @@
 import { execFileSync } from "child_process"
-import { writeFileSync, existsSync, mkdirSync } from "fs"
+import { writeFileSync, existsSync, mkdirSync, readdirSync, renameSync } from "fs"
 import path from "path"
 
 const OMNIS_DIR = path.join(process.cwd(), "data", "omnis")
@@ -20,6 +20,32 @@ function filePath(cardId: string, title: string): string {
   return path.join(OMNIS_DIR, `${slugify(title)}_${cardId.slice(0, 8)}.md`)
 }
 
+function findCurrentFilePath(cardId: string, title: string): string {
+  ensureDir()
+  const expected = filePath(cardId, title)
+  if (existsSync(expected)) return expected
+
+  const suffix = `_${cardId.slice(0, 8)}.md`
+  const existing = readdirSync(OMNIS_DIR)
+    .filter((name) => name.endsWith(suffix))
+    .sort()[0]
+  return existing ? path.join(OMNIS_DIR, existing) : expected
+}
+
+function findFilePathAtHash(cardId: string, title: string, hash: string): string {
+  assertGitHash(hash)
+  const currentRelPath = path.relative(OMNIS_DIR, findCurrentFilePath(cardId, title))
+  try {
+    const paths = git(["ls-tree", "-r", "--name-only", hash], { encoding: "utf-8" })
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+    return paths.find((p) => p.endsWith(`_${cardId.slice(0, 8)}.md`)) ?? currentRelPath
+  } catch {
+    return currentRelPath
+  }
+}
+
 function assertGitHash(hash: string): void {
   if (!HASH_RE.test(hash)) {
     throw new Error("Invalid git hash")
@@ -37,15 +63,32 @@ function gitSilent(args: string[]): void {
   execFileSync("git", args, { cwd: OMNIS_DIR })
 }
 
-export function saveAndCommit(cardId: string, title: string, content: string, author: string): void {
+export function saveAndCommit(
+  cardId: string,
+  title: string,
+  content: string,
+  author: string,
+  message?: string
+): void {
   ensureDir()
   const fp = filePath(cardId, title)
+  const existingFp = findCurrentFilePath(cardId, title)
+  if (existingFp !== fp && existsSync(existingFp)) {
+    const existingRel = path.relative(OMNIS_DIR, existingFp)
+    const nextRel = path.relative(OMNIS_DIR, fp)
+    try {
+      gitSilent(["mv", existingRel, nextRel])
+    } catch {
+      renameSync(existingFp, fp)
+      gitSilent(["add", "-A", existingRel, nextRel])
+    }
+  }
   writeFileSync(fp, content, "utf-8")
 
   const relPath = path.relative(OMNIS_DIR, fp)
   gitSilent(["add", relPath])
 
-  const msg = `${title} 수정`
+  const msg = message ?? `${title} 수정`
   const authorStr = `${author} <${author}@omnis>`
   try {
     execFileSync("git", ["commit", `--author=${authorStr}`, "-m", msg], { cwd: OMNIS_DIR, env: { ...process.env, GIT_COMMITTER_NAME: author, GIT_COMMITTER_EMAIL: `${author}@omnis` } })
@@ -79,12 +122,12 @@ export interface VersionEntry {
 
 export function getHistory(cardId: string, title: string): VersionEntry[] {
   ensureDir()
-  const fp = filePath(cardId, title)
+  const fp = findCurrentFilePath(cardId, title)
   const relPath = path.relative(OMNIS_DIR, fp)
   if (!existsSync(fp)) return []
 
   try {
-    const log = git(["log", "--format=%H|%h|%an|%ai|%s", "--", relPath], { encoding: "utf-8" }).trim()
+    const log = git(["log", "--follow", "--format=%H|%h|%an|%ai|%s", "--", relPath], { encoding: "utf-8" }).trim()
 
     if (!log) return []
     return log.split("\n").map((line) => {
@@ -99,8 +142,7 @@ export function getHistory(cardId: string, title: string): VersionEntry[] {
 export function getVersionContent(cardId: string, title: string, hash: string): string {
   ensureDir()
   assertGitHash(hash)
-  const fp = filePath(cardId, title)
-  const relPath = path.relative(OMNIS_DIR, fp)
+  const relPath = findFilePathAtHash(cardId, title, hash)
   try {
     return git(["show", `${hash}:${relPath}`], { encoding: "utf-8" })
   } catch {
@@ -112,8 +154,7 @@ export function getDiff(cardId: string, title: string, hash1: string, hash2: str
   ensureDir()
   assertGitHash(hash1)
   assertGitHash(hash2)
-  const fp = filePath(cardId, title)
-  const relPath = path.relative(OMNIS_DIR, fp)
+  const relPath = path.relative(OMNIS_DIR, findCurrentFilePath(cardId, title))
   try {
     return git(["diff", hash1, hash2, "--", relPath], { encoding: "utf-8" })
   } catch {
@@ -128,10 +169,10 @@ export function getCardVersion(cardId: string, title: string): number {
 export function rollback(cardId: string, title: string, hash: string, author: string): string {
   ensureDir()
   assertGitHash(hash)
-  const fp = filePath(cardId, title)
+  const fp = findCurrentFilePath(cardId, title)
   const relPath = path.relative(OMNIS_DIR, fp)
 
-  const oldContent = git(["show", `${hash}:${relPath}`], { encoding: "utf-8" })
+  const oldContent = getVersionContent(cardId, title, hash)
   writeFileSync(fp, oldContent, "utf-8")
 
   gitSilent(["add", relPath])

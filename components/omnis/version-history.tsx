@@ -37,15 +37,26 @@ export function VersionHistory({ cardId }: VersionHistoryProps) {
 
   useEffect(() => {
     fetch(`/api/omnis/${cardId}/versions`)
-      .then((r) => r.json())
-      .then((d) => setHistory(d.history ?? []))
-      .catch(() => {})
+      .then(async (r) => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error ?? "버전 기록을 불러오지 못했습니다")
+        return data
+      })
+      .then((d) => setHistory(Array.isArray(d.history) ? d.history : []))
+      .catch((err) => {
+        console.error("[version-history] load failed", { cardId, err })
+        toast.error(err instanceof Error ? err.message : "버전 기록을 불러오지 못했습니다")
+      })
       .finally(() => setLoading(false))
   }, [cardId])
 
   async function viewVersion(hash: string) {
     const res = await fetch(`/api/omnis/${cardId}/versions/${hash}`)
     const data = await res.json()
+    if (!res.ok) {
+      toast.error(data.error ?? "버전 내용을 불러오지 못했습니다")
+      return
+    }
     setViewing({ hash, content: data.content ?? "" })
   }
 
@@ -62,7 +73,8 @@ export function VersionHistory({ cardId }: VersionHistoryProps) {
       toast.success("복원 완료")
       router.refresh()
     } else {
-      toast.error("복원 실패")
+      const data = await res.json().catch(() => null)
+      toast.error(data?.error ?? "복원 실패")
     }
   }
 

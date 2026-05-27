@@ -215,7 +215,8 @@ export async function deleteEmbeddings(
  */
 export async function syncEmbeddings(
   source: EmbeddingSource,
-  sourceId: string
+  sourceId: string,
+  userId?: string
 ): Promise<void> {
   const raw = await buildChunks(source, sourceId)
   if (!raw || raw.length === 0) {
@@ -243,7 +244,8 @@ export async function syncEmbeddings(
   if (stale.length > 0) {
     const vectors = await embedTexts(
       stale.map(({ c }) => c.embedInput),
-      "RETRIEVAL_DOCUMENT"
+      "RETRIEVAL_DOCUMENT",
+      userId
     )
     for (let k = 0; k < stale.length; k++) {
       const { c, index } = stale[k]
@@ -275,10 +277,11 @@ export async function syncEmbeddings(
  */
 export async function syncEmbeddingsSafe(
   source: EmbeddingSource,
-  sourceId: string
+  sourceId: string,
+  userId?: string
 ): Promise<void> {
   try {
-    await syncEmbeddings(source, sourceId)
+    await syncEmbeddings(source, sourceId, userId)
   } catch (err) {
     console.error(`[embeddings] 동기화 실패 ${source}:${sourceId}`, err)
   }
@@ -316,6 +319,8 @@ export interface RetrieveOptions {
   sources?: EmbeddingSource[]
   /** 이 유사도 미만 결과는 제외 (기본 0) */
   minSimilarity?: number
+  /** Gemini 사용량 기록에 연결할 사용자 */
+  userId?: string
 }
 
 /**
@@ -333,7 +338,7 @@ export async function retrieveContext(
   const sources = opts.sources?.length ? opts.sources : ALL_SOURCES
   const minSimilarity = opts.minSimilarity ?? 0
 
-  const [queryVec] = await embedTexts([q], "RETRIEVAL_QUERY")
+  const [queryVec] = await embedTexts([q], "RETRIEVAL_QUERY", opts.userId)
   const vec = toVectorLiteral(queryVec)
 
   const rows = await prisma.$queryRaw<RetrievedChunk[]>`

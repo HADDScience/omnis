@@ -18,6 +18,7 @@ import {
   StarIcon,
 } from "@hugeicons/core-free-icons"
 import { format } from "date-fns"
+import { toast } from "sonner"
 import {
   migrateContent,
   createEmptySection,
@@ -85,9 +86,16 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
 
   useEffect(() => {
     fetch(`/api/omnis/cards/history?cardId=${card.id}`)
-      .then((r) => r.json())
-      .then(setHistory)
-      .catch(() => {})
+      .then(async (r) => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error ?? "버전 기록을 불러오지 못했습니다")
+        return data
+      })
+      .then((data) => setHistory(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        console.error("[omnis-card] history load failed", { cardId: card.id, err })
+        toast.error(err instanceof Error ? err.message : "버전 기록을 불러오지 못했습니다")
+      })
   }, [card.id, card.version])
 
   // ─── 섹션 조작 ─────────────────────────────────────────
@@ -133,7 +141,7 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
         text: textForGit,
       }
 
-      await fetch("/api/omnis/cards", {
+      const res = await fetch("/api/omnis/cards", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -145,8 +153,14 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
             .filter(Boolean),
         }),
       })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error ?? "카드 저장에 실패했습니다")
       setEditing(false)
       router.refresh()
+      toast.success("저장했습니다")
+    } catch (err) {
+      console.error("[omnis-card] save failed", { cardId: card.id, err })
+      toast.error(err instanceof Error ? err.message : "카드 저장에 실패했습니다")
     } finally {
       setSaving(false)
     }
@@ -169,7 +183,13 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
       if (res.ok) {
         setBookmarked((v) => !v)
         router.refresh()
+      } else {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error ?? "즐겨찾기 변경에 실패했습니다")
       }
+    } catch (err) {
+      console.error("[omnis-card] bookmark failed", { cardId: card.id, err })
+      toast.error(err instanceof Error ? err.message : "즐겨찾기 변경에 실패했습니다")
     } finally {
       setBookmarking(false)
     }
@@ -186,8 +206,12 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
     try {
       const res = await fetch(`/api/omnis/cards/history?cardId=${card.id}&hash=${hash}`)
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "버전 내용을 불러오지 못했습니다")
       setTimeMachineContent(data.content || "")
       setTimeMachineHash(hash)
+    } catch (err) {
+      console.error("[omnis-card] version load failed", { cardId: card.id, hash, err })
+      toast.error(err instanceof Error ? err.message : "버전 내용을 불러오지 못했습니다")
     } finally {
       setTimeMachineLoading(false)
     }
@@ -216,12 +240,18 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
     if (!confirm(`이 버전(${hash.slice(0, 7)})으로 롤백하시겠습니까?`)) return
     setRolling(true)
     try {
-      await fetch("/api/omnis/cards/history", {
+      const res = await fetch("/api/omnis/cards/history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cardId: card.id, hash }),
       })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error ?? "롤백에 실패했습니다")
       router.refresh()
+      toast.success("롤백했습니다")
+    } catch (err) {
+      console.error("[omnis-card] rollback failed", { cardId: card.id, hash, err })
+      toast.error(err instanceof Error ? err.message : "롤백에 실패했습니다")
     } finally {
       setRolling(false)
     }

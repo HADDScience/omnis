@@ -103,6 +103,7 @@ export async function POST(req: NextRequest) {
     const chunks = await retrieveContext(question, {
       limit: 8,
       minSimilarity: 0.3,
+      userId: session.user.id,
     })
 
     // 2. 업무 현황 — 비보관 업무 전체를 구조화해 컨텍스트로 제공 (집계 질문 누락 방지)
