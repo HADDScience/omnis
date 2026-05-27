@@ -690,11 +690,22 @@ async function main() {
   for (const card of cards) {
     const categoryId = categoryByName[card.category]
     if (!categoryId) continue
+    // UI(card-detail)는 `content.sections`를 읽으므로 처음부터 sections 형식으로 기록한다.
+    // (예전에는 `{ markdown }`로 저장해 화면이 비어 보이는 문제가 있었음)
     await prisma.omnisCard.create({
       data: {
         categoryId,
         title: card.title,
-        content: { markdown: card.content } as object,
+        content: {
+          sections: [
+            {
+              id: crypto.randomUUID(),
+              type: "text",
+              title: "",
+              body: card.content,
+            },
+          ],
+        } as object,
         tags: card.tags,
         updatedById: teamLead.id,
       },

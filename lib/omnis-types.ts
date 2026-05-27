@@ -114,6 +114,15 @@ export function migrateContent(content: unknown): CardContent {
       body: obj.text,
     })
   }
+  // 데모 시드 등에서 `{ markdown: "..." }` 형식으로 쓰인 카드도 흡수
+  if (typeof obj.markdown === "string" && obj.markdown.trim()) {
+    sections.push({
+      id: crypto.randomUUID(),
+      type: "text",
+      title: "",
+      body: obj.markdown,
+    })
+  }
 
   return {
     status: typeof obj.status === "string" ? obj.status : undefined,
