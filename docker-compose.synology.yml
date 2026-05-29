@@ -1,0 +1,40 @@
+# Synology Container Manager 전용 Compose 파일.
+# 사전 빌드된 GHCR 이미지(ghcr.io/haddscience/omnis)를 pull해서 실행.
+# 환경변수는 같은 폴더의 .env 파일(또는 Container Manager UI)로 주입.
+
+services:
+  omnis-db:
+    image: pgvector/pgvector:pg16
+    container_name: omnis-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: omnis
+      POSTGRES_USER: omnis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - omnis_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omnis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  omnis:
+    image: ghcr.io/haddscience/omnis:latest
+    container_name: omnis
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://omnis:${POSTGRES_PASSWORD}@omnis-db:5432/omnis
+      POSTGRES_URL_NON_POOLING: postgresql://omnis:${POSTGRES_PASSWORD}@omnis-db:5432/omnis
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      SEED_PASSWORD: ${SEED_PASSWORD:-hadd1234}
+    depends_on:
+      omnis-db:
+        condition: service_healthy
+
+volumes:
+  omnis_pgdata:
