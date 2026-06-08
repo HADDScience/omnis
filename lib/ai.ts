@@ -41,22 +41,34 @@ async function callGemini(
     estimatedTokens: estimateGeminiTokens([prompt]) + maxOutputTokens,
   })
 
-  const res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature,
-        maxOutputTokens,
-      },
-    }),
+  const reqBody = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature,
+      maxOutputTokens,
+      // 구조화 추출은 깊은 추론이 불필요 → thinking 비활성으로 토큰 ~50%↓ + 속도↑ + 503 회피
+      ...(endpoint === "structureTask" ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+    },
   })
-
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Gemini API 오류 (${endpoint}): ${res.status} ${err}`)
+  // 503(모델 과부하)·일시적 429(rate, spend cap 제외)는 재시도. spend cap 429는 즉시 중단.
+  let res: Response | undefined
+  let lastErr = ""
+  const MAX_ATTEMPTS = 8
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: reqBody,
+    })
+    if (res.ok) break
+    lastErr = await res.text()
+    const transient = res.status === 503 || (res.status === 429 && !/spend(ing)? cap/i.test(lastErr))
+    if (!transient || attempt === MAX_ATTEMPTS - 1) {
+      throw new Error(`Gemini API 오류 (${endpoint}): ${res.status} ${lastErr}`)
+    }
+    await new Promise((r) => setTimeout(r, Math.min(2000 * (attempt + 1), 9000)))
   }
+  if (!res || !res.ok) throw new Error(`Gemini API 오류 (${endpoint}): ${lastErr}`)
 
   const data = await res.json()
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
@@ -209,6 +221,7 @@ export interface TaskRebuildResult {
   background?: string
   expectedResult?: string
   checklist?: { name: string; done: boolean }[]
+  priority?: "LOW" | "NORMAL" | "HIGH"
   statusLabel?: string
 }
 
@@ -283,9 +296,11 @@ ${messagesText}
      * 언급되지 않은 기존 항목은 현재 done 상태 유지
 
 반드시 아래 정확한 키 이름으로 JSON만 반환하세요. 다른 키 이름 사용 금지.
-정확한 형식: {"action": "rebuild", "name": "업무명", "background": "배경", "expectedResult": "기대결과", "checklist": [{"name": "항목명", "done": true}]}
+정확한 형식: {"action": "rebuild", "name": "업무명", "background": "배경", "expectedResult": "기대결과", "checklist": [{"name": "항목명", "done": true}], "priority": "HIGH"}
 - action 키 필수 (last_message_intent 등 다른 키 금지)
-- 체크리스트 항목은 name 키 필수 (description 등 다른 키 금지)`
+- 체크리스트 항목은 name 키 필수 (description 등 다른 키 금지)
+- priority: 대화에서 추가 요구·재작업·긴급 피드백이 있으면 우선순위를 한 단계 올려 반영("LOW"→"NORMAL"→"HIGH"). 변화 없으면 생략. 추측 금지.
+- checklist: 피드백으로 새 할 일이 생기면 기존 항목 유지 + 새 항목 추가, 새로 생긴 항목은 done:false`
 
   try {
     const raw = await callGemini(prompt, "rebuildTask", userId, 0)
@@ -306,6 +321,7 @@ ${messagesText}
       background: parsed.background,
       expectedResult: parsed.expectedResult || parsed.expected_result,
       checklist,
+      priority: parsed.priority,
       statusLabel: parsed.statusLabel,
     } as TaskRebuildResult
   } catch (err) {

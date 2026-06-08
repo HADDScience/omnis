@@ -418,7 +418,7 @@ export function TaskDetail({
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-1">
-            {task.checklists.map((cl) => (
+            {[...task.checklists].sort((a, b) => Number(a.done) - Number(b.done)).map((cl) => (
               <ChecklistItem
                 key={cl.id}
                 item={cl}

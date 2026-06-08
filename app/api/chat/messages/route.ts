@@ -115,13 +115,22 @@ export async function POST(req: NextRequest) {
   // ChatMention 자동 추출 (#업무명, @사람 멘션을 스레드 뷰 라우팅용으로 DB에 저장)
   await persistMentions(message.id, trimmedContent).catch(() => {})
 
-  if (mention) {
-    const task = await prisma.task.findUnique({
-      where: { slug: mention.slug },
-      select: { id: true, name: true, status: true, background: true, expectedResult: true, ownerId: true, instructorId: true },
-    })
+  {
+    // 업무 해석: #슬러그 멘션 OR 스레드 연결(taskId). 스레드에서 쓴 메시지는 멘션 없어도 그 업무로 처리.
+    const task = mention
+      ? await prisma.task.findUnique({
+          where: { slug: mention.slug },
+          select: { id: true, name: true, status: true, background: true, expectedResult: true, ownerId: true, instructorId: true, slug: true },
+        })
+      : linkedTaskId
+        ? await prisma.task.findUnique({
+            where: { id: linkedTaskId },
+            select: { id: true, name: true, status: true, background: true, expectedResult: true, ownerId: true, instructorId: true, slug: true },
+          })
+        : null
+    const restText = mention ? mention.restText : trimmedContent
 
-    if (task && mention.restText.length > 0) {
+    if (task && restText.trim().length > 0) {
       // 메시지를 업무에 연결
       await prisma.chatMessage.update({
         where: { id: message.id },
@@ -178,24 +187,24 @@ export async function POST(req: NextRequest) {
             where: { taskId: task.id, done: false },
             data: { done: true },
           })
-          taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${mention.slug} 업무 전체 완료 처리 · 체크리스트 전부 체크`, kind: "TASK_DONE" }
-          await createNotification(notifyUserId, "task_status_changed", "업무 완료", `${session.user.name}님이 #${mention.slug} 업무를 완료했습니다.`, task.id)
+          taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${task.slug} 업무 전체 완료 처리 · 체크리스트 전부 체크`, kind: "TASK_DONE" }
+          await createNotification(notifyUserId, "task_status_changed", "업무 완료", `${session.user.name}님이 #${task.slug} 업무를 완료했습니다.`, task.id)
 
         } else if (result.action === "pause") {
           await prisma.task.update({
             where: { id: task.id },
             data: { status: "TODO" },
           })
-          taskUpdate = { action: "pause", statusLabel: "할 일", summary: `#${mention.slug} 업무 '할 일'로 되돌림` }
-          await createNotification(notifyUserId, "task_status_changed", "업무 보류", `${session.user.name}님이 #${mention.slug} 업무를 '할 일'로 되돌렸습니다.`, task.id)
+          taskUpdate = { action: "pause", statusLabel: "할 일", summary: `#${task.slug} 업무 '할 일'로 되돌림` }
+          await createNotification(notifyUserId, "task_status_changed", "업무 보류", `${session.user.name}님이 #${task.slug} 업무를 '할 일'로 되돌렸습니다.`, task.id)
 
         } else if (result.action === "resume") {
           await prisma.task.update({
             where: { id: task.id },
             data: { status: "IN_PROGRESS", workStart: new Date() },
           })
-          taskUpdate = { action: "resume", statusLabel: "진행 중", summary: `#${mention.slug} 업무 재개` }
-          await createNotification(notifyUserId, "task_status_changed", "업무 재개", `${session.user.name}님이 #${mention.slug} 업무를 재개했습니다.`, task.id)
+          taskUpdate = { action: "resume", statusLabel: "진행 중", summary: `#${task.slug} 업무 재개` }
+          await createNotification(notifyUserId, "task_status_changed", "업무 재개", `${session.user.name}님이 #${task.slug} 업무를 재개했습니다.`, task.id)
 
         } else if (result.action === "rebuild") {
           // 업무 카드 전체 재구성
@@ -203,6 +212,9 @@ export async function POST(req: NextRequest) {
           if (result.background) updateData.background = result.background
           if (result.expectedResult) updateData.expectedResult = result.expectedResult
           if (result.name) updateData.name = result.name
+          if (result.priority && ["LOW", "NORMAL", "HIGH"].includes(result.priority)) {
+            updateData.priority = result.priority
+          }
 
           if (task.status === "DONE") {
             updateData.status = "IN_PROGRESS"
@@ -248,19 +260,19 @@ export async function POST(req: NextRequest) {
           taskUpdate = {
             action: "rebuild",
             statusLabel: "업무 업데이트됨",
-            summary: `#${mention.slug} 재구성 · ${changes.join(" · ") || "내용 갱신"}`,
+            summary: `#${task.slug} 재구성 · ${changes.join(" · ") || "내용 갱신"}`,
             kind: "TASK_REBUILT",
           }
-          await createNotification(notifyUserId, "task_rebuilt", `업무 업데이트: #${mention.slug}`, `${session.user.name}님의 메시지로 업무 카드가 재구성되었습니다.`, task.id)
+          await createNotification(notifyUserId, "task_rebuilt", `업무 업데이트: #${task.slug}`, `${session.user.name}님의 메시지로 업무 카드가 재구성되었습니다.`, task.id)
         }
         // "info", "none"은 아무 동작 없음 (메시지만 연결됨)
       } else {
         // Gemini 없으면 fallback
-        const action = fallbackClassify(mention.restText)
+        const action = fallbackClassify(restText)
         if (action === "complete") {
           await prisma.task.update({ where: { id: task.id }, data: { status: "DONE", workEnd: new Date() } })
           await prisma.checklist.updateMany({ where: { taskId: task.id, done: false }, data: { done: true } })
-          taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${mention.slug} 업무 전체 완료 처리`, kind: "TASK_DONE" }
+          taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${task.slug} 업무 전체 완료 처리`, kind: "TASK_DONE" }
         }
       }
 

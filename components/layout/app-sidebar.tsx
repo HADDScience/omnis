@@ -77,8 +77,9 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
     <Sidebar>
       <SidebarHeader className="px-2.5 pb-2 pt-3">
         <Link href="/dashboard" className="flex items-center gap-2 px-1.5 pb-3">
-          <div className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-primary text-[13px] font-bold text-primary-foreground">
-            O
+          <div className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-primary p-[4px]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/omnis-logo.png" alt="Omnis" className="h-full w-full object-contain" />
           </div>
           <div className="flex flex-col leading-[1.1]">
             <span className="text-[13.5px] font-semibold">Omnis</span>

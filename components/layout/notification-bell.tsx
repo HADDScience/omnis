@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
@@ -26,10 +27,27 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false)
   const router = useRouter()
 
+  const seenIds = useRef<Set<string>>(new Set())
+  const initialized = useRef(false)
+
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await fetch("/api/notifications")
-      if (res.ok) setNotifications(await res.json())
+      if (!res.ok) return
+      const data: Notification[] = await res.json()
+      setNotifications(data)
+      if (!initialized.current) {
+        // 첫 로드: 기존 알림은 토스트하지 않고 본 것으로 처리
+        data.forEach((n) => seenIds.current.add(n.id))
+        initialized.current = true
+      } else {
+        // 새로 도착한 알림만 토스트로 표시 (오래된 → 최신 순)
+        const fresh = data.filter((n) => !seenIds.current.has(n.id))
+        for (const n of fresh.slice().reverse()) {
+          seenIds.current.add(n.id)
+          toast(n.title, { description: n.content ?? undefined })
+        }
+      }
     } catch {
       /* ignore */
     }

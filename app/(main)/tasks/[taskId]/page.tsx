@@ -19,7 +19,7 @@ export default async function TaskDetailPage({ params }: Props) {
       include: {
         owner: { select: { id: true, name: true } },
         instructor: { select: { id: true, name: true } },
-        checklists: { orderBy: { createdAt: "asc" } },
+        checklists: { orderBy: [{ done: "asc" }, { createdAt: "asc" }] },
         project: {
           select: {
             id: true,

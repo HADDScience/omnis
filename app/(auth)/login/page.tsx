@@ -55,8 +55,9 @@ export default function LoginPage() {
         <div className="absolute right-16 top-1/2 h-32 w-32 rotate-45 border border-white/15" />
 
         <div className="relative z-10 flex items-center gap-3 px-10 pt-10">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-white/12 text-[18px] font-bold shadow-2xl shadow-black/20 backdrop-blur">
-            O
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-primary p-1.5 shadow-2xl shadow-black/20 backdrop-blur">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/omnis-logo.png" alt="Omnis" className="h-full w-full object-contain" />
           </div>
           <div className="leading-tight">
             <div className="text-[15px] font-semibold">Omnis</div>
@@ -95,8 +96,9 @@ export default function LoginPage() {
         <div className="w-full max-w-[420px]">
           <div className="mb-9 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-[15px] font-bold text-primary-foreground shadow-lg shadow-primary/20">
-                O
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary p-1.5 shadow-lg shadow-primary/20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/omnis-logo.png" alt="Omnis" className="h-full w-full object-contain" />
               </div>
               <div className="leading-tight">
                 <div className="text-[14px] font-semibold">Omnis</div>
