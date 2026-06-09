@@ -216,8 +216,8 @@ export async function POST(req: NextRequest) {
             updateData.priority = result.priority
           }
 
-          // 재구성(보고·피드백)은 곧 업무가 진행 중이라는 신호 → 할 일/대기/완료 어디서든 '진행 중'으로 전진
-          if (task.status === "DONE" || task.status === "TODO" || task.status === "PAUSED") {
+          // 재구성(보고·피드백)은 곧 업무가 진행 중이라는 신호 → 진행 중이 아니면(할 일/검토/완료) '진행 중'으로 전진
+          if (task.status !== "IN_PROGRESS") {
             updateData.status = "IN_PROGRESS"
           }
 
