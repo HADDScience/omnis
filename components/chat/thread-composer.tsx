@@ -89,14 +89,17 @@ export function ThreadComposer({
         e.preventDefault()
         void send()
       }}
-      className="flex flex-col gap-1.5 border-t bg-background p-2.5"
+      className="relative flex flex-col gap-1.5 border-t bg-background p-2.5"
+      data-thread-composer
+      data-sending={sending ? "true" : "false"}
     >
       <Textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKey}
+        disabled={sending}
         placeholder={taskSlug ? `#${taskSlug} 답장 (⌘+Enter)` : "답장 (⌘+Enter)"}
-        className="min-h-[60px] resize-none text-[12.5px] leading-relaxed"
+        className="min-h-[60px] resize-none text-[12.5px] leading-relaxed disabled:opacity-60"
         aria-label="이 업무 스레드에 답장"
       />
       <div className="flex items-center justify-between">
@@ -113,6 +116,23 @@ export function ThreadComposer({
           전송
         </Button>
       </div>
+
+      {/* 처리 중 오버레이 — 입력 차단 + 옴니스 처리 상태 표시 (데모 줌 대상) */}
+      {sending && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/85 backdrop-blur-[2px]">
+          <div className="flex items-center gap-2.5 rounded-lg border border-primary/30 bg-card px-4 py-2.5 shadow-lg">
+            <Spinner className="h-4 w-4 text-primary" />
+            <div className="leading-tight">
+              <div className="text-[12px] font-semibold text-foreground">
+                옴니스가 업무를 갱신하는 중…
+              </div>
+              <div className="text-[10.5px] text-muted-foreground">
+                메시지를 분석해 상태·체크리스트를 재구성합니다
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   )
 }
