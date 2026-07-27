@@ -27,15 +27,24 @@ git push origin main
 
 5~7분 후 GHCR에 `ghcr.io/haddscience/omnis:latest` 이미지가 생성됩니다.
 
-### GHCR 이미지를 public으로 전환
+### NAS가 GHCR 이미지를 받아오게 하기
 
-기본은 private이라 NAS가 pull 못 합니다. **한 번만** 전환:
+기본은 private이라 그대로는 NAS가 pull하지 못합니다. 두 가지 방법이 있습니다.
 
-1. https://github.com/HADDScience/omnis/pkgs/container/omnis 접속
-2. 우측 "Package settings" → "Danger Zone" → **Change visibility** → **Public**
-3. 확인 입력 → 저장
+**권장 — private 유지 + Container Manager에 인증 등록**
 
-이후 NAS는 인증 없이 pull 가능합니다.
+1. https://github.com/settings/tokens 에서 Personal Access Token 발급
+   - 권한은 **`read:packages`만** 체크
+2. Container Manager → **레지스트리 → 설정 → 추가**
+   - URL: `https://ghcr.io`
+   - 사용자명: GitHub 아이디 / 비밀번호: 위 토큰
+3. 이후 private 이미지도 정상 pull
+
+**비권장 — public 전환**
+
+Package settings → Danger Zone → Change visibility → Public.
+인증이 필요 없어 간단하지만 **빌드된 사내 코드가 인터넷에 공개**됩니다.
+사내 업무 데이터를 다루는 시스템이므로 가급적 위의 private 방식을 쓰세요.
 
 ---
 
@@ -57,10 +66,14 @@ git push origin main
 ```env
 POSTGRES_PASSWORD=<openssl rand -base64 24 결과>
 NEXTAUTH_SECRET=<openssl rand -base64 32 결과>
+OMNIS_PORT=3000
 NEXTAUTH_URL=http://<NAS_LAN_IP>:3000
 GEMINI_API_KEY=<Google AI Studio에서 발급>
 SEED_PASSWORD=hadd1234
 ```
+
+`OMNIS_PORT`는 NAS에서 열 포트입니다. 다른 서비스와 겹치면 이 값과
+`NEXTAUTH_URL`의 포트를 **함께** 바꿉니다. (공동 사용 NAS에서는 먼저 확인할 것)
 
 **키 생성 명령** (Mac 터미널):
 ```bash
@@ -90,17 +103,17 @@ openssl rand -base64 32    # NEXTAUTH_SECRET용
 
 ---
 
-## 5. 초기 시드 데이터 주입 (최초 1회)
+## 5. 초기 시드 데이터 (자동 — 별도 작업 없음)
 
-Container Manager → 컨테이너 → `omnis` → **터미널** 탭 → **생성** → `/bin/sh` 실행:
+컨테이너가 시작될 때 `마이그레이션 → 시드 → 서버 기동` 순서로 자동 실행됩니다.
+기본 계정 5명과 기초 데이터가 자동 생성되므로 **터미널에서 명령을 칠 필요가 없습니다.**
 
-```sh
-node prisma/seed.ts
-# 또는 npm 스크립트가 정상 동작하면:
-# npm run db:seed
-```
+- 시드는 전부 `upsert`라 재시작할 때마다 실행돼도 기존 데이터를 덮어쓰지 않습니다.
+- 시드가 실패해도 앱은 기동합니다. 로그에서 `[seed]` 줄로 확인할 수 있습니다.
 
-5명 테스트 계정과 더미 데이터가 생성됩니다.
+> 과거 문서에는 이 단계에서 `node prisma/seed.ts`를 실행하라고 적혀 있었으나,
+> 런타임 이미지에는 `tsx`가 없고 Node는 `.ts`를 직접 실행하지 못해 동작하지 않았습니다.
+> 지금은 빌드 시 시드를 CommonJS(`prisma/seed.cjs`)로 변환해 두고 자동 실행합니다.
 
 ---
 
