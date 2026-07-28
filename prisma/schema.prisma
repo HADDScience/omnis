@@ -16,6 +16,8 @@ model User {
   id           String   @id @default(uuid())
   name         String   @unique
   email        String?
+  position     String?  // 직급 (예: 대표, 상무, 팀장, 과장, 사원)
+  department   String?  // 부서 (예: 연구개발팀, AI개발팀)
   role         Role     @default(MEMBER)
   passwordHash String
   isActive        Boolean  @default(true)
