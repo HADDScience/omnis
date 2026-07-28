@@ -6,12 +6,18 @@ const prisma = new PrismaClient()
 
 async function main() {
   // ─── 사용자 시드 ─────────────────────────────────────
+  // 관리자 계정 1개(admin) + 테스트 계정 5개(user001~user005).
+  // admin 비밀번호는 강하게(ADMIN_PASSWORD), 테스트 계정은 공통(SEED_PASSWORD).
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-me-admin"
+  const USER_PASSWORD = process.env.SEED_PASSWORD ?? "haddscience1234!"
+
   const users = [
-    { name: "김아리", role: "ADMIN" as const },
-    { name: "노혜린", role: "ADMIN" as const },
-    { name: "정우창", role: "MEMBER" as const },
-    { name: "주용석", role: "MEMBER" as const },
-    { name: "박소정", role: "MEMBER" as const },
+    { name: "admin", role: "ADMIN" as const, password: ADMIN_PASSWORD },
+    { name: "user001", role: "MEMBER" as const, password: USER_PASSWORD },
+    { name: "user002", role: "MEMBER" as const, password: USER_PASSWORD },
+    { name: "user003", role: "MEMBER" as const, password: USER_PASSWORD },
+    { name: "user004", role: "MEMBER" as const, password: USER_PASSWORD },
+    { name: "user005", role: "MEMBER" as const, password: USER_PASSWORD },
   ]
 
   for (const u of users) {
@@ -21,12 +27,12 @@ async function main() {
       create: {
         name: u.name,
         role: u.role,
-        passwordHash: hashSync(process.env.SEED_PASSWORD ?? "changeme", 10),
+        passwordHash: hashSync(u.password, 10),
       },
     })
   }
 
-  console.log("✓ 사용자 5명 생성 완료")
+  console.log("✓ 사용자 생성 완료 (admin + user001~user005)")
 
   // ─── 기본 채팅방 ────────────────────────────────────
   await prisma.chatRoom.upsert({
@@ -99,8 +105,8 @@ async function main() {
   console.log("✓ 업무 카테고리 8개 생성 완료")
 
   // ─── 기본 프로젝트 ──────────────────────────────────
-  const woochang = await prisma.user.findUnique({ where: { name: "정우창" } })
-  if (woochang) {
+  const anyUser = await prisma.user.findUnique({ where: { name: "user001" } })
+  if (anyUser) {
     await prisma.project.upsert({
       where: { id: "default-project" },
       update: {},

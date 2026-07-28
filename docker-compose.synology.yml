@@ -48,7 +48,8 @@ services:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      SEED_PASSWORD: ${SEED_PASSWORD:-hadd1234}
+      SEED_PASSWORD: ${SEED_PASSWORD:-haddscience1234!}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-admin}
     volumes:
       # 채팅·업무에 첨부한 파일 보관소.
       # 이 볼륨이 없으면 컨테이너를 다시 만들 때마다 첨부파일이 전부 사라진다.
