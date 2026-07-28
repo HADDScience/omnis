@@ -47,6 +47,9 @@ services:
       POSTGRES_URL_NON_POOLING: postgresql://omnis:${POSTGRES_PASSWORD}@omnis-db:5432/omnis
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
+      # NextAuth v5(Auth.js)는 Vercel이 아닌 호스트(NAS의 IP 등)에서
+      # trustHost가 없으면 모든 인증을 거부한다(UntrustedHost). 반드시 필요.
+      AUTH_TRUST_HOST: "true"
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       SEED_PASSWORD: ${SEED_PASSWORD:-haddscience1234!}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-admin}
