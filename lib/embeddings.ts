@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { embedTexts } from "@/lib/ai"
 import { migrateContent, type Section } from "@/lib/omnis-types"
 import { TASK_STATUS_LABELS } from "@/lib/constants"
+import { caseKey, listCases, listProgressFor, parseCaseKey } from "@/lib/ip-data"
 
 // ─── 임베딩 동기화 & 벡터 검색 ───────────────────────────
 //
@@ -15,12 +16,14 @@ export type EmbeddingSource =
   | "TASK"
   | "WEEKLY_REPORT"
   | "CHAT_MESSAGE"
+  | "IP_CASE"
 
 const ALL_SOURCES: EmbeddingSource[] = [
   "OMNIS_CARD",
   "TASK",
   "WEEKLY_REPORT",
   "CHAT_MESSAGE",
+  "IP_CASE",
 ]
 
 /** 채팅 메시지 임베딩 최소 길이 (짧은 잡담 제외) */
@@ -173,6 +176,68 @@ async function buildChatMessageChunks(
   return [{ title: `${msg.author.name}의 메시지`, content: text }]
 }
 
+const TURN_LABEL: Record<string, string> = {
+  us: "우리 차례",
+  firm: "대리인 차례",
+  none: "대기 없음",
+}
+
+/**
+ * 지식재산권 한 건을 청크 하나로.
+ *
+ * 대장의 현재 값만 넣지 않고 진행 이력을 함께 싣는다. "이 상표 어떻게 돼가?" 같은
+ * 질문의 답은 현재 단계가 아니라 거쳐 온 과정에 있기 때문이다. 한 건이 기록
+ * 수십 줄을 넘기는 일이 없어(가장 많은 건도 열 줄 남짓) 통째로 담아도 청크가
+ * 비대해지지 않는다.
+ *
+ * sourceId 는 "trademark:TM-01" 꼴이다 — 상표와 특허의 번호 체계가 달라 번호만으로는
+ * 어느 쪽인지 알 수 없다.
+ */
+async function buildIpCaseChunks(sourceId: string): Promise<RawChunk[] | null> {
+  const parsed = parseCaseKey(sourceId)
+  if (!parsed) return null
+
+  const found = (await listCases()).find(
+    (c) => c.kind === parsed.kind && c.id === parsed.id
+  )
+  if (!found) return null
+
+  const label = found.kind === "trademark" ? "상표" : "특허"
+  const parts: string[] = [`구분: ${label}`, `관리번호: ${found.id}`]
+
+  if (found.nameKo && found.nameKo !== found.name) parts.push(`국문명: ${found.nameKo}`)
+  if (found.classes.length > 0) parts.push(`류: ${found.classes.join(", ")}`)
+  if (found.goods) parts.push(`지정상품: ${found.goods}`)
+  if (found.holder) parts.push(`${found.kind === "trademark" ? "권리자" : "출원인"}: ${found.holder}`)
+  parts.push(`현재 단계: ${found.status}`)
+  if (found.appNo) parts.push(`출원번호: ${found.appNo}`)
+  if (found.regNo) parts.push(`등록번호: ${found.regNo}`)
+  if (found.filedOn) parts.push(`출원일: ${found.filedOn}`)
+  if (found.registeredOn) parts.push(`등록일: ${found.registeredOn}`)
+  if (found.probability !== null) parts.push(`등록 가능성: ${found.probability}%`)
+  if (found.note.trim()) parts.push(`비고: ${found.note.trim()}`)
+
+  const history = await listProgressFor(found.kind, found.id)
+  if (history.length > 0) {
+    const lines = history.map((h) => {
+      const bits = [h.occurredOn, h.stage]
+      if (h.counterpart) bits.push(h.counterpart)
+      if (h.nextTurn !== "none") bits.push(TURN_LABEL[h.nextTurn] ?? h.nextTurn)
+      if (h.dueOn) bits.push(`기한 ${h.dueOn}`)
+      if (h.note.trim()) bits.push(h.note.trim())
+      return `- ${bits.join(" · ")}`
+    })
+    parts.push(`진행 이력 ${history.length}건:\n${lines.join("\n")}`)
+  }
+
+  return [
+    {
+      title: `${found.name} (${label} ${found.id})`,
+      content: `[지식재산권] ${found.name}\n${parts.join("\n")}`,
+    },
+  ]
+}
+
 async function buildChunks(
   source: EmbeddingSource,
   sourceId: string
@@ -186,7 +251,14 @@ async function buildChunks(
       return buildWeeklyReportChunks(sourceId)
     case "CHAT_MESSAGE":
       return buildChatMessageChunks(sourceId)
+    case "IP_CASE":
+      return buildIpCaseChunks(sourceId)
   }
+}
+
+/** 지금 DB 에 있는 모든 지식재산권 건의 색인 키. 백필과 정리에 쓴다. */
+export async function allIpCaseKeys(): Promise<string[]> {
+  return (await listCases()).map((c) => caseKey(c.kind, c.id))
 }
 
 // ─── 동기화 ──────────────────────────────────────────────

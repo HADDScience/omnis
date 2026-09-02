@@ -418,6 +418,8 @@ enum EmbeddingSource {
   TASK
   WEEKLY_REPORT
   CHAT_MESSAGE
+  /// 지식재산권 건 (상표·특허). sourceId 는 "trademark:TM-01" 꼴.
+  IP_CASE
 }
 
 model EmbeddingChunk {

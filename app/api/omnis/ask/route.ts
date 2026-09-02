@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db"
 import { retrieveContext, type EmbeddingSource } from "@/lib/embeddings"
 import { answerWithOmnis } from "@/lib/ai"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
+import { listCases, listOpenTurns } from "@/lib/ip-data"
 
 export const runtime = "nodejs"
 
@@ -13,6 +14,7 @@ const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   TASK: "업무",
   WEEKLY_REPORT: "주간보고",
   CHAT_MESSAGE: "채팅",
+  IP_CASE: "지식재산권",
 }
 
 const askSchema = z.object({
@@ -65,6 +67,51 @@ async function buildTaskOverview(): Promise<string> {
   return `전체 비보관 업무 ${tasks.length}건 · 지연 ${overdueCount}건\n${lines.join("\n")}`
 }
 
+/**
+ * 지식재산권 전량을 구조화된 텍스트로 만든다.
+ *
+ * 업무 목록과 같은 이유다. "등록된 상표 전부", "거절결정 받은 건" 처럼 개수 제한이
+ * 없는 질문은 top-K 검색으로는 조용히 몇 건을 빠뜨린다. 상표·특허를 합쳐 27건뿐이라
+ * 한 줄 요약을 전량 실어도 컨텍스트가 넘치지 않는다 — 자세한 이력은 검색된 청크가 맡는다.
+ */
+async function buildIpOverview(): Promise<string> {
+  const cases = await listCases()
+  if (cases.length === 0) return ""
+
+  const line = (c: (typeof cases)[number]) => {
+    const bits = [`${c.id} ${c.name}`, c.status]
+    if (c.holder) bits.push(c.holder)
+    if (c.appNo) bits.push(`출원 ${c.appNo}`)
+    if (c.regNo) bits.push(`등록 ${c.regNo}`)
+    if (c.registeredOn) bits.push(`등록일 ${c.registeredOn}`)
+    else if (c.filedOn) bits.push(`출원일 ${c.filedOn}`)
+    return `- ${bits.join(" · ")}`
+  }
+
+  const trademarks = cases.filter((c) => c.kind === "trademark")
+  const patents = cases.filter((c) => c.kind === "patent")
+
+  const parts = [
+    `상표 ${trademarks.length}건`,
+    trademarks.map(line).join("\n"),
+    `특허 ${patents.length}건`,
+    patents.map(line).join("\n"),
+  ]
+
+  // 아직 우리가 처리해야 하는 것 — 기한이 걸린 값이라 따로 뽑아 준다.
+  const turns = (await listOpenTurns()).filter((t) => t.nextTurn === "us")
+  if (turns.length > 0) {
+    const lines = turns.map((t) => {
+      const bits = [`${t.entityId} ${t.caseName}`, t.stage]
+      if (t.dueOn) bits.push(`기한 ${t.dueOn}`)
+      return `- ${bits.join(" · ")}`
+    })
+    parts.push(`우리 차례로 남은 지식재산권 업무 ${turns.length}건`, lines.join("\n"))
+  }
+
+  return parts.join("\n")
+}
+
 /** 로그인한 사용자의 최근 질문 내역을 최신순으로 반환한다. */
 export async function GET() {
   const session = await auth()
@@ -106,10 +153,16 @@ export async function POST(req: NextRequest) {
       userId: session.user.id,
     })
 
-    // 2. 업무 현황 — 비보관 업무 전체를 구조화해 컨텍스트로 제공 (집계 질문 누락 방지)
-    const taskOverview = await buildTaskOverview()
+    // 2. 현황 요약 — 업무와 지식재산권 전량을 구조화해 컨텍스트로 제공.
+    //    top-K 검색만으로는 "지연된 업무 전부", "등록된 상표 전부" 같은 집계
+    //    질문에서 조용히 몇 건이 빠진다.
+    const [taskOverview, ipOverview] = await Promise.all([
+      buildTaskOverview(),
+      buildIpOverview(),
+    ])
+    const overview = [taskOverview, ipOverview].filter(Boolean).join("\n\n")
 
-    // 3. Generation — 검색 결과 + 업무 현황을 근거로 답변 생성
+    // 3. Generation — 검색 결과 + 현황 요약을 근거로 답변 생성
     const answer = await answerWithOmnis(
       question,
       chunks.map((c) => ({
@@ -117,7 +170,7 @@ export async function POST(req: NextRequest) {
         content: c.content,
         sourceLabel: SOURCE_LABEL[c.source],
       })),
-      taskOverview,
+      overview,
       session.user.id
     )
 
