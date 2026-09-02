@@ -2,6 +2,7 @@ import {
   fallbackAiDraft,
   normalizeAiDraft,
   type TaskAiDraft,
+  type TaskDraftSnapshot,
 } from "@/lib/schemas/task-ai"
 import {
   assertGeminiUsageAllowed,
@@ -157,6 +158,84 @@ JSON:`
     console.error("[ai/structureTask] 응답 파싱 실패, fallback 사용", { userId, err })
     return fallbackAiDraft(messages)
   }
+}
+
+/**
+ * 이미 만들어진 업무 초안을 자연어 지시로 고친다.
+ *
+ * structureTask 와 목적이 다르다: 저쪽은 원문에서 처음 뽑는 일이고,
+ * 이쪽은 **이미 화면에 있는 값을 손보는** 일이다. 같은 프롬프트를 쓰면
+ * AI가 초안을 무시하고 처음부터 다시 뽑아, 사용자가 손댄 값이 되돌아간다.
+ * 그래서 "지시가 닿지 않은 값은 그대로 두라"는 규칙을 프롬프트에 못 박는다.
+ */
+export async function reviseTaskDraft(
+  current: TaskDraftSnapshot,
+  instruction: string,
+  context?: {
+    projects: { id: string; name: string; productName: string | null }[]
+    products: { id: string; name: string }[]
+    members?: { id: string; name: string }[]
+  },
+  userId?: string
+): Promise<TaskAiDraft> {
+  const projectSection = context?.projects?.length
+    ? `\n기존 프로젝트 목록 (지시가 프로젝트를 바꾸라고 하면 여기서 골라 projectId에 지정):\n${context.projects.map((p) => `- ${p.id}: ${p.name}${p.productName ? ` (${p.productName})` : ""}`).join("\n")}`
+    : ""
+  const productSection = context?.products?.length
+    ? `\n제품 목록:\n${context.products.map((p) => `- ${p.id}: ${p.name}`).join("\n")}`
+    : ""
+  const memberSection = context?.members?.length
+    ? `\n팀원 목록 (담당자는 아래 정식 이름 중 하나로 ownerHint에 지정):\n${context.members.map((m) => `- ${m.name}`).join("\n")}`
+    : ""
+
+  const today = new Date().toISOString().slice(0, 10)
+  const prompt = `아래는 사용자가 작성 중인 업무 카드 초안입니다.
+사용자가 말로 수정을 지시했습니다. 지시대로 고친 **전체 초안**을 JSON으로 반환하세요.
+
+가장 중요한 규칙:
+- 지시가 언급하지 않은 항목은 현재 값을 **그대로** 유지하세요. 임의로 다시 쓰거나 지우지 마세요.
+- 지시가 언급한 항목만 바꾸세요.
+- 지시가 모호하면 현재 값을 유지하세요. 추측해서 바꾸지 마세요.
+
+현재 초안:
+- name: ${current.name || "(비어 있음)"}
+- background: ${current.background || "(비어 있음)"}
+- checklist: ${current.checklist.length ? current.checklist.map((c, i) => `${i + 1}) ${c}`).join(" ") : "(없음)"}
+- 담당자: ${current.ownerName ?? "(미정)"}
+- 마감: ${current.deadline ?? "(없음)"}
+- 프로젝트: ${current.projectName ?? "(없음)"}
+- 제품: ${current.productName ?? "(없음)"}
+- 우선순위: ${current.priority ?? "(미지정)"}
+
+사용자 수정 지시:
+"""
+${instruction}
+"""
+
+반환 형식(구조화와 동일):
+- name: 업무 한 줄 요약(15자 이내)
+- background: 배경 2-3문장
+- checklist: 단계 배열(문자열)
+- projectId: 기존 프로젝트 ID 또는 null
+- newProject: 목록에 없는 프로젝트를 새로 만들라는 지시일 때만 { "name", "purpose", "goal" }, 아니면 null
+- productId: 제품 ID 또는 null
+- newProduct: 목록에 없는 제품일 때만 { "name" }, 아니면 null
+- priority: "LOW" | "NORMAL" | "HIGH"
+- ownerHint: 담당자 정식 이름
+- deadlineHint: ISO(YYYY-MM-DD) 또는 한국어 상대표현. 오늘은 ${today} 입니다.
+${projectSection}
+${productSection}
+${memberSection}
+
+반드시 JSON만 반환하세요. 마크다운 코드블록 없이 순수 JSON만 반환하세요.
+
+JSON:`
+
+  const raw = await callGemini(prompt, "reviseTaskDraft", userId)
+
+  const jsonMatch = raw.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) throw new Error("AI 응답에서 JSON을 찾지 못했습니다")
+  return normalizeAiDraft(JSON.parse(jsonMatch[0]) as Record<string, unknown>)
 }
 
 export interface MentionIntent {
