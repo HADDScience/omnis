@@ -5,13 +5,24 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { SentIcon, Attachment01Icon, Cancel01Icon } from "@hugeicons/core-free-icons"
+import { SentIcon, Attachment01Icon, Cancel01Icon, PlusSignIcon, Task01Icon, AtIcon } from "@hugeicons/core-free-icons"
 import { Spinner } from "@/components/ui/spinner"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { SLASH_COMMANDS } from "./slash-command-parser"
 
+/** 자동완성 후보. `/`(명령) · `#`(업무) · `@`(사람·파일) 세 갈래가 같은 목록 UI를 쓴다. */
 interface MentionItem {
+  /** 실제로 입력창에 삽입될 값 */
   id: string
   label: string
-  type: "task" | "user" | "file"
+  /** 오른쪽에 흐리게 붙는 보조 설명 */
+  hint?: string
+  type: "task" | "user" | "file" | "command"
 }
 
 interface MessageInputProps {
@@ -19,9 +30,19 @@ interface MessageInputProps {
   disabled?: boolean
   tasks?: { id: string; name: string; slug: string }[]
   files?: { id: string; name: string; path: string; mimeType: string }[]
+  /** @멘션 대상. 없으면 사람 멘션이 동작하지 않는다. */
+  users?: { id: string; name: string }[]
 }
 
-export function MessageInput({ onSend, disabled, tasks = [], files = [] }: MessageInputProps) {
+/** 후보 종류별 삽입 접두사 */
+const PREFIX: Record<MentionItem["type"], string> = {
+  command: "/",
+  task: "#",
+  user: "@",
+  file: "@",
+}
+
+export function MessageInput({ onSend, disabled, tasks = [], files = [], users = [] }: MessageInputProps) {
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
@@ -31,14 +52,14 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [] }: Messa
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
   const [mentionQuery, setMentionQuery] = useState("")
-  const [mentionType, setMentionType] = useState<"task" | "user" | null>(null)
+  const [mentionType, setMentionType] = useState<"task" | "user" | "command" | null>(null)
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([])
   const [mentionIndex, setMentionIndex] = useState(0)
   const [mentionStart, setMentionStart] = useState(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
 
-  // 멘션 검색
+  // 자동완성 후보 계산
   useEffect(() => {
     if (!mentionType) {
       setMentionItems([])
@@ -47,35 +68,57 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [] }: Messa
 
     const query = mentionQuery.toLowerCase()
 
-    if (mentionType === "task") {
-      const filtered = tasks
-        .filter((t) => t.name.toLowerCase().includes(query) || t.slug.toLowerCase().includes(query))
-        .slice(0, 5)
-        .map((t) => ({ id: t.slug, label: t.name, type: "task" as const }))
-      setMentionItems(filtered)
+    if (mentionType === "command") {
+      setMentionItems(
+        SLASH_COMMANDS.filter((c) => c.name.slice(1).toLowerCase().startsWith(query)).map((c) => ({
+          id: c.name.slice(1),
+          label: c.name,
+          hint: c.description,
+          type: "command" as const,
+        }))
+      )
+    } else if (mentionType === "task") {
+      setMentionItems(
+        tasks
+          .filter((t) => t.name.toLowerCase().includes(query) || t.slug.toLowerCase().includes(query))
+          .slice(0, 5)
+          .map((t) => ({ id: t.slug, label: t.name, hint: `#${t.slug}`, type: "task" as const }))
+      )
     } else {
-      const filteredFiles = files
+      // 사람이 먼저, 파일이 뒤에. 예전에는 파일만 나와서 @멘션이 사실상 없는 기능이었다.
+      const matchedUsers = users
+        .filter((u) => u.name.toLowerCase().includes(query))
+        .slice(0, 6)
+        .map((u) => ({ id: u.name, label: u.name, type: "user" as const }))
+      const matchedFiles = files
         .filter((f) => f.name.toLowerCase().includes(query))
         .slice(0, 3)
         .map((f) => ({ id: f.name, label: f.name, type: "file" as const }))
-
-      setMentionItems(filteredFiles)
+      setMentionItems([...matchedUsers, ...matchedFiles])
     }
     setMentionIndex(0)
-  }, [mentionQuery, mentionType, tasks, files])
+  }, [mentionQuery, mentionType, tasks, files, users])
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const value = e.target.value
     setContent(value)
+    syncAutocomplete(value, e.target.selectionStart)
+  }
 
-    const cursorPos = e.target.selectionStart
+  /** 커서 앞 글자를 보고 어떤 자동완성을 띄울지 정한다. */
+  function syncAutocomplete(value: string, cursorPos: number) {
     const textBeforeCursor = value.slice(0, cursorPos)
 
-    // # 또는 @ 감지
+    // 명령은 맨 앞에서만 — 문장 중간의 "/"는 명령이 아니라 그냥 슬래시다.
+    const slashMatch = textBeforeCursor.match(/^\/([^\s]*)$/)
     const hashMatch = textBeforeCursor.match(/#([^\s#@]*)$/)
     const atMatch = textBeforeCursor.match(/@([^\s#@]*)$/)
 
-    if (hashMatch) {
+    if (slashMatch) {
+      setMentionType("command")
+      setMentionQuery(slashMatch[1])
+      setMentionStart(0)
+    } else if (hashMatch) {
       setMentionType("task")
       setMentionQuery(hashMatch[1])
       setMentionStart(cursorPos - hashMatch[0].length)
@@ -90,18 +133,51 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [] }: Messa
     }
   }
 
-  function insertMention(item: MentionItem) {
-    const prefix = item.type === "task" ? "#" : "@"
-    const mentionText = `${prefix}${item.id} `
-    const before = content.slice(0, mentionStart)
-    const after = content.slice(
-      mentionStart + (item.type === "task" ? "#" : "@").length + mentionQuery.length
-    )
-    setContent(before + mentionText + after)
+  function closeAutocomplete() {
     setMentionType(null)
     setMentionQuery("")
     setMentionStart(-1)
-    textareaRef.current?.focus()
+  }
+
+  /** 커서를 특정 위치로 옮긴다. setContent 반영 이후여야 하므로 다음 프레임에 실행. */
+  function focusAt(pos: number) {
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(pos, pos)
+    })
+  }
+
+  function insertMention(item: MentionItem) {
+    const prefix = PREFIX[item.type]
+    const inserted = `${prefix}${item.id} `
+    const before = content.slice(0, mentionStart)
+    const after = content.slice(mentionStart + prefix.length + mentionQuery.length)
+    setContent(before + inserted + after)
+    closeAutocomplete()
+    // 삽입한 자리 바로 뒤에 커서를 둔다 — 문장 중간에 넣어도 끝으로 튀지 않게.
+    focusAt(before.length + inserted.length)
+  }
+
+  /** + 메뉴: 커서 자리에 @ 또는 # 를 넣고 곧바로 목록을 띄운다. */
+  function startMention(kind: "user" | "task") {
+    const char = kind === "user" ? "@" : "#"
+    const pos = textareaRef.current?.selectionStart ?? content.length
+    const next = content.slice(0, pos) + char + content.slice(pos)
+    setContent(next)
+    setMentionType(kind)
+    setMentionQuery("")
+    setMentionStart(pos)
+    focusAt(pos + 1)
+  }
+
+  /** + 메뉴: 업무 지시 — "/업무 "를 문장 맨 앞에 붙인다. */
+  function startTaskCommand() {
+    const next = content.trimStart().startsWith("/업무") ? content : `/업무 ${content.trimStart()}`
+    setContent(next)
+    closeAutocomplete()
+    focusAt(next.length)
   }
 
   // 파일 추가 + 이미지 프리뷰 생성 + 로딩 표시
@@ -220,7 +296,7 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [] }: Messa
       }
       if (e.key === "Escape") {
         e.preventDefault()
-        setMentionType(null)
+        closeAutocomplete()
         return
       }
     }
@@ -245,57 +321,50 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [] }: Messa
           <span className="text-sm font-medium text-primary">파일을 여기에 놓으세요</span>
         </div>
       )}
-      {/* 멘션 팝오버 */}
+      {/* 자동완성 목록 — /명령 · #업무 · @사람/파일 이 같은 UI를 쓴다 */}
       {mentionType && mentionItems.length > 0 && (
         <div
           ref={popoverRef}
-          className="absolute bottom-full left-4 right-4 mb-1 rounded-md border bg-popover p-1 shadow-md"
+          className="absolute bottom-full left-4 right-4 z-20 mb-1 rounded-md border bg-popover p-1 shadow-md"
         >
-          {mentionType === "task" && (
-            <div className="text-[10px] text-muted-foreground px-2 py-1">업무 선택</div>
-          )}
-          {mentionType === "user" && (() => {
-            const fileItems = mentionItems.filter((item) => item.type === "file")
-            const allItems = mentionItems
-            return (
-              <>
-                {fileItems.length > 0 && (
-                  <>
-                    <div className="text-[10px] text-muted-foreground px-2 py-1 mt-0.5">파일</div>
-                    {fileItems.map((item) => {
-                      const i = allItems.indexOf(item)
-                      return (
-                        <button
-                          key={`file-${item.id}`}
-                          className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left ${i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                            }`}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            insertMention(item)
-                          }}
-                        >
-                          <HugeiconsIcon icon={Attachment01Icon} size={12} className="text-muted-foreground shrink-0" />
-                          <span className="truncate">{item.label}</span>
-                        </button>
-                      )
-                    })}
-                  </>
-                )}
-              </>
-            )
-          })()}
-          {mentionType === "task" && mentionItems.map((item, i) => (
+          <div className="px-2 py-1 text-[10px] text-muted-foreground">
+            {mentionType === "command"
+              ? "명령어"
+              : mentionType === "task"
+                ? "업무 선택"
+                : "사람 · 파일 선택"}
+          </div>
+          {mentionItems.map((item, i) => (
             <button
-              key={item.id}
-              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left ${i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                }`}
+              key={`${item.type}-${item.id}`}
+              type="button"
+              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm ${
+                i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+              }`}
               onMouseDown={(e) => {
                 e.preventDefault()
                 insertMention(item)
               }}
             >
-              <span className="text-xs text-muted-foreground">#</span>
+              {item.type === "file" ? (
+                <HugeiconsIcon
+                  icon={Attachment01Icon}
+                  size={12}
+                  aria-hidden
+                  className="shrink-0 text-muted-foreground"
+                />
+              ) : item.type === "command" ? null : (
+                // 명령은 라벨("/업무")에 이미 슬래시가 들어 있어 접두사를 또 붙이지 않는다
+                <span className="w-3 shrink-0 text-center text-xs text-muted-foreground">
+                  {PREFIX[item.type]}
+                </span>
+              )}
               <span className="truncate">{item.label}</span>
+              {item.hint && (
+                <span className="ml-auto truncate pl-2 text-[11px] text-muted-foreground">
+                  {item.hint}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -356,15 +425,42 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [] }: Messa
             }
           }}
         />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 shrink-0"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || sending}
-        >
-          <HugeiconsIcon icon={Attachment01Icon} size={18} />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="추가"
+                className="h-9 w-9 shrink-0"
+                disabled={disabled || sending}
+              />
+            }
+          >
+            <HugeiconsIcon icon={PlusSignIcon} size={18} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="w-52">
+            <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+              <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
+              파일 업로드
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={startTaskCommand}>
+              <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
+              업무 지시
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">/업무</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => startMention("user")}>
+              <HugeiconsIcon icon={AtIcon} size={14} aria-hidden />
+              사람 언급
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">@</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => startMention("task")}>
+              <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
+              업무 언급
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">#</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="flex-1 max-h-[30px]">
           <Textarea
             ref={textareaRef}
@@ -372,7 +468,7 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [] }: Messa
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="메시지 입력... (#업무 @사람/파일 멘션 가능)"
+            placeholder="메시지 입력...  / 명령 · @ 사람 · # 업무"
             className="min-h-[30px] resize-none text-sm"
             rows={1}
             disabled={disabled || sending}

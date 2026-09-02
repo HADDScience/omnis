@@ -15,6 +15,30 @@ const PROJECT_RE = /#([A-Za-z0-9가-힣_-]+)/
 const DEADLINE_RE =
   /(D-\d+|오늘|내일|모레|이번\s?주|다음\s?주|차주|이번\s?달|다음\s?달|\d{4}-\d{2}-\d{2})(?:까지)?/
 
+/**
+ * 쓸 수 있는 슬래시 명령 목록.
+ *
+ * 명령이 있어도 아무 데도 적혀 있지 않으면 없는 것과 같다.
+ * "/"를 치면 이 목록이 그대로 떠서, 외우지 않아도 눈에 보이게 한다.
+ * 새 명령을 추가할 때는 여기에만 넣으면 입력창 자동완성에 자동으로 나온다.
+ */
+export interface SlashCommand {
+  /** 명령어 본체 (슬래시 포함) */
+  name: string
+  /** 한 줄 설명 */
+  description: string
+  /** 입력 예시 */
+  example: string
+}
+
+export const SLASH_COMMANDS: SlashCommand[] = [
+  {
+    name: "/업무",
+    description: "업무 카드 만들기 — 담당자·마감·체크리스트를 AI가 채웁니다",
+    example: "/업무 @우창 이번주까지 판넬 최종본 정리",
+  },
+]
+
 export function parseSlashTask(raw: string): ParsedTaskCommand | null {
   const trimmed = raw.trim()
   if (!trimmed.startsWith("/업무")) return null
