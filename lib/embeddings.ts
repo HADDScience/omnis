@@ -220,7 +220,7 @@ async function buildIpCaseChunks(sourceId: string): Promise<RawChunk[] | null> {
   const history = await listProgressFor(found.kind, found.id)
   if (history.length > 0) {
     const lines = history.map((h) => {
-      const bits = [h.occurredOn, h.stage]
+      const bits = [h.date, h.stage]
       if (h.counterpart) bits.push(h.counterpart)
       if (h.nextTurn !== "none") bits.push(TURN_LABEL[h.nextTurn] ?? h.nextTurn)
       if (h.dueOn) bits.push(`기한 ${h.dueOn}`)
