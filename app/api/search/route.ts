@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
       viewCount: c._count.viewLogs,
       version: (() => {
         try {
-          return getCardVersion(c.id, c.title)
+          return getCardVersion(c.id, c.title) || c.version
         } catch {
           return c.version
         }

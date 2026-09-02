@@ -41,7 +41,7 @@ export default async function OmnisCategoryPage({ params }: Props) {
   const cards = category.cards.map((c) => {
     let version = c.version
     try {
-      version = getCardVersion(c.id, c.title)
+      version = getCardVersion(c.id, c.title) || c.version
     } catch {
       /* keep db version */
     }
