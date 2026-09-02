@@ -1,9 +1,13 @@
+import { randomBytes } from "crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
+import { createNotification } from "@/lib/notifications"
 import { auth } from "@/lib/auth"
 import { syncEmbeddingsSafe } from "@/lib/embeddings"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
 import { normalizeName } from "@/lib/name-match"
+import { normalizeProjectName } from "@/lib/project-name"
+import { findOrCreateProduct, findOrCreateProject } from "@/lib/project-resolve"
 import type { Prisma, Priority } from "@/generated/prisma/client"
 
 export async function GET(req: NextRequest) {
@@ -92,6 +96,13 @@ interface CreateTaskBody {
   rawCommand?: string
   postToChat?: boolean
   instruction?: string
+  /**
+   * 신규 제품·프로젝트 초안. 예전에는 클라이언트가 /api/products → /api/projects → /api/tasks
+   * 세 번을 따로 호출해, 마지막이 실패하면 앞의 둘이 고아로 남았다(인수인계 §5-B-2).
+   * 여기로 함께 보내면 셋이 한 트랜잭션에서 만들어지고, 실패하면 함께 사라진다.
+   */
+  newProduct?: { name?: string; color?: string }
+  newProject?: { name?: string; purpose?: string; goal?: string }
 }
 
 export async function POST(req: NextRequest) {
@@ -112,7 +123,7 @@ export async function POST(req: NextRequest) {
     messageIds,
   } = body
   let { ownerId, checklists, projectId } = body
-  const { ownerName, projectName, deadlineLabel, checklist, rawCommand, postToChat, instruction } = body
+  const { ownerName, projectName, deadlineLabel, checklist, rawCommand, postToChat, instruction, newProduct, newProject } = body
 
   // TaskCmdModal에서 이름 기반으로 전달된 경우 ID 해석
   // 존칭("우창님")·약칭("우창")도 흡수 — 완전 일치 우선, 없으면 정규화한 이름의 부분 일치
@@ -127,12 +138,21 @@ export async function POST(req: NextRequest) {
     })
     if (owner) ownerId = owner.id
   }
-  if (!projectId && projectName) {
-    const project = await prisma.project.findFirst({
-      where: { name: { contains: projectName, mode: "insensitive" }, archived: false },
-      select: { id: true },
+  // 이름으로만 프로젝트가 전달된 경우(현재 UI는 projectId를 보내므로 예비 경로).
+  // 예전에는 부분 일치(contains)로 찾았는데, "AI 과제"가 "AI 과제, 과제비 처리"에도 걸리는 등
+  // 어느 것이 매칭될지 비결정적이었다. 정규화 후 완전 일치만 인정한다.
+  // 못 찾으면 조용히 null로 두지 않고 400으로 알린다 — 사용자는 프로젝트를 지정했다고 믿기 때문.
+  if (!projectId && projectName?.trim()) {
+    const normalized = normalizeProjectName(projectName)
+    const candidates = await prisma.project.findMany({
+      where: { archived: false },
+      select: { id: true, name: true },
     })
-    if (project) projectId = project.id
+    const matched = candidates.find((c) => normalizeProjectName(c.name) === normalized)
+    if (!matched) {
+      return apiError(400, `'${projectName.trim()}' 프로젝트를 찾을 수 없습니다. 프로젝트를 먼저 생성해 주세요.`)
+    }
+    projectId = matched.id
   }
 
   if (!name?.trim() || !ownerId) {
@@ -146,39 +166,100 @@ export async function POST(req: NextRequest) {
 
   const deadline = resolveDeadlineLabel(deadlineLabel)
 
-  // 고유 slug 생성
-  let slug = generateSlug(name)
-  const existing = await prisma.task.findUnique({ where: { slug } })
-  if (existing) slug = `${slug}-${Date.now().toString(36)}`
+  // 고유 slug 생성.
+  // 조회 후 삽입(check-then-insert)은 동시 요청에서 둘 다 "없음"을 보고 같은 slug를 넣어
+  // Task.slug @unique 위반으로 500이 난다. 유니크 위반을 잡아 접미사를 붙여 재시도한다.
+  const baseSlug = generateSlug(name)
+  const instructorId = session.user.id
 
-  const task = await prisma.task.create({
-    data: {
-      name: name.trim(),
-      slug,
-      ownerId,
-      instructorId: session.user.id,
-      projectId: projectId || null,
-      productId: productId || null,
-      priority: priority || "NORMAL",
-      background: background || instruction || null,
-      sourceMessages: sourceMessages ?? undefined,
-      deadline: deadline || null,
-      status: "TODO",
-      checklists: checklists?.length
-        ? {
-            create: checklists.map((cl: { name: string }) => ({
-              name: cl.name,
-              ownerId,
-            })),
-          }
-        : undefined,
-    },
-    include: {
-      owner: { select: { id: true, name: true } },
-      instructor: { select: { id: true, name: true } },
-      checklists: true,
-    },
-  })
+  const wantsNewProduct = !!newProduct?.name?.trim()
+  const wantsNewProject = !!newProject?.name?.trim()
+
+  /**
+   * 제품 → 프로젝트 → 업무를 한 트랜잭션에서 만든다.
+   * 업무 생성이 실패하면 앞서 만든 제품·프로젝트도 함께 롤백된다.
+   *
+   * slug 유니크 위반(P2002)은 트랜잭션 전체를 중단시키므로, 재시도는
+   * 트랜잭션 안이 아니라 **바깥에서** 새 slug로 다시 연다.
+   * 롤백된 제품·프로젝트는 다시 만들어도 중복되지 않는다 —
+   * findOrCreate* 가 이름으로 멱등하기 때문이다.
+   */
+  const runCreate = (slug: string) =>
+    prisma.$transaction(async (tx) => {
+      let finalProductId = productId || null
+      let finalProjectId = projectId || null
+      let createdProduct: { name: string; reused: boolean } | null = null
+      let createdProject: { name: string; reused: boolean } | null = null
+
+      if (wantsNewProduct) {
+        const r = await findOrCreateProduct(tx, newProduct!.name!, newProduct!.color ?? null)
+        finalProductId = r.product.id
+        createdProduct = { name: r.product.name, reused: r.reused }
+      }
+
+      if (wantsNewProject) {
+        const r = await findOrCreateProject(tx, {
+          name: newProject!.name!,
+          productId: finalProductId,
+          purpose: newProject!.purpose ?? null,
+          goal: newProject!.goal ?? null,
+        })
+        finalProjectId = r.project.id
+        createdProject = { name: r.project.name, reused: r.reused }
+        // 기존 프로젝트를 재사용했다면 그 프로젝트의 제품을 따른다.
+        if (r.reused && r.project.product) finalProductId = r.project.product.id
+      }
+
+      const created = await tx.task.create({
+        data: {
+          name: name.trim(),
+          slug,
+          ownerId,
+          instructorId,
+          projectId: finalProjectId,
+          productId: finalProductId,
+          priority: priority || "NORMAL",
+          background: background || instruction || null,
+          sourceMessages: sourceMessages ?? undefined,
+          deadline: deadline || null,
+          status: "TODO",
+          checklists: checklists?.length
+            ? {
+                create: checklists.map((cl: { name: string }) => ({
+                  name: cl.name,
+                  ownerId,
+                })),
+              }
+            : undefined,
+        },
+        include: {
+          owner: { select: { id: true, name: true } },
+          instructor: { select: { id: true, name: true } },
+          checklists: true,
+        },
+      })
+
+      return { task: created, createdProduct, createdProject }
+    })
+
+  let task
+  let createdProduct: { name: string; reused: boolean } | null = null
+  let createdProject: { name: string; reused: boolean } | null = null
+  for (let attempt = 0; ; attempt++) {
+    const slug = attempt === 0 ? baseSlug : `${baseSlug}-${randomBytes(3).toString("hex")}`
+    try {
+      const r = await runCreate(slug)
+      task = r.task
+      createdProduct = r.createdProduct
+      createdProject = r.createdProject
+      break
+    } catch (err) {
+      // Prisma는 type-only import이므로 instanceof 대신 코드로 판별한다 (P2002 = 유니크 위반)
+      const e = err as { code?: string; meta?: { target?: string[] } }
+      const isSlugConflict = e.code === "P2002" && (e.meta?.target?.includes("slug") ?? true)
+      if (!isSlugConflict || attempt >= 5) throw err
+    }
+  }
 
   // 업무 지시에 사용된 메시지들 마킹 + 첨부 파일 연결
   if (messageIds?.length) {
@@ -194,17 +275,17 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // 담당자에게 알림
+  // 담당자에게 알림 — 수락(확인)하기 전까지 사라지지 않는다.
+  // 지시가 도착한 사실만 통보하고 끝내면 "확인 안 한 업무"가 조용히 쌓인다(인수인계 §4-2).
   if (ownerId !== session.user.id) {
-    await prisma.notification.create({
-      data: {
-        userId: ownerId,
-        type: "task_assigned",
-        title: `새 업무: ${task.name}`,
-        content: `${session.user.name}님이 업무를 지시했습니다.`,
-        entityId: task.id,
-      },
-    })
+    await createNotification(
+      ownerId,
+      "task_assigned",
+      `새 업무: ${task.name}`,
+      `${session.user.name}님이 업무를 지시했습니다.`,
+      task.id,
+      "accept_task"
+    )
   }
 
   // TaskCmdModal의 postToChat=true → 두 메시지(원본 /업무 + 생성 카드) 게시
@@ -248,5 +329,10 @@ export async function POST(req: NextRequest) {
     title: `업무 생성: ${task.name}`,
   })
 
-  return NextResponse.json(task, { status: 201 })
+  // 클라이언트가 "신규 프로젝트 생성" 대신 "기존 프로젝트에 연결"이라고
+  // 정확히 알릴 수 있도록 무엇을 새로 만들고 무엇을 재사용했는지 함께 돌려준다.
+  return NextResponse.json(
+    { ...task, _created: { product: createdProduct, project: createdProject } },
+    { status: 201 }
+  )
 }
