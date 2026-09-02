@@ -1,13 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { signIn } from "next-auth/react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowRight02Icon,
-  GoogleIcon,
   LockPasswordIcon,
   MailAtSign01Icon,
   WorkflowSquare08Icon,
@@ -17,6 +16,26 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import { DemoAccountsCard } from "@/components/layout/demo-accounts-card"
+import { SocialSignInButton, type SocialProvider } from "@/components/auth/social-buttons"
+
+/**
+ * 로그인 뒤 돌아갈 곳. 기본은 대시보드다.
+ *
+ * SSO(`/sso/authorize`)가 미로그인 사용자를 여기로 보낼 때 원래 요청을
+ * `callbackUrl` 에 실어 둔다. 그 값을 무시하면 사내 도구에서 넘어온 사람이
+ * 로그인만 하고 옴니스 대시보드에 남겨져 왕복이 끊긴다.
+ *
+ * 같은 오리진의 절대 경로만 받는다 — `//evil.com` 과 `/\evil.com` 은 브라우저가
+ * 다른 오리진으로 읽으므로, 그대로 넘기면 로그인 화면이 오픈 리다이렉트가 된다.
+ */
+function safeCallbackUrl(): string | null {
+  if (typeof window === "undefined") return null
+  const raw = new URLSearchParams(window.location.search).get("callbackUrl")
+  if (!raw) return null
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null
+  if (raw.includes("\\")) return null
+  return raw
+}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -24,6 +43,29 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [socials, setSocials] = useState<SocialProvider[]>([])
+  const [social, setSocial] = useState<SocialProvider | null>(null)
+
+  // 어떤 소셜이 켜져 있는지는 서버 설정이 정한다. 화면에 고정해 두면
+  // 키를 넣지 않은 제공자 버튼이 떠서 누르면 깨진다.
+  useEffect(() => {
+    fetch("/api/auth/providers")
+      .then((r) => r.json())
+      .then((all: Record<string, unknown>) =>
+        setSocials((["google", "kakao"] as const).filter((p) => p in all))
+      )
+      .catch(() => setSocials([]))
+  }, [])
+
+  // 연결되지 않은 소셜로 들어온 경우. 소셜만으로는 계정이 만들어지지 않는다.
+  // useSearchParams 를 쓰면 이 페이지가 정적 프리렌더를 못 하므로 효과 안에서 직접 읽는다.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("error") === "notlinked") {
+      setError(
+        "아직 이 계정에 연결되지 않은 소셜 로그인입니다. 이름·비밀번호로 로그인한 뒤 설정 → 소셜 로그인 연결에서 연결해 주세요."
+      )
+    }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -39,10 +81,19 @@ export default function LoginPage() {
     if (result?.error) {
       setError("이름 또는 비밀번호가 올바르지 않습니다.")
       setLoading(false)
-    } else {
-      router.push("/dashboard")
-      router.refresh()
+      return
     }
+
+    const callbackUrl = safeCallbackUrl()
+    if (callbackUrl) {
+      // /sso/authorize 는 페이지가 아니라 라우트 핸들러(302)다. router.push 로는
+      // 클라이언트 내비게이션이 걸려 리다이렉트를 못 따라가므로 통째로 이동한다.
+      window.location.assign(callbackUrl)
+      return
+    }
+
+    router.push("/dashboard")
+    router.refresh()
   }
 
   return (
@@ -208,15 +259,25 @@ export default function LoginPage() {
             <div className="h-px flex-1 bg-border" />
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            disabled
-            className="h-11 w-full rounded-lg bg-white text-[13.5px] font-semibold dark:bg-input/20"
-          >
-            <HugeiconsIcon icon={GoogleIcon} size={16} />
-            Google
-          </Button>
+          <div className="flex flex-col gap-2.5">
+            {socials.map((provider) => (
+              <SocialSignInButton
+                key={provider}
+                provider={provider}
+                disabled={social !== null}
+                pending={social === provider}
+                onClick={() => {
+                  setSocial(provider)
+                  signIn(provider, { callbackUrl: safeCallbackUrl() ?? "/dashboard" })
+                }}
+              />
+            ))}
+            {socials.length === 0 && (
+              <p className="text-center text-[12.5px] text-muted-foreground">
+                소셜 로그인은 아직 설정되지 않았습니다.
+              </p>
+            )}
+          </div>
 
           <p className="mt-6 text-center text-[12.5px] text-muted-foreground">
             계정 접근이 필요하면 관리자에게 요청하세요.{" "}

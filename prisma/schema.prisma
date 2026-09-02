@@ -37,6 +37,7 @@ model User {
   bookmarks       Bookmark[]
   activityLogs    ActivityLog[]
   geminiUsages    GeminiUsage[]
+  identities      UserIdentity[]
 }
 
 enum Role {
@@ -45,6 +46,34 @@ enum Role {
 }
 
 // ─── 채팅 ────────────────────────────────────────────────
+
+/// 자체 계정(User)에 얹는 소셜 로그인 수단.
+///
+/// 계정의 주인은 언제나 User 다. 소셜은 "그 계정으로 들어오는 또 하나의 문"일 뿐이라,
+/// 제공자가 서비스를 접거나 회사가 도구를 바꿔도 계정과 업무 데이터는 그대로 남는다.
+///
+/// 소셜 이메일로 사람을 짐작해 묶지 않는다 — 개인 지메일·카카오 이메일은 회사 계정과
+/// 다르고, 카카오는 이메일 제공이 선택 동의라 아예 없을 수도 있다. 대신 **이미 로그인해
+/// 계정 소유를 증명한 세션**에서만 연결을 허용한다. 남의 계정에 붙이려면 그 사람의
+/// 세션이 필요하므로 원리적으로 막힌다.
+model UserIdentity {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "google" | "kakao"
+  provider          String
+  /// 제공자가 발급한 불변 식별자 (구글 sub, 카카오 회원번호)
+  providerAccountId String
+  /// 화면에 "어느 계정과 연결됐는지" 보여주기 위한 참고값. 매칭에는 쓰지 않는다.
+  email             String?
+  createdAt         DateTime @default(now())
+
+  /// 한 소셜 계정은 한 사람에게만 붙는다
+  @@unique([provider, providerAccountId])
+  /// 한 사람이 같은 제공자를 두 번 붙일 수 없다
+  @@unique([userId, provider])
+  @@index([userId])
+}
 
 model ChatRoom {
   id        String        @id @default(uuid())
@@ -405,4 +434,25 @@ model EmbeddingChunk {
 
   @@unique([source, sourceId, chunkIndex])
   @@index([source, sourceId])
+}
+
+// ─── SSO (사내 도구 통합 로그인) ─────────────────────────────────────
+
+/// 발급된 SSO grant 의 사용 기록. 1회용을 강제하는 것이 유일한 목적이다.
+///
+/// jti 를 PK 로 두고 INSERT 를 시도하는 것 자체가 검사다 — 두 번째 INSERT 는
+/// 유니크 위반으로 튕긴다. 메모리 캐시로는 서버리스 인스턴스가 여러 개일 때
+/// 같은 표가 두 번 통과할 수 있어 DB 로 못박는다.
+///
+/// 만료된 행은 재사용 판정에 쓸모가 없어 가끔 청소한다 (lib/sso.ts consumeGrant).
+model SsoGrant {
+  /// 토큰의 jti 클레임
+  jti       String   @id
+  /// 어느 앱용으로 끊은 표인가 (토큰의 audience)
+  appId     String
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
 }
