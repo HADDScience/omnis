@@ -53,7 +53,7 @@ export function ChatPanel({
   const pausePolling = useRef(false)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [ownerId, setOwnerId] = useState("")
+  const [ownerIds, setOwnerIds] = useState<string[]>([])
   const [showDialog, setShowDialog] = useState(false)
 
   const lastFetchedAt = useRef(
@@ -245,11 +245,11 @@ export function ChatPanel({
   function cancelSelection() {
     setSelectionMode(false)
     setSelectedIds(new Set())
-    setOwnerId("")
+    setOwnerIds([])
   }
 
   function handleComplete() {
-    if (selectedIds.size === 0 || !ownerId) return
+    if (selectedIds.size === 0 || ownerIds.length === 0) return
     setShowDialog(true)
   }
 
@@ -261,7 +261,7 @@ export function ChatPanel({
       createdAt: m.createdAt,
     }))
 
-  const ownerName = users.find((u) => u.id === ownerId)?.name ?? ""
+  const ownerName = users.filter((u) => ownerIds.includes(u.id)).map((u) => u.name).join(", ")
 
   const visibleMessages = filterTaskId
     ? messages.filter((m) => m.task?.id === filterTaskId)
@@ -288,20 +288,29 @@ export function ChatPanel({
             <span className="text-xs text-muted-foreground shrink-0">
               {selectedIds.size}개 선택
             </span>
-            <Select value={ownerId} onValueChange={(v) => setOwnerId(v ?? "")}>
-              <SelectTrigger className="h-8 w-32 text-xs">
-                <SelectValue placeholder="담당자">
-                  {ownerId ? (users.find((u) => u.id === ownerId)?.name ?? null) : null}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {users.map((u) => (
-                  <SelectItem key={u.id} value={u.id} label={u.name}>
+            {/* 담당자는 여러 명일 수 있다. 칩을 눌러 켜고 끈다. */}
+            <div role="group" aria-label="담당자 선택" className="flex min-w-0 flex-wrap gap-1">
+              {users.map((u) => {
+                const on = ownerIds.includes(u.id)
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() =>
+                      setOwnerIds(on ? ownerIds.filter((id) => id !== u.id) : [...ownerIds, u.id])
+                    }
+                    className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${
+                      on
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background hover:bg-muted"
+                    }`}
+                  >
                     {u.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  </button>
+                )
+              })}
+            </div>
             <Button
               size="sm"
               variant="outline"
@@ -314,7 +323,7 @@ export function ChatPanel({
             <Button
               size="sm"
               className="gap-1 text-xs"
-              disabled={selectedIds.size === 0 || !ownerId}
+              disabled={selectedIds.size === 0 || ownerIds.length === 0}
               onClick={handleComplete}
             >
               <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} />
@@ -346,7 +355,7 @@ export function ChatPanel({
           if (!open) cancelSelection()
         }}
         selectedMessages={selectedMessages}
-        ownerId={ownerId}
+        ownerIds={ownerIds}
         ownerName={ownerName}
         onTaskCreated={() => { fetchMessages(); fetchTasks(); }}
         messageIds={Array.from(selectedIds)}

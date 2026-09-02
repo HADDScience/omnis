@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     include: {
-      owner: { select: { id: true, name: true } },
+      assignees: { select: { user: { select: { id: true, name: true } } } },
       instructor: { select: { id: true, name: true } },
       checklists: { orderBy: { createdAt: "asc" } },
       messages: {
@@ -89,7 +89,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
     where: { id: taskId },
     data,
     include: {
-      owner: { select: { id: true, name: true } },
+      assignees: { select: { user: { select: { id: true, name: true } } } },
       instructor: { select: { id: true, name: true } },
       checklists: true,
     },

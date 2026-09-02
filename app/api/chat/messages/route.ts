@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
           status: true,
           priority: true,
           deadline: true,
-          owner: { select: { id: true, name: true } },
+          assignees: { select: { user: { select: { id: true, name: true } } } },
           _count: { select: { checklists: true } },
         },
       },
@@ -120,12 +120,12 @@ export async function POST(req: NextRequest) {
     const task = mention
       ? await prisma.task.findUnique({
           where: { slug: mention.slug },
-          select: { id: true, name: true, status: true, background: true, expectedResult: true, ownerId: true, instructorId: true, slug: true },
+          select: { id: true, name: true, status: true, background: true, expectedResult: true, assignees: { select: { userId: true } }, instructorId: true, slug: true },
         })
       : linkedTaskId
         ? await prisma.task.findUnique({
             where: { id: linkedTaskId },
-            select: { id: true, name: true, status: true, background: true, expectedResult: true, ownerId: true, instructorId: true, slug: true },
+            select: { id: true, name: true, status: true, background: true, expectedResult: true, assignees: { select: { userId: true } }, instructorId: true, slug: true },
           })
         : null
     const restText = mention ? mention.restText : trimmedContent
@@ -146,7 +146,11 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      const notifyUserId = task.ownerId === session.user.id ? task.instructorId : task.ownerId
+      // 담당자가 여러 명일 수 있다. 업무에 관련된 사람(담당자 전원 + 지시자) 중
+      // 나를 뺀 나머지에게 알린다.
+      const notifyUserIds = [
+        ...new Set([...task.assignees.map((a) => a.userId), task.instructorId]),
+      ].filter((id) => id !== session.user!.id)
 
       if (process.env.GEMINI_API_KEY) {
         // 이 업무에 연결된 모든 메시지 + 파일 수집
@@ -188,7 +192,7 @@ export async function POST(req: NextRequest) {
             data: { done: true },
           })
           taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${task.slug} 업무 전체 완료 처리 · 체크리스트 전부 체크`, kind: "TASK_DONE" }
-          await createNotification(notifyUserId, "task_status_changed", "업무 완료", `${session.user.name}님이 #${task.slug} 업무를 완료했습니다.`, task.id)
+          await notifyAll(notifyUserIds, "task_status_changed", "업무 완료", `${session.user.name}님이 #${task.slug} 업무를 완료했습니다.`, task.id)
 
         } else if (result.action === "pause") {
           await prisma.task.update({
@@ -196,7 +200,7 @@ export async function POST(req: NextRequest) {
             data: { status: "TODO" },
           })
           taskUpdate = { action: "pause", statusLabel: "할 일", summary: `#${task.slug} 업무 '할 일'로 되돌림` }
-          await createNotification(notifyUserId, "task_status_changed", "업무 보류", `${session.user.name}님이 #${task.slug} 업무를 '할 일'로 되돌렸습니다.`, task.id)
+          await notifyAll(notifyUserIds, "task_status_changed", "업무 보류", `${session.user.name}님이 #${task.slug} 업무를 '할 일'로 되돌렸습니다.`, task.id)
 
         } else if (result.action === "resume") {
           await prisma.task.update({
@@ -204,7 +208,7 @@ export async function POST(req: NextRequest) {
             data: { status: "IN_PROGRESS", workStart: new Date() },
           })
           taskUpdate = { action: "resume", statusLabel: "진행 중", summary: `#${task.slug} 업무 재개` }
-          await createNotification(notifyUserId, "task_status_changed", "업무 재개", `${session.user.name}님이 #${task.slug} 업무를 재개했습니다.`, task.id)
+          await notifyAll(notifyUserIds, "task_status_changed", "업무 재개", `${session.user.name}님이 #${task.slug} 업무를 재개했습니다.`, task.id)
 
         } else if (result.action === "rebuild") {
           // 업무 카드 전체 재구성
@@ -234,7 +238,6 @@ export async function POST(req: NextRequest) {
                 name: c.name,
                 done: c.done,
                 taskId: task.id,
-                ownerId: task.ownerId,
               })),
             })
           }
@@ -264,7 +267,7 @@ export async function POST(req: NextRequest) {
             summary: `#${task.slug} 재구성 · ${changes.join(" · ") || "내용 갱신"}`,
             kind: "TASK_REBUILT",
           }
-          await createNotification(notifyUserId, "task_rebuilt", `업무 업데이트: #${task.slug}`, `${session.user.name}님의 메시지로 업무 카드가 재구성되었습니다.`, task.id)
+          await notifyAll(notifyUserIds, "task_rebuilt", `업무 업데이트: #${task.slug}`, `${session.user.name}님의 메시지로 업무 카드가 재구성되었습니다.`, task.id)
         }
         // "info", "none"은 아무 동작 없음 (메시지만 연결됨)
       } else {
@@ -327,6 +330,17 @@ function fallbackClassify(text: string): string {
   if (/중지|멈춰|중단|보류/.test(text)) return "pause"
   if (/시작|진행|재개|다시/.test(text)) return "resume"
   return "none"
+}
+
+/** 여러 사람에게 같은 알림을 보낸다. 담당자가 여러 명일 수 있어 필요해졌다. */
+async function notifyAll(
+  userIds: string[],
+  type: string,
+  title: string,
+  content: string,
+  entityId: string,
+) {
+  await Promise.all(userIds.map((id) => createNotification(id, type, title, content, entityId)))
 }
 
 async function createNotification(userId: string, type: string, title: string, content: string, entityId: string) {

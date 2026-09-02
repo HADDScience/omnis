@@ -70,7 +70,7 @@ const NEW_PRODUCT_VALUE = "__new_product__"
 const TaskFormSchema = z
   .object({
     name: z.string().min(1, "제목을 입력하세요").max(120),
-    ownerId: z.string().min(1, "담당자를 선택하세요"),
+    ownerIds: z.array(z.string()).min(1, "담당자를 한 명 이상 선택하세요"),
     projectId: z.string().nullable(),
     productId: z.string().nullable(),
     priority: PrioritySchema,
@@ -124,7 +124,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     resolver: zodResolver(TaskFormSchema),
     defaultValues: {
       name: "",
-      ownerId: "",
+      ownerIds: [],
       projectId: null,
       productId: null,
       priority: "NORMAL",
@@ -149,7 +149,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
   const projectId = watch("projectId")
   const productId = watch("productId")
   const priority = watch("priority")
-  const ownerId = watch("ownerId")
+  const ownerIds = watch("ownerIds")
 
   // 모달 열림 시: 옵션 로딩 + 슬래시 파싱 결과로 초기화
   useEffect(() => {
@@ -174,7 +174,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           : null
         reset({
           name: parsed?.title ?? "",
-          ownerId: ownerByName?.id ?? "",
+          ownerIds: ownerByName ? [ownerByName.id] : [],
           projectId: projectByName?.id ?? null,
           productId: projectByName?.product?.id ?? null,
           priority: "NORMAL",
@@ -191,7 +191,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         // 슬래시 명령에서 자동 추출된 필드 글로우
         const preFilled: string[] = []
         if (parsed?.title) preFilled.push("name")
-        if (ownerByName) preFilled.push("ownerId")
+        if (ownerByName) preFilled.push("ownerIds")
         if (projectByName) preFilled.push("projectId")
         if (parsed?.deadline) preFilled.push("deadline")
         flashGlow(preFilled)
@@ -230,12 +230,15 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         setValue("priority", ai.priority, { shouldDirty: false })
         filled.push("priority")
       }
-      if (!dirtyFields.ownerId && ai.ownerHint) {
+      if (!dirtyFields.ownerIds && ai.ownerHints.length > 0) {
         // 존칭("우창님")·약칭("우창")도 흡수해 팀원과 매칭
-        const found = matchUserByName(ai.ownerHint, users)
-        if (found) {
-          setValue("ownerId", found.id, { shouldDirty: false })
-          filled.push("ownerId")
+        // 여러 명을 지목한 지시("인턴들 각자 ~")면 모두 채운다
+        const found = (ai.ownerHints as string[])
+          .map((hint: string) => matchUserByName(hint, users))
+          .filter((u: UserOption | null | undefined): u is UserOption => !!u)
+        if (found.length > 0) {
+          setValue("ownerIds", found.map((u: UserOption) => u.id), { shouldDirty: false })
+          filled.push("ownerIds")
         }
       }
       if (!dirtyFields.projectId) {
@@ -297,7 +300,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
   async function onSubmit(values: TaskFormValues) {
     setSubmitting(true)
     try {
-      const owner = users.find((u) => u.id === values.ownerId)
+      const owners = users.filter((u) => values.ownerIds.includes(u.id))
       const isNewProject = values.projectId === NEW_PROJECT_VALUE
       const isNewProduct = values.productId === NEW_PRODUCT_VALUE
 
@@ -342,7 +345,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: values.name,
-          ownerName: owner?.name ?? null,
+          ownerNames: owners.map((u) => u.name),
           deadlineLabel: values.deadline,
           projectId: finalProjectId,
           productId: finalProductId,
@@ -438,25 +441,45 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
               <label className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
                 담당자 <span className="text-destructive">*</span>
               </label>
-              <Select value={ownerId || ""} onValueChange={(v) => setValue("ownerId", v ?? "", { shouldDirty: true })}>
-                <SelectTrigger className={`h-9 text-[13px] ${errors.ownerId ? "border-destructive" : ""} ${glowFields.has("ownerId") ? "ai-fill-glow" : ""}`}>
-                  <SelectValue placeholder="담당자 선택">
-                    {ownerId ? users.find((u) => u.id === ownerId)?.name : null}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id} label={u.name} className="text-[13px]">
-                      <Avatar className="mr-2 inline-flex h-5 w-5 align-middle">
+              {/* 담당자는 여러 명일 수 있다. 인원이 10명 안쪽이라 칩 토글이
+                  드롭다운보다 빠르고, 지금 누가 걸려 있는지 한눈에 보인다. */}
+              <div
+                role="group"
+                aria-label="담당자 선택"
+                className={`flex flex-wrap gap-1.5 rounded-md border p-2 ${
+                  errors.ownerIds ? "border-destructive" : "border-input"
+                } ${glowFields.has("ownerIds") ? "ai-fill-glow" : ""}`}
+              >
+                {users.map((u) => {
+                  const on = ownerIds.includes(u.id)
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() =>
+                        setValue(
+                          "ownerIds",
+                          on ? ownerIds.filter((id) => id !== u.id) : [...ownerIds, u.id],
+                          { shouldDirty: true },
+                        )
+                      }
+                      className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-2.5 text-[12.5px] transition-colors ${
+                        on
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-input bg-background hover:bg-muted"
+                      }`}
+                    >
+                      <Avatar className="h-5 w-5">
                         <AvatarFallback className="text-[9px]">{u.name.charAt(0)}</AvatarFallback>
                       </Avatar>
                       {u.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.ownerId && (
-                <p className="mt-1 text-[11px] text-destructive">{errors.ownerId.message}</p>
+                    </button>
+                  )
+                })}
+              </div>
+              {errors.ownerIds && (
+                <p className="mt-1 text-[11px] text-destructive">{errors.ownerIds.message}</p>
               )}
             </div>
 

@@ -32,7 +32,9 @@ export interface WorkspaceTaskItem {
   productId: string | null
   projectId: string | null
   projectName: string | null
-  ownerId: string
+  /** 담당자 ID 목록. 한 업무를 여러 명이 맡을 수 있다. */
+  ownerIds: string[]
+  /** 화면에 한 줄로 적는 담당자 표기 (예: "김아리, 정우창") */
   ownerName: string
   deadline: string | null
   isOverdue: boolean
