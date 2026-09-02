@@ -4,6 +4,26 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
+---
+
+## 0. 시작하기 전에 — `mydocs/` 를 읽는다
+
+이 저장소의 결정과 함정은 코드가 아니라 [`mydocs/`](mydocs/README.md) 에 있다.
+코드만 읽으면 드러나지 않는 것들(왜 RLS 를 걷었는지, 왜 plpgsql 을 그대로 뒀는지)을
+모른 채 "개선"하게 된다.
+
+| 언제 | 무엇을 |
+|---|---|
+| 매 세션 시작 | [`mydocs/manual/ai-pairing.md`](mydocs/manual/ai-pairing.md) — 환경·검증 기준·금지 사항 |
+| 인증·SSO 를 건드릴 때 | [`mydocs/tech/auth-architecture.md`](mydocs/tech/auth-architecture.md) — 불변식 5개 |
+| 지식재산권 자료를 건드릴 때 | [`mydocs/tech/ip-schema.md`](mydocs/tech/ip-schema.md) — 도메인 규칙 |
+| DB·마이그레이션을 건드릴 때 | [`mydocs/troubleshootings/migration-traps.md`](mydocs/troubleshootings/migration-traps.md) — 이미 밟은 함정 |
+| "왜 Supabase 를 걷었나" 를 물을 때 | [`mydocs/troubleshootings/supabase-limits.md`](mydocs/troubleshootings/supabase-limits.md) |
+
+문서를 고쳤으면 `last_verified` 를 올린다. 결정이 뒤집혔으면 지우지 말고
+`status: superseded` 로 바꾸고 `canonical` 을 새 문서로 돌린다 — 지우면 "왜 그때
+그렇게 했나"를 다시 물을 때 답할 것이 없다.
+
 ## 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
