@@ -84,13 +84,43 @@ RLS 는 없다. Prisma 는 DB 소유자로 접속하므로 켜 둔들 통과한�
 | `audit_log` | 변경 이력 | 876 |
 | `members` · `member_prefs` | 접근 권한과 화면 설정 | 2 · 1 |
 
-## 아직 Supabase 에 남은 것
+## MCP 서버
 
 `oauth_clients` · `oauth_codes` · `oauth_requests` · `oauth_tokens` · `mcp_tokens` ·
-`mcp_guide_reads`. MCP 서버(엣지 함수 `ip-mcp`)가 쓰는 표다.
+`mcp_guide_reads` 도 함께 옮겼다. 표만 먼저 옮기면 웹앱과 MCP 가 서로 다른 DB 를
+보게 되고, **둘 다 정상 동작하는 것처럼 보이면서** 데이터가 갈라지기 때문이다.
 
-**함수와 표는 반드시 같이 옮긴다.** 한쪽만 옮기면 웹앱과 MCP 가 서로 다른 DB 를
-보게 되고, 둘 다 정상 동작하는 것처럼 보이면서 데이터가 갈라진다.
+| 것 | 어디 |
+|---|---|
+| MCP 엔드포인트 | `app/api/ip-mcp/[[...path]]/route.ts` |
+| 도구·지침·토큰 | `lib/ip-mcp.ts` |
+| 승인 화면 | `app/ip-mcp/authorize/` |
+
+**주소가 바뀐다.** `${SUPABASE_URL}/functions/v1/ip-mcp` → `<Omnis>/api/ip-mcp`.
+issuer 와 resource 식별자가 주소 그 자체라 옛 주소를 살려 둘 방법이 없다 —
+이미 붙여 둔 커넥터는 새 주소로 다시 연결해야 한다.
+
+원본과 달라진 것은 셋뿐이다. 도구 설명과 사용 지침은 **한 글자도 바꾸지 않았다** —
+그 문장들은 모델이 실제로 틀렸던 것을 하나씩 막으려고 다듬은 것이라, 다시 쓰면
+그 경험이 사라진다.
+
+1. 주소 (위)
+2. 승인 화면이 Omnis 안으로 들어왔다. 예전에는 정적 앱에 띄우고 Supabase 세션
+   토큰을 헤더로 넘겨받았는데, Omnis 에는 이미 세션이 있어 그 왕복이 사라졌다.
+3. `reissue_mcp_token` 만 plpgsql → TypeScript. pgcrypto 의 `gen_random_bytes`·
+   `digest` 에 기대고 있었는데 그 확장이 있는지는 배포처마다 다르다.
+
+### 쓰기 게이트
+
+쓰기 도구(`add_progress`·`correct_ip`·`create_ip`)는 `read_guide` 가 알려주는 확인
+코드를 요구한다. 코드가 없으면 첫 시도를 거절하면서 지침 전문을 돌려주고 「보여줬다」를
+기록한다 — 같은 호출을 다시 보내면 저장된다. 커넥터가 들고 있는 도구 스키마는 처음
+붙일 때 받아 둔 사본이라 새 인자를 보내지 못하는 클라이언트가 있고(실제로 ChatGPT 가
+멈췄다), 막는 장치가 일을 못 하게 만드는 장치가 되면 안 되기 때문이다.
+
+`source='mail'` 인데 `raw`(근거 원문)가 없으면 **저장하지 않는다.** 저장한 뒤
+경고만 하면 모델은 「다음부터 남기겠습니다」로 끝낸다 — 이미 저장된 기록에 원문을
+채울 도구가 없으니 당연하다. 저장 전에 막아야 할 수 있는 일이 하나 남는다.
 
 ## 지식 검색
 
@@ -112,7 +142,9 @@ GEMINI_API_KEY=… npx tsx scripts/backfill-ip-embeddings.ts
 ## 검증
 
 ```bash
-TARGET_DB="…" npx tsx scripts/verify-ip-import.ts
+TARGET_DB="…" npx tsx scripts/verify-ip-import.ts   # 이사 20가지
+npx tsx scripts/verify-ip-api.ts                     # API 권한 16가지
+npx tsx scripts/verify-ip-mcp.ts                     # MCP·OAuth 37가지
 ```
 
 행 수, 사용자 연결, 참조 무결성, **`rebuild_ledger` 동일성**, 트리거 복구를 본다.
