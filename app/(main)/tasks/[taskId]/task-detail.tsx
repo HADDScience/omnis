@@ -325,8 +325,10 @@ export function TaskDetail({
                 disabled={saving === "projectId"}
               >
                 <SelectTrigger className="h-7 text-xs w-full">
-                  <SelectValue placeholder="프로젝트 없음">
-                    {task.project ? task.project.name : null}
+                  {/* placeholder 는 값이 비었을 때만 뜬다. 프로젝트가 없어도 값은 "none" 이라
+                      자식이 null 이면 원시 값 "none" 이 그대로 노출된다. */}
+                  <SelectValue>
+                    {task.project ? task.project.name : "없음"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
