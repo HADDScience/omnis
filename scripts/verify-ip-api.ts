@@ -12,7 +12,8 @@ import { issueSession, resolveApp } from "../lib/sso"
 import { prisma } from "../lib/db"
 
 const BASE = process.env.IP_API_BASE ?? "http://localhost:3050"
-const ORIGIN = "http://localhost:3200" // ip-platform-dev 의 등록 오리진
+const APP_ID = process.env.IP_APP_ID ?? "ip-platform-dev"
+const ORIGIN = process.env.IP_ORIGIN ?? "http://localhost:3200"
 const TEST_NAME = "__ip_api_test__"
 
 let passed = 0
@@ -49,8 +50,8 @@ async function call(
 }
 
 async function main() {
-  const app = resolveApp("ip-platform-dev")
-  if (!app) throw new Error("ip-platform-dev 가 등록돼 있지 않습니다 (NODE_ENV=production?)")
+  const app = resolveApp(APP_ID)
+  if (!app) throw new Error(`${APP_ID} 가 등록돼 있지 않습니다`)
 
   // 임시 계정
   const user = await prisma.user.upsert({

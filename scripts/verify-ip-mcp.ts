@@ -16,7 +16,7 @@ const BASE = process.env.IP_MCP_BASE ?? "http://localhost:3050"
 const MCP = `${BASE}/api/ip-mcp`
 const TEST_NAME = "__mcp_test__"
 const TEST_PW = "mcp-test-only-pw"
-const REDIRECT = "http://localhost:9999/callback"
+const REDIRECT = process.env.IP_MCP_REDIRECT ?? "http://localhost:9999/callback"
 
 let passed = 0
 let failed = 0

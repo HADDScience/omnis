@@ -104,7 +104,8 @@ ALTER TABLE ip.progress_entries ENABLE TRIGGER USER;
   ✓ 트리거 12개가 모두 켜져 있다
 ```
 
-계산이 맞는지는 적재가 끝난 뒤 `rebuild_ledger()` 로 따로 확인한다.
+계산이 맞는지는 적재가 끝난 뒤 `rebuild_ledger()` 로 따로 확인한다 —
+다만 그 함수는 읽기 전용이 아니다(아래 항목 참고). 트랜잭션 안에서 돌리고 롤백한다.
 
 ---
 
@@ -158,6 +159,40 @@ K 개만 돌아오므로 나머지는 없는 것이 된다. 빠졌다는 사실�
 
 **대응:** 전량이 작으면(상표·특허 합쳐 27건) 한 줄 요약을 통째로 컨텍스트에 싣는다.
 Omnis 가 업무 목록에 이미 쓰던 방식이다. 자세한 이력은 검색된 청크가 맡는다.
+
+---
+
+## `rebuild_ledger()` 는 읽기 전용이 아니다 — note 를 지운다
+
+「대장을 다시 계산해도 그대로인가」를 회귀 시험으로 쓰다가 실제로 자료를 잃었다.
+
+`rebuild_ledger` 는 마지막에 `note = o.note` 로 대장의 비고를 **출발선(opening_state)의
+비고로 덮어쓴다.** 그런데 `create_case` 로 만든 건은 출발선의 note 가 빈 문자열이다
+(만들 때 note 를 대장에만 넣고 출발선에는 넣지 않는다). 그래서 나중에 대장에 적어 둔
+비고가 rebuild 한 번에 사라진다.
+
+이 이사에서 TM-19 와 PT-12 의 비고가 그렇게 지워졌다. PT-12 의 비고에는 논문 공개일
+기준 **공지예외적용 12개월 기한**이 적혀 있었다.
+
+되돌릴 수 있었던 것은 감사 기록 덕분이다 — `audit_log.before` 에 지워지기 전 값이
+그대로 남아 있어 그 자리에서 복원했다. 이 표가 왜 필요한지 보여주는 사례다.
+
+```sql
+UPDATE ip.trademarks t SET note = (a.before ->> 'note')
+  FROM ip.audit_log a
+ WHERE a.entity = 'trademarks' AND a.entity_id = t.id
+   AND (a.before ->> 'note') <> (a.after ->> 'note') AND t.note = '';
+```
+
+**대응 두 가지.**
+
+1. 검증에서는 트랜잭션 안에서 돌리고 **일부러 롤백한다**(`scripts/verify-ip-import.ts`).
+   값을 읽어 비교하는 것이 목적이지 쓰는 것이 아니다. 겸사겸사 no-op UPDATE 가
+   감사 기록에 27줄씩 쌓이던 것도 사라진다.
+2. 운영에서 `rebuild_ledger` 를 부를 일이 생기면 **비고가 날아간다는 것을 알고**
+   불러야 한다. 고치려면 `create_case` 가 출발선에도 note 를 넣도록 바꿔야 하는데,
+   그러면 「출발선은 인수 시점의 사실」이라는 뜻이 흐려진다 — 손대기 전에 그
+   의미부터 정해야 한다.
 
 ---
 

@@ -28,8 +28,15 @@ const EXPECTED: Record<string, number> = {
   integrity_flags: 2,
   org_meta: 1,
   member_prefs: 1,
-  audit_log: 876,
 }
+
+/**
+ * 감사 기록은 이사 시점에 876행이었다.
+ *
+ * 정확히 같기를 요구하지 않는다 — 이사 뒤로는 사람이 자료를 고칠 때마다 늘어나는
+ * 표이기 때문이다. 줄어들면 그건 문제다(이력이 사라졌다는 뜻).
+ */
+const AUDIT_AT_MIGRATION = 876
 
 let passed = 0
 let failed = 0
@@ -51,18 +58,25 @@ async function count(table: string): Promise<number> {
   return Number(rows[0].n)
 }
 
+type Db = {
+  $queryRawUnsafe: <T>(q: string) => Promise<T>
+}
+
 /** 대장의 모든 칸을 한 줄 문자열로 — 비교하기 좋게. */
-async function ledgerSnapshot(): Promise<string> {
-  const tm = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+async function ledgerSnapshot(db: Db): Promise<string> {
+  const tm = await db.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT id, name, status, ref_date, holder, app_no, reg_no, filed_on, registered_on, probability
        FROM ip.trademarks ORDER BY id`
   )
-  const pt = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+  const pt = await db.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT id, title, status, ref_date, applicant, app_no, reg_no, filed_on, registered_on
        FROM ip.patents ORDER BY id`
   )
   return JSON.stringify({ tm, pt })
 }
+
+/** 롤백하려고 일부러 던지는 것. 진짜 오류와 구분하려고 따로 둔다. */
+class Rollback extends Error {}
 
 async function main() {
   console.log("\n[1] 행 수")
@@ -70,6 +84,13 @@ async function main() {
     const got = await count(table)
     check(`ip.${table}: ${want}행`, got === want, `실제 ${got}행`)
   }
+
+  const audit = await count("audit_log")
+  check(
+    `ip.audit_log: ${AUDIT_AT_MIGRATION}행 이상 (이사 시점 기준, 이후 늘어난다)`,
+    audit >= AUDIT_AT_MIGRATION,
+    `실제 ${audit}행`
+  )
 
   console.log("\n[2] 사용자 연결")
   const members = await prisma.$queryRawUnsafe<
@@ -104,12 +125,30 @@ async function main() {
   check("진행 기록이 없는 건을 가리키지 않는다", Number(orphanEntry[0].n) === 0)
 
   console.log("\n[4] 이식한 plpgsql 이 원본과 같은 대장을 만드는가")
-  const before = await ledgerSnapshot()
-  const rebuilt = await prisma.$queryRawUnsafe<{ kind: string; id: string }[]>(
-    `SELECT * FROM ip.rebuild_ledger()`
-  )
-  const after = await ledgerSnapshot()
-  check(`rebuild_ledger 가 ${rebuilt.length}건을 다시 계산했다`, rebuilt.length > 0)
+  //
+  // 트랜잭션 안에서 돌리고 일부러 롤백한다.
+  //
+  // rebuild_ledger 는 값이 같아도 UPDATE 를 날리고, touch_row 가 updated_at 을
+  // 갱신하면서 감사 트리거가 27줄을 남긴다. 검증을 한 번 돌릴 때마다 실제로
+  // 일어나지도 않은 "수정"이 이력에 쌓이는 것이다 — 나중에 이 상표의 이력을
+  // 읽는 사람에게는 유령 기록이다. 읽기만 하고 되돌린다.
+  let before = ""
+  let after = ""
+  let rebuiltCount = 0
+  try {
+    await prisma.$transaction(async (tx) => {
+      before = await ledgerSnapshot(tx as unknown as Db)
+      const rebuilt = await (tx as unknown as Db).$queryRawUnsafe<{ kind: string; id: string }[]>(
+        `SELECT * FROM ip.rebuild_ledger()`
+      )
+      rebuiltCount = rebuilt.length
+      after = await ledgerSnapshot(tx as unknown as Db)
+      throw new Rollback()
+    })
+  } catch (err) {
+    if (!(err instanceof Rollback)) throw err
+  }
+  check(`rebuild_ledger 가 ${rebuiltCount}건을 다시 계산했다`, rebuiltCount > 0)
   check("다시 계산해도 대장이 그대로다 (한 칸도 바뀌지 않음)", before === after)
 
   if (before !== after) {
