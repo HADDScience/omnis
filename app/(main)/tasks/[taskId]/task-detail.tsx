@@ -48,7 +48,8 @@ interface Task {
   status: string
   priority: string
   background: string | null
-  owner: { id: string; name: string }
+  /** 담당자. 한 업무를 여러 명이 함께 맡을 수 있다. */
+  assignees: { id: string; name: string }[]
   instructor: { id: string; name: string }
   project: { id: string; name: string; product?: { id: string; name: string; color: string } | null } | null
   checklists: Checklist[]
@@ -218,11 +219,28 @@ export function TaskDetail({
         <CardContent className="pt-6 flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="text-xs">{task.owner.name.charAt(0)}</AvatarFallback>
-              </Avatar>
+              {/* 담당자가 여러 명이면 아바타를 겹쳐 쌓고 이름은 한 줄로 적는다 */}
+              <div className="flex -space-x-2">
+                {task.assignees.slice(0, 3).map((a) => (
+                  <Avatar key={a.id} className="h-8 w-8 ring-2 ring-background">
+                    <AvatarFallback className="text-xs">{a.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                ))}
+                {task.assignees.length > 3 && (
+                  <Avatar className="h-8 w-8 ring-2 ring-background">
+                    <AvatarFallback className="text-[10px]">+{task.assignees.length - 3}</AvatarFallback>
+                  </Avatar>
+                )}
+                {task.assignees.length === 0 && (
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="text-xs">?</AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
               <div>
-                <div className="text-sm font-medium">{task.owner.name}</div>
+                <div className="text-sm font-medium">
+                  {task.assignees.length > 0 ? task.assignees.map((a) => a.name).join(", ") : "미배정"}
+                </div>
                 <div className="text-[10px] text-muted-foreground">
                   지시: {task.instructor.name}
                 </div>

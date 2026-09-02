@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { assigneeLabel } from "@/lib/task-assignees"
 import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
@@ -35,7 +36,8 @@ export default async function TasksPage({ searchParams }: Props) {
   if (filter === "i-assigned" && currentUserId) {
     where.instructorId = currentUserId
   } else if (filter === "i-own" && currentUserId) {
-    where.ownerId = currentUserId
+    // 내가 담당자 중 한 명인 업무
+    where.assignees = { some: { userId: currentUserId } }
   } else if (filter === "due-today") {
     const start = new Date()
     start.setHours(0, 0, 0, 0)
@@ -55,8 +57,7 @@ export default async function TasksPage({ searchParams }: Props) {
       deadline: true,
       updatedAt: true,
       createdAt: true,
-      ownerId: true,
-      owner: { select: { name: true } },
+      assignees: { select: { user: { select: { id: true, name: true } } } },
       project: {
         select: {
           name: true,
@@ -73,7 +74,7 @@ export default async function TasksPage({ searchParams }: Props) {
     name: t.name,
     status: t.status,
     priority: t.priority,
-    ownerName: t.owner?.name ?? null,
+    ownerName: t.assignees.length > 0 ? assigneeLabel(t.assignees) : null,
     projectName: t.project?.name ?? null,
     productName: t.project?.product?.name ?? null,
     productColor: t.project?.product?.color ?? null,

@@ -213,7 +213,7 @@ async function main() {
           background: t.background,
           projectId: t.projectId,
           status: "TODO",
-          ownerId: owner.id,
+          assignees: { create: [{ userId: owner.id }] },
           instructorId: instructor.id,
         },
       })

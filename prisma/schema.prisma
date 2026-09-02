@@ -24,10 +24,9 @@ model User {
   workspaceLayout Json?
   createdAt       DateTime @default(now())
 
-  assignedTasks   Task[]          @relation("TaskOwner")
+  assignedTasks   TaskAssignee[]
   instructedTasks Task[]          @relation("TaskInstructor")
   chatMessages    ChatMessage[]
-  checklists      Checklist[]
   weeklyReports   WeeklyReport[]
   omnisUpdates    OmnisCard[]
   omnisVersions    OmnisCardVersion[]
@@ -134,8 +133,8 @@ model Task {
   id             String     @id @default(uuid())
   name           String
   slug           String     @unique
-  ownerId        String
-  owner          User       @relation("TaskOwner", fields: [ownerId], references: [id])
+  /// 담당자. 한 업무를 여러 명이 함께 맡을 수 있다 (예: "인턴들 각자 ~해주세요").
+  assignees      TaskAssignee[]
   instructorId   String
   instructor     User       @relation("TaskInstructor", fields: [instructorId], references: [id])
   projectId      String?
@@ -163,7 +162,7 @@ model Task {
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
-  @@index([ownerId, status])
+  @@index([status])
   @@index([projectId])
   @@index([productId])
   @@index([categoryId])
@@ -184,13 +183,30 @@ enum Priority {
 
 // ─── 체크리스트 ──────────────────────────────────────────
 
+/// 업무 담당자 (다대다).
+///
+/// 카톡 이력을 보면 "인턴들 각자 증명사진 보내주세요"처럼 한 번의 지시가 여러 명에게
+/// 향하는 경우가 흔하다. 담당자를 하나만 담으면 이런 지시를 업무로 만들 수 없거나,
+/// 사람 수만큼 카드를 쪼개 실제보다 지시가 많았던 것처럼 왜곡된다.
+///
+/// 체크리스트는 사람별로 나누지 않는다. 지시 하나에 목록 하나여야 지시한 사람도
+/// 받은 사람도 무엇이 남았는지 같은 화면에서 본다.
+model TaskAssignee {
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  assignedAt DateTime @default(now())
+
+  @@id([taskId, userId])
+  @@index([userId])
+}
+
 model Checklist {
   id        String   @id @default(uuid())
   name      String
   taskId    String
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  ownerId   String?
-  owner     User?    @relation(fields: [ownerId], references: [id])
   done      Boolean  @default(false)
   memo      String?
   createdAt DateTime @default(now())

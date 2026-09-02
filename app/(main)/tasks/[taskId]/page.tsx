@@ -17,7 +17,7 @@ export default async function TaskDetailPage({ params }: Props) {
     prisma.task.findUnique({
       where: { id: taskId },
       include: {
-        owner: { select: { id: true, name: true } },
+        assignees: { select: { user: { select: { id: true, name: true } } } },
         instructor: { select: { id: true, name: true } },
         checklists: { orderBy: [{ done: "asc" }, { createdAt: "asc" }] },
         project: {
@@ -58,6 +58,8 @@ export default async function TaskDetailPage({ params }: Props) {
     deadline: task.deadline?.toISOString() ?? null,
     workStart: task.workStart?.toISOString() ?? null,
     workEnd: task.workEnd?.toISOString() ?? null,
+    // 조인 테이블 모양을 화면이 쓰기 좋은 {id, name}[] 으로 편다
+    assignees: task.assignees.map((a) => a.user),
     checklists: task.checklists.map((c) => ({
       ...c,
       createdAt: c.createdAt.toISOString(),

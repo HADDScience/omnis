@@ -18,7 +18,8 @@ export async function GET(req: NextRequest) {
   const projectId = searchParams.get("projectId")
 
   const where: Record<string, unknown> = { archived: false }
-  if (ownerId) where.ownerId = ownerId
+  // 담당자 필터: 그 사람이 담당자 중 하나인 업무
+  if (ownerId) where.assignees = { some: { userId: ownerId } }
   if (status) where.status = status
   if (projectId) where.projectId = projectId
 
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     where,
     orderBy: { createdAt: "desc" },
     include: {
-      owner: { select: { id: true, name: true } },
+      assignees: { select: { user: { select: { id: true, name: true } } } },
       instructor: { select: { id: true, name: true } },
       checklists: { orderBy: { createdAt: "asc" } },
       project: {
@@ -82,10 +83,12 @@ interface CreateTaskBody {
   priority?: Priority
   sourceMessages?: Prisma.InputJsonValue
   messageIds?: string[]
-  ownerId?: string
+  /** 담당자 ID 배열. 한 업무를 여러 명이 함께 맡을 수 있다. */
+  ownerIds?: string[]
+  /** 담당자 이름 배열 (슬래시 명령·AI 초안). 서버가 ID로 해석한다. */
+  ownerNames?: string[]
   checklists?: { name: string }[]
   projectId?: string
-  ownerName?: string
   projectName?: string
   deadlineLabel?: string
   checklist?: string[]
@@ -111,21 +114,27 @@ export async function POST(req: NextRequest) {
     sourceMessages,
     messageIds,
   } = body
-  let { ownerId, checklists, projectId } = body
-  const { ownerName, projectName, deadlineLabel, checklist, rawCommand, postToChat, instruction } = body
+  let { checklists, projectId } = body
+  const { ownerIds, ownerNames, projectName, deadlineLabel, checklist, rawCommand, postToChat, instruction } = body
 
-  // TaskCmdModal에서 이름 기반으로 전달된 경우 ID 해석
+  // 담당자는 여러 명일 수 있다 — "인턴들 각자 ~해주세요" 같은 지시가 흔하다.
+  const assigneeIds: string[] = Array.isArray(ownerIds)
+    ? ownerIds.filter((v: unknown): v is string => typeof v === "string" && v.length > 0)
+    : []
+
+  // 이름으로 전달된 담당자를 ID로 해석 (슬래시 명령·AI 초안).
   // 존칭("우창님")·약칭("우창")도 흡수 — 완전 일치 우선, 없으면 정규화한 이름의 부분 일치
-  if (!ownerId && ownerName?.trim()) {
-    const exactName = ownerName.trim()
+  for (const raw of Array.isArray(ownerNames) ? ownerNames : []) {
+    const exactName = String(raw ?? "").trim()
+    if (!exactName) continue
     const norm = normalizeName(exactName)
-    const owner = await prisma.user.findFirst({
+    const user = await prisma.user.findFirst({
       where: norm
         ? { OR: [{ name: exactName }, { name: { contains: norm } }] }
         : { name: exactName },
       select: { id: true },
     })
-    if (owner) ownerId = owner.id
+    if (user && !assigneeIds.includes(user.id)) assigneeIds.push(user.id)
   }
   if (!projectId && projectName) {
     const project = await prisma.project.findFirst({
@@ -135,8 +144,8 @@ export async function POST(req: NextRequest) {
     if (project) projectId = project.id
   }
 
-  if (!name?.trim() || !ownerId) {
-    return apiError(400, "name, ownerId 필수")
+  if (!name?.trim() || assigneeIds.length === 0) {
+    return apiError(400, "name, 담당자 최소 1명 필수")
   }
 
   // TaskCmdModal이 보낸 `checklist: string[]` → `checklists: {name}[]` 정규화
@@ -155,7 +164,7 @@ export async function POST(req: NextRequest) {
     data: {
       name: name.trim(),
       slug,
-      ownerId,
+      assignees: { create: assigneeIds.map((userId) => ({ userId })) },
       instructorId: session.user.id,
       projectId: projectId || null,
       productId: productId || null,
@@ -166,15 +175,12 @@ export async function POST(req: NextRequest) {
       status: "TODO",
       checklists: checklists?.length
         ? {
-            create: checklists.map((cl: { name: string }) => ({
-              name: cl.name,
-              ownerId,
-            })),
+            create: checklists.map((cl: { name: string }) => ({ name: cl.name })),
           }
         : undefined,
     },
     include: {
-      owner: { select: { id: true, name: true } },
+      assignees: { select: { user: { select: { id: true, name: true } } } },
       instructor: { select: { id: true, name: true } },
       checklists: true,
     },
@@ -194,16 +200,19 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // 담당자에게 알림
-  if (ownerId !== session.user.id) {
-    await prisma.notification.create({
-      data: {
-        userId: ownerId,
+  // 담당자 전원에게 알림 (스스로에게 지시한 경우는 제외)
+  const instructorId = session.user.id
+  const instructorName = session.user.name
+  const notifyIds = assigneeIds.filter((id) => id !== instructorId)
+  if (notifyIds.length > 0) {
+    await prisma.notification.createMany({
+      data: notifyIds.map((userId) => ({
+        userId,
         type: "task_assigned",
         title: `새 업무: ${task.name}`,
-        content: `${session.user.name}님이 업무를 지시했습니다.`,
+        content: `${instructorName}님이 업무를 지시했습니다.`,
         entityId: task.id,
-      },
+      })),
     })
   }
 

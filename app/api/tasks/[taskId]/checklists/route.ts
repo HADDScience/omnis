@@ -13,9 +13,9 @@ export async function POST(req: NextRequest, { params }: Props) {
   if (!session?.user?.id) return apiError(401, "인증 필요")
 
   const { taskId } = await params
-  const body = await parseJson<{ name?: string; ownerId?: string }>(req)
+  const body = await parseJson<{ name?: string }>(req)
   if (!body) return apiError(400, "잘못된 JSON 요청")
-  const { name, ownerId } = body
+  const { name } = body
 
   if (!name?.trim()) {
     return apiError(400, "name 필수")
@@ -25,7 +25,6 @@ export async function POST(req: NextRequest, { params }: Props) {
     data: {
       name: name.trim(),
       taskId,
-      ownerId: ownerId || null,
     },
   })
 

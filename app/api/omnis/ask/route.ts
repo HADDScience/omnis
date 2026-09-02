@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { assigneeLabel } from "@/lib/task-assignees"
 import { retrieveContext, type EmbeddingSource } from "@/lib/embeddings"
 import { answerWithOmnis } from "@/lib/ai"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
@@ -44,7 +45,7 @@ async function buildTaskOverview(): Promise<string> {
       name: true,
       status: true,
       deadline: true,
-      owner: { select: { name: true } },
+      assignees: { select: { user: { select: { id: true, name: true } } } },
     },
   })
   if (tasks.length === 0) return ""
@@ -62,7 +63,7 @@ async function buildTaskOverview(): Promise<string> {
     const dl = t.deadline
       ? ` · 마감 ${t.deadline.toISOString().slice(0, 10)}${isOverdue(t) ? " (지연)" : ""}`
       : ""
-    return `- ${t.name} · ${STATUS_LABEL[t.status] ?? t.status}${dl} · 담당 ${t.owner?.name ?? "미정"}`
+    return `- ${t.name} · ${STATUS_LABEL[t.status] ?? t.status}${dl} · 담당 ${assigneeLabel(t.assignees)}`
   })
   return `전체 비보관 업무 ${tasks.length}건 · 지연 ${overdueCount}건\n${lines.join("\n")}`
 }

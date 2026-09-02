@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
   // 이번 주 업무 조회
   const tasks = await prisma.task.findMany({
     where: {
-      ownerId: session.user.id,
+      // 내가 담당자 중 한 명인 업무
+      assignees: { some: { userId: session.user.id } },
       archived: false,
       OR: [
         { createdAt: { gte: weekStart, lte: weekEnd } },
