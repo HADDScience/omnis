@@ -1,5 +1,6 @@
 import { Header } from "@/components/layout/header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { LinkedAccounts } from "@/components/settings/linked-accounts"
 
 export default function SettingsPage() {
   return (
@@ -16,6 +17,8 @@ export default function SettingsPage() {
             </p>
           </CardContent>
         </Card>
+
+        <LinkedAccounts />
       </div>
     </>
   )

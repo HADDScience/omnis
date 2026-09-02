@@ -12,6 +12,24 @@ function ensureDir() {
   }
 }
 
+// 서버리스(Vercel)에는 쓰기 가능한 디스크도 git 실행파일도 없다.
+// 카드 본문과 버전은 DB(OmnisCard / OmnisCardVersion)에 이미 저장되므로
+// 여기서는 조용히 비활성화한다. 이 판정을 안 하면 DB 커밋이 끝난 뒤에
+// 예외가 터져서, 저장은 됐는데 사용자에게는 실패로 보이게 된다.
+let available: boolean | null = null
+function gitAvailable(): boolean {
+  if (available === null) {
+    try {
+      ensureDir()
+      available = true
+    } catch {
+      available = false
+      console.warn("[omnis-git] 파일 기반 버전관리 비활성화 — DB 버전만 사용합니다")
+    }
+  }
+  return available
+}
+
 function slugify(title: string): string {
   return title.toLowerCase().replace(/[^\w가-힣]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 60)
 }
@@ -70,6 +88,7 @@ export function saveAndCommit(
   author: string,
   message?: string
 ): void {
+  if (!gitAvailable()) return
   ensureDir()
   const fp = filePath(cardId, title)
   const existingFp = findCurrentFilePath(cardId, title)
@@ -98,6 +117,7 @@ export function saveAndCommit(
 }
 
 export function initCardFile(cardId: string, title: string, content: string): void {
+  if (!gitAvailable()) return
   ensureDir()
   const fp = filePath(cardId, title)
   if (!existsSync(fp)) {
@@ -121,6 +141,7 @@ export interface VersionEntry {
 }
 
 export function getHistory(cardId: string, title: string): VersionEntry[] {
+  if (!gitAvailable()) return []
   ensureDir()
   const fp = findCurrentFilePath(cardId, title)
   const relPath = path.relative(OMNIS_DIR, fp)
@@ -140,6 +161,7 @@ export function getHistory(cardId: string, title: string): VersionEntry[] {
 }
 
 export function getVersionContent(cardId: string, title: string, hash: string): string {
+  if (!gitAvailable()) return ""
   ensureDir()
   assertGitHash(hash)
   const relPath = findFilePathAtHash(cardId, title, hash)
@@ -151,6 +173,7 @@ export function getVersionContent(cardId: string, title: string, hash: string): 
 }
 
 export function getDiff(cardId: string, title: string, hash1: string, hash2: string): string {
+  if (!gitAvailable()) return ""
   ensureDir()
   assertGitHash(hash1)
   assertGitHash(hash2)
@@ -163,10 +186,12 @@ export function getDiff(cardId: string, title: string, hash1: string, hash2: str
 }
 
 export function getCardVersion(cardId: string, title: string): number {
+  if (!gitAvailable()) return 0
   return getHistory(cardId, title).length || 1
 }
 
 export function rollback(cardId: string, title: string, hash: string, author: string): string {
+  if (!gitAvailable()) return ""
   ensureDir()
   assertGitHash(hash)
   const fp = findCurrentFilePath(cardId, title)

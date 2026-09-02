@@ -1,13 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { signIn } from "next-auth/react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowRight02Icon,
-  GoogleIcon,
   LockPasswordIcon,
   MailAtSign01Icon,
   WorkflowSquare08Icon,
@@ -17,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import { DemoAccountsCard } from "@/components/layout/demo-accounts-card"
+import { SocialSignInButton, type SocialProvider } from "@/components/auth/social-buttons"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -24,6 +24,29 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [socials, setSocials] = useState<SocialProvider[]>([])
+  const [social, setSocial] = useState<SocialProvider | null>(null)
+
+  // 어떤 소셜이 켜져 있는지는 서버 설정이 정한다. 화면에 고정해 두면
+  // 키를 넣지 않은 제공자 버튼이 떠서 누르면 깨진다.
+  useEffect(() => {
+    fetch("/api/auth/providers")
+      .then((r) => r.json())
+      .then((all: Record<string, unknown>) =>
+        setSocials((["google", "kakao"] as const).filter((p) => p in all))
+      )
+      .catch(() => setSocials([]))
+  }, [])
+
+  // 연결되지 않은 소셜로 들어온 경우. 소셜만으로는 계정이 만들어지지 않는다.
+  // useSearchParams 를 쓰면 이 페이지가 정적 프리렌더를 못 하므로 효과 안에서 직접 읽는다.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("error") === "notlinked") {
+      setError(
+        "아직 이 계정에 연결되지 않은 소셜 로그인입니다. 이름·비밀번호로 로그인한 뒤 설정 → 소셜 로그인 연결에서 연결해 주세요."
+      )
+    }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -208,15 +231,25 @@ export default function LoginPage() {
             <div className="h-px flex-1 bg-border" />
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            disabled
-            className="h-11 w-full rounded-lg bg-white text-[13.5px] font-semibold dark:bg-input/20"
-          >
-            <HugeiconsIcon icon={GoogleIcon} size={16} />
-            Google
-          </Button>
+          <div className="flex flex-col gap-2.5">
+            {socials.map((provider) => (
+              <SocialSignInButton
+                key={provider}
+                provider={provider}
+                disabled={social !== null}
+                pending={social === provider}
+                onClick={() => {
+                  setSocial(provider)
+                  signIn(provider, { callbackUrl: "/dashboard" })
+                }}
+              />
+            ))}
+            {socials.length === 0 && (
+              <p className="text-center text-[12.5px] text-muted-foreground">
+                소셜 로그인은 아직 설정되지 않았습니다.
+              </p>
+            )}
+          </div>
 
           <p className="mt-6 text-center text-[12.5px] text-muted-foreground">
             계정 접근이 필요하면 관리자에게 요청하세요.{" "}

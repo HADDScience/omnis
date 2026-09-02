@@ -102,7 +102,7 @@ export default async function OmnisPage({ searchParams }: Props) {
   const withVersion = (c: (typeof recent)[number]) => {
     let version = c.version
     try {
-      version = getCardVersion(c.id, c.title)
+      version = getCardVersion(c.id, c.title) || c.version
     } catch {
       /* keep db version */
     }
