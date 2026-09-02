@@ -5,12 +5,9 @@ import { startOfWeek, startOfMonth } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { DashboardMembers } from "./dashboard-members"
+import { DashboardStalled, type StalledGroups } from "./dashboard-stalled"
 import { DashboardLists } from "./dashboard-lists"
 import { DashboardWorkspace } from "./dashboard-workspace"
-import {
-  DashboardGeminiUsage,
-  type GeminiUsageData,
-} from "./dashboard-gemini-usage"
 import type {
   WorkspaceProduct,
   WorkspaceTaskItem,
@@ -47,6 +44,7 @@ interface ProgressTask {
 type PeriodKey = "week" | "month" | "all"
 
 interface DashboardViewProps {
+  stalledGroups: StalledGroups
   completionRate: number
   tasksForProgress: ProgressTask[]
   userStats: MemberStat[]
@@ -55,7 +53,6 @@ interface DashboardViewProps {
   workspaceProducts: WorkspaceProduct[]
   workspaceProjects: WorkspaceProject[]
   workspaceTasks: WorkspaceTaskItem[]
-  geminiUsageData: GeminiUsageData
 }
 
 const PERIOD_LABELS: Record<PeriodKey, string> = {
@@ -65,6 +62,7 @@ const PERIOD_LABELS: Record<PeriodKey, string> = {
 }
 
 export function DashboardView({
+  stalledGroups,
   completionRate,
   tasksForProgress,
   userStats,
@@ -73,7 +71,6 @@ export function DashboardView({
   workspaceProducts,
   workspaceProjects,
   workspaceTasks,
-  geminiUsageData,
 }: DashboardViewProps) {
   const [period, setPeriod] = useState<PeriodKey>("week")
 
@@ -134,8 +131,20 @@ export function DashboardView({
         </CardContent>
       </Card>
 
-      {/* AI(Gemini) 사용량 */}
-      <DashboardGeminiUsage data={geminiUsageData} />
+      {/*
+        진행률 바로 아래 한 줄에 "무엇이 막혀 있나"(1열)와 "누가 무엇을 하나"(2열)를 나란히 둔다.
+        멈춰 있는 업무는 목록이 짧고 팀원별 현황은 넓게 펼쳐야 읽히므로 1:2로 나눈다.
+      */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <DashboardStalled groups={stalledGroups} />
+        </div>
+        {userStats.length > 0 && (
+          <div className="lg:col-span-2">
+            <DashboardMembers members={userStats} />
+          </div>
+        )}
+      </div>
 
       {/* 워크스페이스 */}
       <DashboardWorkspace
@@ -143,9 +152,6 @@ export function DashboardView({
         projects={workspaceProjects}
         tasks={workspaceTasks}
       />
-
-      {/* 팀원별 현황 */}
-      {userStats.length > 0 && <DashboardMembers members={userStats} />}
 
       {/* 가점항목 / 과제 리스트 */}
       {(gajumMarkdown || gwajaeMarkdown) && (

@@ -11,6 +11,12 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { Notification03Icon, Delete02Icon } from "@hugeicons/core-free-icons"
 import { formatDistanceToNow } from "date-fns"
 import { ko } from "date-fns/locale"
+import {
+  ACTION_BUTTONS,
+  NotificationActionSchema,
+  isPendingAction,
+  type NotificationResponse,
+} from "@/lib/schemas/notification"
 
 interface Notification {
   id: string
@@ -20,6 +26,8 @@ interface Notification {
   entityId: string | null
   read: boolean
   createdAt: string
+  actionType: string | null
+  resolvedAt: string | null
 }
 
 export function NotificationBell() {
@@ -59,7 +67,36 @@ export function NotificationBell() {
     return () => clearInterval(id)
   }, [fetchNotifications])
 
-  const unreadCount = notifications.filter((n) => !n.read).length
+  const [responding, setResponding] = useState<string | null>(null)
+
+  // 미응답 액션은 읽음 처리해도 배지에서 빠지지 않는다 — 응답만이 배지를 없앤다.
+  const unreadCount = notifications.filter((n) => !n.read || isPendingAction(n)).length
+
+  async function respond(id: string, response: NotificationResponse) {
+    setResponding(id)
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, response }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error ?? "응답을 저장하지 못했습니다")
+        return
+      }
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === id ? { ...n, read: true, resolvedAt: new Date().toISOString() } : n
+        )
+      )
+      router.refresh()
+    } catch {
+      toast.error("응답을 저장하지 못했습니다")
+    } finally {
+      setResponding(null)
+    }
+  }
 
   async function markAllRead() {
     await fetch("/api/notifications", {
@@ -146,37 +183,67 @@ export function NotificationBell() {
             </div>
           ) : (
             <div className="flex flex-col">
-              {notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`flex items-start gap-2 px-3 py-2.5 hover:bg-muted ${
-                    !n.read ? "bg-primary/5" : ""
-                  }`}
-                >
-                  <button
-                    className="flex-1 flex flex-col gap-0.5 text-left"
-                    onClick={() => openNotification(n)}
+              {notifications.map((n) => {
+                const pending = isPendingAction(n)
+                const action = NotificationActionSchema.safeParse(n.actionType)
+                return (
+                  <div
+                    key={n.id}
+                    className={`px-3 py-2.5 hover:bg-muted ${
+                      pending
+                        ? "bg-primary/10 border-l-2 border-primary"
+                        : !n.read
+                          ? "bg-primary/5"
+                          : ""
+                    }`}
                   >
-                    <span className={`text-xs ${!n.read ? "font-medium" : "text-muted-foreground"}`}>
-                      {n.title}
-                    </span>
-                    {n.content && (
-                      <span className="text-[11px] text-muted-foreground line-clamp-2">
-                        {n.content}
-                      </span>
+                    <div className="flex items-start gap-2">
+                      <button
+                        className="flex-1 flex flex-col gap-0.5 text-left"
+                        onClick={() => openNotification(n)}
+                      >
+                        <span className={`text-xs ${!n.read ? "font-medium" : "text-muted-foreground"}`}>
+                          {n.title}
+                        </span>
+                        {n.content && (
+                          <span className="text-[11px] text-muted-foreground line-clamp-2">
+                            {n.content}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true, locale: ko })}
+                        </span>
+                      </button>
+                      {/* 미응답 액션 알림은 삭제로 없앨 수 없다 — 응답만이 없앤다. */}
+                      {!pending && (
+                        <button
+                          aria-label="알림 삭제"
+                          className="shrink-0 mt-1 rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => deleteOne(n.id)}
+                        >
+                          <HugeiconsIcon icon={Delete02Icon} size={12} />
+                        </button>
+                      )}
+                    </div>
+                    {pending && action.success && (
+                      <div className="mt-2 flex gap-1.5">
+                        {ACTION_BUTTONS[action.data].map((b) => (
+                          <Button
+                            key={b.response}
+                            size="sm"
+                            variant={b.variant}
+                            className="h-8 flex-1 text-xs"
+                            disabled={responding === n.id}
+                            onClick={() => respond(n.id, b.response)}
+                          >
+                            {b.label}
+                          </Button>
+                        ))}
+                      </div>
                     )}
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true, locale: ko })}
-                    </span>
-                  </button>
-                  <button
-                    className="shrink-0 mt-1 rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => deleteOne(n.id)}
-                  >
-                    <HugeiconsIcon icon={Delete02Icon} size={12} />
-                  </button>
-                </div>
-              ))}
+                  </div>
+                )
+              })}
             </div>
           )}
         </ScrollArea>

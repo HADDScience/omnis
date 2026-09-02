@@ -37,7 +37,11 @@ function displayContent(m: Message): string {
 
 export function TaskSidebar({ taskId, messages }: TaskSidebarProps) {
   const systemMessages = messages.filter(
-    (m) => m.kind === "TASK_REBUILT" || m.kind === "TASK_DONE" || m.kind === "TASK_CREATED"
+    (m) =>
+      m.kind === "TASK_REBUILT" ||
+      m.kind === "TASK_DONE" ||
+      m.kind === "TASK_DONE_PENDING" ||
+      m.kind === "TASK_CREATED"
   )
   const threadMessages = messages.filter((m) => m.kind !== "TASK_REBUILT")
 
@@ -118,7 +122,9 @@ export function TaskSidebar({ taskId, messages }: TaskSidebarProps) {
                         ? "재구성"
                         : m.kind === "TASK_DONE"
                           ? "완료"
-                          : "생성"}
+                          : m.kind === "TASK_DONE_PENDING"
+                            ? "확인 대기"
+                            : "생성"}
                     </Badge>
                     <span className="font-mono text-[10px] text-muted-foreground">
                       {formatTime(m.createdAt)}

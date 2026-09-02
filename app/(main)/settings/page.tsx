@@ -1,11 +1,35 @@
 import { Header } from "@/components/layout/header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { prisma } from "@/lib/db"
+import { ProjectMerge, type MergeableProject } from "./project-merge"
 
-export default function SettingsPage() {
+export const dynamic = "force-dynamic"
+
+export default async function SettingsPage() {
+  const projects = await prisma.project.findMany({
+    where: { archived: false },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      product: { select: { name: true } },
+      _count: { select: { tasks: { where: { archived: false } } } },
+    },
+  })
+
+  const mergeable: MergeableProject[] = projects.map((p) => ({
+    id: p.id,
+    name: p.name,
+    productName: p.product?.name ?? null,
+    taskCount: p._count.tasks,
+  }))
+
   return (
     <>
       <Header title="설정" />
       <div className="flex flex-1 flex-col gap-4 p-4">
+        <ProjectMerge projects={mergeable} />
+
         <Card>
           <CardHeader>
             <CardTitle className="text-base">시스템 설정</CardTitle>
