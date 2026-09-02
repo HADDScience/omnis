@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
+import { randomUUID } from "crypto"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { writeFile, mkdir } from "fs/promises"
-import path from "path"
+import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
 
 export async function GET() {
   const session = await auth()
@@ -32,23 +32,23 @@ export async function POST(req: NextRequest) {
   if (!file) {
     return NextResponse.json({ error: "파일 필수" }, { status: 400 })
   }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    const limitMb = Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)
+    return NextResponse.json({ error: `파일이 너무 큽니다. ${limitMb}MB 이하만 올릴 수 있습니다.` }, { status: 413 })
+  }
 
-  const bytes = await file.arrayBuffer()
-  const buffer = Buffer.from(bytes)
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const id = randomUUID()
 
-  // 파일명 생성 (timestamp + 원본명)
-  const timestamp = Date.now()
-  const ext = file.name.includes(".") ? "." + file.name.split(".").pop() : ""
-  const fileName = `${timestamp}${ext}`
-  const uploadDir = path.join(process.cwd(), "public", "uploads")
-
-  await mkdir(uploadDir, { recursive: true })
-  await writeFile(path.join(uploadDir, fileName), buffer)
+  // NAS에 먼저 올리고, 성공한 뒤에만 DB에 기록한다.
+  // 순서가 반대면 업로드 실패 시 실물 없는 레코드가 남는다.
+  await putObject(objectKeyFor(id, file.name), buffer, file.type || "application/octet-stream")
 
   const record = await prisma.file.create({
     data: {
+      id,
       name: file.name,
-      path: `/uploads/${fileName}`,
+      path: `/api/files/${id}/raw`,
       size: file.size,
       mimeType: file.type || "application/octet-stream",
       messageId: messageId || null,
