@@ -149,7 +149,7 @@ async function main() {
         slug: t.slug,
         status: t.status,
         deadline: t.deadline,
-        ownerId: t.ownerId,
+        assignees: { create: [{ userId: t.ownerId }] },
         instructorId: t.instructorId,
         projectId: projectByName[t.project].id,
         productId: productByName[t.product] ?? null,

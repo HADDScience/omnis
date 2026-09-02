@@ -144,7 +144,7 @@ async function migrateTodos() {
       data: {
         name,
         slug,
-        ownerId,
+        assignees: { create: [{ userId: ownerId }] },
         instructorId: USER_MAP["김아리"] || ownerId,
         projectId,
         status: mapStatus(statusName) as "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE",
@@ -193,7 +193,6 @@ async function migrateChecklists() {
       data: {
         name,
         taskId,
-        ownerId,
         done,
         createdAt: new Date(page.created_time),
       },

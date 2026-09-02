@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { assigneeLabel } from "@/lib/task-assignees"
 import { getCardVersion } from "@/lib/omnis-git"
 import { apiError } from "@/lib/api"
 import { retrieveContext } from "@/lib/embeddings"
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
         ],
       },
       take: 6,
-      include: { owner: { select: { name: true } } },
+      include: { assignees: { select: { user: { select: { id: true, name: true } } } } },
       orderBy: { updatedAt: "desc" },
     }),
     prisma.weeklyReport.findMany({
@@ -110,7 +111,7 @@ export async function GET(req: NextRequest) {
       id: t.id,
       slug: t.slug,
       title: t.name,
-      owner: t.owner?.name ?? "",
+      owner: assigneeLabel(t.assignees),
       status: t.status,
       deadline: t.deadline?.toISOString() ?? null,
     })),

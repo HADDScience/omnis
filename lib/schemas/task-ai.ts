@@ -56,8 +56,11 @@ export const TaskAiDraftSchema = z.object({
   newProduct: NewProductDraftSchema.nullable().default(null),
   /** 우선순위 힌트 (AI 추정) — 사용자가 모달에서 확정 */
   priority: PrioritySchema.optional(),
-  /** 담당자 힌트 (이름) — 사용자가 모달에서 user 매핑 */
-  ownerHint: z.string().optional(),
+  /**
+   * 담당자 힌트 (이름 배열) — 사용자가 모달에서 user 매핑.
+   * 한 지시가 여러 명에게 향할 수 있다("인턴들 각자 ~해주세요")므로 배열이다.
+   */
+  ownerHints: z.array(z.string().min(1)).default([]),
   /** 마감 힌트 (YYYY-MM-DD 또는 상대표현 "내일", "이번 주 금요일") — 사용자가 모달에서 확정 */
   deadlineHint: z.string().optional(),
 })
@@ -112,10 +115,26 @@ export function normalizeAiDraft(parsed: Record<string, unknown>): TaskAiDraft {
     productId,
     newProduct,
     priority: (parsed.priority ?? parsed.priorityHint) as Priority | undefined,
-    ownerHint: (parsed.ownerHint ?? parsed.owner ?? parsed.assignee) as string | undefined,
+    ownerHints: normalizeOwnerHints(parsed),
     deadlineHint: (parsed.deadlineHint ?? parsed.deadline ?? parsed.dueDate) as string | undefined,
   }
   return TaskAiDraftSchema.parse(safe)
+}
+
+/**
+ * 담당자 힌트를 배열로 정규화한다.
+ *
+ * Gemini 가 키 이름과 단복수를 일정하게 지키지 않는다 — ownerHint / owners /
+ * assignees 로도 오고, 한 명일 때는 배열이 아니라 문자열로 온다. 전부 배열로 흡수한다.
+ */
+function normalizeOwnerHints(parsed: Record<string, unknown>): string[] {
+  const raw =
+    parsed.ownerHints ?? parsed.owners ?? parsed.assignees ??
+    parsed.ownerHint ?? parsed.owner ?? parsed.assignee
+  const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw]
+  return list
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .filter((v) => v.length > 0)
 }
 
 /** 빈 fallback 초안 (GEMINI_API_KEY 미설정 시) */

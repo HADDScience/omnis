@@ -1,4 +1,5 @@
 import { Header } from "@/components/layout/header"
+import { assigneeLabel } from "@/lib/task-assignees"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { startOfWeek } from "date-fns"
@@ -21,7 +22,7 @@ export default async function DashboardPage() {
         slug: true,
         status: true,
         priority: true,
-        ownerId: true,
+        assignees: { select: { user: { select: { id: true, name: true } } } },
         deadline: true,
         updatedAt: true,
         productId: true,
@@ -54,7 +55,7 @@ export default async function DashboardPage() {
       select: {
         id: true,
         name: true,
-        owner: { select: { name: true } },
+        assignees: { select: { user: { select: { id: true, name: true } } } },
         category: { select: { name: true } },
         productId: true,
         project: { select: { product: { select: { id: true } } } },
@@ -95,7 +96,8 @@ export default async function DashboardPage() {
 
   const userStats = users
     .map((u) => {
-      const userTasks = allTasks.filter((t) => t.ownerId === u.id)
+      // 담당자가 여러 명이면 각자의 통계에 모두 들어간다
+      const userTasks = allTasks.filter((t) => t.assignees.some((a) => a.user.id === u.id))
       return {
         ...u,
         total: userTasks.length,
@@ -130,7 +132,7 @@ export default async function DashboardPage() {
     slug: t.slug,
     status: t.status,
     priority: t.priority,
-    ownerId: t.ownerId,
+    ownerIds: t.assignees.map((a) => a.user.id),
     deadline: t.deadline ? t.deadline.toISOString() : null,
   }))
 
@@ -165,8 +167,8 @@ export default async function DashboardPage() {
       productId: t.productId ?? t.project?.product?.id ?? null,
       projectId: t.project?.id ?? null,
       projectName: t.project?.name ?? null,
-      ownerId: t.ownerId,
-      ownerName: userMap[t.ownerId] ?? "?",
+      ownerIds: t.assignees.map((a) => a.user.id),
+      ownerName: assigneeLabel(t.assignees),
       deadline: deadlineIso,
       isOverdue,
       checklistDone: t.checklists.filter((c) => c.done).length,

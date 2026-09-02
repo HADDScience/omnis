@@ -111,7 +111,7 @@ export async function structureTask(
     : ""
 
   const memberSection = context?.members?.length
-    ? `\n팀원 목록 (메시지의 담당자를 아래 정식 이름 중 하나로 매핑해 ownerHint에 지정):\n${context.members.map((m) => `- ${m.name}`).join("\n")}`
+    ? `\n팀원 목록 (메시지의 담당자를 아래 정식 이름으로 매핑해 ownerHints 배열에 지정):\n${context.members.map((m) => `- ${m.name}`).join("\n")}`
     : ""
 
   const today = new Date().toISOString().slice(0, 10)
@@ -130,14 +130,15 @@ export async function structureTask(
 - newProduct: 제품 목록에 없는 제품·소재·물질 이름이 메시지에 명시되어 있으면 신규 제품을 객체로 제안. 형식: { "name": "제품명" }. 그렇지 않으면 null.
   주의: productId와 newProduct는 동시에 채우지 마세요. 둘 중 하나만 사용하세요.
 - priority: 메시지에서 추정한 우선순위 ("LOW" | "NORMAL" | "HIGH" 중 하나, 명확치 않으면 생략)
-- ownerHint: 메시지에서 언급된 담당자. 존칭("우창님")·약칭("우창")이 쓰였어도 팀원 목록의 정식 이름으로 변환해 지정(예: "우창님" → "정우창"). 언급이 없으면 생략
+- ownerHints: 메시지에서 언급된 담당자 **이름 배열**. 존칭("우창님")·약칭("우창")이 쓰였어도 팀원 목록의 정식 이름으로 변환(예: "우창님" → "정우창"). 여러 명에게 지시했으면 모두 넣으세요(예: "인턴들 각자 제출해주세요" → 해당 인턴 전원). 언급이 없으면 빈 배열 []
 - deadlineHint: 마감일 힌트. ISO 날짜(YYYY-MM-DD) 또는 한국어 상대표현("오늘"·"내일"·"이번 주 금요일" 등). 명시 없으면 생략. 오늘은 ${today} 입니다.
 ${projectSection}
 ${productSection}
 ${memberSection}
 
 메시지가 리스트 형태이면 각 항목을 체크리스트로 추출하세요.
-priority/ownerHint/deadlineHint는 메시지에서 명확히 추론 가능할 때만 채우세요. 추측하지 말고 생략하세요.
+priority/ownerHints/deadlineHint는 메시지에서 명확히 추론 가능할 때만 채우세요. 추측하지 말고 생략하세요.
+체크리스트는 담당자별로 쪼개지 마세요. 한 업무에 목록 하나입니다 — 여러 명이 맡아도 같은 목록을 함께 봅니다.
 
 반드시 JSON만 반환하세요. 마크다운 코드블록 없이 순수 JSON만 반환하세요.
 

@@ -52,7 +52,8 @@ interface TaskInstructionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedMessages: SourceMessage[]
-  ownerId: string
+  /** 담당자 ID 배열 — 한 지시를 여러 명에게 내릴 수 있다. */
+  ownerIds: string[]
   ownerName: string
   onTaskCreated: () => void
   messageIds: string[]
@@ -64,7 +65,7 @@ export function TaskInstructionDialog({
   open,
   onOpenChange,
   selectedMessages,
-  ownerId,
+  ownerIds,
   ownerName,
   onTaskCreated,
   messageIds,
@@ -148,7 +149,7 @@ export function TaskInstructionDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: draft.name,
-          ownerId,
+          ownerIds,
           background: draft.background,
           checklists: draft.checklist.map((name) => ({ name })),
           messageIds,
