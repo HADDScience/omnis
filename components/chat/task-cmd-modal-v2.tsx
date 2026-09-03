@@ -35,7 +35,7 @@ import { PriorityRating } from "@/components/ui/priority-rating"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { parseSlashTask, resolveDeadline } from "./slash-command-parser"
-import { PrioritySchema } from "@/lib/schemas/task-ai"
+import { PrioritySchema, type TaskAiDraft } from "@/lib/schemas/task-ai"
 import { matchUserByName } from "@/lib/name-match"
 
 interface TaskCmdModalV2Props {
@@ -100,6 +100,9 @@ const PRIORITY_LABEL: Record<z.infer<typeof PrioritySchema>, string> = {
   HIGH: "높음",
 }
 
+/** /api/ai/structure-task · /api/ai/revise-task-draft 응답. 두 경로가 같은 모양을 돌려준다. */
+type AiDraftResponse = TaskAiDraft & { _fallback?: boolean; message?: string }
+
 export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Props) {
   const router = useRouter()
   const parsed = useMemo(() => parseSlashTask(rawCommand), [rawCommand])
@@ -108,6 +111,8 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [products, setProducts] = useState<ProductOption[]>([])
   const [aiLoading, setAiLoading] = useState(false)
+  const [revisePrompt, setRevisePrompt] = useState("")
+  const [revising, setRevising] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [glowFields, setGlowFields] = useState<Set<string>>(new Set())
   const glowTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -118,6 +123,24 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     if (glowTimer.current) clearTimeout(glowTimer.current)
     setGlowFields(new Set(fields))
     glowTimer.current = setTimeout(() => setGlowFields(new Set()), 1700)
+  }, [])
+
+  /**
+   * 프로젝트·제품 목록을 다시 가져온다.
+   * 모달을 열 때 한 번만 읽으면, 열어둔 사이 남이 만든 프로젝트가 목록에 없어
+   * 같은 프로젝트를 또 만들게 된다(인수인계 §5-B-3). 드롭다운을 열 때마다 갱신한다.
+   */
+  const refreshOptions = useCallback(async () => {
+    try {
+      const [projectList, productList] = await Promise.all([
+        fetch("/api/projects").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/products").then((r) => (r.ok ? r.json() : null)),
+      ])
+      if (projectList) setProjects(projectList)
+      if (productList) setProducts(productList)
+    } catch {
+      // 갱신 실패는 조용히 넘긴다 — 직전 목록으로도 작업을 이어갈 수 있다
+    }
   }, [])
 
   const form = useForm<TaskFormValues>({
@@ -166,9 +189,8 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         setProjects(projectList)
         setProducts(productList)
         // 슬래시 파싱 결과로 초기화 (이름 → id 매핑)
-        const ownerByName = parsed?.ownerName
-          ? userList.find((u: UserOption) => u.name === parsed.ownerName)
-          : null
+        // "@우창" · "@우창님" 도 잡는다 — 카톡 멘션과 동작이 다르면 사용자는 멘션을 안 쓴다.
+        const ownerByName = matchUserByName<UserOption>(parsed?.ownerName, userList)
         const projectByName = parsed?.projectName
           ? projectList.find((p: ProjectOption) => p.name === parsed.projectName)
           : null
@@ -204,33 +226,39 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     }
   }, [open, parsed, reset, flashGlow])
 
-  /** R11: AI 응답이 도착해도 사용자가 이미 입력(dirtyFields)한 필드는 덮지 않음 */
-  async function runAi() {
-    setAiLoading(true)
-    try {
-      const res = await fetch("/api/ai/structure-task", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rawMessage: rawCommand }),
-      })
-      if (!res.ok) throw new Error("AI 호출 실패")
-      const ai = await res.json()
+  // 담당자가 비어 있으면 모달의 첫 포커스를 담당자에 둔다.
+  // 안내 문구도 필수 표시도 아니고, 커서가 이미 그 자리에 있는 것뿐이다.
+  useEffect(() => {
+    if (!open || ownerIds.length > 0 || users.length === 0) return
+    const t = setTimeout(() => document.getElementById("task-owner-trigger")?.focus(), 80)
+    return () => clearTimeout(t)
+  }, [open, ownerIds.length, users.length])
 
-      // dirtyFields에 없는 필드만 적용 + 채운 필드 기록(글로우용)
+  /**
+   * AI가 준 초안을 폼에 적용한다.
+   *
+   * `overwrite`가 두 흐름을 가른다:
+   *  - 자동완성(false): 사용자가 이미 손댄 필드는 건드리지 않는다(R11).
+   *  - 말로 고치기(true): 사용자가 바로 그 값을 바꿔 달라고 한 것이므로 덮어쓴다.
+   */
+  const applyDraft = useCallback(
+    (ai: AiDraftResponse, overwrite: boolean) => {
       const filled: string[] = []
-      if (!dirtyFields.name && ai.name) {
+      const may = (field: keyof TaskFormValues) => overwrite || !dirtyFields[field]
+
+      if (may("name") && ai.name) {
         setValue("name", ai.name, { shouldDirty: false })
         filled.push("name")
       }
-      if (!dirtyFields.background && ai.background) {
+      if (may("background") && ai.background) {
         setValue("background", ai.background, { shouldDirty: false })
         filled.push("background")
       }
-      if (!dirtyFields.priority && ai.priority) {
+      if (may("priority") && ai.priority) {
         setValue("priority", ai.priority, { shouldDirty: false })
         filled.push("priority")
       }
-      if (!dirtyFields.ownerIds && ai.ownerHints.length > 0) {
+      if (may("ownerIds") && ai.ownerHints.length > 0) {
         // 존칭("우창님")·약칭("우창")도 흡수해 팀원과 매칭
         // 여러 명을 지목한 지시("인턴들 각자 ~")면 모두 채운다
         const found = (ai.ownerHints as string[])
@@ -241,7 +269,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           filled.push("ownerIds")
         }
       }
-      if (!dirtyFields.projectId) {
+      if (may("projectId")) {
         if (ai.newProject) {
           // AI가 신규 프로젝트 생성을 제안 → 신규 프로젝트 모드 전환 + 필드 채움
           setValue("projectId", NEW_PROJECT_VALUE, { shouldDirty: false })
@@ -254,7 +282,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           filled.push("projectId")
         }
       }
-      if (!dirtyFields.productId) {
+      if (may("productId")) {
         if (ai.newProduct?.name) {
           // AI가 신규 제품 생성을 제안 → 신규 제품 모드 전환 + 제품명 채움
           setValue("productId", NEW_PRODUCT_VALUE, { shouldDirty: false })
@@ -269,7 +297,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           filled.push("productId")
         }
       }
-      if (!dirtyFields.deadline && ai.deadlineHint) {
+      if (may("deadline") && ai.deadlineHint) {
         // ISO(YYYY-MM-DD)면 그대로, 한국어 상대표현이면 날짜로 변환
         let ymd: string | null = null
         if (/^\d{4}-\d{2}-\d{2}$/.test(ai.deadlineHint)) {
@@ -283,17 +311,83 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           filled.push("deadline")
         }
       }
-      if (!dirtyFields.checklist && Array.isArray(ai.checklist) && ai.checklist.length > 0) {
+      if (may("checklist") && Array.isArray(ai.checklist) && ai.checklist.length > 0) {
         setValue("checklist", ai.checklist, { shouldDirty: false })
         filled.push("checklist")
       }
       flashGlow(filled)
+      return filled
+    },
+    [dirtyFields, setValue, users, flashGlow]
+  )
+
+  async function runAi() {
+    setAiLoading(true)
+    try {
+      const res = await fetch("/api/ai/structure-task", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rawMessage: rawCommand }),
+      })
+      if (!res.ok) throw new Error("AI 호출 실패")
+      const ai: AiDraftResponse = await res.json()
+      applyDraft(ai, false)
       if (ai._fallback && ai.message) toast.info(ai.message)
       else toast.success("AI 자동완성 완료")
     } catch {
       toast.error("AI 자동완성 실패")
     } finally {
       setAiLoading(false)
+    }
+  }
+
+  /**
+   * 말로 고치기 — "담당자는 혜린님으로, 마감 다음주"처럼 적으면 AI가 초안을 손본다.
+   * 지시가 닿은 필드는 사용자가 이미 손댔더라도 덮는다. 바꿔 달라고 한 것이 그 값이기 때문이다.
+   */
+  async function runRevise() {
+    const instruction = revisePrompt.trim()
+    if (!instruction || revising) return
+    setRevising(true)
+    try {
+      const v = form.getValues()
+      const res = await fetch("/api/ai/revise-task-draft", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          source: rawCommand,
+          instruction,
+          // AI는 UUID를 알아볼 수 없으므로 사람이 읽는 이름으로 넘긴다
+          current: {
+            name: v.name ?? "",
+            background: v.background ?? "",
+            checklist: (v.checklist ?? []).filter((c) => c.trim() !== ""),
+            ownerName: users.filter((u) => v.ownerIds.includes(u.id)).map((u) => u.name).join(", ") || null,
+            deadline: v.deadline ?? null,
+            projectName:
+              v.projectId === NEW_PROJECT_VALUE
+                ? v.newProjectName || null
+                : (projects.find((p) => p.id === v.projectId)?.name ?? null),
+            productName:
+              v.productId === NEW_PRODUCT_VALUE
+                ? v.newProductName || null
+                : (products.find((p) => p.id === v.productId)?.name ?? null),
+            priority: v.priority,
+          },
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error ?? "말로 고치기에 실패했습니다")
+        return
+      }
+      const changed = applyDraft(data as AiDraftResponse, true)
+      setRevisePrompt("")
+      toast.success(changed.length > 0 ? `${changed.length}개 항목을 고쳤습니다` : "바뀐 항목이 없습니다")
+    } catch {
+      toast.error("말로 고치기에 실패했습니다")
+    } finally {
+      setRevising(false)
     }
   }
 
@@ -304,42 +398,9 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
       const isNewProject = values.projectId === NEW_PROJECT_VALUE
       const isNewProduct = values.productId === NEW_PRODUCT_VALUE
 
-      // 1. 제품 결정: 신규 생성 / 기존 선택 / 없음
-      let finalProductId: string | null = null
-      if (isNewProduct) {
-        const prodRes = await fetch("/api/products", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: values.newProductName.trim() }),
-        })
-        if (!prodRes.ok) throw new Error("제품 생성 실패")
-        const prod = await prodRes.json()
-        finalProductId = prod.id
-      } else {
-        finalProductId = values.productId ?? null
-      }
-
-      // 2. 프로젝트 결정: 신규 생성 / 기존 선택 / 없음
-      //    신규 프로젝트의 제품은 위에서 결정한 finalProductId를 그대로 사용
-      let finalProjectId: string | null = null
-      if (isNewProject) {
-        const projRes = await fetch("/api/projects", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            name: values.newProjectName,
-            productId: finalProductId,
-            purpose: values.newProjectPurpose,
-            goal: values.newProjectGoal,
-          }),
-        })
-        if (!projRes.ok) throw new Error("프로젝트 생성 실패")
-        const proj = await projRes.json()
-        finalProjectId = proj.id
-      } else if (values.projectId) {
-        finalProjectId = values.projectId
-      }
-
+      // 제품·프로젝트·업무를 한 번에 보낸다.
+      // 예전에는 /api/products → /api/projects → /api/tasks 를 차례로 호출해서,
+      // 마지막 업무 생성이 실패하면 앞서 만든 제품·프로젝트가 주인 없이 남았다(§5-B-2).
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -347,8 +408,16 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           name: values.name,
           ownerNames: owners.map((u) => u.name),
           deadlineLabel: values.deadline,
-          projectId: finalProjectId,
-          productId: finalProductId,
+          projectId: isNewProject ? null : (values.projectId ?? null),
+          productId: isNewProduct ? null : (values.productId ?? null),
+          newProduct: isNewProduct ? { name: values.newProductName.trim() } : undefined,
+          newProject: isNewProject
+            ? {
+                name: values.newProjectName,
+                purpose: values.newProjectPurpose,
+                goal: values.newProjectGoal,
+              }
+            : undefined,
           priority: values.priority,
           participants: [],
           instruction: values.background,
@@ -359,14 +428,25 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         }),
       })
       if (!res.ok) throw new Error("업무 생성 실패")
-      const created = [isNewProject && "프로젝트", isNewProduct && "제품"].filter(
-        Boolean,
-      )
-      toast.success(
-        created.length > 0
-          ? `신규 ${created.join("·")}와 업무 생성 완료`
-          : "업무 생성 완료",
-      )
+
+      // 서버가 실제로 만든 것만 알린다 — 같은 이름이 이미 있으면 새로 만들지 않고 이어붙인다.
+      const created = (await res.json().catch(() => null)) as
+        | { _created?: { product?: { name: string; reused: boolean } | null; project?: { name: string; reused: boolean } | null } }
+        | null
+      const madeNew = [
+        created?._created?.project?.reused === false && "프로젝트",
+        created?._created?.product?.reused === false && "제품",
+      ].filter(Boolean)
+      const reusedProject =
+        created?._created?.project?.reused === true ? created._created.project.name : null
+
+      if (reusedProject) {
+        toast.success(`업무 생성 완료 · 기존 '${reusedProject}' 프로젝트에 연결했습니다`)
+      } else if (madeNew.length > 0) {
+        toast.success(`신규 ${madeNew.join("·")}와 업무 생성 완료`)
+      } else {
+        toast.success("업무 생성 완료")
+      }
       onClose()
       router.refresh()
     } catch {
@@ -420,31 +500,22 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
             </div>
           </div>
 
-          <div className="px-5 py-4">
-            <label htmlFor="task-name" className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
-              제목 <span className="text-destructive">*</span>
-            </label>
-            <Input
-              id="task-name"
-              {...register("name")}
-              placeholder="업무 한 줄 요약"
-              className={`h-9 text-[13px] ${errors.name ? "border-destructive" : ""} ${glowFields.has("name") ? "ai-fill-glow" : ""}`}
-              autoComplete="off"
-            />
-            {errors.name && (
-              <p className="mt-1 text-[11px] text-destructive">{errors.name.message}</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 px-5 pb-4 sm:grid-cols-2">
-            <div>
+          <div className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2">
+            {/*
+              담당자가 첫 자리다(인수인계 §4-2 순서).
+              실측상 지시의 68%가 담당자 미정으로 흘렀다 — 제목부터 쓰게 하면 담당자는 마지막에 밀리고,
+              마지막에 밀린 항목은 비워진 채 제출된다. 첫 동작이 사람 선택이면 미정이 구조적으로 생기지 않는다.
+            */}
+            <div className="sm:col-span-2">
               <label className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
                 담당자 <span className="text-destructive">*</span>
               </label>
               {/* 담당자는 여러 명일 수 있다. 인원이 10명 안쪽이라 칩 토글이
                   드롭다운보다 빠르고, 지금 누가 걸려 있는지 한눈에 보인다. */}
               <div
+                id="task-owner-trigger"
                 role="group"
+                tabIndex={-1}
                 aria-label="담당자 선택"
                 className={`flex flex-wrap gap-1.5 rounded-md border p-2 ${
                   errors.ownerIds ? "border-destructive" : "border-input"
@@ -484,6 +555,22 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
             </div>
 
             <div>
+              <label htmlFor="task-name" className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
+                제목 <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="task-name"
+                {...register("name")}
+                placeholder="업무 한 줄 요약"
+                className={`h-9 text-[13px] ${errors.name ? "border-destructive" : ""} ${glowFields.has("name") ? "ai-fill-glow" : ""}`}
+                autoComplete="off"
+              />
+              {errors.name && (
+                <p className="mt-1 text-[11px] text-destructive">{errors.name.message}</p>
+              )}
+            </div>
+
+            <div>
               <label htmlFor="task-deadline" className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
                 마감일
               </label>
@@ -501,6 +588,9 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
               </label>
               <Select
                 value={projectId ?? "none"}
+                onOpenChange={(isOpen) => {
+                  if (isOpen) void refreshOptions()
+                }}
                 onValueChange={(v) => {
                   const next = !v || v === "none" ? null : v
                   setValue("projectId", next, { shouldDirty: true })
@@ -624,6 +714,9 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
               </label>
               <Select
                 value={productId ?? "none"}
+                onOpenChange={(isOpen) => {
+                  if (isOpen) void refreshOptions()
+                }}
                 onValueChange={(v) =>
                   setValue("productId", !v || v === "none" ? null : v, { shouldDirty: true })
                 }
@@ -750,7 +843,40 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
           </div>
         </form>
 
-        <div className="flex items-center gap-2 border-t bg-muted/40 px-5 py-3">
+        <div className="flex flex-col gap-2 border-t bg-muted/40 px-5 py-3">
+          {/*
+            AI가 채운 값을 필드마다 눌러 고치는 대신 한 줄로 말하게 한다.
+            "담당자는 혜린님으로, 마감 다음주" 처럼 여러 항목을 한 번에 고칠 수 있다.
+          */}
+          <div className="flex items-center gap-2">
+            <Input
+              value={revisePrompt}
+              onChange={(e) => setRevisePrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  runRevise()
+                }
+              }}
+              placeholder="말로 고치기 — 예: 담당자 혜린님으로, 마감 다음주"
+              aria-label="말로 고치기"
+              className="h-8 flex-1 text-[12.5px]"
+              disabled={revising}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={runRevise}
+              disabled={revising || !revisePrompt.trim()}
+              className="h-8 shrink-0 gap-1.5 text-xs"
+            >
+              {revising ? <Spinner className="h-3 w-3" /> : <HugeiconsIcon icon={AiMagicIcon} size={12} />}
+              고치기
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
           <Button
             type="button"
             variant="outline"
@@ -772,10 +898,18 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
             size="sm"
             disabled={submitting}
             className="gap-1.5"
+            onClick={(e) => {
+              // 빨간 에러로 막는 대신 비어 있는 첫 자리로 데려간다.
+              if (ownerIds.length === 0) {
+                e.preventDefault()
+                document.getElementById("task-owner-trigger")?.focus()
+              }
+            }}
           >
             {submitting ? <Spinner className="h-3 w-3" /> : null}
-            업무 등록
+            {ownerIds.length > 0 ? "업무 등록" : "담당자를 선택하세요"}
           </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

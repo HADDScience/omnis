@@ -38,6 +38,36 @@ export const NewProductDraftSchema = z.object({
 })
 export type NewProductDraft = z.infer<typeof NewProductDraftSchema>
 
+/**
+ * 수정 지시를 보낼 때 함께 넘기는 "지금 폼에 있는 값".
+ *
+ * AI가 처음부터 다시 뽑는 게 아니라 **이 값을 고치도록** 하려면
+ * 현재 상태를 그대로 넘겨야 한다. ID가 아니라 사람이 읽는 이름으로 넘긴다 —
+ * AI는 UUID를 보고 무엇인지 알 수 없다.
+ */
+export const TaskDraftSnapshotSchema = z.object({
+  name: z.string().default(""),
+  background: z.string().default(""),
+  checklist: z.array(z.string()).default([]),
+  ownerName: z.string().nullable().default(null),
+  /** YYYY-MM-DD */
+  deadline: z.string().nullable().default(null),
+  projectName: z.string().nullable().default(null),
+  productName: z.string().nullable().default(null),
+  priority: PrioritySchema.optional(),
+})
+export type TaskDraftSnapshot = z.infer<typeof TaskDraftSnapshotSchema>
+
+/** POST /api/ai/revise-task-draft 요청 본문 */
+export const ReviseDraftRequestSchema = z.object({
+  /** 초안의 출발점이 된 원문 (슬래시 명령 등) */
+  source: z.string().optional(),
+  /** 사용자가 자연어로 적은 수정 지시 */
+  instruction: z.string().min(1).max(500),
+  current: TaskDraftSnapshotSchema,
+})
+export type ReviseDraftRequest = z.infer<typeof ReviseDraftRequestSchema>
+
 /** AI structureTask가 반환할 카드 초안 */
 export const TaskAiDraftSchema = z.object({
   /** 업무명 (15자 이내 권장) */

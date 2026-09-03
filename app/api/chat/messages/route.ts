@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
+import { createNotification } from "@/lib/notifications"
 import { auth } from "@/lib/auth"
 import { rebuildTask } from "@/lib/ai"
 import { persistMentions } from "@/lib/mentions"
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
 
   const mention = extractMentionSlug(trimmedContent)
   let linkedTaskId = taskId || null
-  let taskUpdate: { action: string; statusLabel?: string; summary?: string; kind?: "TASK_REBUILT" | "TASK_DONE" } | null = null
+  let taskUpdate: { action: string; statusLabel?: string; summary?: string; kind?: "TASK_REBUILT" | "TASK_DONE" | "TASK_DONE_PENDING" } | null = null
 
   // 먼저 메시지 저장 (즉시 응답을 위해)
   const message = await prisma.chatMessage.create({
@@ -183,16 +184,21 @@ export async function POST(req: NextRequest) {
         )
 
         if (result.action === "complete") {
-          await prisma.task.update({
-            where: { id: task.id },
-            data: { status: "DONE", workEnd: new Date() },
-          })
-          await prisma.checklist.updateMany({
-            where: { taskId: task.id, done: false },
-            data: { done: true },
-          })
-          taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${task.slug} 업무 전체 완료 처리 · 체크리스트 전부 체크`, kind: "TASK_DONE" }
-          await notifyAll(notifyUserIds, "task_status_changed", "업무 완료", `${session.user.name}님이 #${task.slug} 업무를 완료했습니다.`, task.id)
+          // AI가 완료를 추론해 DONE + 체크리스트 전부 체크로 확정하던 자리(인수인계 §4-3).
+          // 실측상 완료 신호가 아예 없는 지시가 80%다 — 추론은 틀릴 때 조용히 틀린다.
+          // 이제는 담당자에게 확인을 요청하고, 담당자가 누를 때까지 상태를 바꾸지 않는다.
+          const asked = await requestDoneConfirmation(
+            task,
+            `${session.user.name}님이 업무를 마쳤다고 알렸습니다.`
+          )
+          if (asked !== "already_done") {
+            taskUpdate = {
+              action: "await_done_confirm",
+              statusLabel: "완료 확인 대기",
+              summary: `#${task.slug} 완료로 보입니다 — 담당자 확인을 기다립니다`,
+              kind: "TASK_DONE_PENDING",
+            }
+          }
 
         } else if (result.action === "pause") {
           await prisma.task.update({
@@ -242,12 +248,12 @@ export async function POST(req: NextRequest) {
             })
           }
 
-          // 체크리스트 전부 완료 시 업무도 완료 처리
+          // 체크리스트가 전부 체크됐다. 자동으로 DONE으로 넘기지 않고 담당자에게 묻는다.
+          // 물어볼 자리를 따로 만들지 않는 것이 요점이다 — 마지막 항목이 체크되는 그 순간이 자리다(§4-2 보고).
+          let awaitingDoneConfirm = false
           if (result.checklist && result.checklist.length > 0 && result.checklist.every((c) => c.done)) {
-            await prisma.task.update({
-              where: { id: task.id },
-              data: { status: "DONE", workEnd: new Date() },
-            })
+            const asked = await requestDoneConfirmation(task, "체크리스트가 모두 완료되었습니다.")
+            awaitingDoneConfirm = asked !== "already_done"
           }
 
           // rebuild 요약 생성
@@ -261,11 +267,13 @@ export async function POST(req: NextRequest) {
           if (result.background && result.background !== task.background) changes.push(`배경 수정`)
           if (result.expectedResult && result.expectedResult !== task.expectedResult) changes.push(`기대결과 수정`)
 
+          if (awaitingDoneConfirm) changes.push("완료 확인 대기")
+
           taskUpdate = {
             action: "rebuild",
-            statusLabel: "업무 업데이트됨",
+            statusLabel: awaitingDoneConfirm ? "완료 확인 대기" : "업무 업데이트됨",
             summary: `#${task.slug} 재구성 · ${changes.join(" · ") || "내용 갱신"}`,
-            kind: "TASK_REBUILT",
+            kind: awaitingDoneConfirm ? "TASK_DONE_PENDING" : "TASK_REBUILT",
           }
           await notifyAll(notifyUserIds, "task_rebuilt", `업무 업데이트: #${task.slug}`, `${session.user.name}님의 메시지로 업무 카드가 재구성되었습니다.`, task.id)
         }
@@ -274,9 +282,16 @@ export async function POST(req: NextRequest) {
         // Gemini 없으면 fallback
         const action = fallbackClassify(restText)
         if (action === "complete") {
-          await prisma.task.update({ where: { id: task.id }, data: { status: "DONE", workEnd: new Date() } })
-          await prisma.checklist.updateMany({ where: { taskId: task.id, done: false }, data: { done: true } })
-          taskUpdate = { action: "complete", statusLabel: "완료", summary: `#${task.slug} 업무 전체 완료 처리`, kind: "TASK_DONE" }
+          // 정규식 한 줄로 완료를 확정하던 자리. AI 경로와 같은 이유로 확인 요청으로 바꾼다.
+          const asked = await requestDoneConfirmation(task, `${session.user.name}님이 업무를 마쳤다고 알렸습니다.`)
+          if (asked !== "already_done") {
+            taskUpdate = {
+              action: "await_done_confirm",
+              statusLabel: "완료 확인 대기",
+              summary: `#${task.slug} 완료로 보입니다 — 담당자 확인을 기다립니다`,
+              kind: "TASK_DONE_PENDING",
+            }
+          }
         }
       }
 
@@ -332,6 +347,31 @@ function fallbackClassify(text: string): string {
   return "none"
 }
 
+/**
+ * 완료를 '추론'해 상태를 바꾸는 대신 담당자에게 확인을 요청한다(인수인계 §4-3).
+ * AI도 정규식도 "완료했습니다"를 완료로 확정하지 않는다 — 담당자가 누를 때 추측이 사실이 된다.
+ */
+async function requestDoneConfirmation(
+  task: { id: string; name: string; slug: string; assignees: { userId: string }[]; status: string },
+  reason: string
+): Promise<"asked" | "already_asked" | "already_done"> {
+  if (task.status === "DONE") return "already_done"
+  // 담당자가 여러 명이면 전원에게 묻는다. 한 명만 물으면 나머지는 완료 사실을 모른다.
+  const results = await Promise.all(
+    task.assignees.map((a) =>
+      createNotification(
+        a.userId,
+        "task_done_confirm",
+        `완료 확인: ${task.name}`,
+        `${reason} #${task.slug} 업무를 완료로 표시할까요?`,
+        task.id,
+        "confirm_done"
+      ),
+    ),
+  )
+  return results.some(Boolean) ? "asked" : "already_asked"
+}
+
 /** 여러 사람에게 같은 알림을 보낸다. 담당자가 여러 명일 수 있어 필요해졌다. */
 async function notifyAll(
   userIds: string[],
@@ -341,10 +381,4 @@ async function notifyAll(
   entityId: string,
 ) {
   await Promise.all(userIds.map((id) => createNotification(id, type, title, content, entityId)))
-}
-
-async function createNotification(userId: string, type: string, title: string, content: string, entityId: string) {
-  await prisma.notification.create({
-    data: { userId, type, title, content, entityId },
-  })
 }

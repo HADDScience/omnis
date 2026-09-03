@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
+import { resolveActionsFor } from "@/lib/notifications"
 import { auth } from "@/lib/auth"
 import { syncEmbeddingsSafe, deleteEmbeddingsSafe } from "@/lib/embeddings"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
@@ -94,6 +95,12 @@ export async function PATCH(req: NextRequest, { params }: Props) {
       checklists: true,
     },
   })
+
+  // 담당자가 알림을 거치지 않고 상세에서 바로 완료했다면, 떠 있는 "완료로 표시할까요?"를 거둔다.
+  // 그러지 않으면 이미 끝난 업무를 알림이 계속 재촉한다.
+  if (status === "DONE") {
+    await resolveActionsFor(taskId, "confirm_done")
+  }
 
   // archived 처리 시 syncEmbeddings가 임베딩을 삭제, 그 외에는 갱신
   await syncEmbeddingsSafe("TASK", taskId, session.user.id)

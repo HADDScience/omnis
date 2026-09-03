@@ -204,6 +204,10 @@ export function TaskInstructionDialog({
               <Label className="text-xs">프로젝트</Label>
               <Select
                 value={selectedProjectId}
+                onOpenChange={(isOpen) => {
+                  // 열어둔 사이 남이 만든 프로젝트를 놓치지 않도록 열 때마다 갱신 (§5-B-3)
+                  if (isOpen) void fetchProjects()
+                }}
                 onValueChange={(value) => setSelectedProjectId(value ?? "")}
               >
                 <SelectTrigger className="w-full">

@@ -3,11 +3,6 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
-import { TaskInstructionDialog } from "@/components/chat/task-instruction-dialog"
-import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { Task01Icon, CheckmarkCircle02Icon, Cancel01Icon } from "@hugeicons/core-free-icons"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 interface Message {
@@ -51,10 +46,6 @@ export function ChatPanel({
   const [processing, setProcessing] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map()) // msgId → 0~100
   const pausePolling = useRef(false)
-  const [selectionMode, setSelectionMode] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [ownerIds, setOwnerIds] = useState<string[]>([])
-  const [showDialog, setShowDialog] = useState(false)
 
   const lastFetchedAt = useRef(
     initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : ""
@@ -233,35 +224,10 @@ export function ChatPanel({
     [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated]
   )
 
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
 
-  function cancelSelection() {
-    setSelectionMode(false)
-    setSelectedIds(new Set())
-    setOwnerIds([])
-  }
 
-  function handleComplete() {
-    if (selectedIds.size === 0 || ownerIds.length === 0) return
-    setShowDialog(true)
-  }
 
-  const selectedMessages = messages
-    .filter((m) => selectedIds.has(m.id))
-    .map((m) => ({
-      author: m.author.name,
-      content: m.content,
-      createdAt: m.createdAt,
-    }))
 
-  const ownerName = users.filter((u) => ownerIds.includes(u.id)).map((u) => u.name).join(", ")
 
   const visibleMessages = filterTaskId
     ? messages.filter((m) => m.task?.id === filterTaskId)
@@ -272,9 +238,6 @@ export function ChatPanel({
       <MessageList
         messages={visibleMessages}
         currentUserId={currentUserId}
-        selectionMode={selectionMode}
-        selectedIds={selectedIds}
-        onToggleSelect={toggleSelect}
         tasks={tasks}
         processingSlug={processing}
         onLoadOlder={loadOlder}
@@ -283,83 +246,9 @@ export function ChatPanel({
       />
 
       <div className="shrink-0 border-t">
-        {selectionMode && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-muted/50">
-            <span className="text-xs text-muted-foreground shrink-0">
-              {selectedIds.size}개 선택
-            </span>
-            {/* 담당자는 여러 명일 수 있다. 칩을 눌러 켜고 끈다. */}
-            <div role="group" aria-label="담당자 선택" className="flex min-w-0 flex-wrap gap-1">
-              {users.map((u) => {
-                const on = ownerIds.includes(u.id)
-                return (
-                  <button
-                    key={u.id}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() =>
-                      setOwnerIds(on ? ownerIds.filter((id) => id !== u.id) : [...ownerIds, u.id])
-                    }
-                    className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${
-                      on
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-input bg-background hover:bg-muted"
-                    }`}
-                  >
-                    {u.name}
-                  </button>
-                )
-              })}
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1 text-xs"
-              onClick={cancelSelection}
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={14} />
-              취소
-            </Button>
-            <Button
-              size="sm"
-              className="gap-1 text-xs"
-              disabled={selectedIds.size === 0 || ownerIds.length === 0}
-              onClick={handleComplete}
-            >
-              <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} />
-              완료
-            </Button>
-          </div>
-        )}
-
-        <div className="flex items-center gap-2 px-4 pt-2">
-          {!selectionMode && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSelectionMode(true)}
-              className="gap-1.5 text-xs shrink-0"
-            >
-              <HugeiconsIcon icon={Task01Icon} size={14} />
-              업무 지시
-            </Button>
-          )}
-        </div>
-        <MessageInput onSend={handleSend} disabled={selectionMode} tasks={tasks} files={uploadedFiles} />
+        <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
       </div>
 
-      <TaskInstructionDialog
-        open={showDialog}
-        onOpenChange={(open) => {
-          setShowDialog(open)
-          if (!open) cancelSelection()
-        }}
-        selectedMessages={selectedMessages}
-        ownerIds={ownerIds}
-        ownerName={ownerName}
-        onTaskCreated={() => { fetchMessages(); fetchTasks(); }}
-        messageIds={Array.from(selectedIds)}
-      />
     </div>
   )
 }
