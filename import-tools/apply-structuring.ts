@@ -4,11 +4,11 @@
 //
 // 다음 라운드가 이 결과를 맥락으로 받으므로, 라운드마다 적용하고 넘어가야 한다.
 import { readFileSync } from "fs"
-import { prisma, loadSessions, ROOMS, parseKst, resolveUsers, SPEAKER_TO_USER, normalizeProjectName } from "./kakao-common"
+import { prisma, loadSessions, ROOMS, parseKst, resolveUsers, SPEAKER_TO_USER, normalizeProjectName , DATA_DIR } from "./kakao-common"
 
 const ROUND = Number(process.argv[2] || 1)
 const DRY = process.argv.includes("--dry")
-const DIR = `${process.env.HOME}/omnis-import/structure`
+const DIR = `${DATA_DIR}/structure`
 
 /** 과제에 해당하지 않는 일상 업무를 담는 프로젝트. 사용자 결정(2026-09-02). */
 const MISC_PROJECT = "기타"

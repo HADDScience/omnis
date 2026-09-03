@@ -5,7 +5,9 @@ import { PrismaClient } from "../generated/prisma"
 
 export const prisma = new PrismaClient()
 
-const DATA = process.env.KAKAO_DATA_DIR ?? `${process.env.HOME}/omnis-import`
+/** 원본 데이터 위치. 저장소에 넣지 않으므로 환경변수로 받는다. */
+export const DATA_DIR = process.env.KAKAO_DATA_DIR ?? `${process.env.HOME}/work/omnis-import`
+const DATA = DATA_DIR
 
 export interface RawMessage { t: string; u: string; m: string }
 export interface RawSession { id: string; room: string; start: string; end: string; n: number; msgs: RawMessage[] }

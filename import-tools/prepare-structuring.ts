@@ -7,11 +7,11 @@
 // 그래야 3월에 생긴 프로젝트에 5월 업무가 붙는다 — 지금처럼 이름만 다른 프로젝트가
 // 47개로 흩어지지 않는다.
 import { writeFileSync, readFileSync, existsSync } from "fs"
-import { prisma, loadSessions, loadClassified, ROOMS, SPEAKER_TO_USER } from "./kakao-common"
+import { prisma, loadSessions, loadClassified, ROOMS, SPEAKER_TO_USER , DATA_DIR } from "./kakao-common"
 
 const ROUND = Number(process.argv[2] || 1)
 const SIZE = 40
-const DIR = `${process.env.HOME}/omnis-import/structure`
+const DIR = `${DATA_DIR}/structure`
 
 async function main() {
   const classified = loadClassified()

@@ -8,13 +8,13 @@
 //
 // 멱등: 이름 기준 upsert.
 import { readFileSync } from "fs"
-import { prisma, normalizeProjectName } from "./kakao-common"
+import { prisma, normalizeProjectName , DATA_DIR } from "./kakao-common"
 
 interface NasProject { name: string; kind: string; year: number; done: boolean }
 
 async function main() {
   const rows: NasProject[] = JSON.parse(
-    readFileSync(`${process.env.HOME}/omnis-import/nas-projects.json`, "utf8"),
+    readFileSync(`${DATA_DIR}/nas-projects.json`, "utf8"),
   )
 
   // 이름 정리 규칙이 바뀌면 기존 이름도 갱신해야 한다("20250527 IR 피치덱" → "IR 피치덱").
