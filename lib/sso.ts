@@ -58,8 +58,13 @@ const PRODUCTION_APPS: SsoApp[] = [
     basePath: "/raman-g-peak-diff",
   },
   {
-    // 사내망(Tailscale) 안에서만 열린다. 밖에서는 이름이 풀리지 않으므로
-    // 등록해 두어도 밖에서 이 오리진으로 토큰이 나갈 일이 없다.
+    // Tailscale Funnel 로 공개하는 주소다. 한때 "사내망 전용이라 안전하다"고
+    // 적어 두었는데 그건 serve 일 때 이야기고, Funnel 은 인터넷 전체에 연다.
+    // 그래서 이 앱은 서버가 세션을 검증한다 — 브라우저 쪽 검사에 기대지 않는다.
+    // (ecm_ai_mvp/OMNIS-SSO-인수인계.md)
+    //
+    // 지금은 그 작업 때문에 내려가 있다. 등록은 남겨 둔다 — 토큰은 어차피 이
+    // 오리진으로만 배달되고, 열리는 시점에 여기 손댈 것이 없어야 한다.
     id: "ai-ecm",
     label: "AI ECM (장기별 ECM 조성 처방)",
     origin: "https://macbookpro.tail28eea6.ts.net",
