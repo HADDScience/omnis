@@ -51,6 +51,20 @@ const PRODUCTION_APPS: SsoApp[] = [
     origin: "https://haddscience.github.io",
     basePath: "/ip-platform",
   },
+  {
+    id: "ai-alzheimer",
+    label: "AI Alzheimer (라만 분광 분석)",
+    origin: "https://haddscience.github.io",
+    basePath: "/raman-g-peak-diff",
+  },
+  {
+    // 사내망(Tailscale) 안에서만 열린다. 밖에서는 이름이 풀리지 않으므로
+    // 등록해 두어도 밖에서 이 오리진으로 토큰이 나갈 일이 없다.
+    id: "ai-ecm",
+    label: "AI ECM (장기별 ECM 조성 처방)",
+    origin: "https://macbookpro.tail28eea6.ts.net",
+    basePath: "",
+  },
 ]
 
 /**

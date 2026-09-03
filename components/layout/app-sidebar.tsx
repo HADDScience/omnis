@@ -17,6 +17,8 @@ import {
   UserIcon,
   UserGroupIcon,
   ArrowUp01Icon,
+  Legal01Icon,
+  LinkSquare02Icon,
 } from "@hugeicons/core-free-icons"
 import { signOut } from "next-auth/react"
 import { useTheme } from "next-themes"
@@ -45,10 +47,24 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useCommandPalette } from "@/components/layout/command-palette-context"
 
+/**
+ * 사이드바 메뉴.
+ *
+ * `external` 은 아직 Omnis 밖에 있는 도구를 가리킨다. 사내 자원 관리는 결국 이
+ * 앱 하나로 모으는 방향이라, 밖에 있는 것도 **여기 같은 자리에** 둔다 — 사람이
+ * 「지식재산권은 다른 데 있다」를 외우지 않아도 되게. 안으로 옮기는 날에는
+ * href 를 내부 경로로 바꾸고 external 만 떼면 되고, 메뉴는 그대로 있다.
+ */
 const navItems = [
   { href: "/dashboard", label: "워크스페이스", icon: DashboardSpeed02Icon },
   { href: "/tasks", label: "업무", icon: Task01Icon },
   { href: "/omnis", label: "HADD DB", icon: BookOpen01Icon },
+  {
+    href: "https://haddscience.github.io/ip-platform/",
+    label: "지식재산권",
+    icon: Legal01Icon,
+    external: true,
+  },
   { href: "/reports", label: "보고서", icon: FileAttachmentIcon },
 ] as const
 
@@ -103,18 +119,39 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
           <SidebarGroupLabel className="text-[10px] uppercase tracking-wider">메뉴</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    size="sm"
-                    isActive={pathname === item.href || pathname.startsWith(item.href + "/")}
-                    render={<Link href={item.href} />}
-                  >
-                    <HugeiconsIcon icon={item.icon} size={15} />
-                    <span className="text-[12.5px]">{item.label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {navItems.map((item) => {
+                const external = "external" in item && item.external
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      size="sm"
+                      // 밖에 있는 도구는 이 앱의 경로가 아니므로 현재 위치로 켜지지 않는다.
+                      isActive={
+                        !external &&
+                        (pathname === item.href || pathname.startsWith(item.href + "/"))
+                      }
+                      render={
+                        external ? (
+                          <a href={item.href} target="_blank" rel="noopener noreferrer" />
+                        ) : (
+                          <Link href={item.href} />
+                        )
+                      }
+                    >
+                      <HugeiconsIcon icon={item.icon} size={15} />
+                      <span className="text-[12.5px]">{item.label}</span>
+                      {external ? (
+                        <HugeiconsIcon
+                          icon={LinkSquare02Icon}
+                          size={12}
+                          className="ml-auto opacity-45"
+                          aria-label="새 탭에서 열림"
+                        />
+                      ) : null}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
