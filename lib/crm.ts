@@ -153,9 +153,64 @@ export function nextCode(prefix: string, existingCodes: string[]): string {
  * 총 출고량이 0 으로 남아 있었다.
  */
 export function stockBalance(
-  moves: { direction: "IN" | "OUT"; quantity: number }[]
+  // Prisma 의 Decimal 이 그대로 들어와도 되게 Number() 로 받는다.
+  moves: { direction: "IN" | "OUT"; quantity: number | { toString(): string } }[]
 ): { inQty: number; outQty: number; balance: number } {
-  const inQty = moves.filter((m) => m.direction === "IN").reduce((a, m) => a + m.quantity, 0)
-  const outQty = moves.filter((m) => m.direction === "OUT").reduce((a, m) => a + m.quantity, 0)
-  return { inQty, outQty, balance: inQty - outQty }
+  const n = (q: number | { toString(): string }) => Number(q)
+  const inQty = moves.filter((m) => m.direction === "IN").reduce((a, m) => a + n(m.quantity), 0)
+  const outQty = moves.filter((m) => m.direction === "OUT").reduce((a, m) => a + n(m.quantity), 0)
+  // 소수 합산의 부동소수 오차를 장부 정밀도(소수 셋째 자리)에서 자른다.
+  const r = (x: number) => Math.round(x * 1000) / 1000
+  return { inQty: r(inQty), outQty: r(outQty), balance: r(inQty - outQty) }
+}
+
+// ─── 생산 계산 ────────────────────────────────────────────
+
+/**
+ * 완제품 한 개에 드는 원료(g).
+ *
+ * 농도 1wt% 는 1ml 당 0.01g 이다 — 0.4g / 20ml = 2wt% 라는 실제 배합에서 나온 값.
+ * 그래서 10ml 짜리 1wt% 제품 한 개에 0.1g 이 들고, 4g 이면 40개가 나온다.
+ *
+ * 용량이나 농도가 비어 있으면 null 을 준다. 모르는 값을 1 로 가정하면 화면은
+ * 그럴듯한 숫자를 보여 주지만 재고가 조용히 틀어진다.
+ */
+export function gramsPerUnit(
+  volumeMl: number | null | undefined,
+  concentrationPct: number | null | undefined
+): number | null {
+  if (volumeMl == null || concentrationPct == null) return null
+  if (volumeMl <= 0 || concentrationPct <= 0) return null
+  return (volumeMl * concentrationPct) / 100
+}
+
+/** 개수 → 필요한 원료(g). 소수 셋째 자리에서 반올림한다(장부 정밀도와 맞춘다). */
+export function gramsForQuantity(
+  quantity: number,
+  volumeMl: number | null | undefined,
+  concentrationPct: number | null | undefined
+): number | null {
+  const per = gramsPerUnit(volumeMl, concentrationPct)
+  if (per == null) return null
+  return Math.round(quantity * per * 1000) / 1000
+}
+
+/** 원료(g) → 만들 수 있는 개수. 남는 그램은 버리지 않고 그대로 둔다. */
+export function quantityFromGrams(
+  grams: number,
+  volumeMl: number | null | undefined,
+  concentrationPct: number | null | undefined
+): number | null {
+  const per = gramsPerUnit(volumeMl, concentrationPct)
+  if (per == null || per <= 0) return null
+  return Math.floor(grams / per)
+}
+
+/** 재고 단위 표기. 원료는 g, 완제품은 개. */
+export function formatStock(qty: number, unit: "PIECE" | "GRAM"): string {
+  if (unit === "GRAM") {
+    // 106.5g 처럼 소수가 있으면 보여 주고, 없으면 정수로
+    return `${Number(qty.toFixed(3))}g`
+  }
+  return `${qty}개`
 }

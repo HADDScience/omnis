@@ -86,9 +86,9 @@ async function buildTaskOverview(): Promise<string> {
  * 자료가 100건 남짓이라 전량을 넣어도 얼마 안 된다. 커지면 그때 줄인다.
  */
 async function buildCrmOverview(): Promise<string> {
-  const [materials, quotes, samples, orgs] = await Promise.all([
+  const [stockItems, quotes, samples, orgs, productions] = await Promise.all([
     prisma.crmProduct.findMany({
-      where: { isMaterial: true },
+      where: { archived: false },
       orderBy: { code: "asc" },
       include: { stockMoves: true },
     }),
@@ -101,17 +101,61 @@ async function buildCrmOverview(): Promise<string> {
       include: { org: true, product: true },
     }),
     prisma.crmOrg.count(),
+    prisma.crmProduction.findMany({
+      orderBy: { producedAt: "desc" },
+      take: 20,
+      include: { product: true, material: true },
+    }),
   ])
-  if (materials.length === 0 && quotes.length === 0 && samples.length === 0) return ""
+  const materials = stockItems.filter((p) => p.isMaterial)
+  const goods = stockItems.filter((p) => !p.isMaterial)
+  if (stockItems.length === 0 && quotes.length === 0 && samples.length === 0) return ""
 
   const parts: string[] = ["[CRM 현황]"]
 
   if (materials.length > 0) {
     parts.push(
-      "원료 재고 (입고 − 출고로 계산한 현재고)",
+      "원료 재고 — 그램으로 센다 (입고 − 출고)",
       ...materials.map((m) => {
         const { inQty, outQty, balance } = stockBalance(m.stockMoves)
-        return `- ${m.name}${m.spec ? ` (${m.spec})` : ""}: 현재고 ${balance}개 (입고 ${inQty} · 출고 ${outQty})`
+        return `- ${m.name}: 현재고 ${balance}g (입고 ${inQty}g · 출고 ${outQty}g)`
+      })
+    )
+  }
+
+  const goodsWithStock = goods.filter((g) => g.stockMoves.length > 0)
+  if (goodsWithStock.length > 0) {
+    parts.push(
+      "",
+      "완제품 재고 — 개로 센다",
+      ...goodsWithStock.map((g) => {
+        const { balance } = stockBalance(g.stockMoves)
+        return `- ${g.name}${g.spec ? ` (${g.spec})` : ""}: ${balance}개`
+      })
+    )
+  }
+
+  if (productions.length > 0) {
+    parts.push(
+      "",
+      `생산 기록 ${productions.length}건 (최근순)`,
+      ...productions.map(
+        (p) =>
+          `- ${p.code} ${p.producedAt.toISOString().slice(0, 10)} ${p.product.name}` +
+          `${p.product.spec ? `(${p.product.spec})` : ""} ${p.quantity}개 · ${p.material.name} ${Number(p.materialGrams)}g 사용`
+      )
+    )
+  }
+
+  // 제품 한 개에 드는 원료량. "몇 개 더 만들 수 있나" 를 물으면 이게 있어야 답한다.
+  const recipes = goods.filter((g) => g.volumeMl && g.concentrationPct)
+  if (recipes.length > 0) {
+    parts.push(
+      "",
+      "배합 (1wt% 는 1ml 당 0.01g)",
+      ...recipes.map((g) => {
+        const per = (Number(g.volumeMl) * Number(g.concentrationPct)) / 100
+        return `- ${g.name}${g.spec ? ` (${g.spec})` : ""}: ${g.volumeMl}ml · ${g.concentrationPct}wt% → 1개에 ${per}g`
       })
     )
   }

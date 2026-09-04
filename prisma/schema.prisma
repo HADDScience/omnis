@@ -610,7 +610,15 @@ model CrmProduct {
   /// 기준 단가. 견적에는 이 값이 **복사**되어 굳는다. 여기를 고쳐도 지난 견적은 변하지 않는다.
   unitPrice  Int?
   /// 원료(DNA 등)는 판매 품목이 아니라 재고 대상이다.
-  isMaterial Boolean @default(false)
+  isMaterial Boolean      @default(false)
+  /// 이 품목을 무엇으로 세는가. 원료는 그램, 완제품은 개.
+  stockUnit  CrmStockUnit @default(PIECE)
+  /// 완제품 한 개의 용량(ml). 생산에 드는 원료량을 계산할 때 쓴다.
+  volumeMl   Decimal?     @db.Decimal(10, 3)
+  /// 농도(wt%). 1wt% = 1ml 당 0.01g.
+  /// 애드젤이 1wt% 다. 모르는 품목은 비워 두고, 비어 있으면 소요량을 계산하지 않는다 —
+  /// 숫자를 지어내느니 계산을 안 하는 편이 낫다.
+  concentrationPct Decimal? @db.Decimal(6, 3)
   note       String?
   archived   Boolean @default(false)
 
@@ -618,6 +626,8 @@ model CrmProduct {
   sampleRequests CrmSampleRequest[]
   shipments      CrmShipment[]
   stockMoves     CrmStockMove[]
+  productions    CrmProduction[]    @relation("ProducedProduct")
+  usedInProductions CrmProduction[] @relation("ProductionMaterial")
 
   @@unique([name, spec])
 }
@@ -685,6 +695,14 @@ enum CrmShipmentStatus {
   DELIVERED // 배송완료
 }
 
+/// 재고를 세는 단위. 원료는 g, 완제품은 개다.
+/// 예전에는 원료도 "DNA 5g 15개" 처럼 개로 셌는데, 5g 병과 4.5g 병이 섞이면
+/// 개수만으로는 몇 그램인지 알 수 없다. 생산에 쓰는 것은 그램이다.
+enum CrmStockUnit {
+  PIECE // 개
+  GRAM  // g
+}
+
 /// 재고 장부의 방향. 현재고 = Σ IN − Σ OUT 로만 구한다 — 어딘가에 적힌 숫자를
 /// 믿지 않는다. 엑셀은 요약 칸을 따로 두고 출고를 "별도 관리" 해서 총 출고량이
 /// 23건의 출고 기록이 있는데도 0 으로 남아 있었다.
@@ -746,19 +764,50 @@ model CrmShipment {
 }
 
 /// 재고 장부 한 줄. 입고도 출고도 같은 표에 쌓는다.
+///
+/// 단위는 품목이 정한다(CrmProduct.stockUnit) — 원료면 g, 완제품이면 개.
+/// 그램은 4.5 처럼 소수가 나오므로 정수로 두면 안 된다.
 model CrmStockMove {
   id         String            @id @default(uuid())
   movedAt    DateTime
   productId  String
   product    CrmProduct        @relation(fields: [productId], references: [id])
   direction  CrmStockDirection
-  quantity   Int
+  quantity   Decimal           @db.Decimal(12, 3)
   note       String?
   /// 출고에서 파생된 줄이면 그 출고를 가리킨다. 사람이 직접 적은 줄은 비어 있다.
   shipmentId String?
   shipment   CrmShipment?      @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  /// 생산에서 파생된 줄. 한 번의 생산이 원료 OUT 과 완제품 IN 두 줄을 만든다.
+  productionId String?
+  production   CrmProduction?  @relation(fields: [productionId], references: [id], onDelete: Cascade)
   createdAt  DateTime          @default(now())
 
   @@index([productId])
   @@index([movedAt])
+}
+
+/// 생산 기록. 원료를 써서 완제품 몇 개를 만들었는지.
+///
+/// 이것이 원료와 완제품을 잇는 유일한 고리다. 이게 없으면 "DNA 를 썼는데 제품이
+/// 어디서 왔는지" 를 아무도 모른 채 두 장부가 따로 논다 — 엑셀이 그랬다.
+model CrmProduction {
+  id         String     @id @default(uuid())
+  code       String     @unique // MFG260904-001
+  producedAt DateTime
+  /// 만든 것
+  productId  String
+  product    CrmProduct @relation("ProducedProduct", fields: [productId], references: [id])
+  quantity   Int
+  /// 쓴 원료
+  materialId    String
+  material      CrmProduct @relation("ProductionMaterial", fields: [materialId], references: [id])
+  materialGrams Decimal    @db.Decimal(12, 3)
+  note       String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  stockMoves CrmStockMove[]
+
+  @@index([producedAt])
 }

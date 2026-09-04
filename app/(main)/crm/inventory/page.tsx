@@ -1,89 +1,99 @@
+import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { CrmNav } from "@/components/crm/crm-nav"
 import { NewRecordButton } from "@/components/crm/new-record-button"
 import { prisma } from "@/lib/db"
-import { stockBalance, SHIPMENT_KIND_LABEL, SHIPMENT_STATUS_LABEL } from "@/lib/crm"
+import {
+  stockBalance,
+  gramsPerUnit,
+  SHIPMENT_KIND_LABEL,
+  SHIPMENT_STATUS_LABEL,
+} from "@/lib/crm"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Alert02Icon } from "@hugeicons/core-free-icons"
-import Link from "next/link"
+import { StockPanel } from "@/components/crm/stock-panel"
 
 export const dynamic = "force-dynamic"
 
 export default async function CrmInventoryPage() {
-  const [materials, shipments] = await Promise.all([
+  const [products, shipments, productions] = await Promise.all([
     prisma.crmProduct.findMany({
-      where: { isMaterial: true },
+      where: { archived: false },
       orderBy: { code: "asc" },
       include: { stockMoves: { orderBy: { movedAt: "desc" } } },
     }),
     prisma.crmShipment.findMany({
       orderBy: { shippedAt: "desc" },
+      take: 30,
       include: { org: true, product: true },
+    }),
+    prisma.crmProduction.findMany({
+      orderBy: { producedAt: "desc" },
+      take: 20,
+      include: { product: true, material: true },
     }),
   ])
 
+  const materials = products.filter((p) => p.isMaterial)
+  const goods = products.filter((p) => !p.isMaterial)
+
+  const view = (p: (typeof products)[number]) => {
+    const { inQty, outQty, balance } = stockBalance(p.stockMoves)
+    const per = gramsPerUnit(
+      p.volumeMl ? Number(p.volumeMl) : null,
+      p.concentrationPct ? Number(p.concentrationPct) : null
+    )
+    return {
+      id: p.id,
+      code: p.code,
+      name: p.name,
+      spec: p.spec,
+      kind: p.kind,
+      unit: p.stockUnit,
+      inQty,
+      outQty,
+      balance,
+      gramsPerUnit: per,
+      moves: p.stockMoves.slice(0, 6).map((m) => ({
+        id: m.id,
+        movedAt: m.movedAt.toISOString().slice(0, 10),
+        direction: m.direction,
+        quantity: Number(m.quantity),
+        note: m.note,
+        fromRecord: Boolean(m.productionId || m.shipmentId),
+      })),
+    }
+  }
+
   return (
     <>
-      <Header crumbs={["CRM", "재고·출고"]} actions={<NewRecordButton />} />
+      <Header crumbs={["CRM", "재고·생산"]} actions={<NewRecordButton />} />
       <div className="mx-auto w-full max-w-[1000px] px-6 pb-20 pt-6">
         <CrmNav />
-        <section>
-          <h1 className="mb-3 text-[18px] font-bold tracking-[-0.02em]">원료 재고</h1>
-          <div className="flex flex-col gap-2">
-            {materials.map((m) => {
-              const { inQty, outQty, balance } = stockBalance(m.stockMoves)
-              return (
-                <div key={m.id} className="rounded-xl border bg-card p-4">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-[14px] font-semibold">{m.name}</span>
-                    {m.spec && (
-                      <span className="text-[12px] text-muted-foreground">{m.spec}</span>
-                    )}
-                    <span className="ml-auto font-mono text-[15px] font-bold">{balance}</span>
-                    <span className="text-[12px] text-muted-foreground">개 남음</span>
-                  </div>
-                  <div className="mt-1 flex gap-3 font-mono text-[11px] text-muted-foreground">
-                    <span>입고 {inQty}</span>
-                    <span>출고 {outQty}</span>
-                  </div>
 
-                  {m.stockMoves.length > 0 && (
-                    <div className="mt-3 flex flex-col gap-1 border-t pt-2.5">
-                      {m.stockMoves.map((mv) => (
-                        <div key={mv.id} className="flex items-baseline gap-2 text-[12px]">
-                          <span className="font-mono text-muted-foreground">
-                            {mv.movedAt.toISOString().slice(0, 10)}
-                          </span>
-                          <Badge variant={mv.direction === "IN" ? "secondary" : "outline"}>
-                            {mv.direction === "IN" ? "입고" : "출고"}
-                          </Badge>
-                          <span className="font-mono">{mv.quantity}</span>
-                          {mv.note && (
-                            <span className="text-muted-foreground">{mv.note}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          <p className="mt-2.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
-            <HugeiconsIcon icon={Alert02Icon} size={13} className="mt-0.5 shrink-0" aria-hidden />
-            <span>
-              현재고는 입고·출고 장부를 더해서 구합니다. 완제품 출고는 원료를 자동으로
-              깎지 않아요 — 제품 하나에 원료가 얼마나 드는지가 아직 어디에도 없습니다.
-              원료를 썼으면 출고 줄을 직접 남겨 주세요.
-            </span>
-          </p>
-        </section>
+        <StockPanel
+          materials={materials.map(view)}
+          goods={goods.map(view)}
+          productions={productions.map((p) => ({
+            id: p.id,
+            code: p.code,
+            producedAt: p.producedAt.toISOString().slice(0, 10),
+            productName: p.product.name,
+            productSpec: p.product.spec,
+            quantity: p.quantity,
+            materialName: p.material.name,
+            materialGrams: Number(p.materialGrams),
+            note: p.note,
+          }))}
+        />
 
         <section className="mt-8">
           <h2 className="mb-3 text-[16px] font-bold tracking-[-0.02em]">
-            출고 <span className="text-[13px] font-normal text-muted-foreground">{shipments.length}건</span>
+            출고{" "}
+            <span className="text-[13px] font-normal text-muted-foreground">
+              최근 {shipments.length}건
+            </span>
           </h2>
           <div className="overflow-hidden rounded-xl border bg-card">
             <div className="overflow-x-auto">
@@ -127,6 +137,14 @@ export default async function CrmInventoryPage() {
               </table>
             </div>
           </div>
+          <p className="mt-2.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+            <HugeiconsIcon icon={Alert02Icon} size={13} className="mt-0.5 shrink-0" aria-hidden />
+            <span>
+              지난 출고 {shipments.length}건은 재고 장부에 반영돼 있지 않습니다. 어떤 생산분에서
+              나갔는지 기록이 없어서, 지금 빼면 숫자를 지어내는 셈이 됩니다. 앞으로의 출고부터
+              완제품 재고에서 차감합니다.
+            </span>
+          </p>
         </section>
       </div>
     </>
