@@ -69,11 +69,13 @@ export function StockPanel({
   const [showIn, setShowIn] = useState(false)
   const [showMfg, setShowMfg] = useState(false)
 
-  // 원료 입고
-  const [inMaterialId, setInMaterialId] = useState<string | null>(materials[0]?.id ?? null)
-  const [inGrams, setInGrams] = useState("")
+  // 재고 맞추기 — 원료 입고도, 완제품 실사도 여기서 한다
+  const [inItemId, setInItemId] = useState<string | null>(materials[0]?.id ?? null)
+  const [inQty, setInQty] = useState("")
   const [inDate, setInDate] = useState(today)
   const [inNote, setInNote] = useState("")
+  /** 더하기(입고)인지, 센 값으로 맞추기(실사)인지 */
+  const [inMode, setInMode] = useState<"add" | "set">("add")
 
   // 생산
   const [mfgProductId, setMfgProductId] = useState<string | null>(null)
@@ -98,8 +100,14 @@ export function StockPanel({
   const short = needGrams != null && mfgMaterial ? needGrams > mfgMaterial.balance : false
 
   async function addStockIn() {
-    const g = Number(inGrams)
-    if (!inMaterialId || !(g > 0)) return
+    const v = Number(inQty)
+    if (!inItem || !(v > 0 || (inMode === "set" && v === 0))) return
+    // 실사면 센 값과 장부의 차이만큼 적는다. 사람이 뺄셈을 하지 않게.
+    const delta = inMode === "set" ? Math.round((v - inItem.balance) * 1000) / 1000 : v
+    if (delta === 0) {
+      toast.info("장부와 같아서 적을 것이 없어요")
+      return
+    }
     startTransition(async () => {
       try {
         const res = await fetch("/api/crm/stock", {
@@ -107,15 +115,19 @@ export function StockPanel({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             movedAt: inDate,
-            productId: inMaterialId,
-            direction: "IN",
-            quantity: g,
-            note: inNote || "입고",
+            productId: inItem.id,
+            direction: delta > 0 ? "IN" : "OUT",
+            quantity: Math.abs(delta),
+            note: inNote || (inMode === "set" ? "실사 보정" : "입고"),
           }),
         })
-        if (!res.ok) throw new Error((await res.json()).error ?? "입고를 적지 못했습니다")
-        toast.success(`${g}g 입고를 적었어요`)
-        setInGrams("")
+        if (!res.ok) throw new Error((await res.json()).error ?? "적지 못했습니다")
+        toast.success(
+          inMode === "set"
+            ? `${formatStock(v, inItem.unit)} 로 맞췄어요 (${delta > 0 ? "+" : ""}${delta})`
+            : `${formatStock(v, inItem.unit)} 입고를 적었어요`
+        )
+        setInQty("")
         setInNote("")
         setShowIn(false)
         router.refresh()
@@ -153,10 +165,14 @@ export function StockPanel({
     })
   }
 
-  const materialOptions: PickerOption[] = materials.map((m) => ({
+  // 원료든 완제품이든 다 고를 수 있다. 실사는 완제품에도 필요하다.
+  const allItems = [...materials, ...goods]
+  const inItem = allItems.find((x) => x.id === inItemId) ?? null
+  const stockOptions: PickerOption[] = allItems.map((m) => ({
     id: m.id,
     label: m.name,
-    hint: `${formatStock(m.balance, m.unit)} 남음`,
+    hint: [m.spec, `${formatStock(m.balance, m.unit)} 남음`].filter(Boolean).join(" · "),
+    keywords: `${m.spec ?? ""} ${m.kind ?? ""}`,
   }))
   const goodsOptions: PickerOption[] = goods.map((g) => ({
     id: g.id,
@@ -173,53 +189,93 @@ export function StockPanel({
           <h1 className="text-[18px] font-bold tracking-[-0.02em]">원료</h1>
           <Button variant="outline" size="sm" onClick={() => setShowIn((v) => !v)} className="gap-1.5">
             <HugeiconsIcon icon={PlusSignIcon} size={14} aria-hidden />
-            입고 적기
+            재고 맞추기
           </Button>
         </div>
 
         {showIn && (
           <div className="mb-3 rounded-xl border bg-card p-4 animate-in fade-in-0 slide-in-from-top-2 duration-150 motion-reduce:animate-none">
+            <div className="mb-3 flex gap-1.5">
+              {(["add", "set"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setInMode(m)}
+                  aria-pressed={inMode === m}
+                  className={cn(
+                    "inline-flex h-7 items-center rounded-md border px-2.5 text-[12px] transition-colors",
+                    inMode === m
+                      ? "border-primary/30 bg-primary/10 font-medium text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  {m === "add" ? "들어온 만큼 더하기" : "센 값으로 맞추기"}
+                </button>
+              ))}
+            </div>
             <div className="grid gap-3 sm:grid-cols-[1fr_120px_140px]">
               <div>
-                <label className="mb-1.5 block text-[12px] text-muted-foreground">원료</label>
+                <label className="mb-1.5 block text-[12px] text-muted-foreground">품목</label>
                 <EntityPicker
-                  options={materialOptions}
-                  value={inMaterialId}
-                  onChange={setInMaterialId}
-                  placeholder="원료 고르기"
-                  emptyLabel="원료를 고르세요"
+                  options={stockOptions}
+                  value={inItemId}
+                  onChange={setInItemId}
+                  placeholder="원료 · 제품 찾기"
+                  emptyLabel="품목을 고르세요"
                 />
               </div>
               <div>
                 <label htmlFor="in-g" className="mb-1.5 block text-[12px] text-muted-foreground">
-                  입고량 (g)
+                  {inMode === "add" ? "들어온 양" : "센 값"}
+                  {inItem && ` (${inItem.unit === "GRAM" ? "g" : "개"})`}
                 </label>
                 <Input
                   id="in-g"
                   type="number"
                   min={0}
-                  step={0.5}
-                  value={inGrams}
-                  onChange={(e) => setInGrams(e.target.value)}
+                  step={inItem?.unit === "GRAM" ? 0.5 : 1}
+                  value={inQty}
+                  onChange={(e) => setInQty(e.target.value)}
                   className="text-right"
-                  placeholder="예: 25"
+                  placeholder={inMode === "add" ? "예: 25" : "예: 600"}
                 />
               </div>
               <div>
                 <label htmlFor="in-d" className="mb-1.5 block text-[12px] text-muted-foreground">
-                  입고일
+                  {inMode === "add" ? "입고일" : "센 날짜"}
                 </label>
                 <Input id="in-d" type="date" value={inDate} onChange={(e) => setInDate(e.target.value)} />
               </div>
             </div>
+            {inMode === "set" && inItem && inQty !== "" && (
+              <p className="mt-2 text-[12px] text-muted-foreground">
+                장부 <span className="font-mono">{formatStock(inItem.balance, inItem.unit)}</span> →
+                센 값 <span className="font-mono">{formatStock(Number(inQty), inItem.unit)}</span>
+                {" · "}
+                <b className="font-mono text-foreground">
+                  {Number(inQty) - inItem.balance >= 0 ? "+" : ""}
+                  {Math.round((Number(inQty) - inItem.balance) * 1000) / 1000}
+                </b>{" "}
+                만큼 적습니다
+              </p>
+            )}
             <div className="mt-3 flex items-end gap-3">
               <div className="flex-1">
                 <label htmlFor="in-n" className="mb-1.5 block text-[12px] text-muted-foreground">
                   비고 (선택)
                 </label>
-                <Input id="in-n" value={inNote} onChange={(e) => setInNote(e.target.value)} placeholder="구매처 등" />
+                <Input
+                  id="in-n"
+                  value={inNote}
+                  onChange={(e) => setInNote(e.target.value)}
+                  placeholder={inMode === "add" ? "구매처 등" : "실사 사유 등"}
+                />
               </div>
-              <Button onClick={addStockIn} disabled={pending || !(Number(inGrams) > 0)} className="gap-1.5">
+              <Button
+                onClick={addStockIn}
+                disabled={pending || !inItem || inQty === ""}
+                className="gap-1.5"
+              >
                 {pending ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} size={15} aria-hidden />}
                 적기
               </Button>
