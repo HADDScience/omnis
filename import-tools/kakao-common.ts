@@ -45,8 +45,11 @@ export const SPEAKER_TO_USER: Record<string, string> = {
  * (roomId 만 알면 누구나 읽는다) 넣는 순간 사적인 대화가 전 구성원에게 공개된다.
  */
 export const ROOMS: Record<string, { id: string; name: string }> = {
-  "하드사이언스 인턴방": { id: "kakao-intern", name: "하드사이언스 인턴방" },
-  "HADD-수원대": { id: "kakao-suwon", name: "HADD-수원대" },
+  // 두 방을 한 방으로 합친다(사용자 결정 2026-09-04).
+  // 같은 사람들이 두 방을 오가며 일했으므로 시간순 한 흐름으로 읽는 편이 맞다.
+  // id 가 default-room 인 것은 채팅 독이 그 방을 열기 때문이다.
+  "하드사이언스 인턴방": { id: "default-room", name: "하드사이언스" },
+  "HADD-수원대": { id: "default-room", name: "하드사이언스" },
 }
 
 /** 지시자·수행자 구분. 담당자 추정에 쓴다. */
