@@ -35,9 +35,22 @@ const ORG_TYPE: Record<string, CrmOrgType> = {
   병원: CrmOrgType.HOSPITAL,
 }
 
-/** 손으로 친 오타를 제품마스터 이름으로 되돌린다. 작업지시자 승인 2026-09-04. */
-const PRODUCT_ALIAS: Record<string, string> = {
-  "애드젠 (ADD GEL 1%)": "애드젤 (ADD GEL 1%)",
+/**
+ * 엑셀에 적힌 제품명 → 제품코드.
+ *
+ * 제품명을 `애드젤 (ADD Gel)` 하나로 통일했기 때문에, 이름만으로는 엑셀의 옛 표기를
+ * 되짚을 수 없다. 애드젤이 다섯 줄인데 전부 같은 이름이라 어느 규격인지 알 수 없다.
+ * 그래서 옛 이름을 코드에 직접 잇는다. 여기 없는 이름만 제품마스터에서 찾는다.
+ *
+ * "애드젠" 은 손으로 친 오타다 (샘플요청 4건). 작업지시자 승인 2026-09-04.
+ */
+const LEGACY_PRODUCT_CODE: Record<string, string> = {
+  "ADD Gel (1%) 시린지 타입": "PRD001",
+  "애드젤 (ADD GEL 1%)": "PRD002",
+  "애드젠 (ADD GEL 1%)": "PRD002",
+  "ADDGEL (Bottle&Syringe)": "PRD007",
+  "ADDGEL (Lypophilized)": "PRD008",
+  "라이브젤 (Live Gel)": "PRD003",
 }
 
 type Row = Record<string, unknown>
@@ -140,16 +153,21 @@ async function main() {
     }
   })
 
-  /** 견적의 제품명 → 제품코드. 이름이 겹치면 단가가 있는 쪽을 고른다. */
+  /** 엑셀에 적힌 제품명 → 제품코드. 옛 표기는 표에서 바로 잇고, 나머지는 이름으로 찾는다. */
   function findProduct(rawName: string): string | null {
-    const name = PRODUCT_ALIAS[rawName] ?? rawName
-    const hits = products.filter((p) => p.name === name)
+    const mapped = LEGACY_PRODUCT_CODE[rawName]
+    if (mapped) {
+      if (!products.some((p) => p.code === mapped))
+        warn(`"${rawName}" 이 가리키는 ${mapped} 가 제품마스터에 없다`)
+      return mapped
+    }
+    const hits = products.filter((p) => p.name === rawName)
     if (hits.length === 0) return null
     if (hits.length > 1) {
       const priced = hits.filter((p) => p.unitPrice)
       const pick = (priced.length ? priced : hits)[0]
       warn(
-        `제품명 "${name}" 이 ${hits.length}개(${hits.map((h) => `${h.code}/${h.spec}`).join(", ")}) — ${pick.code} 로 붙였다`
+        `제품명 "${rawName}" 이 ${hits.length}개(${hits.map((h) => `${h.code}/${h.spec}`).join(", ")}) — ${pick.code} 로 붙였다`
       )
       return pick.code
     }
@@ -350,8 +368,18 @@ async function main() {
     }
     const membershipId = new Map((await tx.crmMembership.findMany()).map((m) => [m.code, m.id]))
 
-    for (const p of products)
-      await tx.crmProduct.upsert({ where: { code: p.code }, create: p, update: p })
+    // 제품은 만들 때만 엑셀 이름을 쓴다.
+    //
+    // 앱에서 이름을 통일한 뒤(애드젤 네 표기 → 하나) 이식을 다시 돌리면, 엑셀의
+    // 옛 이름이 그 위에 덮인다. 엑셀은 처음 한 번의 씨앗이지 계속되는 정본이 아니다.
+    // 갱신 때는 값이 바뀔 수 있는 칸(단가·비고·원료 여부)만 맞춘다.
+    for (const p of products) {
+      await tx.crmProduct.upsert({
+        where: { code: p.code },
+        create: p,
+        update: { unitPrice: p.unitPrice, isMaterial: p.isMaterial, note: p.note },
+      })
+    }
     const productId = new Map((await tx.crmProduct.findMany()).map((p) => [p.code, p.id]))
 
     for (const q of quotes) {

@@ -36,6 +36,7 @@ export default async function NewQuotePage() {
           id: p.id,
           name: p.name,
           spec: p.spec,
+          kind: p.kind,
           unitPrice: p.unitPrice,
         }))}
       />

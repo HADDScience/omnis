@@ -30,6 +30,8 @@ interface ProductLite {
   id: string
   name: string
   spec: string | null
+  /** 시린지·바이알·세트… 이름을 통일한 뒤로는 이게 있어야 같은 이름끼리 갈린다 */
+  kind: string | null
   unitPrice: number | null
 }
 interface Line {
@@ -132,11 +134,12 @@ export function QuoteComposer({
     label: c.name,
     hint: c.title,
   }))
+  // 애드젤은 이름이 같고 규격·형태로만 갈린다. 둘 다 보여 줘야 고를 수 있다.
   const productOptions: PickerOption[] = products.map((p) => ({
     id: p.id,
     label: p.name,
-    hint: p.spec,
-    keywords: p.spec ?? "",
+    hint: [p.spec, p.kind].filter(Boolean).join(" · ") || null,
+    keywords: `${p.spec ?? ""} ${p.kind ?? ""}`,
   }))
 
   const totals = useMemo(

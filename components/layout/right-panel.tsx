@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
@@ -63,10 +63,21 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
     setView(task ? "task" : "all")
   }, [task])
 
-  // ?taskId= 로 들어온 딥링크는 패널을 열고 그 스레드를 보여 준다
+  // ?taskId= 로 들어온 딥링크는 패널을 열고 그 스레드를 보여 준다.
+  //
+  // "지금 taskId 가 있고 닫혀 있으면 연다" 로 두면 안 된다 — 스레드를 고른 상태에서
+  // 닫기를 누르는 순간 taskId 는 그대로라 즉시 다시 열려서, 아예 닫히지 않는다.
+  // 그래서 taskId 가 **바뀐 순간**에만 연다.
+  const openedFor = useRef<string | null>(null)
   useEffect(() => {
-    if (urlTaskId && !open) setOpen(true)
-  }, [urlTaskId, open, setOpen])
+    if (!urlTaskId) {
+      openedFor.current = null
+      return
+    }
+    if (openedFor.current === urlTaskId) return
+    openedFor.current = urlTaskId
+    setOpen(true)
+  }, [urlTaskId, setOpen])
 
   const loadRecentThreads = useCallback(async () => {
     try {
