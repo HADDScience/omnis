@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { LinkPendingMark } from "@/components/ui/pending-link"
 import { cn } from "@/lib/utils"
 
 const TABS = [
@@ -25,12 +26,15 @@ export function CrmNav() {
             aria-current={active ? "page" : undefined}
             className={cn(
               "shrink-0 border-b-2 px-3 py-2 text-[13px] transition-colors",
+              // 누르면 즉시 여기서 반응한다 — 새 화면을 기다리지 않는다
+              "has-data-[pending]:bg-muted has-data-[pending]:text-foreground",
               active
                 ? "border-primary font-semibold text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             {t.label}
+            <LinkPendingMark />
           </Link>
         )
       })}

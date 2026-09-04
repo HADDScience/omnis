@@ -47,6 +47,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useCommandPalette } from "@/components/layout/command-palette-context"
+import { LinkPendingMark } from "@/components/ui/pending-link"
 
 /**
  * 사이드바 메뉴.
@@ -128,6 +129,7 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       size="sm"
+                      className="has-data-[pending]:bg-sidebar-accent has-data-[pending]:text-sidebar-accent-foreground"
                       // 밖에 있는 도구는 이 앱의 경로가 아니므로 현재 위치로 켜지지 않는다.
                       isActive={
                         !external &&
@@ -143,6 +145,8 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
                     >
                       <HugeiconsIcon icon={item.icon} size={15} />
                       <span className="text-[12.5px]">{item.label}</span>
+                      {/* 밖으로 나가는 링크는 이 앱의 이동이 아니라 대기 상태가 없다 */}
+                      {!external && <LinkPendingMark />}
                       {external ? (
                         <HugeiconsIcon
                           icon={LinkSquare02Icon}
@@ -165,12 +169,17 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
             <SidebarMenu>
               {quickFilters.map((f) => (
                 <SidebarMenuItem key={f.key}>
-                  <SidebarMenuButton size="sm" render={<Link href={f.href} />}>
+                  <SidebarMenuButton
+                    size="sm"
+                    className="has-data-[pending]:bg-sidebar-accent has-data-[pending]:text-sidebar-accent-foreground"
+                    render={<Link href={f.href} />}
+                  >
                     <span
                       className="inline-block h-[5px] w-[5px] rounded-full"
                       style={{ backgroundColor: f.color }}
                     />
                     <span className="text-[12px]">{f.label}</span>
+                    <LinkPendingMark />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
