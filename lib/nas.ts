@@ -79,7 +79,12 @@ function parsePropfind(xml: string, basePath: string): NasEntry[] {
   )
 }
 
-/** 폴더 목록. 경로가 파일이면 null 을 돌려준다. */
+/**
+ * 폴더 목록. 경로가 파일이면 null 을 돌려준다.
+ *
+ * WebDAV 는 파일에 PROPFIND 해도 207 을 주고 자기 자신 한 건만 돌려준다.
+ * 그래서 상태 코드로는 폴더인지 알 수 없다 — **자기 자신이 collection 인지**로 가른다.
+ */
 export async function listDirectory(path: string): Promise<NasEntry[] | null> {
   // Depth 를 주지 않으면 서버가 무한 깊이로 해석한다. 한 단계만 본다.
   const res = await dav("PROPFIND", davUrl(path), undefined, undefined, { Depth: "1" })
@@ -87,7 +92,27 @@ export async function listDirectory(path: string): Promise<NasEntry[] | null> {
 
   const chunks: Buffer[] = []
   for await (const c of res.body) chunks.push(Buffer.from(c))
-  return parsePropfind(Buffer.concat(chunks).toString("utf8"), path)
+  const xml = Buffer.concat(chunks).toString("utf8")
+
+  if (!selfIsCollection(xml, path)) return null
+  return parsePropfind(xml, path)
+}
+
+/** 응답의 첫 항목(자기 자신)이 폴더인가. */
+function selfIsCollection(xml: string, path: string): boolean {
+  const target = path.replace(/\/+$/, "")
+  const blocks = xml.split(/<[a-zA-Z]*:?response[\s>]/).slice(1)
+  for (const block of blocks) {
+    const href = block.match(/<[a-zA-Z]*:?href[^>]*>([^<]*)<\/[a-zA-Z]*:?href>/)?.[1]
+    if (!href) continue
+    let decoded: string
+    try { decoded = decodeURIComponent(href) } catch { continue }
+    decoded = decoded.replace(/\/+$/, "")
+    if (!decoded.startsWith("/")) decoded = "/" + decoded
+    if (decoded === target) return /<[a-zA-Z]*:?collection\s*\/>/.test(block)
+  }
+  // 자기 자신을 못 찾으면 폴더로 보지 않는다 — 파일로 흘려보내면 GET 이 판정한다.
+  return false
 }
 
 /** 파일을 그대로 읽어 온다. 옴니스가 중계해 브라우저에 흘려보낸다. */
