@@ -38,7 +38,7 @@ function connectVerified(): Promise<TLSSocket> {
 }
 
 /** 절대 경로(공유폴더부터 시작)를 WebDAV URL로 바꾼다. 한글·공백이 들어가므로 세그먼트마다 인코딩한다. */
-function davUrl(absolutePath: string): string {
+export function davUrl(absolutePath: string): string {
   const encoded = absolutePath.split("/").filter(Boolean).map(encodeURIComponent).join("/")
   return new URL(`/${encoded}`, env("SYNOLOGY_WEBDAV_URL")).toString()
 }
@@ -49,13 +49,19 @@ function absolutePathFor(key: string): string {
 
 const objectUrl = (key: string) => davUrl(absolutePathFor(key))
 
-interface DavResponse {
+export interface DavResponse {
   status: number
   body: Readable
   headers: Record<string, string | string[] | undefined>
 }
 
-async function dav(method: string, url: string, body?: Buffer, contentType?: string): Promise<DavResponse> {
+export async function dav(
+  method: string,
+  url: string,
+  body?: Buffer,
+  contentType?: string,
+  extraHeaders?: Record<string, string>,
+): Promise<DavResponse> {
   const socket = await connectVerified()
   const auth = Buffer.from(`${env("SYNOLOGY_WEBDAV_USER")}:${env("SYNOLOGY_WEBDAV_PASSWORD")}`).toString("base64")
 
@@ -68,6 +74,7 @@ async function dav(method: string, url: string, body?: Buffer, contentType?: str
         headers: {
           Authorization: `Basic ${auth}`,
           ...(body ? { "Content-Length": body.length, "Content-Type": contentType ?? "application/octet-stream" } : {}),
+          ...(extraHeaders ?? {}),
         },
       },
       (res) => resolve({ status: res.statusCode ?? 0, body: res, headers: res.headers }),

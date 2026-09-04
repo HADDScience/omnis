@@ -8,6 +8,7 @@ import {
   DashboardSpeed02Icon,
   Task01Icon,
   BookOpen01Icon,
+  FolderLibraryIcon,
   FileAttachmentIcon,
   Logout01Icon,
   Moon01Icon,
@@ -59,6 +60,7 @@ const navItems = [
   { href: "/dashboard", label: "워크스페이스", icon: DashboardSpeed02Icon },
   { href: "/tasks", label: "업무", icon: Task01Icon },
   { href: "/omnis", label: "HADD DB", icon: BookOpen01Icon },
+  { href: "/nas", label: "사내 자료", icon: FolderLibraryIcon },
   {
     href: "https://haddscience.github.io/ip-platform/",
     label: "지식재산권",

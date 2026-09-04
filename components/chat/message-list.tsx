@@ -279,15 +279,54 @@ export function MessageList({
   )
 }
 
-function MessageContent({ content, tasks, isMe = false }: { content: string; tasks: TaskRef[]; isMe?: boolean }) {
-  if (tasks.length === 0) return <>{content}</>
+/**
+ * 본문에서 링크로 만들 것들.
+ *
+ * 실제 대화를 보면 사람들이 URL(148건)과 `Z:\HADD Science\...` 같은 NAS 경로(27건)를
+ * 그대로 붙여넣는다. 평문으로 두면 매번 복사해서 탐색기에 붙여야 한다.
+ *
+ * 순서가 중요하다 — URL 을 먼저 잡아야 주소 안의 `#`·`@` 가 멘션으로 오인되지 않는다.
+ */
+const TOKEN_RE = new RegExp(
+  [
+    "(https?://[^\\s<>\"']+)",                        // URL
+    "([A-Za-z]:\\\\HADD Science\\\\[^\\n]*)",         // Z:\HADD Science\...
+    "(\\\\\\\\[\\w.-]+\\\\HADD Science\\\\[^\\n]*)",   // \\서버\HADD Science\...
+    // 멘션. 앞 글자가 영숫자·점이면 이메일 지역부라 사람 멘션이 아니다(a@b.com).
+    "(#[a-z0-9가-힣-]+|(?<![A-Za-z0-9._%+-])@[a-z0-9가-힣]+)",
+  ].join("|"),
+  "gi",
+)
 
+/** 경로 끝에 붙은 문장부호는 경로가 아니다. */
+function trimPathTail(p: string): string {
+  return p.replace(/[\s.,!?)\]}"']+$/, "")
+}
+
+/**
+ * NAS 경로가 어디서 끝나는지 정한다.
+ *
+ * 폴더 이름에 공백이 흔해서("62. HADD 홈페이지") 공백만으로는 끊을 수 없다.
+ * 대신 **마지막 구분자 뒤 조각**에서 한국어 조사가 시작되면 거기서 자른다 —
+ * "…\00. 회의록 에 넣어놨어요" 처럼 경로 뒤에 말이 이어지는 경우다.
+ */
+function cutPathTail(raw: string): string {
+  const p = trimPathTail(raw)
+  const sep = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"))
+  if (sep < 0) return p
+  const last = p.slice(sep + 1)
+  // 조사·서술어가 공백 뒤에 붙은 자리를 찾는다
+  const m = last.match(/\s(?:에|에서|에다|로|으로|을|를|은|는|이|가|와|과|의|도|만|까지|부터|한테|께)(?:\s|$)/)
+  return m ? p.slice(0, sep + 1 + m.index!) : p
+}
+
+function MessageContent({ content, tasks, isMe = false }: { content: string; tasks: TaskRef[]; isMe?: boolean }) {
   const mentionClass = isMe
     ? "font-medium text-white/90 underline decoration-white/40 hover:decoration-white"
     : "font-medium text-blue-700 dark:text-blue-300 hover:underline"
 
   const parts: React.ReactNode[] = []
-  const regex = /(#[a-z0-9가-힣-]+|@[a-z0-9가-힣]+)/gi
+  const regex = TOKEN_RE
   let lastIndex = 0
   let match: RegExpExecArray | null
 
@@ -297,6 +336,46 @@ function MessageContent({ content, tasks, isMe = false }: { content: string; tas
     }
 
     const token = match[0]
+
+    // 바깥 링크 — 새 탭에서 연다
+    if (/^https?:\/\//i.test(token)) {
+      const url = trimPathTail(token)
+      parts.push(
+        <a
+          key={match.index}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={mentionClass}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {url}
+        </a>,
+      )
+      if (token.length > url.length) parts.push(token.slice(url.length))
+      lastIndex = match.index + match[0].length
+      continue
+    }
+
+    // NAS 경로 — 옴니스가 중계해 연다. 브라우저는 NAS 에 직접 붙지 못한다.
+    if (/HADD Science/i.test(token) && /[\\/]/.test(token)) {
+      const raw = cutPathTail(token)
+      parts.push(
+        <Link
+          key={match.index}
+          href={`/nas?path=${encodeURIComponent(raw)}`}
+          className={mentionClass}
+          title="사내 NAS 에서 열기"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {raw}
+        </Link>,
+      )
+      if (token.length > raw.length) parts.push(token.slice(raw.length))
+      lastIndex = match.index + match[0].length
+      continue
+    }
+
     if (token.startsWith("#")) {
       const slug = token.slice(1)
       const task = tasks.find((t) => t.slug === slug)
