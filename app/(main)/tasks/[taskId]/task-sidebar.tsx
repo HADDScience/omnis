@@ -35,7 +35,7 @@ function displayContent(m: Message): string {
   return m.content
 }
 
-export function TaskSidebar({ taskId, messages }: TaskSidebarProps) {
+export function TaskThread({ taskId, messages }: TaskSidebarProps) {
   const systemMessages = messages.filter(
     (m) =>
       m.kind === "TASK_REBUILT" ||
@@ -46,7 +46,7 @@ export function TaskSidebar({ taskId, messages }: TaskSidebarProps) {
   const threadMessages = messages.filter((m) => m.kind !== "TASK_REBUILT")
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-l bg-card">
+    <div className="flex h-full min-h-0 flex-col">
       <Tabs defaultValue="thread" className="flex h-full flex-col">
         {/* #9: "결과" 탭 제거 — task-detail에 동일 체크리스트 존재 (중복 제거) */}
         <TabsList className="grid h-10 w-full shrink-0 grid-cols-2 rounded-none border-b bg-transparent p-0">
@@ -137,6 +137,7 @@ export function TaskSidebar({ taskId, messages }: TaskSidebarProps) {
           </div>
         </TabsContent>
       </Tabs>
-    </aside>
+    </div>
   )
 }
+

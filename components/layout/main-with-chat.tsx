@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { ChatDock } from "@/components/chat/chat-dock"
+import { RightPanel } from "./right-panel"
+import { useRightPanel } from "./right-panel-context"
 import { CommandPalette } from "./command-palette"
 
 interface Message {
@@ -26,7 +27,7 @@ export function MainWithChat({
   children,
 }: MainWithChatProps) {
   const router = useRouter()
-  const [dockOpen, setDockOpen] = useState(false)
+  const { open, setOpen } = useRightPanel()
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -40,26 +41,24 @@ export function MainWithChat({
         return
       if (e.key === "c" || e.key === "C" || e.key === "ㅊ") {
         e.preventDefault()
-        setDockOpen((prev) => !prev)
+        setOpen(!open)
       }
     }
     window.addEventListener("keydown", handleKey)
     return () => window.removeEventListener("keydown", handleKey)
-  }, [])
+  }, [open, setOpen])
 
   return (
     <>
       <div className="flex h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] min-h-0 flex-col overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-auto">{children}</div>
-          <ChatDock
-            open={dockOpen}
-            setOpen={setDockOpen}
-            currentUserId={currentUserId}
-            initialMessages={initialMessages}
-            onTaskUpdated={() => router.refresh()}
-          />
         </div>
+        <RightPanel
+          currentUserId={currentUserId}
+          initialMessages={initialMessages}
+          onTaskUpdated={() => router.refresh()}
+        />
       </div>
       <CommandPalette />
     </>

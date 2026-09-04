@@ -17,6 +17,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx prisma/demo-seed.ts",
+    "db:snapshot": "bash scripts/pull-prod-snapshot.sh",
     "db:embed": "tsx prisma/backfill-embeddings.ts",
     "db:studio": "prisma studio",
     "docker:up": "docker compose up -d",

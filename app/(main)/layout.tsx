@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { MainWithChat } from "@/components/layout/main-with-chat"
 import { CommandPaletteProvider } from "@/components/layout/command-palette-context"
+import { RightPanelProvider } from "@/components/layout/right-panel-context"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 export default async function MainLayout({
@@ -38,6 +39,7 @@ export default async function MainLayout({
   return (
     <SidebarProvider>
       <CommandPaletteProvider>
+        <RightPanelProvider>
         <AppSidebar
           userName={session.user.name}
           userEmail={session.user.email}
@@ -51,6 +53,7 @@ export default async function MainLayout({
             {children}
           </MainWithChat>
         </SidebarInset>
+        </RightPanelProvider>
       </CommandPaletteProvider>
     </SidebarProvider>
   )

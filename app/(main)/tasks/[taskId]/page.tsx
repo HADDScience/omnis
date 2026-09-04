@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { TaskDetail } from "./task-detail"
-import { TaskSidebar } from "./task-sidebar"
+import { RegisterPanelTask } from "@/components/layout/right-panel-context"
 
 export const dynamic = "force-dynamic"
 
@@ -89,15 +89,13 @@ export default async function TaskDetailPage({ params }: Props) {
   return (
     <>
       <Header title={task.name} />
+      {/* 스레드는 오른쪽 패널이 맡는다. 여기서 자리를 차지하지 않는다 —
+          예전에는 320px 을 고정으로 먹어 좁은 화면에서 본문이 34px 로 눌렸다. */}
+      <RegisterPanelTask id={task.id} name={task.name} messages={sidebarMessages} />
       <div className="flex flex-1 overflow-hidden">
         <div className="min-w-0 flex-1 overflow-auto">
           <TaskDetail task={serialized} projects={projects} />
         </div>
-        <TaskSidebar
-          taskId={task.id}
-          taskName={task.name}
-          messages={sidebarMessages}
-        />
       </div>
     </>
   )

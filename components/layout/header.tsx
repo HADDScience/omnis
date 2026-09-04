@@ -4,6 +4,7 @@ import { Fragment, type ReactNode } from "react"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { NotificationBell } from "./notification-bell"
+import { RightPanelTrigger } from "./right-panel-trigger"
 
 interface HeaderProps {
   title?: string
@@ -38,6 +39,7 @@ export function Header({ title, crumbs, actions }: HeaderProps) {
       </div>
       <div className="flex items-center gap-1">
         {actions}
+        <RightPanelTrigger />
         {actions && <Separator orientation="vertical" className="mx-1 h-4" />}
         <NotificationBell />
       </div>
