@@ -59,15 +59,26 @@ export function StockPanel({
   materials,
   goods,
   productions,
+  orgs,
 }: {
   materials: StockView[]
   goods: StockView[]
   productions: ProductionView[]
+  orgs: { id: string; name: string }[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [showIn, setShowIn] = useState(false)
   const [showMfg, setShowMfg] = useState(false)
+  const [showShip, setShowShip] = useState(false)
+
+  // 출고
+  const [shOrgId, setShOrgId] = useState<string | null>(null)
+  const [shProductId, setShProductId] = useState<string | null>(null)
+  const [shQty, setShQty] = useState("")
+  const [shDate, setShDate] = useState(today)
+  const [shKind, setShKind] = useState<"SALE" | "SAMPLE" | "GIFT">("SALE")
+  const [shNote, setShNote] = useState("")
 
   // 재고 맞추기 — 원료 입고도, 완제품 실사도 여기서 한다
   const [inItemId, setInItemId] = useState<string | null>(materials[0]?.id ?? null)
@@ -130,6 +141,39 @@ export function StockPanel({
         setInQty("")
         setInNote("")
         setShowIn(false)
+        router.refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "오류가 발생했습니다")
+      }
+    })
+  }
+
+  const shProduct = goods.find((g) => g.id === shProductId) ?? null
+  const shQtyNum = Number(shQty) || 0
+  const shShort = shProduct ? shQtyNum > shProduct.balance : false
+
+  async function addShipment() {
+    if (!shOrgId || !shProductId || shQtyNum < 1) return
+    startTransition(async () => {
+      try {
+        const res = await fetch("/api/crm/shipments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            shippedAt: shDate,
+            orgId: shOrgId,
+            productId: shProductId,
+            quantity: shQtyNum,
+            kind: shKind,
+            note: shNote || null,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "출고를 적지 못했습니다")
+        toast.success(`${data.code} — ${shQtyNum}개 출고, 재고에서 차감했어요`)
+        setShQty("")
+        setShNote("")
+        setShowShip(false)
         router.refresh()
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "오류가 발생했습니다")
@@ -417,7 +461,114 @@ export function StockPanel({
 
       {/* 완제품 */}
       <section className="mt-8">
-        <h2 className="mb-3 text-[16px] font-bold tracking-[-0.02em]">완제품</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-[16px] font-bold tracking-[-0.02em]">완제품</h2>
+          <Button variant="outline" size="sm" onClick={() => setShowShip((v) => !v)} className="gap-1.5">
+            <HugeiconsIcon icon={PlusSignIcon} size={14} aria-hidden />
+            출고 적기
+          </Button>
+        </div>
+
+        {showShip && (
+          <div className="mb-3 rounded-xl border bg-card p-4 animate-in fade-in-0 slide-in-from-top-2 duration-150 motion-reduce:animate-none">
+            <div className="mb-3 flex gap-1.5">
+              {([["SALE","판매"],["SAMPLE","샘플"],["GIFT","증정"]] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setShKind(k)}
+                  aria-pressed={shKind === k}
+                  className={cn(
+                    "inline-flex h-7 items-center rounded-md border px-2.5 text-[12px] transition-colors",
+                    shKind === k
+                      ? "border-primary/30 bg-primary/10 font-medium text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-[12px] text-muted-foreground">어디로</label>
+                <EntityPicker
+                  options={orgs.map((o) => ({ id: o.id, label: o.name }))}
+                  value={shOrgId}
+                  onChange={setShOrgId}
+                  placeholder="기관 이름으로 찾기"
+                  emptyLabel="기관을 고르세요"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-[12px] text-muted-foreground">무엇을</label>
+                <EntityPicker
+                  options={goods.map((g) => ({
+                    id: g.id,
+                    label: g.name,
+                    hint: [g.spec, `${g.balance}개 남음`].filter(Boolean).join(" · "),
+                    keywords: `${g.spec ?? ""} ${g.kind ?? ""}`,
+                  }))}
+                  value={shProductId}
+                  onChange={setShProductId}
+                  placeholder="제품 이름 · 규격으로 찾기"
+                  emptyLabel="제품을 고르세요"
+                />
+              </div>
+              <div>
+                <label htmlFor="sh-q" className="mb-1.5 block text-[12px] text-muted-foreground">
+                  몇 개
+                </label>
+                <Input
+                  id="sh-q"
+                  type="number"
+                  min={1}
+                  value={shQty}
+                  onChange={(e) => setShQty(e.target.value)}
+                  className="text-right"
+                />
+              </div>
+              <div>
+                <label htmlFor="sh-d" className="mb-1.5 block text-[12px] text-muted-foreground">
+                  출고일
+                </label>
+                <Input id="sh-d" type="date" value={shDate} onChange={(e) => setShDate(e.target.value)} />
+              </div>
+            </div>
+
+            {shProduct && shQtyNum > 0 && (
+              <p className="mt-2.5 text-[12px] text-muted-foreground">
+                재고 <span className="font-mono">{shProduct.balance}개</span> → 출고 뒤{" "}
+                <b className={cn("font-mono", shShort ? "text-destructive" : "text-foreground")}>
+                  {shProduct.balance - shQtyNum}개
+                </b>
+                {shShort && (
+                  <span className="ml-1.5 font-medium text-destructive">
+                    재고보다 많습니다 — 그래도 적을 수 있지만 재고가 음수가 됩니다
+                  </span>
+                )}
+              </p>
+            )}
+
+            <div className="mt-3 flex items-end gap-3">
+              <div className="flex-1">
+                <label htmlFor="sh-n" className="mb-1.5 block text-[12px] text-muted-foreground">
+                  비고 (선택)
+                </label>
+                <Input id="sh-n" value={shNote} onChange={(e) => setShNote(e.target.value)} placeholder="동봉 내용 등" />
+              </div>
+              <Button
+                onClick={addShipment}
+                disabled={pending || !shOrgId || !shProductId || shQtyNum < 1}
+                className="gap-1.5"
+              >
+                {pending ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} size={15} aria-hidden />}
+                적기
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-2">
           {goods.map((g) => (
             <StockCard key={g.id} s={g} />

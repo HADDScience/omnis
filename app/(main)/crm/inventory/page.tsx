@@ -17,7 +17,7 @@ import { StockPanel } from "@/components/crm/stock-panel"
 export const dynamic = "force-dynamic"
 
 export default async function CrmInventoryPage() {
-  const [products, shipments, productions] = await Promise.all([
+  const [products, shipments, productions, orgs] = await Promise.all([
     prisma.crmProduct.findMany({
       where: { archived: false },
       orderBy: { code: "asc" },
@@ -26,13 +26,14 @@ export default async function CrmInventoryPage() {
     prisma.crmShipment.findMany({
       orderBy: { shippedAt: "desc" },
       take: 30,
-      include: { org: true, product: true },
+      include: { org: true, product: true, stockMoves: { select: { id: true } } },
     }),
     prisma.crmProduction.findMany({
       orderBy: { producedAt: "desc" },
       take: 20,
       include: { product: true, material: true },
     }),
+    prisma.crmOrg.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ])
 
   const materials = products.filter((p) => p.isMaterial)
@@ -86,6 +87,7 @@ export default async function CrmInventoryPage() {
             materialGrams: Number(p.materialGrams),
             note: p.note,
           }))}
+          orgs={orgs}
         />
 
         <section className="mt-8">
@@ -107,6 +109,7 @@ export default async function CrmInventoryPage() {
                     <th className="px-3 py-2 text-left font-semibold">제품</th>
                     <th className="px-3 py-2 text-right font-semibold">수량</th>
                     <th className="px-3 py-2 text-left font-semibold">배송</th>
+                    <th className="px-3 py-2 text-left font-semibold">재고</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -131,6 +134,9 @@ export default async function CrmInventoryPage() {
                       <td className="px-3 py-2.5 text-muted-foreground">
                         {SHIPMENT_STATUS_LABEL[s.status]}
                       </td>
+                      <td className="px-3 py-2.5 text-[11px] text-muted-foreground">
+                        {s.stockMoves.length > 0 ? "차감됨" : "미반영"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -140,9 +146,10 @@ export default async function CrmInventoryPage() {
           <p className="mt-2.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
             <HugeiconsIcon icon={Alert02Icon} size={13} className="mt-0.5 shrink-0" aria-hidden />
             <span>
-              지난 출고 {shipments.length}건은 재고 장부에 반영돼 있지 않습니다. 어떤 생산분에서
-              나갔는지 기록이 없어서, 지금 빼면 숫자를 지어내는 셈이 됩니다. 앞으로의 출고부터
-              완제품 재고에서 차감합니다.
+              「출고 적기」로 적은 건은 완제품 재고에서 바로 빠집니다. 엑셀에서 넘어온 지난
+              출고는 「미반영」입니다 — 어떤 생산분에서 나갔는지 기록이 없어 지금 빼면 숫자를
+              지어내는 셈이라 그대로 뒀습니다. 실제 수량은 「재고 맞추기」의 「센 값으로 맞추기」로
+              맞출 수 있습니다.
             </span>
           </p>
         </section>
