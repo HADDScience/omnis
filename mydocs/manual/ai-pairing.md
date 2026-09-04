@@ -2,13 +2,16 @@
 kind: guide
 status: active
 canonical: mydocs/README.md
-last_verified: 2026-09-02
+last_verified: 2026-09-04
 ---
 
 # AI 와 함께 이 저장소에서 일하는 법
 
 세션이 바뀌어도 같은 판단이 나오게 하려고 둔 절차다.
 사람이 읽어도 되고, AI 가 읽으면 더 좋다.
+
+작업 규약의 정본은 [`AGENTS.md`](../../AGENTS.md) 다 — 타스크 사이클·품질 게이트·
+Git 워크플로우는 거기 있다. 이 문서는 **이 저장소 고유의 환경과 함정**을 담는다.
 
 ## 시작할 때 읽는 순서
 
@@ -23,8 +26,8 @@ last_verified: 2026-09-02
 
 | 사실 | 왜 중요한가 |
 |---|---|
-| `~/omnis-deploy` 가 배포 트리다 | Vercel 프로젝트 `omnis-hadd` 에 링크돼 있다 |
-| `~/omnis-dev` 는 건드리지 않는다 | 다른 세션의 작업 공간 |
+| `~/work/omnis-local` 이 작업·배포 트리다 | Vercel 프로젝트 `omnis-hadd` 에 링크돼 있다 |
+| NAS 사본(`~/NAS/HADD Science/omnis`)에서 개발하지 않는다 | Vercel 프로젝트가 `omnis` 로 다르고, `origin/main` 보다 뒤처져 있다. 여기서 고치면 잃는다 |
 | Vercel git 자동배포는 꺼져 있다 | 배포는 `vercel deploy --prod --yes` 로 수동 |
 | Hub 는 `main` 푸시 = 즉시 배포 | 전사 런처다. 브랜치에서 작업하고 확인 후 머지 |
 | `prisma generate` 는 `DATABASE_URL` 을 요구한다 | 빌드 시 더미라도 필요 |
@@ -50,6 +53,7 @@ case "$URL" in *neon.tech*) : ;; *) echo "중단"; exit 1;; esac
 
 | 무엇을 고쳤나 | 무엇을 돌리나 |
 |---|---|
+| 무엇이든 (push 전) | `npm run verify` — typecheck + lint |
 | SSO · 인증 | `scripts/verify-sso.ts` (36가지) + `verify-sso-live.ts` |
 | ip 스키마 · 함수 | `scripts/verify-ip-import.ts` (20가지, `rebuild_ledger` 동일성 포함) |
 | 소셜 연결 규칙 | `lib/auth-identity.ts` 를 실 DB 에 대고 |

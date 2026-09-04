@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/README.md
-last_verified: 2026-09-02
+last_verified: 2026-09-04
 ---
 
 # mydocs — 이 저장소의 문서 규약
@@ -43,11 +43,23 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 
 ## 디렉터리
 
+지속되는 문서 — 이 저장소의 지식:
+
 | 경로 | 담는 것 |
 |---|---|
 | `mydocs/tech/` | 구조와 계약. "무엇이 어떻게 생겼는가" |
 | `mydocs/troubleshootings/` | 걸렸던 문제와 푼 방법. "왜 이렇게 됐는가" |
 | `mydocs/manual/` | 절차. "무엇을 어떤 순서로" |
+
+타스크 사이클이 만드는 문서 — 흐르는 기록
+([`AGENTS.md`](../AGENTS.md) 의 "타스크 사이클"):
+
+| 경로 | kind | 담는 것 |
+|---|---|---|
+| `mydocs/orders/{yyyymmdd}.md` | snapshot | 그날 할 일과 상태 |
+| `mydocs/plans/` | decision | 수행 계획서. 끝나면 `plans/archives/` 로 |
+| `mydocs/working/` | snapshot | 단계별·최종 결과와 실측 출력 |
+| `mydocs/feedback/` | memory | 사람이 쓴 피드백. AI 가 채우지 않는다 |
 
 ## 규칙
 
@@ -65,4 +77,12 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [tech/ip-schema.md](tech/ip-schema.md) | canonical | 지식재산권 스키마와 그 안의 도메인 규칙 |
 | [troubleshootings/supabase-limits.md](troubleshootings/supabase-limits.md) | canonical | Supabase 에서 무엇이 막혔고 어떻게 풀었나 |
 | [troubleshootings/migration-traps.md](troubleshootings/migration-traps.md) | reference | 이 작업에서 실제로 밟은 함정들 |
+| [troubleshootings/client-error-visibility.md](troubleshootings/client-error-visibility.md) | canonical | 화면이 흰 채로 죽는데 아무도 모르던 문제와 그 배관 |
+| [tech/stack-and-conventions.md](tech/stack-and-conventions.md) | canonical | 스택·base-vega 관례·Gemini 함정 |
 | [manual/ai-pairing.md](manual/ai-pairing.md) | guide | AI 와 함께 이 저장소에서 일하는 법 |
+| [manual/ux-rules.md](manual/ux-rules.md) | canonical | UI·구조 규칙 11~30 · viewport 책임 표 · 데모 환경 |
+| [manual/hyper-waterfall.md](manual/hyper-waterfall.md) | decision | 이 저장소가 AI 와 일하는 방식 |
+
+작업 규약 자체는 저장소 루트의 [`AGENTS.md`](../AGENTS.md) 가 정본이다 —
+`mydocs/` 아래가 아니라 루트에 두는 이유는, 저장소를 처음 여는 도구가
+루트부터 읽기 때문이다.
