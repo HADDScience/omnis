@@ -94,6 +94,9 @@ export function ChatDock({
   }
 
   const [activeView, setActiveView] = useState<ThreadView>("all")
+  // 어느 방을 보고 있는가. 카톡 이식으로 방이 둘이 됐다(인턴방·수원대).
+  const [roomId, setRoomId] = useState("default-room")
+  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([])
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [taskModalRaw, setTaskModalRaw] = useState("")
   const [recentThreads, setRecentThreads] = useState<RecentThread[]>([])
@@ -113,6 +116,14 @@ export function ChatDock({
   }, [loadRecentThreads, open])
 
   // 열린 상태에서의 높이(드래그로 조정). 닫힌 상태에선 40px.
+  // 방이 하나뿐이면 전환 UI 를 그리지 않는다. 없는 선택지를 보여줄 이유가 없다.
+  useEffect(() => {
+    fetch("/api/chat/rooms")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rs: { id: string; name: string }[]) => setRooms(rs ?? []))
+      .catch(() => setRooms([]))
+  }, [])
+
   const [openHeight, setOpenHeight] = useState<number>(DOCK_DEFAULT_OPEN_HEIGHT)
   const [dragging, setDragging] = useState(false)
   const hasHydratedRef = useRef(false)
@@ -303,6 +314,34 @@ export function ChatDock({
             </span>
           </button>
 
+          {/* 방 전환 — 카톡 이식으로 방이 둘이 됐다. 하나뿐이면 그리지 않는다. */}
+          {rooms.length > 1 &&
+            rooms.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                aria-pressed={open && activeView === "all" && roomId === r.id}
+                onClick={() => {
+                  setRoomId(r.id)
+                  setActiveView("all")
+                  if (taskFilterId) clearTaskFilter()
+                  if (!open) setOpen(true)
+                }}
+                className={tabClass(open && activeView === "all" && roomId === r.id)}
+                title={r.name}
+              >
+                <span
+                  className={
+                    open && activeView === "all" && roomId === r.id
+                      ? "font-medium"
+                      : "font-normal"
+                  }
+                >
+                  {r.name}
+                </span>
+              </button>
+            ))}
+
           {/* Omnis AI — 사내 지식 RAG 질의 */}
           <button
             type="button"
@@ -363,8 +402,9 @@ export function ChatDock({
             <OmnisAsk variant="dock" />
           ) : (
             <ChatPanel
-              roomId="default-room"
-              initialMessages={initialMessages}
+              key={roomId}
+              roomId={roomId}
+              initialMessages={roomId === "default-room" ? initialMessages : []}
               currentUserId={currentUserId}
               onTaskUpdated={onTaskUpdated}
               filterTaskId={taskFilterId}
