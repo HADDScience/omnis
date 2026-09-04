@@ -1,17 +1,22 @@
 "use client"
 
-import { useState, useMemo, useTransition } from "react"
+import { useState, useMemo, useRef, useEffect, useTransition, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { PlusSignIcon, Delete02Icon, Tick02Icon } from "@hugeicons/core-free-icons"
+import {
+  PlusSignIcon,
+  Delete02Icon,
+  Tick02Icon,
+  ArrowRight02Icon,
+} from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { EntityPicker, type PickerOption } from "./entity-picker"
 import { quoteTotals, won } from "@/lib/crm"
+import { cn } from "@/lib/utils"
 
 interface OrgLite {
   id: string
@@ -40,12 +45,54 @@ const newLine = (): Line => ({
 })
 
 /**
- * 견적 한 장을 쓴다.
+ * 한 번에 하나씩 묻는다.
  *
- * 엑셀에서는 새 거래처면 기관마스터 → 컨택포인트 → HRP 시트를 먼저 돌고 와야
- * 견적의 드롭다운에 이름이 떴다. 여기서는 그 순서를 없앤다 — 없는 기관·담당자는
- * 고르는 자리에서 바로 만든다. 화면을 떠나지 않는다.
+ * 앞의 답이 정해져야 다음 칸이 나타난다 — 기관을 골라야 담당자가 뜨고, 담당자가
+ * 정해져야 품목이 뜬다. 처음부터 빈 칸 여섯 개를 늘어놓으면 어디부터 손대야 할지,
+ * 무엇이 필수인지 사람이 판단해야 한다. 순서를 화면이 알고 있으면 그럴 필요가 없다.
+ *
+ * 채운 칸은 그대로 남아 계속 고칠 수 있다. 되돌아갈 수 없는 마법사가 아니다.
  */
+function Step({
+  show = true,
+  label,
+  hint,
+  children,
+  autoFocus,
+}: {
+  show?: boolean
+  label: string
+  hint?: ReactNode
+  children: ReactNode
+  autoFocus?: boolean
+}) {
+  // 라벨 줄이 아니라 **입력 영역**만 본다. 「건너뛰기」 같은 보조 버튼이 라벨 옆에
+  // 있어서, 단계 전체에서 첫 버튼을 찾으면 그쪽으로 커서가 간다.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const focused = useRef(false)
+
+  useEffect(() => {
+    if (!show || !autoFocus || focused.current) return
+    focused.current = true
+    const el = bodyRef.current?.querySelector<HTMLElement>(
+      "button:not([disabled]), input:not([disabled]), textarea:not([disabled])"
+    )
+    const t = setTimeout(() => el?.focus(), 260)
+    return () => clearTimeout(t)
+  }, [show, autoFocus])
+
+  if (!show) return null
+  return (
+    <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-200 motion-reduce:animate-none">
+      <div className="mb-1.5 flex items-baseline gap-2">
+        <span className="text-[12px] font-medium">{label}</span>
+        {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+      </div>
+      <div ref={bodyRef}>{children}</div>
+    </div>
+  )
+}
+
 export function QuoteComposer({
   orgs: initialOrgs,
   products,
@@ -57,6 +104,7 @@ export function QuoteComposer({
   const [orgs, setOrgs] = useState(initialOrgs)
   const [orgId, setOrgId] = useState<string | null>(null)
   const [contactId, setContactId] = useState<string | null>(null)
+  const [contactSkipped, setContactSkipped] = useState(false)
   const [quotedAt, setQuotedAt] = useState(() => new Date().toISOString().slice(0, 10))
   const [lines, setLines] = useState<Line[]>([newLine()])
   const [discount, setDiscount] = useState(0)
@@ -66,6 +114,13 @@ export function QuoteComposer({
   const [pending, startTransition] = useTransition()
 
   const org = orgs.find((o) => o.id === orgId) ?? null
+  const filled = lines.filter((l) => l.productId)
+
+  // 어디까지 왔는지는 따로 세지 않고 채워진 값에서 끌어낸다.
+  // 카운터를 따로 두면 값과 단계가 어긋나는 순간이 생긴다.
+  const showContact = Boolean(orgId)
+  const showItems = showContact && (Boolean(contactId) || contactSkipped)
+  const showFinish = showItems && filled.length > 0
 
   const orgOptions: PickerOption[] = orgs.map((o) => ({ id: o.id, label: o.name }))
   const contactOptions: PickerOption[] = (org?.contacts ?? []).map((c) => ({
@@ -83,16 +138,16 @@ export function QuoteComposer({
   const totals = useMemo(
     () =>
       quoteTotals(
-        lines.filter((l) => l.productId).map((l) => ({ quantity: l.quantity, unitPrice: l.unitPrice })),
+        filled.map((l) => ({ quantity: l.quantity, unitPrice: l.unitPrice })),
         discount
       ),
-    [lines, discount]
+    [filled, discount]
   )
 
-  /** HRP 회원이면 할인을 **제안**한다. 사람이 손대면 그 뒤로는 건드리지 않는다. */
   function pickOrg(id: string | null) {
     setOrgId(id)
     setContactId(null)
+    setContactSkipped(false)
     if (!discountTouched) {
       const m = orgs.find((o) => o.id === id)?.membership
       setDiscount(m?.discountAmount ?? 0)
@@ -150,14 +205,12 @@ export function QuoteComposer({
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)))
   }
 
-  /** 제품을 고르면 기준 단가를 **복사**한다. 이후 이 견적의 단가는 제품과 무관하다. */
   function pickProduct(key: string, productId: string | null) {
     const p = products.find((x) => x.id === productId)
     setLine(key, { productId, unitPrice: p?.unitPrice ?? 0 })
   }
 
-  const filled = lines.filter((l) => l.productId)
-  const canSave = Boolean(orgId) && filled.length > 0 && !busy && !pending
+  const canSave = showFinish && !busy && !pending
 
   function save() {
     if (!canSave) return
@@ -192,195 +245,239 @@ export function QuoteComposer({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[860px] px-6 pb-24 pt-6">
-      <h1 className="mb-5 text-[18px] font-bold tracking-[-0.02em]">새 견적</h1>
+    <div className="mx-auto w-full max-w-[560px] px-6 pb-24 pt-8">
+      <h1 className="text-[20px] font-bold tracking-[-0.02em]">새 견적</h1>
+      <p className="mt-1 text-[13px] text-muted-foreground">
+        하나씩 채우면 다음 칸이 나옵니다.
+      </p>
 
-      {/* 받는 곳 */}
-      <section className="rounded-xl border bg-card p-4">
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          받는 곳
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="sm:col-span-2">
-            <Label className="mb-1.5 block text-[12px]">기관</Label>
-            <EntityPicker
-              options={orgOptions}
-              value={orgId}
-              onChange={pickOrg}
-              placeholder="기관 이름으로 찾기"
-              emptyLabel="기관을 고르세요"
-              onCreate={createOrg}
-              createLabel="기관으로 새로 만들기"
-              disabled={busy}
-            />
+      <div className="mt-7 flex flex-col gap-5">
+        {/* 1 — 기관 */}
+        <Step label="어느 기관인가요?">
+          <EntityPicker
+            options={orgOptions}
+            value={orgId}
+            onChange={pickOrg}
+            placeholder="기관 이름으로 찾기"
+            emptyLabel="기관을 고르세요"
+            onCreate={createOrg}
+            createLabel="기관으로 새로 만들기"
+            disabled={busy}
+          />
+        </Step>
+
+        {/* 2 — 담당자 */}
+        <Step
+          show={showContact}
+          autoFocus
+          label="담당자는 누구인가요?"
+          hint={
+            !contactId && !contactSkipped ? (
+              <button
+                type="button"
+                onClick={() => setContactSkipped(true)}
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                모르면 건너뛰기
+              </button>
+            ) : null
+          }
+        >
+          <EntityPicker
+            options={contactOptions}
+            value={contactId}
+            onChange={(id) => {
+              setContactId(id)
+              if (id) setContactSkipped(false)
+            }}
+            placeholder="담당자 이름으로 찾기"
+            emptyLabel={contactSkipped ? "담당자 없이 진행합니다" : "담당자를 고르세요"}
+            onCreate={createContact}
+            createLabel="담당자로 새로 만들기"
+            disabled={busy}
+          />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            직함은 따로 저장돼요. 「김광민 교수님」처럼 붙여 쓰지 않아도 됩니다.
+          </p>
+        </Step>
+
+        {/* 3 — 품목 */}
+        <Step show={showItems} autoFocus label="무엇을 얼마나 보내나요?">
+          <div className="flex flex-col gap-2">
+            {lines.map((l, i) => (
+              <div key={l.key}>
+                <div className="grid grid-cols-[1fr_64px_auto] items-center gap-2">
+                  <EntityPicker
+                    options={productOptions}
+                    value={l.productId}
+                    onChange={(id) => pickProduct(l.key, id)}
+                    placeholder="제품 이름 · 규격으로 찾기"
+                    emptyLabel="제품을 고르세요"
+                  />
+                  <Input
+                    type="number"
+                    min={1}
+                    value={l.quantity}
+                    onChange={(e) =>
+                      setLine(l.key, { quantity: Math.max(1, Number(e.target.value) || 1) })
+                    }
+                    aria-label={`${i + 1}번째 품목 수량`}
+                    className={cn("text-right", !l.productId && "invisible")}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="이 품목 지우기"
+                    className={cn(lines.length === 1 && "invisible")}
+                    onClick={() => setLines((p) => p.filter((x) => x.key !== l.key))}
+                  >
+                    <HugeiconsIcon icon={Delete02Icon} size={15} aria-hidden />
+                  </Button>
+                </div>
+
+                {/* 단가는 제품을 고른 뒤에만 의미가 있다 */}
+                {l.productId && (
+                  <div className="mt-1.5 flex items-center justify-end gap-2 pr-10 text-[12px] text-muted-foreground animate-in fade-in-0 duration-150 motion-reduce:animate-none">
+                    <span>단가</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={l.unitPrice}
+                      onChange={(e) =>
+                        setLine(l.key, { unitPrice: Math.max(0, Number(e.target.value) || 0) })
+                      }
+                      aria-label={`${i + 1}번째 품목 단가`}
+                      className="h-8 w-[130px] text-right font-mono"
+                    />
+                    <span className="w-[110px] text-right font-mono text-foreground">
+                      {won(l.quantity * l.unitPrice)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-          <div>
-            <Label className="mb-1.5 block text-[12px]">견적일자</Label>
-            <Input
-              type="date"
-              value={quotedAt}
-              onChange={(e) => setQuotedAt(e.target.value)}
-              aria-label="견적일자"
-            />
-          </div>
-          <div className="sm:col-span-3">
-            <Label className="mb-1.5 block text-[12px]">담당자</Label>
-            <EntityPicker
-              options={contactOptions}
-              value={contactId}
-              onChange={setContactId}
-              placeholder={org ? "담당자 이름으로 찾기" : "기관을 먼저 고르세요"}
-              emptyLabel={org ? "담당자를 고르세요 (선택)" : "기관을 먼저 고르세요"}
-              onCreate={org ? createContact : undefined}
-              createLabel="담당자로 새로 만들기"
-              disabled={!org || busy}
-            />
-            {org && (
-              <p className="mt-1.5 text-[11px] text-muted-foreground">
-                직함은 이름과 따로 저장돼요. 「김광민 교수님」처럼 붙여 쓰지 않아도 됩니다.
+
+          {filled.length > 0 && (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setLines((p) => [...p, newLine()])}
+              className="mt-2 gap-1"
+            >
+              <HugeiconsIcon icon={PlusSignIcon} size={13} aria-hidden />
+              품목 추가
+            </Button>
+          )}
+        </Step>
+
+        {/* 4 — 마무리 */}
+        <Step show={showFinish} label="이대로 맞나요?">
+          <div className="rounded-xl border bg-card p-4">
+            <dl className="flex flex-col gap-1.5 text-[13px]">
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">공급가</dt>
+                <dd className="font-mono">{won(totals.supply)}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">
+                  할인
+                  {org?.membership && (
+                    <span className="ml-1.5 text-[11px] text-primary">HRP 회원</span>
+                  )}
+                </dt>
+                <dd>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={10000}
+                    value={discount}
+                    onChange={(e) => {
+                      setDiscountTouched(true)
+                      setDiscount(Math.max(0, Number(e.target.value) || 0))
+                    }}
+                    aria-label="할인액"
+                    className="h-8 w-[130px] text-right font-mono"
+                  />
+                </dd>
+              </div>
+              <div className="flex justify-between border-t pt-1.5">
+                <dt className="text-muted-foreground">소계</dt>
+                <dd className="font-mono">{won(totals.subtotal)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">부가세 10%</dt>
+                <dd className="font-mono">{won(totals.vat)}</dd>
+              </div>
+              <div className="flex justify-between border-t pt-2 text-[15px] font-bold">
+                <dt>실 합계</dt>
+                <dd className="font-mono">{won(totals.total)}</dd>
+              </div>
+            </dl>
+
+            {org?.membership && !discountTouched && discount > 0 && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                HRP 회원이라 {won(org.membership.discountAmount)} 을 채워 뒀어요. 실제로
+                깎지 않을 거면 0 으로 바꾸세요.
               </p>
             )}
-          </div>
-        </div>
-      </section>
 
-      {/* 품목 */}
-      <section className="mt-4 rounded-xl border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            품목
-          </h2>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => setLines((p) => [...p, newLine()])}
-            className="gap-1"
-          >
-            <HugeiconsIcon icon={PlusSignIcon} size={13} aria-hidden />
-            품목 추가
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          {lines.map((l) => (
-            <div key={l.key} className="grid grid-cols-[1fr_72px_120px_auto] items-end gap-2">
+            <div className="mt-4 grid gap-3 border-t pt-3 sm:grid-cols-2">
               <div>
-                <EntityPicker
-                  options={productOptions}
-                  value={l.productId}
-                  onChange={(id) => pickProduct(l.key, id)}
-                  placeholder="제품 이름 · 규격으로 찾기"
-                  emptyLabel="제품을 고르세요"
-                />
-              </div>
-              <div>
+                <label
+                  htmlFor="quote-date"
+                  className="mb-1.5 block text-[12px] text-muted-foreground"
+                >
+                  견적일자
+                </label>
                 <Input
-                  type="number"
-                  min={1}
-                  value={l.quantity}
-                  onChange={(e) => setLine(l.key, { quantity: Math.max(1, Number(e.target.value) || 1) })}
-                  aria-label="수량"
-                  className="text-right"
+                  id="quote-date"
+                  type="date"
+                  value={quotedAt}
+                  onChange={(e) => setQuotedAt(e.target.value)}
                 />
               </div>
               <div>
-                <Input
-                  type="number"
-                  min={0}
-                  step={1000}
-                  value={l.unitPrice}
-                  onChange={(e) => setLine(l.key, { unitPrice: Math.max(0, Number(e.target.value) || 0) })}
-                  aria-label="단가"
-                  className="text-right"
+                <label
+                  htmlFor="quote-note"
+                  className="mb-1.5 block text-[12px] text-muted-foreground"
+                >
+                  비고 (선택)
+                </label>
+                <Textarea
+                  id="quote-note"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={1}
+                  placeholder="샘플 동봉 예정 등"
                 />
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="이 품목 지우기"
-                disabled={lines.length === 1}
-                onClick={() => setLines((p) => p.filter((x) => x.key !== l.key))}
-              >
-                <HugeiconsIcon icon={Delete02Icon} size={15} aria-hidden />
-              </Button>
             </div>
-          ))}
-        </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          단가는 제품을 고르면 기준값이 들어오고, 이 견적 안에서만 바뀝니다. 나중에 제품
-          단가를 고쳐도 이 견적 금액은 그대로예요.
-        </p>
-      </section>
+          </div>
 
-      {/* 금액 */}
-      <section className="mt-4 rounded-xl border bg-card p-4">
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          금액
-        </h2>
-        <dl className="flex flex-col gap-1.5 text-[13px]">
-          <div className="flex justify-between">
-            <dt className="text-muted-foreground">공급가</dt>
-            <dd className="font-mono">{won(totals.supply)}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <dt className="text-muted-foreground">
-              할인
-              {org?.membership && (
-                <span className="ml-1.5 text-[11px] text-primary">HRP 회원</span>
-              )}
-            </dt>
-            <dd>
-              <Input
-                type="number"
-                min={0}
-                step={10000}
-                value={discount}
-                onChange={(e) => {
-                  setDiscountTouched(true)
-                  setDiscount(Math.max(0, Number(e.target.value) || 0))
-                }}
-                aria-label="할인액"
-                className="h-8 w-[130px] text-right font-mono"
-              />
-            </dd>
-          </div>
-          <div className="flex justify-between border-t pt-1.5">
-            <dt className="text-muted-foreground">소계</dt>
-            <dd className="font-mono">{won(totals.subtotal)}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-muted-foreground">부가세 10%</dt>
-            <dd className="font-mono">{won(totals.vat)}</dd>
-          </div>
-          <div className="flex justify-between border-t pt-2 text-[15px] font-bold">
-            <dt>실 합계</dt>
-            <dd className="font-mono">{won(totals.total)}</dd>
-          </div>
-        </dl>
-        {org?.membership && !discountTouched && discount > 0 && (
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            HRP 회원이라 {won(org.membership.discountAmount)} 을 채워 뒀어요. 실제로 깎지
-            않을 거면 0 으로 바꾸세요 — 적어 둔 값이 그대로 합계에 반영됩니다.
+          <Button
+            onClick={save}
+            disabled={!canSave}
+            size="lg"
+            className="mt-4 w-full gap-1.5"
+          >
+            {pending ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} size={16} aria-hidden />}
+            견적 만들기
+          </Button>
+        </Step>
+
+        {/* 아직 못 간 자리에 무엇이 남았는지만 알려 준다 */}
+        {!showFinish && (
+          <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+            <HugeiconsIcon icon={ArrowRight02Icon} size={13} aria-hidden />
+            {!showContact
+              ? "기관을 고르면 다음 칸이 나옵니다"
+              : !showItems
+                ? "담당자를 고르거나 건너뛰면 품목 칸이 나옵니다"
+                : "제품을 고르면 금액이 계산됩니다"}
           </p>
         )}
-      </section>
-
-      <section className="mt-4">
-        <Label className="mb-1.5 block text-[12px]">비고</Label>
-        <Textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={2}
-          placeholder="샘플 동봉 예정 등"
-        />
-      </section>
-
-      <div className="mt-5 flex items-center justify-end gap-2">
-        {!orgId && <span className="text-[12px] text-muted-foreground">기관을 골라야 저장할 수 있어요</span>}
-        <Button onClick={save} disabled={!canSave} className="gap-1.5">
-          {pending ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} size={15} aria-hidden />}
-          견적 만들기
-        </Button>
       </div>
     </div>
   )
