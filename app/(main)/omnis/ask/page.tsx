@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { Header } from "@/components/layout/header"
 import { OmnisAsk } from "@/components/omnis/omnis-ask"
 
 export const metadata: Metadata = {
@@ -6,5 +7,10 @@ export const metadata: Metadata = {
 }
 
 export default function OmnisAskPage() {
-  return <OmnisAsk />
+  return (
+    <>
+      <Header crumbs={["HADD DB", "옴니스에게 질문"]} />
+      <OmnisAsk />
+    </>
+  )
 }

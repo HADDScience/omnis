@@ -8,12 +8,12 @@ import {
   DashboardSpeed02Icon,
   Task01Icon,
   BookOpen01Icon,
-  FolderLibraryIcon,
   FileAttachmentIcon,
   Logout01Icon,
   Moon01Icon,
   Sun01Icon,
   Search01Icon,
+  AiMagicIcon,
   Notification03Icon,
   UserIcon,
   UserGroupIcon,
@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useCommandPalette } from "@/components/layout/command-palette-context"
 import { LinkPendingMark } from "@/components/ui/pending-link"
+import { useRightPanel } from "@/components/layout/right-panel-context"
 
 /**
  * 사이드바 메뉴.
@@ -61,7 +62,6 @@ const navItems = [
   { href: "/dashboard", label: "워크스페이스", icon: DashboardSpeed02Icon },
   { href: "/tasks", label: "업무", icon: Task01Icon },
   { href: "/omnis", label: "HADD DB", icon: BookOpen01Icon },
-  { href: "/nas", label: "사내 자료", icon: FolderLibraryIcon },
   {
     href: "https://haddscience.github.io/ip-platform/",
     label: "지식재산권",
@@ -91,6 +91,7 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
   const [mounted, setMounted] = useState(false)
   const router = useRouter()
   const commandPalette = useCommandPalette()
+  const rightPanel = useRightPanel()
   useEffect(() => setMounted(true), [])
 
   return (
@@ -107,12 +108,22 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
           </div>
         </Link>
 
+        {/* 이 자리는 「검색」이었다. 옴니스에게 묻는 쪽이 훨씬 자주 쓰이고, 물어보면
+            업무·지식재산권·재고·견적을 한 번에 훑어 준다. 검색은 ⌘K 로 그대로 열린다. */}
+        <button
+          type="button"
+          onClick={() => rightPanel.openWith("ai")}
+          className="ai-rainbow-border flex h-8 w-full items-center gap-2 rounded-md border border-border bg-muted px-2.5 text-[12px] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+        >
+          <HugeiconsIcon icon={AiMagicIcon} size={14} className="opacity-80" />
+          <span className="flex-1 text-left">Omnis AI 에게 질문</span>
+        </button>
         <button
           type="button"
           onClick={() => commandPalette.open()}
-          className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-muted px-2.5 text-[12px] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+          className="mt-1.5 flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <HugeiconsIcon icon={Search01Icon} size={14} className="opacity-70" />
+          <HugeiconsIcon icon={Search01Icon} size={13} className="opacity-70" />
           <span className="flex-1 text-left">검색</span>
           <Kbd>⌘K</Kbd>
         </button>

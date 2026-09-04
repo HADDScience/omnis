@@ -1,3 +1,4 @@
+import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { HaddDbLanding } from "@/components/omnis/hadd-db-landing"
@@ -122,6 +123,9 @@ export default async function OmnisPage({ searchParams }: Props) {
 
   return (
     <>
+      {/* 상단바는 모든 화면에 있어야 한다 — 채팅을 여는 단추가 여기 있고,
+          어디서든 열 수 있어야 하기 때문이다. */}
+      <Header title="HADD DB" />
       <HaddDbLanding
         totalCards={totalCards}
         categoryCount={categories.length}

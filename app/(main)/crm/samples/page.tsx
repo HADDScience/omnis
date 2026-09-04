@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic"
 export default async function CrmSamplesPage() {
   const samples = await prisma.crmSampleRequest.findMany({
     orderBy: { requestedAt: "desc" },
-    include: { org: true, contact: true, product: true },
+    include: { org: true, contact: true, product: true, shipments: { select: { id: true } } },
   })
 
   return (
@@ -30,6 +30,7 @@ export default async function CrmSamplesPage() {
             referral: s.referral,
             sent: s.status === "SENT",
             note: s.note,
+            shipmentCount: s.shipments.length,
           }))}
         />
       </div>

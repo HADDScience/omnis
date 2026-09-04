@@ -46,3 +46,28 @@ export async function PATCH(
   const quote = await prisma.crmQuote.update({ where: { id: quoteId }, data })
   return NextResponse.json(quote)
 }
+
+/**
+ * 견적을 지운다.
+ *
+ * 품목은 함께 사라진다(스키마의 onDelete: Cascade). 출고는 남고 이 견적과의
+ * 연결만 끊긴다(SetNull) — 물건이 실제로 나갔다는 사실은 견적을 지운다고
+ * 없던 일이 되지 않는다.
+ */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ quoteId: string }> }
+) {
+  const session = await auth()
+  if (!session?.user?.id) return NextResponse.json({ error: "인증 필요" }, { status: 401 })
+
+  const { quoteId } = await params
+  const quote = await prisma.crmQuote.findUnique({
+    where: { id: quoteId },
+    select: { code: true },
+  })
+  if (!quote) return NextResponse.json({ error: "견적을 찾을 수 없습니다" }, { status: 404 })
+
+  await prisma.crmQuote.delete({ where: { id: quoteId } })
+  return NextResponse.json({ ok: true, code: quote.code })
+}

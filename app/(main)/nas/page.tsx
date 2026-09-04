@@ -1,20 +1,14 @@
-import { Header } from "@/components/layout/header"
-import { NasBrowser } from "./nas-browser"
+import { redirect } from "next/navigation"
 
-export const dynamic = "force-dynamic"
-
-export default async function NasPage({
+/**
+ * 옛 주소. 사내 자료를 HADD DB 아래로 옮기면서 남겨 둔다 —
+ * 채팅에 남은 링크와 북마크가 여기를 가리키고 있다.
+ */
+export default async function NasRedirect({
   searchParams,
 }: {
   searchParams: Promise<{ path?: string }>
 }) {
   const { path } = await searchParams
-  return (
-    <>
-      <Header title="사내 자료" />
-      <div className="flex flex-1 flex-col overflow-hidden p-4">
-        <NasBrowser initialPath={path ?? "/HADD Science"} />
-      </div>
-    </>
-  )
+  redirect(path ? `/omnis/nas?path=${encodeURIComponent(path)}` : "/omnis/nas")
 }

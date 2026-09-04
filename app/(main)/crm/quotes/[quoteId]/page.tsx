@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { quoteTotals, won, ORG_TYPE_LABEL } from "@/lib/crm"
 import { QuoteStatusControl } from "@/components/crm/quote-status"
+import { DeleteRecordButton } from "@/components/crm/delete-record-button"
 
 export const dynamic = "force-dynamic"
 
@@ -21,6 +22,7 @@ export default async function QuoteDetailPage({
       contact: true,
       membership: true,
       items: { include: { product: true }, orderBy: { sortOrder: "asc" } },
+      shipments: { select: { id: true } },
     },
   })
   if (!q) notFound()
@@ -37,11 +39,24 @@ export default async function QuoteDetailPage({
             {q.quotedAt.toISOString().slice(0, 10)}
           </span>
         </div>
-        <div className="mb-5">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <QuoteStatusControl
             quoteId={q.id}
             status={q.status}
             taxInvoicedAt={q.taxInvoicedAt?.toISOString() ?? null}
+          />
+          <DeleteRecordButton
+            endpoint={`/api/crm/quotes/${q.id}`}
+            redirectTo="/crm/quotes"
+            title="이 견적을 지울까요?"
+            code={q.code}
+            consequences={[
+              `품목 ${q.items.length}건과 금액 기록(${won(t.total)})이 함께 사라집니다`,
+              q.shipments.length > 0
+                ? `출고 ${q.shipments.length}건은 남지만 이 견적과의 연결이 끊깁니다`
+                : "딸린 출고는 없습니다",
+              "기관·담당자는 그대로 남습니다",
+            ]}
           />
         </div>
 

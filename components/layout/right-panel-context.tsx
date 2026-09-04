@@ -24,10 +24,16 @@ export interface PanelTaskContext {
   }[]
 }
 
+export type PanelView = "task" | "all" | "ai"
+
 interface RightPanelValue {
   open: boolean
   setOpen: (v: boolean) => void
   toggle: () => void
+  /** 어느 탭으로 열지. 사이드바의 「Omnis AI 에게 질문」 처럼 밖에서 지정할 때 쓴다. */
+  requestedView: PanelView | null
+  openWith: (view: PanelView) => void
+  clearRequestedView: () => void
   /** 지금 보고 있는 업무. 업무 상세 페이지가 등록하고, 떠나면 지운다. */
   task: PanelTaskContext | null
   setTask: (t: PanelTaskContext | null) => void
@@ -39,6 +45,7 @@ const OPEN_KEY = "omnis:right-panel-open"
 export function RightPanelProvider({ children }: { children: ReactNode }) {
   const [open, setOpenState] = useState(false)
   const [task, setTask] = useState<PanelTaskContext | null>(null)
+  const [requestedView, setRequestedView] = useState<PanelView | null>(null)
 
   useEffect(() => {
     try {
@@ -57,9 +64,26 @@ export function RightPanelProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const openWith = useCallback(
+    (view: PanelView) => {
+      setRequestedView(view)
+      setOpen(true)
+    },
+    [setOpen]
+  )
+
   const value = useMemo<RightPanelValue>(
-    () => ({ open, setOpen, toggle: () => setOpen(!open), task, setTask }),
-    [open, setOpen, task]
+    () => ({
+      open,
+      setOpen,
+      toggle: () => setOpen(!open),
+      requestedView,
+      openWith,
+      clearRequestedView: () => setRequestedView(null),
+      task,
+      setTask,
+    }),
+    [open, setOpen, requestedView, openWith, task]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

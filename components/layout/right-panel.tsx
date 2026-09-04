@@ -47,7 +47,7 @@ type View = "task" | "all" | "ai"
  * 업무 상세에서 열면 전체 채팅이 아니라 **그 업무 스레드**가 먼저 뜬다.
  */
 export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Props) {
-  const { open, setOpen, task } = useRightPanel()
+  const { open, setOpen, task, requestedView, clearRequestedView } = useRightPanel()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -62,6 +62,14 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
   useEffect(() => {
     setView(task ? "task" : "all")
   }, [task])
+
+  // 밖에서 탭을 지정해 열었으면 그쪽을 보여 준다. 한 번 쓰고 지운다 —
+  // 남겨 두면 다음에 그냥 열었을 때도 그 탭으로 끌려간다.
+  useEffect(() => {
+    if (!requestedView) return
+    setView(requestedView)
+    clearRequestedView()
+  }, [requestedView, clearRequestedView])
 
   // ?taskId= 로 들어온 딥링크는 패널을 열고 그 스레드를 보여 준다.
   //

@@ -5,6 +5,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Tick02Icon, PackageIcon } from "@hugeicons/core-free-icons"
+import { DeleteRecordButton } from "./delete-record-button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -21,6 +22,7 @@ interface Sample {
   referral: string | null
   sent: boolean
   note: string | null
+  shipmentCount: number
 }
 
 /**
@@ -130,6 +132,19 @@ export function SampleList({ samples: initial }: { samples: Sample[] }) {
                   />
                   {s.sent ? "발송완료" : "미발송"}
                 </button>
+                <DeleteRecordButton
+                  endpoint={`/api/crm/samples/${s.id}`}
+                  onDeleted={() => setSamples((prev) => prev.filter((x) => x.id !== s.id))}
+                  title="이 샘플요청을 지울까요?"
+                  code={s.code}
+                  consequences={[
+                    "요청 내용과 소개경로가 함께 사라집니다",
+                    s.shipmentCount > 0
+                      ? `출고 ${s.shipmentCount}건은 남지만 이 요청과의 연결이 끊깁니다`
+                      : "딸린 출고는 없습니다",
+                    "기관·담당자는 그대로 남습니다",
+                  ]}
+                />
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px]">

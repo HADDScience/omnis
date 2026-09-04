@@ -11,6 +11,7 @@ import {
   PlusSignIcon,
   BubbleChatSparkIcon,
   ArrowRight02Icon,
+  FolderLibraryIcon,
   StarIcon,
 } from "@hugeicons/core-free-icons"
 import { Kbd } from "@/components/ui/kbd"
@@ -195,6 +196,31 @@ export function HaddDbLanding({
             </Link>
           ))}
         </div>
+
+        {/* 사내 자료(NAS) 진입.
+            사이드바에 「사내 자료」로 따로 서 있었는데 HADD DB 와 무엇이 다른지
+            헷갈렸다. 둘 다 사내 자료를 보는 곳이니 당연하다. 카드로 정리된 지식이
+            HADD DB 고, 아직 NAS 에 파일로만 있는 것이 저쪽이다. */}
+        <Link
+          href="/omnis/nas"
+          className="mt-3.5 flex items-center gap-3 rounded-lg border bg-card px-5 py-3.5 transition-colors hover:border-border-strong hover:bg-muted/40"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <HugeiconsIcon icon={FolderLibraryIcon} size={19} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold">사내 자료 (NAS)</div>
+            <div className="truncate text-[11.5px] text-muted-foreground">
+              아직 카드로 정리되지 않고 시놀로지에 파일로만 있는 것들
+            </div>
+          </div>
+          <HugeiconsIcon
+            icon={ArrowRight02Icon}
+            size={16}
+            className="shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+        </Link>
 
         {/* 옴니스 RAG 질문 진입 — 자연어 질문 → 사내 지식 기반 답변 */}
         <Link

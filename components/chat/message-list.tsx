@@ -363,7 +363,7 @@ function MessageContent({ content, tasks, isMe = false }: { content: string; tas
       parts.push(
         <Link
           key={match.index}
-          href={`/nas?path=${encodeURIComponent(raw)}`}
+          href={`/omnis/nas?path=${encodeURIComponent(raw)}`}
           className={mentionClass}
           title="사내 NAS 에서 열기"
           onClick={(e) => e.stopPropagation()}
