@@ -31,7 +31,7 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          <div className="flex min-h-screen flex-col">
+          <div className="flex min-h-[var(--app-vh)] flex-col">
             <DemoBanner />
             <div className="flex min-h-0 flex-1 flex-col">{children}</div>
           </div>

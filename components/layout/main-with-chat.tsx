@@ -49,7 +49,7 @@ export function MainWithChat({
 
   return (
     <>
-      <div className="flex h-[calc(100svh-var(--demo-banner-height,0px))] min-h-0 flex-col overflow-hidden">
+      <div className="flex h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] min-h-0 flex-col overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-auto">{children}</div>
           <ChatDock
