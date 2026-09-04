@@ -42,10 +42,22 @@ function sheet(wb: XLSX.WorkBook, name: string): Row[] {
   return XLSX.utils.sheet_to_json<Row>(ws, { defval: null })
 }
 
+/**
+ * 엑셀의 날짜 칸은 '날짜'지 '시각'이 아니다.
+ *
+ * xlsx 가 cellDates 로 돌려주는 Date 는 시간대 변환 때문에 자정에서 몇십 초씩
+ * 어긋난다 (2024-09-24 가 2024-09-23T14:59:08Z 로 왔다). 그대로 두면 화면에서
+ * 하루가 밀린다. 가장 가까운 UTC 자정으로 맞춰 날짜만 남긴다.
+ */
 function toDate(v: unknown): Date {
-  if (v instanceof Date) return v
-  if (typeof v === "number") return new Date(Math.round((v - 25569) * 86400 * 1000))
-  return new Date(String(v))
+  const d =
+    v instanceof Date
+      ? v
+      : typeof v === "number"
+        ? new Date(Math.round((v - 25569) * 86400 * 1000))
+        : new Date(String(v))
+  const DAY = 86400000
+  return new Date(Math.round(d.getTime() / DAY) * DAY)
 }
 
 const notes: string[] = []

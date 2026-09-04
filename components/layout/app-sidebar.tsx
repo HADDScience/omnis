@@ -67,6 +67,7 @@ const navItems = [
     icon: Legal01Icon,
     external: true,
   },
+  { href: "/crm/quotes", label: "고객·견적", icon: UserGroupIcon },
   { href: "/reports", label: "보고서", icon: FileAttachmentIcon },
 ] as const
 
