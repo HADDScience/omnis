@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { CrmNav } from "@/components/crm/crm-nav"
+import { NewRecordButton } from "@/components/crm/new-record-button"
 import { prisma } from "@/lib/db"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -21,7 +22,7 @@ export default async function CrmOrgsPage() {
 
   return (
     <>
-      <Header crumbs={["CRM", "기관"]} />
+      <Header crumbs={["CRM", "기관"]} actions={<NewRecordButton />} />
       <div className="mx-auto w-full max-w-[1100px] px-6 py-6">
         <CrmNav />
         <div className="mb-4 flex items-baseline gap-3">

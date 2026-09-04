@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { PlusSignIcon, Invoice01Icon } from "@hugeicons/core-free-icons"
+import { Invoice01Icon } from "@hugeicons/core-free-icons"
+import { NewRecordButton } from "@/components/crm/new-record-button"
 import { quoteTotals, won, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import type { CrmQuoteStatus } from "@/generated/prisma"
 
@@ -37,12 +38,7 @@ export default async function CrmQuotesPage() {
     <>
       <Header
         crumbs={["CRM", "견적"]}
-        actions={
-          <Button size="sm" render={<Link href="/crm/quotes/new" />} className="gap-1.5">
-            <HugeiconsIcon icon={PlusSignIcon} size={15} aria-hidden />
-            새 견적
-          </Button>
-        }
+        actions={<NewRecordButton />}
       />
       <div className="mx-auto w-full max-w-[1100px] px-6 py-6">
         <CrmNav />

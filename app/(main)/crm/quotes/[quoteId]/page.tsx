@@ -2,8 +2,8 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
-import { Badge } from "@/components/ui/badge"
-import { quoteTotals, won, QUOTE_STATUS_LABEL, ORG_TYPE_LABEL } from "@/lib/crm"
+import { quoteTotals, won, ORG_TYPE_LABEL } from "@/lib/crm"
+import { QuoteStatusControl } from "@/components/crm/quote-status"
 
 export const dynamic = "force-dynamic"
 
@@ -31,12 +31,18 @@ export default async function QuoteDetailPage({
     <>
       <Header crumbs={["CRM", "견적", q.code]} />
       <div className="mx-auto w-full max-w-[860px] px-6 pb-20 pt-6">
-        <div className="mb-5 flex flex-wrap items-baseline gap-3">
+        <div className="mb-4 flex flex-wrap items-baseline gap-3">
           <h1 className="font-mono text-[18px] font-bold">{q.code}</h1>
-          <Badge>{QUOTE_STATUS_LABEL[q.status]}</Badge>
           <span className="text-[13px] text-muted-foreground">
             {q.quotedAt.toISOString().slice(0, 10)}
           </span>
+        </div>
+        <div className="mb-5">
+          <QuoteStatusControl
+            quoteId={q.id}
+            status={q.status}
+            taxInvoicedAt={q.taxInvoicedAt?.toISOString() ?? null}
+          />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_280px]">

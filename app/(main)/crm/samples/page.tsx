@@ -2,6 +2,7 @@ import { Header } from "@/components/layout/header"
 import { CrmNav } from "@/components/crm/crm-nav"
 import { prisma } from "@/lib/db"
 import { SampleList } from "@/components/crm/sample-list"
+import { NewRecordButton } from "@/components/crm/new-record-button"
 
 export const dynamic = "force-dynamic"
 
@@ -13,7 +14,7 @@ export default async function CrmSamplesPage() {
 
   return (
     <>
-      <Header crumbs={["CRM", "샘플요청"]} />
+      <Header crumbs={["CRM", "샘플요청"]} actions={<NewRecordButton />} />
       <div className="mx-auto w-full max-w-[1000px] px-6 py-6">
         <CrmNav />
         <SampleList

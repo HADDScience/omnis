@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef, useEffect, useTransition, type ReactNode } from "react"
+import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -15,17 +15,12 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { EntityPicker, type PickerOption } from "./entity-picker"
-import { quoteTotals, won, ORG_TYPE_LABEL } from "@/lib/crm"
-import type { CrmOrgType } from "@/generated/prisma"
+import { Step } from "./step"
+import { RecipientSteps } from "./recipient-steps"
+import { useRecipient, type OrgLite } from "./use-recipient"
+import { quoteTotals, won } from "@/lib/crm"
 import { cn } from "@/lib/utils"
 
-interface OrgLite {
-  id: string
-  name: string
-  type: CrmOrgType
-  contacts: { id: string; name: string; title: string | null }[]
-  membership: { id: string; discountAmount: number } | null
-}
 interface ProductLite {
   id: string
   name: string
@@ -48,55 +43,6 @@ const newLine = (): Line => ({
   unitPrice: 0,
 })
 
-/**
- * 한 번에 하나씩 묻는다.
- *
- * 앞의 답이 정해져야 다음 칸이 나타난다 — 기관을 골라야 담당자가 뜨고, 담당자가
- * 정해져야 품목이 뜬다. 처음부터 빈 칸 여섯 개를 늘어놓으면 어디부터 손대야 할지,
- * 무엇이 필수인지 사람이 판단해야 한다. 순서를 화면이 알고 있으면 그럴 필요가 없다.
- *
- * 채운 칸은 그대로 남아 계속 고칠 수 있다. 되돌아갈 수 없는 마법사가 아니다.
- */
-function Step({
-  show = true,
-  label,
-  hint,
-  children,
-  autoFocus,
-}: {
-  show?: boolean
-  label: string
-  hint?: ReactNode
-  children: ReactNode
-  autoFocus?: boolean
-}) {
-  // 라벨 줄이 아니라 **입력 영역**만 본다. 「건너뛰기」 같은 보조 버튼이 라벨 옆에
-  // 있어서, 단계 전체에서 첫 버튼을 찾으면 그쪽으로 커서가 간다.
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const focused = useRef(false)
-
-  useEffect(() => {
-    if (!show || !autoFocus || focused.current) return
-    focused.current = true
-    const el = bodyRef.current?.querySelector<HTMLElement>(
-      "button:not([disabled]), input:not([disabled]), textarea:not([disabled])"
-    )
-    const t = setTimeout(() => el?.focus(), 260)
-    return () => clearTimeout(t)
-  }, [show, autoFocus])
-
-  if (!show) return null
-  return (
-    <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-200 motion-reduce:animate-none">
-      <div className="mb-1.5 flex items-baseline gap-2">
-        <span className="text-[12px] font-medium">{label}</span>
-        {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
-      </div>
-      <div ref={bodyRef}>{children}</div>
-    </div>
-  )
-}
-
 export function QuoteComposer({
   orgs: initialOrgs,
   products,
@@ -105,35 +51,22 @@ export function QuoteComposer({
   products: ProductLite[]
 }) {
   const router = useRouter()
-  const [orgs, setOrgs] = useState(initialOrgs)
-  // 방금 만든 기관은 유형이 비어 있다. 그 자리에서 정할 수 있게 표시해 둔다.
-  const [justCreatedOrgId, setJustCreatedOrgId] = useState<string | null>(null)
-  const [orgId, setOrgId] = useState<string | null>(null)
-  const [contactId, setContactId] = useState<string | null>(null)
-  const [contactSkipped, setContactSkipped] = useState(false)
+  const r = useRecipient(initialOrgs)
   const [quotedAt, setQuotedAt] = useState(() => new Date().toISOString().slice(0, 10))
   const [lines, setLines] = useState<Line[]>([newLine()])
   const [discount, setDiscount] = useState(0)
   const [discountTouched, setDiscountTouched] = useState(false)
   const [note, setNote] = useState("")
-  const [busy, setBusy] = useState(false)
   const [pending, startTransition] = useTransition()
 
-  const org = orgs.find((o) => o.id === orgId) ?? null
+  const org = r.org
   const filled = lines.filter((l) => l.productId)
 
   // 어디까지 왔는지는 따로 세지 않고 채워진 값에서 끌어낸다.
   // 카운터를 따로 두면 값과 단계가 어긋나는 순간이 생긴다.
-  const showContact = Boolean(orgId)
-  const showItems = showContact && (Boolean(contactId) || contactSkipped)
+  const showItems = Boolean(r.orgId) && (Boolean(r.contactId) || r.contactSkipped)
   const showFinish = showItems && filled.length > 0
 
-  const orgOptions: PickerOption[] = orgs.map((o) => ({ id: o.id, label: o.name }))
-  const contactOptions: PickerOption[] = (org?.contacts ?? []).map((c) => ({
-    id: c.id,
-    label: c.name,
-    hint: c.title,
-  }))
   // 애드젤은 이름이 같고 규격·형태로만 갈린다. 둘 다 보여 줘야 고를 수 있다.
   const productOptions: PickerOption[] = products.map((p) => ({
     id: p.id,
@@ -151,78 +84,11 @@ export function QuoteComposer({
     [filled, discount]
   )
 
-  function pickOrg(id: string | null) {
-    setOrgId(id)
-    setJustCreatedOrgId((prev) => (prev === id ? prev : null))
-    setContactId(null)
-    setContactSkipped(false)
-    if (!discountTouched) {
-      const m = orgs.find((o) => o.id === id)?.membership
-      setDiscount(m?.discountAmount ?? 0)
-    }
-  }
-
-  async function createOrg(name: string) {
-    setBusy(true)
-    try {
-      const res = await fetch("/api/crm/orgs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "기관을 만들지 못했습니다")
-      setOrgs((prev) => [...prev, { ...data, contacts: [], membership: null }])
-      pickOrg(data.id)
-      setJustCreatedOrgId(data.id)
-      toast.success(`기관 «${data.name}» 을 만들었어요`)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "오류가 발생했습니다")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function setOrgType(type: CrmOrgType) {
-    if (!orgId) return
-    setOrgs((prev) => prev.map((o) => (o.id === orgId ? { ...o, type } : o)))
-    try {
-      const res = await fetch(`/api/crm/orgs/${orgId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
-      })
-      if (!res.ok) throw new Error((await res.json()).error ?? "유형을 바꾸지 못했습니다")
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "오류가 발생했습니다")
-    }
-  }
-
-  async function createContact(name: string) {
-    if (!orgId) return
-    setBusy(true)
-    try {
-      const res = await fetch("/api/crm/contacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "담당자를 만들지 못했습니다")
-      setOrgs((prev) =>
-        prev.map((o) =>
-          o.id === orgId
-            ? { ...o, contacts: [...o.contacts, { id: data.id, name: data.name, title: data.title }] }
-            : o
-        )
-      )
-      setContactId(data.id)
-      toast.success(`담당자 «${data.name}» 을 만들었어요`)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "오류가 발생했습니다")
-    } finally {
-      setBusy(false)
-    }
+  /** HRP 회원이면 할인을 **제안**한다. 사람이 손대면 그 뒤로는 건드리지 않는다. */
+  function onOrgPicked(orgId: string | null) {
+    if (discountTouched) return
+    const m = r.orgs.find((o) => o.id === orgId)?.membership
+    setDiscount(m?.discountAmount ?? 0)
   }
 
   function setLine(key: string, patch: Partial<Line>) {
@@ -234,7 +100,7 @@ export function QuoteComposer({
     setLine(key, { productId, unitPrice: p?.unitPrice ?? 0 })
   }
 
-  const canSave = showFinish && !busy && !pending
+  const canSave = showFinish && !r.busy && !pending
 
   function save() {
     if (!canSave) return
@@ -245,8 +111,8 @@ export function QuoteComposer({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             quotedAt,
-            orgId,
-            contactId,
+            orgId: r.orgId,
+            contactId: r.contactId,
             membershipId: org?.membership?.id ?? null,
             discountAmount: totals.discount,
             status: "DRAFT",
@@ -276,79 +142,7 @@ export function QuoteComposer({
       </p>
 
       <div className="mt-7 flex flex-col gap-5">
-        {/* 1 — 기관 */}
-        <Step label="어느 기관인가요?">
-          <EntityPicker
-            options={orgOptions}
-            value={orgId}
-            onChange={pickOrg}
-            placeholder="기관 이름으로 찾기"
-            emptyLabel="기관을 고르세요"
-            onCreate={createOrg}
-            createLabel="기관으로 새로 만들기"
-            disabled={busy}
-          />
-          {justCreatedOrgId === orgId && org && (
-            <div className="mt-2 animate-in fade-in-0 duration-150 motion-reduce:animate-none">
-              <p className="mb-1.5 text-[11px] text-muted-foreground">
-                새 기관이라 유형이 비어 있어요. 골라 두면 목록에서 분류됩니다.
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(ORG_TYPE_LABEL) as CrmOrgType[]).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setOrgType(t)}
-                    aria-pressed={org.type === t}
-                    className={cn(
-                      "inline-flex h-7 items-center rounded-md border px-2.5 text-[12px] transition-colors",
-                      org.type === t
-                        ? "border-primary/30 bg-primary/10 font-medium text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    {ORG_TYPE_LABEL[t]}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </Step>
-
-        {/* 2 — 담당자 */}
-        <Step
-          show={showContact}
-          autoFocus
-          label="담당자는 누구인가요?"
-          hint={
-            !contactId && !contactSkipped ? (
-              <button
-                type="button"
-                onClick={() => setContactSkipped(true)}
-                className="underline underline-offset-2 hover:text-foreground"
-              >
-                모르면 건너뛰기
-              </button>
-            ) : null
-          }
-        >
-          <EntityPicker
-            options={contactOptions}
-            value={contactId}
-            onChange={(id) => {
-              setContactId(id)
-              if (id) setContactSkipped(false)
-            }}
-            placeholder="담당자 이름으로 찾기"
-            emptyLabel={contactSkipped ? "담당자 없이 진행합니다" : "담당자를 고르세요"}
-            onCreate={createContact}
-            createLabel="담당자로 새로 만들기"
-            disabled={busy}
-          />
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            직함은 따로 저장돼요. 「김광민 교수님」처럼 붙여 쓰지 않아도 됩니다.
-          </p>
-        </Step>
+        <RecipientSteps r={r} onOrgPicked={onOrgPicked} />
 
         {/* 3 — 품목 */}
         <Step show={showItems} autoFocus label="무엇을 얼마나 보내나요?">
@@ -520,7 +314,7 @@ export function QuoteComposer({
         {!showFinish && (
           <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
             <HugeiconsIcon icon={ArrowRight02Icon} size={13} aria-hidden />
-            {!showContact
+            {!r.orgId
               ? "기관을 고르면 다음 칸이 나옵니다"
               : !showItems
                 ? "담당자를 고르거나 건너뛰면 품목 칸이 나옵니다"

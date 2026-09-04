@@ -1,5 +1,6 @@
 import { Header } from "@/components/layout/header"
 import { CrmNav } from "@/components/crm/crm-nav"
+import { NewRecordButton } from "@/components/crm/new-record-button"
 import { prisma } from "@/lib/db"
 import { stockBalance, SHIPMENT_KIND_LABEL, SHIPMENT_STATUS_LABEL } from "@/lib/crm"
 import { Badge } from "@/components/ui/badge"
@@ -24,7 +25,7 @@ export default async function CrmInventoryPage() {
 
   return (
     <>
-      <Header crumbs={["CRM", "재고·출고"]} />
+      <Header crumbs={["CRM", "재고·출고"]} actions={<NewRecordButton />} />
       <div className="mx-auto w-full max-w-[1000px] px-6 pb-20 pt-6">
         <CrmNav />
         <section>

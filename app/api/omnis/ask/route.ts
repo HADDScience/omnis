@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { assigneeLabel } from "@/lib/task-assignees"
 import { retrieveContext, type EmbeddingSource } from "@/lib/embeddings"
+import { stockBalance, quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { answerWithOmnis } from "@/lib/ai"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
 import { listCases, listOpenTurns } from "@/lib/ip-data"
@@ -75,6 +76,82 @@ async function buildTaskOverview(): Promise<string> {
  * 없는 질문은 top-K 검색으로는 조용히 몇 건을 빠뜨린다. 상표·특허를 합쳐 27건뿐이라
  * 한 줄 요약을 전량 실어도 컨텍스트가 넘치지 않는다 — 자세한 이력은 검색된 청크가 맡는다.
  */
+/**
+ * CRM 현황을 통째로 넘긴다.
+ *
+ * 재고·견적 합계 같은 것은 **계산되는 값**이라 임베딩에 넣으면 안 된다. 입고 한 번에
+ * 낡고, 색인을 다시 만들기 전까지 틀린 숫자를 자신 있게 답한다. 그래서 업무·지식재산권과
+ * 같은 방식으로 물어볼 때마다 세어서 넘긴다.
+ *
+ * 자료가 100건 남짓이라 전량을 넣어도 얼마 안 된다. 커지면 그때 줄인다.
+ */
+async function buildCrmOverview(): Promise<string> {
+  const [materials, quotes, samples, orgs] = await Promise.all([
+    prisma.crmProduct.findMany({
+      where: { isMaterial: true },
+      orderBy: { code: "asc" },
+      include: { stockMoves: true },
+    }),
+    prisma.crmQuote.findMany({
+      orderBy: { quotedAt: "desc" },
+      include: { org: true, items: { include: { product: true } } },
+    }),
+    prisma.crmSampleRequest.findMany({
+      orderBy: { requestedAt: "desc" },
+      include: { org: true, product: true },
+    }),
+    prisma.crmOrg.count(),
+  ])
+  if (materials.length === 0 && quotes.length === 0 && samples.length === 0) return ""
+
+  const parts: string[] = ["[CRM 현황]"]
+
+  if (materials.length > 0) {
+    parts.push(
+      "원료 재고 (입고 − 출고로 계산한 현재고)",
+      ...materials.map((m) => {
+        const { inQty, outQty, balance } = stockBalance(m.stockMoves)
+        return `- ${m.name}${m.spec ? ` (${m.spec})` : ""}: 현재고 ${balance}개 (입고 ${inQty} · 출고 ${outQty})`
+      })
+    )
+  }
+
+  if (quotes.length > 0) {
+    const totals = quotes.map((q) => quoteTotals(q.items, q.discountAmount, q.vatRate))
+    const grand = totals.reduce((a, t) => a + t.total, 0)
+    parts.push(
+      "",
+      `견적 ${quotes.length}건 · 실 합계 ${grand.toLocaleString()}원`,
+      ...quotes.map((q, i) => {
+        const t = totals[i]
+        const items = q.items
+          .map((it) => `${it.product.name}${it.product.spec ? `(${it.product.spec})` : ""} ${it.quantity}개`)
+          .join(", ")
+        return `- ${q.code} ${q.quotedAt.toISOString().slice(0, 10)} ${q.org.name} · ${items} · ${QUOTE_STATUS_LABEL[q.status]} · ${t.total.toLocaleString()}원`
+      })
+    )
+  }
+
+  if (samples.length > 0) {
+    const pending = samples.filter((s) => s.status === "PENDING").length
+    parts.push(
+      "",
+      `샘플요청 ${samples.length}건 (미발송 ${pending}건)`,
+      ...samples.map(
+        (s) =>
+          `- ${s.code} ${s.requestedAt.toISOString().slice(0, 10)} ${s.org.name}` +
+          `${s.product ? ` · ${s.product.name}` : ""}` +
+          `${s.request ? ` · ${s.request}` : ""}` +
+          `${s.referral ? ` · 소개: ${s.referral}` : ""}` +
+          ` · ${s.status === "SENT" ? "발송완료" : "미발송"}`
+      )
+    )
+  }
+
+  parts.push("", `거래 기관 ${orgs}곳`)
+  return parts.join("\n")
+}
+
 async function buildIpOverview(): Promise<string> {
   const cases = await listCases()
   if (cases.length === 0) return ""
@@ -157,11 +234,12 @@ export async function POST(req: NextRequest) {
     // 2. 현황 요약 — 업무와 지식재산권 전량을 구조화해 컨텍스트로 제공.
     //    top-K 검색만으로는 "지연된 업무 전부", "등록된 상표 전부" 같은 집계
     //    질문에서 조용히 몇 건이 빠진다.
-    const [taskOverview, ipOverview] = await Promise.all([
+    const [taskOverview, ipOverview, crmOverview] = await Promise.all([
       buildTaskOverview(),
       buildIpOverview(),
+      buildCrmOverview(),
     ])
-    const overview = [taskOverview, ipOverview].filter(Boolean).join("\n\n")
+    const overview = [taskOverview, ipOverview, crmOverview].filter(Boolean).join("\n\n")
 
     // 3. Generation — 검색 결과 + 현황 요약을 근거로 답변 생성
     const answer = await answerWithOmnis(
