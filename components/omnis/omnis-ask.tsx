@@ -24,6 +24,7 @@ import {
   ArrowUp01Icon,
   ArrowDown01Icon,
 } from "@hugeicons/core-free-icons"
+import type { EmbeddingSource } from "@/lib/embeddings"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -34,7 +35,13 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip"
 
-type SourceType = "OMNIS_CARD" | "TASK" | "WEEKLY_REPORT" | "CHAT_MESSAGE"
+/**
+ * 서버가 쓰는 것과 **같은** 타입을 가져온다. 여기서 따로 선언해 두면 서버 쪽에
+ * 값이 늘어났을 때 조용히 어긋나고, sourceHref 가 undefined 를 돌려주고,
+ * 그 값이 <Link href> 로 들어가 페이지 전체가 흰 화면이 된다. 실제로 IP_CASE 가
+ * 그렇게 됐다.
+ */
+type SourceType = EmbeddingSource
 
 interface Source {
   id: string
@@ -59,7 +66,15 @@ const EXAMPLES = [
   "진행 중인 업무를 요약해줘",
 ]
 
-function sourceHref(s: Source): string {
+const IP_PLATFORM_URL = "https://haddscience.github.io/ip-platform/"
+
+/**
+ * 출처를 열 주소. 열 곳이 없으면 null 을 준다.
+ *
+ * default 분기가 핵심이다. EmbeddingSource 에 값이 늘어나도 여기서 null 로 떨어질 뿐,
+ * undefined 가 <Link href> 에 들어가 화면 전체를 날리지는 않는다.
+ */
+function sourceHref(s: Source): string | null {
   switch (s.source) {
     case "OMNIS_CARD":
       return `/omnis/${s.sourceId}`
@@ -69,6 +84,14 @@ function sourceHref(s: Source): string {
       return `/reports/${s.sourceId}`
     case "CHAT_MESSAGE":
       return "/chat"
+    case "IP_CASE":
+      // 지식재산권은 아직 옴니스 안에 상세 화면이 없다. 외부 플랫폼으로 보낸다.
+      return IP_PLATFORM_URL
+    default:
+      // 위 case 가 하나라도 빠지면 여기서 컴파일이 깨진다 — 흰 화면 대신
+      // 빌드가 먼저 막힌다. 런타임에 모르는 값이 와도 null 이라 안전하다.
+      s.source satisfies never
+      return null
   }
 }
 
@@ -122,6 +145,7 @@ function parseHastTable(node: HNode): { headers: string[]; rows: string[][] } {
 /** 각주 배지 — 출처가 있으면 호버 미리보기 + 클릭 이동, 없으면 단순 배지 */
 function Citation({ num, source }: { num: string; source?: Source }) {
   const router = useRouter()
+  const href = source ? sourceHref(source) : null
   if (!source) {
     return <span className="omnis-citation">{num}</span>
   }
@@ -129,8 +153,10 @@ function Citation({ num, source }: { num: string; source?: Source }) {
     <Tooltip>
       <TooltipTrigger
         type="button"
-        className="omnis-citation omnis-citation--link"
-        onClick={() => router.push(sourceHref(source))}
+        className={
+          href ? "omnis-citation omnis-citation--link" : "omnis-citation"
+        }
+        onClick={href ? () => router.push(href) : undefined}
       >
         {num}
       </TooltipTrigger>
@@ -436,27 +462,48 @@ function AnswerBlock({ qa }: { qa: QA }) {
             </summary>
             <div className="mt-2 flex flex-col gap-1.5">
               {qa.sources.map((s, i) => (
-                <Link
-                  key={s.id}
-                  href={sourceHref(s)}
-                  className="flex items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-[12px] transition-colors hover:border-border-strong hover:bg-muted"
-                >
-                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[9px] font-semibold text-primary">
-                    {i + 1}
-                  </span>
-                  <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    {s.sourceLabel}
-                  </span>
-                  <span className="flex-1 truncate font-medium">{s.title}</span>
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                    {s.similarity}%
-                  </span>
-                </Link>
+                <SourceRow key={s.id} index={i} source={s} />
               ))}
             </div>
           </details>
         )}
       </div>
     </div>
+  )
+}
+
+/** 출처 한 줄. 열 곳이 없으면 링크가 아니라 그냥 줄로 그린다. */
+function SourceRow({ index, source }: { index: number; source: Source }) {
+  const href = sourceHref(source)
+  const external = href?.startsWith("http") ?? false
+  const body = (
+    <>
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[9px] font-semibold text-primary">
+        {index + 1}
+      </span>
+      <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+        {source.sourceLabel}
+      </span>
+      <span className="flex-1 truncate font-medium">{source.title}</span>
+      <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+        {source.similarity}%
+      </span>
+    </>
+  )
+  const base =
+    "flex items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-[12px]"
+
+  if (!href) {
+    return <div className={base}>{body}</div>
+  }
+  return (
+    <Link
+      href={href}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noreferrer" : undefined}
+      className={`${base} transition-colors hover:border-border-strong hover:bg-muted`}
+    >
+      {body}
+    </Link>
   )
 }
