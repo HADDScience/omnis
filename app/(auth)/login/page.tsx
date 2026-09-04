@@ -9,6 +9,7 @@ import {
   ArrowRight02Icon,
   LockPasswordIcon,
   MailAtSign01Icon,
+  ShieldKeyIcon,
   WorkflowSquare08Icon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
@@ -37,6 +38,19 @@ function safeCallbackUrl(): string | null {
   return raw
 }
 
+/**
+ * 사내 공통 로그인 화면.
+ *
+ * 이 화면은 Omnis 저장소 안에 있지만 **Omnis 의 화면이 아니다.** 허브·AI Alzheimer·
+ * AI ECM 이 모두 여기로 넘어와 로그인하고 자기 자리로 돌아간다. 그래서 제품 로고와
+ * "Sign in to Omnis" 를 걷고 회사 계정의 얼굴로 바꿨다.
+ *
+ * 계정 DB 가 이 배포에 붙어 있어 발급자가 여기일 뿐, 인증은 어느 한 제품의 것이 아니다.
+ * 화면이 "Omnis 에 로그인해서 다른 걸 쓴다"고 말하면 사람들이 구조를 반대로 읽는다.
+ *
+ * 그러니 여기에 Omnis 로고나 Omnis 전용 문구를 다시 넣지 말 것. 제품 소개는 랜딩(/)의
+ * 몫이다. 나중에 accounts 서브도메인이 생기면 이 화면이 그 주소로 간다.
+ */
 export default function LoginPage() {
   const router = useRouter()
   const [name, setName] = useState("")
@@ -106,33 +120,34 @@ export default function LoginPage() {
         <div className="absolute right-16 top-1/2 h-32 w-32 rotate-45 border border-white/15" />
 
         <div className="relative z-10 flex items-center gap-3 px-10 pt-10">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-primary p-1.5 shadow-2xl shadow-black/20 backdrop-blur">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/omnis-logo.png" alt="Omnis" className="h-full w-full object-contain" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 shadow-2xl shadow-black/20 backdrop-blur">
+            <HugeiconsIcon icon={ShieldKeyIcon} size={22} />
           </div>
           <div className="leading-tight">
-            <div className="text-[15px] font-semibold">Omnis</div>
-            <div className="font-mono text-[10px] text-white/58">HADD Science</div>
+            <div className="text-[15px] font-semibold tracking-tight">HADD SCIENCE</div>
+            <div className="font-mono text-[10px] text-white/58">Account</div>
           </div>
         </div>
 
         <div className="relative z-10 px-10 pb-14">
           <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-medium text-white/80 backdrop-blur">
             <HugeiconsIcon icon={WorkflowSquare08Icon} size={14} />
-            Internal workspace
+            Internal account
           </div>
           <h1 className="max-w-[560px] text-[44px] font-semibold leading-[1.05] tracking-normal xl:text-[56px]">
-            업무, 지식, 보고를 하나의 흐름으로.
+            계정 하나로
+            <br />사내 도구 전부.
           </h1>
           <p className="mt-5 max-w-[480px] text-[15px] leading-7 text-white/70">
-            HADD Science 팀의 지시, 실행 현황, 지식 자산을 채팅 기반 워크스페이스에서 빠르게 연결합니다.
+            HADD SCIENCE 의 사내 도구는 이 계정 하나를 함께 씁니다. 여기서 한 번 로그인하면
+            어느 도구로 넘어가든 다시 묻지 않습니다.
           </p>
 
           <div className="mt-10 grid max-w-[520px] grid-cols-3 gap-3">
             {[
-              ["Tasks", "실행 추적"],
-              ["HADD DB", "지식 검색"],
-              ["Reports", "보고 초안"],
+              ["Omnis", "자원 통합 관리"],
+              ["AI Alzheimer", "분광 분석"],
+              ["AI ECM", "조성 처방"],
             ].map(([title, caption]) => (
               <div key={title} className="rounded-lg border border-white/12 bg-white/8 p-3 backdrop-blur">
                 <div className="text-[12px] font-semibold">{title}</div>
@@ -147,13 +162,12 @@ export default function LoginPage() {
         <div className="w-full max-w-[420px]">
           <div className="mb-9 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary p-1.5 shadow-lg shadow-primary/20">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/omnis-logo.png" alt="Omnis" className="h-full w-full object-contain" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+                <HugeiconsIcon icon={ShieldKeyIcon} size={18} />
               </div>
               <div className="leading-tight">
-                <div className="text-[14px] font-semibold">Omnis</div>
-                <div className="font-mono text-[9.5px] text-muted-foreground">HADD Science</div>
+                <div className="text-[14px] font-semibold tracking-tight">HADD SCIENCE</div>
+                <div className="font-mono text-[9.5px] text-muted-foreground">Account</div>
               </div>
             </Link>
             <Link
@@ -167,10 +181,10 @@ export default function LoginPage() {
           <div>
             <p className="text-[12px] font-semibold uppercase text-primary">Welcome back</p>
             <h1 className="mt-2 text-[30px] font-semibold leading-tight tracking-normal text-foreground">
-              Sign in to Omnis
+              HADD 계정으로 로그인
             </h1>
             <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-              사내 계정으로 로그인해 워크스페이스를 이어서 사용하세요.
+              사내 도구는 이 계정 하나를 함께 씁니다.
             </p>
           </div>
 
