@@ -515,3 +515,146 @@ model AiDraftRevision {
 
   @@index([userId, createdAt])
 }
+
+// ─── CRM ─────────────────────────────────────────────────
+//
+// 엑셀 HADDScience_CRM_260527.xlsx 를 대체한다. 모델 이름에 Crm 을 붙이는 이유는
+// Product 가 이미 업무 분류용으로 쓰이고 있고, Org·Contact·Quote 는 앞으로도
+// 부딪히기 쉬운 이름이기 때문이다.
+//
+// 엑셀이 문자열(기관명·담당자명)로 시트를 잇던 것을 전부 FK 로 바꿨다. 그래서
+// "담당자명에 직함을 쓰지 말라"는 규칙이 사라진다 — 직함은 별도 칸이다.
+
+enum CrmOrgType {
+  UNIVERSITY // 대학
+  RESEARCH   // 연구원
+  COMPANY    // 기업
+  HOSPITAL   // 병원
+  OTHER
+}
+
+enum CrmMembershipStatus {
+  ACTIVE   // 활성
+  INACTIVE // 해지
+}
+
+enum CrmQuoteStatus {
+  DRAFT     // 작성중
+  SENT      // 발송
+  DONE      // 완료
+  CANCELLED // 취소
+}
+
+model CrmOrg {
+  id        String     @id @default(uuid())
+  code      String     @unique // ORG001 — 엑셀 기관코드를 그대로 이어받는다
+  name      String     @unique
+  type      CrmOrgType @default(OTHER)
+  address   String?
+  note      String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  contacts    CrmContact[]
+  memberships CrmMembership[]
+  quotes      CrmQuote[]
+
+  @@index([name])
+}
+
+model CrmContact {
+  id     String @id @default(uuid())
+  code   String @unique // CT001
+  orgId  String
+  org    CrmOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name   String
+  /// 교수·소장·박사 등. 엑셀에서는 이름에 붙이면 매칭이 깨져 금지했지만 여기서는 별개다.
+  title  String?
+  phone  String?
+  email  String?
+  note   String?
+
+  memberships CrmMembership[]
+  quotes      CrmQuote[]
+
+  @@index([orgId])
+  @@index([name])
+}
+
+/// HRP Membership. 활성이면 견적에서 할인을 제안한다 — 강제하지는 않는다.
+model CrmMembership {
+  id             String              @id @default(uuid())
+  code           String              @unique // HRP260001
+  orgId          String
+  org            CrmOrg              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contactId      String?
+  contact        CrmContact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  status         CrmMembershipStatus @default(ACTIVE)
+  discountAmount Int                 @default(400000)
+  createdAt      DateTime            @default(now())
+
+  quotes CrmQuote[]
+
+  @@index([orgId])
+}
+
+model CrmProduct {
+  id   String  @id @default(uuid())
+  code String  @unique // PRD001
+  name String
+  spec String? // 규격 — 5ml, 1ml, 5g …
+  kind String? // 타입 — 시린지 / 바이알 / 원료 / 세트 …
+  /// 기준 단가. 견적에는 이 값이 **복사**되어 굳는다. 여기를 고쳐도 지난 견적은 변하지 않는다.
+  unitPrice  Int?
+  /// 원료(DNA 등)는 판매 품목이 아니라 재고 대상이다.
+  isMaterial Boolean @default(false)
+  note       String?
+  archived   Boolean @default(false)
+
+  quoteItems CrmQuoteItem[]
+
+  @@unique([name, spec])
+}
+
+model CrmQuote {
+  id        String   @id @default(uuid())
+  code      String   @unique // HADD240924-001
+  quotedAt  DateTime
+  orgId     String
+  org       CrmOrg   @relation(fields: [orgId], references: [id])
+  contactId String?
+  contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  membershipId String?
+  membership   CrmMembership? @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+  /// **실제로 깎인 금액.** 엑셀에는 회원이면 400,000 이 자동으로 적혔지만 13건 중 8건은
+  /// 소계에서 빠지지 않았다(단가에 녹인 것으로 보인다). 여기에는 실제 적용액만 담는다.
+  discountAmount Int @default(0)
+
+  vatRate        Int             @default(10) // %
+  status         CrmQuoteStatus  @default(DRAFT)
+  taxInvoicedAt  DateTime?
+  note           String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  items CrmQuoteItem[]
+
+  @@index([orgId])
+  @@index([quotedAt])
+}
+
+model CrmQuoteItem {
+  id        String     @id @default(uuid())
+  quoteId   String
+  quote     CrmQuote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productId String
+  product   CrmProduct @relation(fields: [productId], references: [id])
+  quantity  Int
+  /// 견적 당시 단가의 사본. 제품 단가가 나중에 바뀌어도 지난 견적 금액은 그대로다.
+  unitPrice Int
+  note      String?
+  sortOrder Int        @default(0)
+
+  @@index([quoteId])
+}
