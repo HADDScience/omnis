@@ -26,6 +26,7 @@ export default async function NewQuotePage() {
         orgs={orgs.map((o) => ({
           id: o.id,
           name: o.name,
+          type: o.type,
           contacts: o.contacts.map((c) => ({ id: c.id, name: c.name, title: c.title })),
           membership: o.memberships[0]
             ? { id: o.memberships[0].id, discountAmount: o.memberships[0].discountAmount }

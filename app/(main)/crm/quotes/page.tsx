@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { Header } from "@/components/layout/header"
+import { CrmNav } from "@/components/crm/crm-nav"
 import { prisma } from "@/lib/db"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -44,6 +45,7 @@ export default async function CrmQuotesPage() {
         }
       />
       <div className="mx-auto w-full max-w-[1100px] px-6 py-6">
+        <CrmNav />
         <div className="mb-4 flex items-baseline gap-3">
           <h1 className="text-[18px] font-bold tracking-[-0.02em]">견적</h1>
           <span className="text-[13px] text-muted-foreground">

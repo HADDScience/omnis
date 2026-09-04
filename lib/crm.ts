@@ -1,5 +1,12 @@
 import { z } from "zod"
-import { CrmOrgType, CrmQuoteStatus, CrmMembershipStatus } from "@/generated/prisma"
+import {
+  CrmOrgType,
+  CrmQuoteStatus,
+  CrmMembershipStatus,
+  CrmSampleStatus,
+  CrmShipmentKind,
+  CrmShipmentStatus,
+} from "@/generated/prisma"
 
 /**
  * 견적 금액 계산의 **단일 정본**.
@@ -53,6 +60,23 @@ export const QUOTE_STATUS_LABEL: Record<CrmQuoteStatus, string> = {
   CANCELLED: "취소",
 }
 
+export const SAMPLE_STATUS_LABEL: Record<CrmSampleStatus, string> = {
+  PENDING: "미발송",
+  SENT: "발송완료",
+}
+
+export const SHIPMENT_KIND_LABEL: Record<CrmShipmentKind, string> = {
+  SALE: "판매",
+  SAMPLE: "샘플",
+  GIFT: "증정",
+}
+
+export const SHIPMENT_STATUS_LABEL: Record<CrmShipmentStatus, string> = {
+  PREPARING: "준비중",
+  SHIPPING: "배송중",
+  DELIVERED: "배송완료",
+}
+
 export const MEMBERSHIP_STATUS_LABEL: Record<CrmMembershipStatus, string> = {
   ACTIVE: "활성",
   INACTIVE: "해지",
@@ -98,10 +122,10 @@ export const quoteCreateSchema = z.object({
 })
 
 /**
- * 견적번호. 엑셀이 쓰던 HADD{YYMMDD}-{일련} 형식을 그대로 잇는다.
+ * HADD{YYMMDD}-{일련}. 엑셀이 견적과 샘플요청 양쪽에 쓰던 형식을 그대로 잇는다.
  * 사람이 지난 문서와 대조할 때 형식이 바뀌면 곤란하다.
  */
-export function nextQuoteCode(quotedAt: Date, existingCodes: string[]): string {
+export function nextDatedCode(quotedAt: Date, existingCodes: string[]): string {
   // 날짜는 UTC 자정으로 다룬다 — 지역 시간으로 읽으면 시간대에 따라 하루가 밀린다
   const yy = String(quotedAt.getUTCFullYear()).slice(2)
   const mm = String(quotedAt.getUTCMonth() + 1).padStart(2, "0")
@@ -121,4 +145,17 @@ export function nextCode(prefix: string, existingCodes: string[]): string {
     return m ? Math.max(max, Number(m[1])) : max
   }, 0)
   return `${prefix}${String(seq + 1).padStart(3, "0")}`
+}
+
+/**
+ * 현재고. 장부(IN/OUT)를 더해서 구한다 — 어딘가에 적힌 요약 숫자를 믿지 않는다.
+ * 엑셀은 요약 칸을 따로 뒀고 출고를 "별도 관리" 해서, 출고 23건이 있는데도
+ * 총 출고량이 0 으로 남아 있었다.
+ */
+export function stockBalance(
+  moves: { direction: "IN" | "OUT"; quantity: number }[]
+): { inQty: number; outQty: number; balance: number } {
+  const inQty = moves.filter((m) => m.direction === "IN").reduce((a, m) => a + m.quantity, 0)
+  const outQty = moves.filter((m) => m.direction === "OUT").reduce((a, m) => a + m.quantity, 0)
+  return { inQty, outQty, balance: inQty - outQty }
 }

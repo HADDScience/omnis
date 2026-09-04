@@ -558,6 +558,8 @@ model CrmOrg {
   contacts    CrmContact[]
   memberships CrmMembership[]
   quotes      CrmQuote[]
+  sampleRequests CrmSampleRequest[]
+  shipments      CrmShipment[]
 
   @@index([name])
 }
@@ -574,8 +576,9 @@ model CrmContact {
   email  String?
   note   String?
 
-  memberships CrmMembership[]
-  quotes      CrmQuote[]
+  memberships    CrmMembership[]
+  quotes         CrmQuote[]
+  sampleRequests CrmSampleRequest[]
 
   @@index([orgId])
   @@index([name])
@@ -611,7 +614,10 @@ model CrmProduct {
   note       String?
   archived   Boolean @default(false)
 
-  quoteItems CrmQuoteItem[]
+  quoteItems     CrmQuoteItem[]
+  sampleRequests CrmSampleRequest[]
+  shipments      CrmShipment[]
+  stockMoves     CrmStockMove[]
 
   @@unique([name, spec])
 }
@@ -638,7 +644,8 @@ model CrmQuote {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  items CrmQuoteItem[]
+  items     CrmQuoteItem[]
+  shipments CrmShipment[]
 
   @@index([orgId])
   @@index([quotedAt])
@@ -657,4 +664,101 @@ model CrmQuoteItem {
   sortOrder Int        @default(0)
 
   @@index([quoteId])
+}
+
+// ─── CRM — 샘플요청 · 출고 · 재고 ─────────────────────────
+
+enum CrmSampleStatus {
+  PENDING // 미발송
+  SENT    // 발송완료
+}
+
+enum CrmShipmentKind {
+  SALE   // 판매
+  SAMPLE // 샘플
+  GIFT   // 증정
+}
+
+enum CrmShipmentStatus {
+  PREPARING // 준비중
+  SHIPPING  // 배송중
+  DELIVERED // 배송완료
+}
+
+/// 재고 장부의 방향. 현재고 = Σ IN − Σ OUT 로만 구한다 — 어딘가에 적힌 숫자를
+/// 믿지 않는다. 엑셀은 요약 칸을 따로 두고 출고를 "별도 관리" 해서 총 출고량이
+/// 23건의 출고 기록이 있는데도 0 으로 남아 있었다.
+enum CrmStockDirection {
+  IN
+  OUT
+}
+
+model CrmSampleRequest {
+  id          String          @id @default(uuid())
+  code        String          @unique // HADD251202-001
+  requestedAt DateTime
+  orgId       String
+  org         CrmOrg          @relation(fields: [orgId], references: [id])
+  contactId   String?
+  contact     CrmContact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  productId   String?
+  product     CrmProduct?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// 요청사항 원문. "라이브젤 샘플 및 카다로그 요청" 처럼 제품만으로는 안 담기는 말이 들어온다.
+  request     String?
+  /// 소개경로 — 학회·지인·QR·전화. 어디서 왔는지가 다음 영업의 단서다.
+  referral    String?
+  status      CrmSampleStatus @default(PENDING)
+  sentAt      DateTime?
+  note        String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  shipments CrmShipment[]
+
+  @@index([orgId])
+  @@index([requestedAt])
+}
+
+model CrmShipment {
+  id         String            @id @default(uuid())
+  code       String            @unique // SH001
+  shippedAt  DateTime
+  kind       CrmShipmentKind   @default(SALE)
+  orgId      String
+  org        CrmOrg            @relation(fields: [orgId], references: [id])
+  productId  String
+  product    CrmProduct        @relation(fields: [productId], references: [id])
+  quantity   Int
+  status     CrmShipmentStatus @default(PREPARING)
+  /// 어느 견적/샘플요청에서 나온 출고인지. 엑셀은 견적번호를 문자열로 적어 뒀다.
+  quoteId    String?
+  quote      CrmQuote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  sampleRequestId String?
+  sampleRequest   CrmSampleRequest? @relation(fields: [sampleRequestId], references: [id], onDelete: SetNull)
+  note       String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  stockMoves CrmStockMove[]
+
+  @@index([orgId])
+  @@index([shippedAt])
+}
+
+/// 재고 장부 한 줄. 입고도 출고도 같은 표에 쌓는다.
+model CrmStockMove {
+  id         String            @id @default(uuid())
+  movedAt    DateTime
+  productId  String
+  product    CrmProduct        @relation(fields: [productId], references: [id])
+  direction  CrmStockDirection
+  quantity   Int
+  note       String?
+  /// 출고에서 파생된 줄이면 그 출고를 가리킨다. 사람이 직접 적은 줄은 비어 있다.
+  shipmentId String?
+  shipment   CrmShipment?      @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  createdAt  DateTime          @default(now())
+
+  @@index([productId])
+  @@index([movedAt])
 }

@@ -15,12 +15,14 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { EntityPicker, type PickerOption } from "./entity-picker"
-import { quoteTotals, won } from "@/lib/crm"
+import { quoteTotals, won, ORG_TYPE_LABEL } from "@/lib/crm"
+import type { CrmOrgType } from "@/generated/prisma"
 import { cn } from "@/lib/utils"
 
 interface OrgLite {
   id: string
   name: string
+  type: CrmOrgType
   contacts: { id: string; name: string; title: string | null }[]
   membership: { id: string; discountAmount: number } | null
 }
@@ -102,6 +104,8 @@ export function QuoteComposer({
 }) {
   const router = useRouter()
   const [orgs, setOrgs] = useState(initialOrgs)
+  // 방금 만든 기관은 유형이 비어 있다. 그 자리에서 정할 수 있게 표시해 둔다.
+  const [justCreatedOrgId, setJustCreatedOrgId] = useState<string | null>(null)
   const [orgId, setOrgId] = useState<string | null>(null)
   const [contactId, setContactId] = useState<string | null>(null)
   const [contactSkipped, setContactSkipped] = useState(false)
@@ -146,6 +150,7 @@ export function QuoteComposer({
 
   function pickOrg(id: string | null) {
     setOrgId(id)
+    setJustCreatedOrgId((prev) => (prev === id ? prev : null))
     setContactId(null)
     setContactSkipped(false)
     if (!discountTouched) {
@@ -166,11 +171,27 @@ export function QuoteComposer({
       if (!res.ok) throw new Error(data.error ?? "기관을 만들지 못했습니다")
       setOrgs((prev) => [...prev, { ...data, contacts: [], membership: null }])
       pickOrg(data.id)
+      setJustCreatedOrgId(data.id)
       toast.success(`기관 «${data.name}» 을 만들었어요`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "오류가 발생했습니다")
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function setOrgType(type: CrmOrgType) {
+    if (!orgId) return
+    setOrgs((prev) => prev.map((o) => (o.id === orgId ? { ...o, type } : o)))
+    try {
+      const res = await fetch(`/api/crm/orgs/${orgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? "유형을 바꾸지 못했습니다")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "오류가 발생했습니다")
     }
   }
 
@@ -264,6 +285,31 @@ export function QuoteComposer({
             createLabel="기관으로 새로 만들기"
             disabled={busy}
           />
+          {justCreatedOrgId === orgId && org && (
+            <div className="mt-2 animate-in fade-in-0 duration-150 motion-reduce:animate-none">
+              <p className="mb-1.5 text-[11px] text-muted-foreground">
+                새 기관이라 유형이 비어 있어요. 골라 두면 목록에서 분류됩니다.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(ORG_TYPE_LABEL) as CrmOrgType[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setOrgType(t)}
+                    aria-pressed={org.type === t}
+                    className={cn(
+                      "inline-flex h-7 items-center rounded-md border px-2.5 text-[12px] transition-colors",
+                      org.type === t
+                        ? "border-primary/30 bg-primary/10 font-medium text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    {ORG_TYPE_LABEL[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </Step>
 
         {/* 2 — 담당자 */}

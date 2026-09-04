@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { quoteCreateSchema, nextQuoteCode, quoteTotals } from "@/lib/crm"
+import { quoteCreateSchema, nextDatedCode, quoteTotals } from "@/lib/crm"
 import { createWithUniqueCode } from "@/lib/crm-server"
 
 export const runtime = "nodejs"
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     return tx.crmQuote.create({
       data: {
         ...rest,
-        code: nextQuoteCode(quotedAt, codes),
+        code: nextDatedCode(quotedAt, codes),
         quotedAt,
         org: { connect: { id: orgId } },
         contact: contactId ? { connect: { id: contactId } } : undefined,
