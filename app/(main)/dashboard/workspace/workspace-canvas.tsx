@@ -311,6 +311,8 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
     return { totalNodes, overdueCount, inProgressCount }
   })()
 
+  const selectedNode = selectedId ? nodes.find((n) => n.id === selectedId) : undefined
+
   return (
     <div className="relative h-full w-full" onClick={handleActivate}>
       <WorkspaceToolbar
@@ -381,11 +383,9 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
       </ReactFlow>
 
       <InspectorPanel
-        data={
-          selectedId
-            ? toInspectorData(nodes.find((n) => n.id === selectedId) as Node)
-            : null
-        }
+        // 노드 목록은 데이터 갱신·그룹 전환 때 통째로 바뀌는데 selectedId 는 남는다.
+        // 없는 노드를 그대로 넘기면 .data 에서 죽어 대시보드 전체가 오류 화면이 된다 (2026-09-07 실측).
+        data={selectedNode ? toInspectorData(selectedNode as Node) : null}
         dockOpen={false}
         onClose={() => setSelectedId(null)}
       />
