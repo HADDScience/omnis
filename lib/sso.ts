@@ -60,6 +60,22 @@ const PRODUCTION_APPS: SsoApp[] = [
     basePath: "/ip-platform",
   },
   {
+    // 홈페이지(haddscience.com) 관리 화면. 같은 정적 번들이 컨펌용(github.io)과
+    // 실서비스(haddscience.com) 두 오리진에 올라가므로 앱이 둘이다 — audience 가
+    // 앱별이라 한쪽 토큰이 다른 쪽에서 통하지 않는다. 클라이언트는 자기 오리진을
+    // 보고 id 를 고른다. GitHub 커밋은 /api/website/github 프록시가 대신한다.
+    id: "website-admin",
+    label: "홈페이지 관리",
+    origin: "https://haddscience.github.io",
+    basePath: "/admin",
+  },
+  {
+    id: "website-admin-com",
+    label: "홈페이지 관리",
+    origin: "https://haddscience.com",
+    basePath: "/admin",
+  },
+  {
     id: "ai-alzheimer",
     label: "AI Alzheimer (라만 분광 분석)",
     origin: "https://haddscience.github.io",
@@ -87,6 +103,7 @@ const PRODUCTION_APPS: SsoApp[] = [
 const DEVELOPMENT_APPS: SsoApp[] = [
   { id: "hub-dev", label: "HADD Hub (로컬)", origin: "http://localhost:3100", basePath: "/hub" },
   { id: "ip-platform-dev", label: "지식재산권 팔로우업 (로컬)", origin: "http://localhost:3200", basePath: "" },
+  { id: "website-admin-dev", label: "홈페이지 관리 (로컬)", origin: "http://localhost:3000", basePath: "/admin" },
 ]
 
 export const SSO_APPS: SsoApp[] =

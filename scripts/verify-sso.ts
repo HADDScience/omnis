@@ -135,6 +135,22 @@ async function main() {
     (await verifySession(await forgeExpired("session", "hub"), hub)) === null
   )
 
+  // ─── 6. 홈페이지 관리(website-admin) ─────────────────────────────
+  // 같은 번들이 두 오리진에 올라가므로 앱이 둘이다. 서로의 토큰이 통하면 안 된다.
+  console.log("\n[6] 홈페이지 관리 앱")
+  const site = resolveApp("website-admin")
+  const siteCom = resolveApp("website-admin-com")
+  check("website-admin 등록", site?.origin === "https://haddscience.github.io" && site.basePath === "/admin")
+  check("website-admin-com 등록", siteCom?.origin === "https://haddscience.com" && siteCom.basePath === "/admin")
+  if (site && siteCom) {
+    check("복귀 경로 기본값은 /admin/", safeReturnPath(site, null) === "/admin/")
+    check("같은 오리진의 다른 앱(/hub/)으로는 못 돌아감", safeReturnPath(site, "/hub/") === null)
+    const { token: siteSess } = await issueSession(site, subject)
+    check("github.io 세션을 haddscience.com 앱이 쓰면 거부", (await verifySession(siteSess, siteCom)) === null)
+    check("github.io 세션을 hub 가 쓰면 거부", (await verifySession(siteSess, hub)) === null)
+    check("자기 앱에서는 통과", (await verifySession(siteSess, site))?.userId === "u-1")
+  }
+
   console.log(`\n${failed === 0 ? "통과" : "실패"}: ${passed} passed, ${failed} failed\n`)
   await prisma.$disconnect()
   process.exit(failed === 0 ? 0 : 1)
