@@ -840,19 +840,20 @@ model WebsitePost {
   updatedAt    DateTime @updatedAt
   updatedById  String?
 
-  media WebsiteMedia[]
-
   @@index([position])
 }
 
 /// 기사에 딸린 사진. 실물은 NAS(lib/storage.ts), 여기는 목록 — 기사를 지울 때 함께 지우기 위해서다.
+/// postId 는 외래키가 아니다. 새 글은 사진을 먼저 올리고 글을 저장하므로 그 시점엔 기사 행이 없다.
+/// 끝내 저장되지 않은 글의 사진은 고아로 남는데, 그건 정리 작업이 거둬 갈 몫이다.
 model WebsiteMedia {
-  id          String      @id @default(cuid())
+  id          String   @id @default(cuid())
   postId      String
-  post        WebsitePost @relation(fields: [postId], references: [id], onDelete: Cascade)
   /// NAS 키 "website/<postId>/<id>.webp". 업로드마다 고유하므로 영구 캐시할 수 있다
-  key         String      @unique
+  key         String   @unique
   contentType String
   size        Int
-  createdAt   DateTime    @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([postId])
 }

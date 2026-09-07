@@ -26,7 +26,7 @@ function cleanCodeBlocks(text: string): string {
     .trim()
 }
 
-async function callGemini(
+export async function callGemini(
   prompt: string,
   endpoint: string,
   userId?: string,

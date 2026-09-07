@@ -74,9 +74,10 @@ export async function storeMedia(opts: {
   return { url: mediaUrl(opts.postId, name), key, reused: false }
 }
 
-/** 기사의 사진을 NAS 에서 전부 지운다. 목록 행은 기사와 함께 cascade 로 사라진다. */
+/** 기사의 사진을 NAS 와 목록에서 전부 지운다. */
 export async function deletePostMedia(postId: string): Promise<number> {
   const rows = await prisma.websiteMedia.findMany({ where: { postId }, select: { key: true } })
   for (const row of rows) await deleteObject(row.key)
+  await prisma.websiteMedia.deleteMany({ where: { postId } })
   return rows.length
 }
