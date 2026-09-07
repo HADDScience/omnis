@@ -1,7 +1,7 @@
 ---
 kind: snapshot
 status: active
-canonical: mydocs/plans/2026-09-07-website-deck-translate.md
+canonical: mydocs/plans/archives/2026-09-07-website-deck-translate.md
 last_verified: 2026-09-07
 ---
 
@@ -151,3 +151,9 @@ eslint exit=0
   못박아야 한다.
 - 계획서의 `scripts/rebuild-cardnews.ts` 는 이 작업 범위가 아니다 — 다른 세션이 만들고 있다(커밋하지 않음).
 - 편집기 쪽(사이트 저장소)에서 이 라우트를 부르는 코드는 아직 없다. 지금은 서버만 서 있다.
+
+## 재작성 실행 (같은 날 저녁)
+
+`scripts/rebuild-cardnews.ts` 로 옛 카드뉴스 10건을 Neon · 프로덕션 NAS 에 반영했다. 글별 결과와 대조표는
+사이트 저장소 `mydocs/working/2026-09-07-cardnews-rebuild.md` §3. Gemini 호출은 덱 번역 10회 + 제목 번역 몇 회
+(로컬 예산이 다른 세션의 카톡 이식으로 차 있어 Neon 예산으로 돌렸다 — 실제 사용량이 Neon 에 기록됐다).
