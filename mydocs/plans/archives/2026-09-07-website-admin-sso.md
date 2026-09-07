@@ -1,11 +1,14 @@
 ---
 kind: decision
-status: active
+status: superseded
 canonical: mydocs/tech/auth-architecture.md
 last_verified: 2026-09-07
 ---
 
 # 2026-09-07 — 홈페이지 관리 화면(`/admin`)을 Omnis SSO 에 붙인다
+
+> **폐기 (2026-09-07).** 앱 등록(1번)은 살아 있다. GitHub 프록시(2번)는 기사를 Neon 에 두기로 하면서
+> 지웠다 — [`2026-09-07-website-posts-db.md`](2026-09-07-website-posts-db.md) 가 대체한다.
 
 ## 배경
 

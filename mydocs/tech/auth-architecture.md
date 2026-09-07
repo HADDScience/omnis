@@ -21,9 +21,9 @@ last_verified: 2026-09-07
 
 Hub 와 ip-platform 은 같은 오리진, Omnis 는 다른 오리진이다. 이 사실이 구조 전체를 정한다.
 
-홈페이지 관리 화면은 로그인만이 아니라 **GitHub 커밋**도 Omnis 에 기댄다. 정적 앱은 GitHub
-토큰을 들 수 없으므로 `/api/website/github/<GitHub 경로>` 프록시가 세션을 확인한 뒤 서버
-토큰(`WEBSITE_GITHUB_TOKEN`)으로 대신 부른다. 커밋 author 는 프록시가 세션 사용자로 덮어쓴다.
+홈페이지 관리 화면은 로그인만이 아니라 **기사 저장**도 Omnis 에 기댄다. 기사는 `WebsitePost`,
+사진은 NAS(`website/…`)에 있고, `/api/website/*` 가 SSO 세션(`lib/website-auth.ts`)으로 쓰기를
+지킨다. 읽기(목록·한 건·사진)는 공개다 — 사이트가 서버 렌더로 읽는다.
 같은 번들이 여러 오리진에 올라가므로 앱 id 가 오리진마다 있고(`website-admin-vercel` ·
 `website-admin` · `website-admin-com`), 클라이언트가 자기 오리진을 보고 고른다. 한 도메인
 (haddscience.vercel.app)에서는 `/omnis/api/…` 가 같은 오리진이라 GET 에 Origin 헤더가 없다 —
@@ -96,7 +96,8 @@ ES256. 정적 앱이 비밀키를 들 수 없으므로 검증은 `/api/sso/verif
 | `app/api/sso/redeem/route.ts` | grant → 세션. 1회용 강제 |
 | `app/api/sso/verify/route.ts` | 세션 유효성 재확인 |
 | `app/api/sso/jwks/route.ts` | 공개키 |
-| `app/api/website/github/[...path]/route.ts` | 홈페이지 관리 화면의 GitHub 프록시. 세션 확인 → 저장소 경로 제한 → author 덮어쓰기 |
+| `lib/website-auth.ts` | 홈페이지 관리 화면이 부르는 API 의 인증. Bearer 세션 → isActive |
+| `app/api/website/**` | 홈페이지 기사 API. 쓰기는 SSO, 읽기는 공개 (`lib/website-posts.ts` · `lib/website-media.ts`) |
 | `lib/auth.ts` | NextAuth v5. Credentials + Google + Kakao |
 | `lib/auth-identity.ts` | 소셜 연결 규칙. 콜백에서 분리해 실 DB 로 검증 가능하게 |
 
