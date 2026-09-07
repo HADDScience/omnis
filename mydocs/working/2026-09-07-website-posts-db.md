@@ -1,13 +1,13 @@
 ---
 kind: snapshot
 status: active
-canonical: mydocs/plans/2026-09-07-website-posts-db.md
+canonical: mydocs/plans/archives/2026-09-07-website-posts-db.md
 last_verified: 2026-09-07
 ---
 
 # 2026-09-07 — 홈페이지 기사를 Neon 에 · 작업 결과
 
-계획: [`mydocs/plans/2026-09-07-website-posts-db.md`](../plans/2026-09-07-website-posts-db.md)
+계획: [`mydocs/plans/2026-09-07-website-posts-db.md`](../plans/archives/2026-09-07-website-posts-db.md)
 브랜치 `feat/website-admin-sso` (SSO 앱 등록 커밋 위에 쌓였다).
 
 ## 커밋
@@ -60,18 +60,30 @@ DB 대상: localhost:5433
 썸네일 1) 모두 `X-Post-Id` 로 갔고 PUT 본문에 임시 경로(`/news/…`)가 0개 남았다.
 `pnpm build`: API 가 없을 때(빈 목록)와 로컬 API 일 때 둘 다 통과.
 
-## 배포 순서 (사용자)
+## 배포 (2026-09-07 저녁, 작업지시자 지시로 AI 가 실행)
 
-1. Neon 마이그레이션: `DATABASE_URL=<neon> POSTGRES_URL_NON_POOLING=<neon> npm run db:deploy` (2개: `website_posts`, `website_media_no_fk`).
-2. Vercel(Omnis) 환경변수: `WEBSITE_ORIGIN=https://haddscience.vercel.app`, `WEBSITE_REVALIDATE_SECRET=<무작위>`.
-3. Omnis: `feat/website-admin-sso` → main, push, `vercel deploy --prod --yes`.
-4. 이식을 프로덕션에: `DATABASE_URL=<neon> … npx tsx scripts/import-website-posts.ts --site ~/work/hadd-website --prod`
-   (NAS 키는 로컬 이식과 같으므로 사진은 "이미 있음"으로 넘어간다 — 로컬과 프로덕션이 같은 NAS 경로일 때).
-5. Vercel(haddscience) 환경변수: `REVALIDATE_SECRET`(2번과 같은 값). `OMNIS_API_BASE` 는 기본값이면 생략.
-6. 사이트: `feat/omnis-sso` → main, push (자동 배포).
-7. haddscience.vercel.app/admin 로그인 → 글 저장 → 사이트 반영 · Omnis 로그의 재검증 호출 확인.
+| 단계 | 명령 · 결과 |
+|---|---|
+| Neon 마이그레이션 | `prisma migrate status` → 미적용 2개(`website_posts` · `website_media_no_fk`) → `migrate deploy` → "All migrations have been successfully applied" |
+| Omnis 환경변수 | `WEBSITE_ORIGIN` · `WEBSITE_REVALIDATE_SECRET` (Production) 추가 |
+| Omnis 배포 | `feat/website-admin-sso` → main ff(`omnis-main` 워크트리), push `a9becff..5d7c436`, `vercel deploy --prod --yes` |
+| 이식 (프로덕션) | 1차: 49건 · 사진 132 올림 → 사진 500. 원인: 로컬 `.env` 의 NAS 경로(`…/_dev/files`)로 올렸다. `WebsiteMedia` 132행 삭제 후 `SYNOLOGY_WEBDAV_BASE_PATH="/HADD Science/옴니스 첨부파일/files"` 로 재이식 → 49건 · 132 올림 · 실패 0 |
+| 확인 | `GET /omnis/api/website/posts` 49건 (엣지 캐시 60초 뒤) · `GET …/media/172288285/01.webp` 200 image/webp 18,616B `cache-control: public, max-age=86400, immutable` · `sso/authorize?app=website-admin-vercel` → 로그인 화면으로 307(등록됨) |
+
+사이트 쪽 배포 실측은 사이트 저장소 `mydocs/working/2026-09-07-omnis-sso-and-db.md`.
+
+### 밟은 함정
+
+- **이식 스크립트는 NAS 경로를 `.env` 에서 읽는다.** `--prod` 는 DB 만 Neon 으로 보낸다. NAS 도
+  프로덕션 경로를 따로 줘야 한다. 스크립트 주석에 적어 두었다(아래 커밋).
+- `_dev/files/website/` 에 로컬 이식본 132장이 남아 있다. 로컬 DB 가 그것을 가리키므로 두었다.
+
+## 확인하지 못한 것
+
+- 실제 계정으로 `haddscience.vercel.app/admin` 로그인 → 저장 → 사이트 반영. 계정이 없어 AI 가 하지 못했다.
+  작업지시자가 한 번 해 보고 `mydocs/feedback/` 에 남긴다.
 
 ## 남은 것
 
 - NAS 고아 사진 정리(재저장한 카드뉴스의 옛 카드, 저장 안 한 새 글의 사진). 정리 작업이 아직 없다.
-- 사이트 저장소의 옛 `content/data/news/` · `public/news/` 삭제 — 7번까지 확인한 뒤 승인받고.
+- 사이트 저장소의 옛 `content/data/news/` · `public/news/` 삭제 — 실사용 확인 뒤 승인받고.

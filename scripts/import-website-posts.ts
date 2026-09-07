@@ -10,6 +10,10 @@
  * 않으므로 고유 이름 규칙(무작위)을 따르지 않아도 캐시가 어긋나지 않는다.
  *
  * DB 대상을 먼저 찍고, Neon 이면 --prod 가 있어야 진행한다 (migration-traps 의 함정).
+ * **NAS 경로는 .env 의 SYNOLOGY_WEBDAV_BASE_PATH 를 그대로 쓴다.** --prod 는 DB 만 고른다.
+ * 로컬 .env 는 `…/_dev/files` 라서, 프로덕션에 넣을 때는 경로를 같이 준다:
+ *   SYNOLOGY_WEBDAV_BASE_PATH="/HADD Science/옴니스 첨부파일/files" npx tsx … --prod
+ * (2026-09-07 실제로 _dev 에 올려 사진이 500 났다.)
  */
 import "dotenv/config"
 import fs from "node:fs"
