@@ -125,6 +125,16 @@ export async function getObject(key: string): Promise<DavResponse> {
   return res
 }
 
+/** 객체를 지운다. 이미 없으면(404) 성공으로 본다 — 지우려던 결과와 같다. */
+export async function deleteObject(key: string): Promise<void> {
+  const res = await dav("DELETE", objectUrl(key))
+  drain(res)
+  if (res.status === 404) return
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`NAS 삭제 실패 (HTTP ${res.status})`)
+  }
+}
+
 /** File.id로부터 NAS 저장 키를 만든다. 업로드·다운로드가 같은 규칙을 쓰도록 여기 한 곳에 둔다. */
 export function objectKeyFor(id: string, originalName: string): string {
   const ext = originalName.includes(".") ? "." + originalName.split(".").pop() : ""
