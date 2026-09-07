@@ -78,7 +78,13 @@ async function authenticate(
   if (!app || !app.id.startsWith("website-admin")) {
     return { error: json({ error: "unknown_app" }, 400, origin) }
   }
-  if (origin !== app.origin) return { error: json({ error: "origin_not_allowed" }, 403, origin) }
+  // Origin 이 있으면 그 앱의 오리진이어야 한다. 없으면 통과 — 같은 오리진 GET 은 브라우저가
+  // Origin 을 아예 붙이지 않는다(haddscience.vercel.app/admin → /omnis/api/… 가 그 경우다).
+  // 자격은 어차피 Bearer 토큰이 증명하고 쿠키를 쓰지 않으므로 CSRF 여지가 없다.
+  // 이 검사는 등록된 앱 밖의 페이지가 토큰을 들고 오는 것을 한 번 더 걸러 내는 것이다.
+  if (origin !== null && origin !== app.origin) {
+    return { error: json({ error: "origin_not_allowed" }, 403, origin) }
+  }
 
   const auth = req.headers.get("authorization") ?? ""
   const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : ""

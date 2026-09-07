@@ -70,6 +70,13 @@ const PRODUCTION_APPS: SsoApp[] = [
     basePath: "/admin",
   },
   {
+    // 한 도메인(haddscience.vercel.app) 아래 /admin. 허브의 hub-vercel 과 같은 사정이다.
+    id: "website-admin-vercel",
+    label: "홈페이지 관리",
+    origin: "https://haddscience.vercel.app",
+    basePath: "/admin",
+  },
+  {
     id: "website-admin-com",
     label: "홈페이지 관리",
     origin: "https://haddscience.com",

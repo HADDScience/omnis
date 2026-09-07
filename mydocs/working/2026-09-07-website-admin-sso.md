@@ -51,6 +51,23 @@ last_verified: 2026-09-07
 9 DB 에 없는 사용자 토큰 → 403                    403  {"error":"account_inactive"}
 ```
 
+### 한 도메인 이전(haddscience.vercel.app) 반영 후 — 라우트 함수를 tsx 로 직접 호출
+
+다른 세션이 Omnis 를 `/omnis` 로 옮기고 허브를 `hub-vercel` 로 등록한 뒤, 이 브랜치를 그 main 위로
+rebase 하고 `website-admin-vercel` 을 추가했다. 같은 오리진 GET 은 브라우저가 Origin 을 붙이지
+않으므로 프록시의 Origin 검사를 "있으면 대조"로 바꿨다(자격은 Bearer 토큰). 다른 세션의 dev
+서버가 떠 있어 서버를 새로 띄우는 대신 라우트 핸들러를 직접 불렀다.
+
+```
+verify-sso.ts                                   통과: 44 passed, 0 failed
+a Origin 없음(같은 오리진 GET) → 200               200
+b 등록 Origin → 200 + CORS                        200  acao=http://localhost:3000
+c 다른 Origin → 403                               403  {"error":"origin_not_allowed"}
+d Origin 없음 + 토큰 없음 → 401                     401  {"error":"invalid_session"}
+e Origin 없음 + 다른 저장소 → 403                   403  {"error":"path_not_allowed"}
+f 커밋 author 덮어쓰기                              200  가짜 GitHub 수신: "author":{"name":"허채정","email":"neuroheo@haddscience.com"}
+```
+
 ### `npm run verify`
 
 typecheck 통과. lint 는 `components/settings/linked-accounts.tsx:45` 의 기존 오류 1건이 main 에도
@@ -61,5 +78,5 @@ typecheck 통과. lint 는 `components/settings/linked-accounts.tsx:45` 의 기�
 1. GitHub 에서 fine-grained PAT 발급 — 저장소 `HADDScience/HADDScience.github.io` 하나, Contents: Read and write.
 2. Vercel 프로젝트 환경변수 `WEBSITE_GITHUB_TOKEN` 에 등록.
 3. `vercel deploy --prod --yes`.
-4. 홈페이지 저장소의 `feat/omnis-sso` 브랜치를 main 에 올려 배포. 그 전까지 github.io/admin 은 PAT 로그인 그대로다.
-5. github.io/admin 에서 실제 로그인 → 기사 저장 → 커밋 author 가 본인 이름인지 확인.
+4. 홈페이지 저장소의 `feat/omnis-sso` 브랜치를 main 에 올려 배포(Vercel 자동). 그 전까지 /admin 은 PAT 로그인 그대로다.
+5. haddscience.vercel.app/admin 에서 실제 로그인 → 기사 저장 → 커밋 author 가 본인 이름인지 확인.

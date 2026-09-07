@@ -17,15 +17,17 @@ last_verified: 2026-09-07
 | Omnis (업무관리) | Vercel | `https://omnis-hadd.vercel.app` |
 | Hub (런처) | GitHub Pages · 정적 | `https://haddscience.github.io/hub/` |
 | ip-platform | GitHub Pages · 정적 | `https://haddscience.github.io/ip-platform/` |
-| 홈페이지 관리 (`/admin`) | GitHub Pages · 정적 (실서비스는 Synology, 같은 번들) | `https://haddscience.github.io/admin/` · `https://haddscience.com/admin/` |
+| 홈페이지 관리 (`/admin`) | Vercel(haddscience) · 정적 export. github.io 와 Synology 에도 같은 번들 | `https://haddscience.vercel.app/admin/` · `https://haddscience.github.io/admin/` · `https://haddscience.com/admin/` |
 
 Hub 와 ip-platform 은 같은 오리진, Omnis 는 다른 오리진이다. 이 사실이 구조 전체를 정한다.
 
 홈페이지 관리 화면은 로그인만이 아니라 **GitHub 커밋**도 Omnis 에 기댄다. 정적 앱은 GitHub
 토큰을 들 수 없으므로 `/api/website/github/<GitHub 경로>` 프록시가 세션을 확인한 뒤 서버
 토큰(`WEBSITE_GITHUB_TOKEN`)으로 대신 부른다. 커밋 author 는 프록시가 세션 사용자로 덮어쓴다.
-같은 번들이 두 오리진에 올라가므로 앱 id 가 둘(`website-admin` · `website-admin-com`)이고,
-클라이언트가 자기 오리진을 보고 고른다.
+같은 번들이 여러 오리진에 올라가므로 앱 id 가 오리진마다 있고(`website-admin-vercel` ·
+`website-admin` · `website-admin-com`), 클라이언트가 자기 오리진을 보고 고른다. 한 도메인
+(haddscience.vercel.app)에서는 `/omnis/api/…` 가 같은 오리진이라 GET 에 Origin 헤더가 없다 —
+프록시는 Origin 이 있을 때만 앱 오리진과 대조하고, 자격은 Bearer 토큰이 증명한다.
 
 ## 불변식
 

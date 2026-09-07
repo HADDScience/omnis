@@ -142,6 +142,7 @@ async function main() {
   const siteCom = resolveApp("website-admin-com")
   check("website-admin 등록", site?.origin === "https://haddscience.github.io" && site.basePath === "/admin")
   check("website-admin-com 등록", siteCom?.origin === "https://haddscience.com" && siteCom.basePath === "/admin")
+  check("website-admin-vercel 등록 (한 도메인)", resolveApp("website-admin-vercel")?.origin === "https://haddscience.vercel.app")
   if (site && siteCom) {
     check("복귀 경로 기본값은 /admin/", safeReturnPath(site, null) === "/admin/")
     check("같은 오리진의 다른 앱(/hub/)으로는 못 돌아감", safeReturnPath(site, "/hub/") === null)
