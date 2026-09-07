@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/troubleshootings/client-error-visibility.md
-last_verified: 2026-09-04
+last_verified: 2026-09-07
 ---
 
 # 화면이 흰 채로 죽는데 아무도 모르던 문제
@@ -82,3 +82,19 @@ components/omnis/omnis-ask.tsx(90,16): error TS1360:
 **서버 enum 을 화면에서 다시 타이핑하지 않는다.** 타입을 가져다 쓰고,
 switch 에는 `satisfies never` 를 둔다. 이 조합이 아니면 enum 이 늘어난 날
 어딘가에서 조용히 `undefined` 가 새 나간다.
+
+## 배관이 처음 잡은 것 (2026-09-07)
+
+```
+10:50 KST · 정우창 · /dashboard · 범위: 페이지
+TypeError: Cannot read properties of undefined (reading 'data')
+  at app/(main)/dashboard/page-3ee2c10a8e4f0d09.js:1:37042
+```
+
+배포된 청크를 받아 그 오프셋을 읽으니 `workspace-canvas.tsx` 의
+`toInspectorData(nodes.find((n) => n.id === selectedId) as Node)` 였다. 노드를 클릭해 `selectedId` 가 잡힌 채로
+노드 목록이 통째로 바뀌면(업무 수정 뒤 `router.refresh()`, 그룹 전환, 업무 완료·보관) `find` 가 `undefined` 를
+돌려주는데 `as Node` 가 그것을 덮었다. 인스펙터 하나가 죽어 **대시보드 전체**가 오류 화면이 됐다.
+없는 노드면 `null` 을 넘겨 인스펙터만 닫히게 고쳤다.
+
+같은 모양이다 — `as` 로 타입을 덮은 자리에서 런타임 `undefined` 가 새 나간다. `find` 의 결과에 `as` 를 붙이지 않는다.

@@ -82,6 +82,8 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [manual/ai-pairing.md](manual/ai-pairing.md) | guide | AI 와 함께 이 저장소에서 일하는 법 |
 | [manual/ux-rules.md](manual/ux-rules.md) | canonical | UI·구조 규칙 11~30 · viewport 책임 표 · 데모 환경 |
 | [manual/hyper-waterfall.md](manual/hyper-waterfall.md) | decision | 이 저장소가 AI 와 일하는 방식 |
+| [troubleshootings/kakao-import-traps.md](troubleshootings/kakao-import-traps.md) | reference | 카톡 이식 파이프라인에서 밟은 함정 (LIKE `_` · 파서 바이트 일치 · 청크 시각) |
+| [plans/archives/2026-09-07-kakao-pipeline.md](plans/archives/2026-09-07-kakao-pipeline.md) | decision | 카톡 이식 CLI — claude -p · 순차 구조화 · 세션별 캐시를 고른 이유 |
 
 작업 규약 자체는 저장소 루트의 [`AGENTS.md`](../AGENTS.md) 가 정본이다 —
 `mydocs/` 아래가 아니라 루트에 두는 이유는, 저장소를 처음 여는 도구가
