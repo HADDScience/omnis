@@ -50,6 +50,7 @@ import { useCommandPalette } from "@/components/layout/command-palette-context"
 import { LinkPendingMark } from "@/components/ui/pending-link"
 import { useRightPanel } from "@/components/layout/right-panel-context"
 
+import { apiUrl } from "@/lib/base-path"
 /**
  * 사이드바 메뉴.
  *
@@ -100,7 +101,7 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
         <Link href="/dashboard" className="flex items-center gap-2 px-1.5 pb-3">
           <div className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-primary p-[4px]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/omnis-logo.png" alt="Omnis" className="h-full w-full object-contain" />
+            <img src={apiUrl("/omnis-logo.png")} alt="Omnis" className="h-full w-full object-contain" />
           </div>
           <div className="flex flex-col leading-[1.1]">
             <span className="text-[13.5px] font-semibold">Omnis</span>
