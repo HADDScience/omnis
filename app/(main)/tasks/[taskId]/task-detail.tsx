@@ -16,6 +16,7 @@ import { PriorityRating } from "@/components/ui/priority-rating"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { PencilEdit01Icon, Add01Icon, Delete02Icon } from "@hugeicons/core-free-icons"
 import { format } from "date-fns"
+import { apiUrl } from "@/lib/base-path"
 
 interface Checklist {
   id: string
@@ -102,7 +103,7 @@ export function TaskDetail({
   async function patch(field: string, value: unknown) {
     setSaving(field)
     try {
-      const res = await fetch(`/api/tasks/${task.id}`, {
+      const res = await fetch(apiUrl(`/api/tasks/${task.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: value }),
@@ -119,7 +120,7 @@ export function TaskDetail({
   async function updateStatus(status: string) {
     setSaving("status")
     try {
-      const res = await fetch(`/api/tasks/${task.id}`, {
+      const res = await fetch(apiUrl(`/api/tasks/${task.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -134,7 +135,7 @@ export function TaskDetail({
   }
 
   async function toggleChecklist(id: string, done: boolean) {
-    const res = await fetch(`/api/tasks/${task.id}/checklists`, {
+    const res = await fetch(apiUrl(`/api/tasks/${task.id}/checklists`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, done }),
@@ -419,7 +420,7 @@ export function TaskDetail({
                 size="sm"
                 className="h-6 text-xs gap-1"
                 onClick={async () => {
-                  const res = await fetch(`/api/tasks/${task.id}/checklists`, {
+                  const res = await fetch(apiUrl(`/api/tasks/${task.id}/checklists`), {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ name: "새 항목" }),
@@ -532,7 +533,7 @@ export function TaskDetail({
               {task.files.map((f) => (
                 <a
                   key={f.id}
-                  href={f.path}
+                  href={apiUrl(f.path)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-between rounded-md border px-3 py-2 hover:bg-muted transition-colors"
@@ -582,7 +583,7 @@ function ChecklistItem({
     const trimmed = draft.trim()
     if (!trimmed || trimmed === item.name) { setDraft(item.name); return }
     onRename(trimmed)
-    await fetch(`/api/tasks/${taskId}/checklists`, {
+    await fetch(apiUrl(`/api/tasks/${taskId}/checklists`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: item.id, name: trimmed }),
@@ -591,7 +592,7 @@ function ChecklistItem({
 
   async function handleDelete() {
     onDelete()
-    await fetch(`/api/tasks/${taskId}/checklists?id=${item.id}`, { method: "DELETE" })
+    await fetch(apiUrl(`/api/tasks/${taskId}/checklists?id=${item.id}`), { method: "DELETE" })
   }
 
   return (

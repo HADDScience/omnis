@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Sent02Icon } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
+import { apiUrl } from "@/lib/base-path"
 
 interface ThreadComposerProps {
   taskId: string
@@ -41,7 +42,7 @@ export function ThreadComposer({
     if (!content || sending) return
     setSending(true)
     try {
-      const res = await fetch("/api/chat/messages", {
+      const res = await fetch(apiUrl("/api/chat/messages"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

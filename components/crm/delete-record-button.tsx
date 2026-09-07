@@ -19,6 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 
+import { apiUrl } from "@/lib/base-path"
 /**
  * 지우기.
  *
@@ -56,7 +57,7 @@ export function DeleteRecordButton({
   function remove() {
     startTransition(async () => {
       try {
-        const res = await fetch(endpoint, { method: "DELETE" })
+        const res = await fetch(apiUrl(endpoint), { method: "DELETE" })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "지우지 못했습니다")
         toast.success(`${code} 을 지웠어요`)

@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "sonner"
+import { apiUrl } from "@/lib/base-path"
 
 interface CategoryOption {
   id: string
@@ -81,7 +82,7 @@ export function CreateCardDialog({ categories }: CreateCardDialogProps) {
     if (!title.trim() || !categoryId || submitting) return
     setSubmitting(true)
     try {
-      const res = await fetch("/api/omnis/cards", {
+      const res = await fetch(apiUrl("/api/omnis/cards"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

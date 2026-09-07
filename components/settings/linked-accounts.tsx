@@ -15,6 +15,7 @@ import {
   type SocialProvider,
 } from "@/components/auth/social-buttons"
 
+import { apiUrl } from "@/lib/base-path"
 interface Identity {
   provider: string
   email: string | null
@@ -35,7 +36,7 @@ export function LinkedAccounts() {
   useEffect(() => {
     // 어떤 소셜이 켜져 있는지는 서버 설정이 정한다. 화면에 고정해 두면
     // 키를 넣지 않은 제공자 버튼이 떠서 누르면 깨진다.
-    fetch("/api/auth/providers")
+    fetch(apiUrl("/api/auth/providers"))
       .then((r) => r.json())
       .then((all: Record<string, unknown>) =>
         setAvailable((["google", "kakao"] as SocialProvider[]).filter((p) => p in all))
@@ -46,7 +47,7 @@ export function LinkedAccounts() {
   }, [])
 
   function reload() {
-    fetch("/api/account/identities")
+    fetch(apiUrl("/api/account/identities"))
       .then((r) => (r.ok ? r.json() : []))
       .then(setIdentities)
       .catch(() => setIdentities([]))
@@ -54,7 +55,7 @@ export function LinkedAccounts() {
 
   async function unlink(provider: SocialProvider) {
     setBusy(provider)
-    const res = await fetch("/api/account/identities", {
+    const res = await fetch(apiUrl("/api/account/identities"), {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider }),

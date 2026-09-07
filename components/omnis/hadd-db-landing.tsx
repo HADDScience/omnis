@@ -17,6 +17,7 @@ import {
 import { Kbd } from "@/components/ui/kbd"
 import { useCommandPalette } from "@/components/layout/command-palette-context"
 
+import { apiUrl } from "@/lib/base-path"
 interface CardSummary {
   id: string
   title: string
@@ -59,7 +60,7 @@ function CardEntry({ c, emphasized = false }: { c: CardSummary; emphasized?: boo
     e.stopPropagation()
     setPending(true)
     try {
-      const res = await fetch(bookmarked ? `/api/bookmarks/${c.id}` : "/api/bookmarks", {
+      const res = await fetch(apiUrl(bookmarked ? `/api/bookmarks/${c.id}` : "/api/bookmarks"), {
         method: bookmarked ? "DELETE" : "POST",
         headers: bookmarked ? undefined : { "Content-Type": "application/json" },
         body: bookmarked ? undefined : JSON.stringify({ cardId: c.id }),

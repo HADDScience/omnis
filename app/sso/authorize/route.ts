@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { buildReturnUrl, issueGrant, resolveApp, safeReturnPath, ssoEnabled } from "@/lib/sso"
 
+import { publicUrl } from "@/lib/base-path"
 /**
  * SSO 진입점. 사내 도구가 사람을 여기로 보내면, 로그인 여부를 확인해
  * 짧은 수명의 1회용 표(grant)를 프래그먼트에 달아 돌려보낸다.
@@ -62,7 +63,8 @@ export async function GET(req: NextRequest) {
     // 로그인 화면으로 보냈다가 이 요청을 그대로 다시 태운다.
     // callbackUrl 은 같은 오리진의 상대 경로라 NextAuth 의 기본 검사를 통과한다.
     const back = `/sso/authorize?app=${encodeURIComponent(app.id)}&next=${encodeURIComponent(next)}`
-    const login = new URL(`/login?callbackUrl=${encodeURIComponent(back)}`, url.origin)
+    // 프록시 뒤에서는 url.origin 이 내부 호스트다 — 바깥 주소로 보낸다.
+    const login = publicUrl(`/login?callbackUrl=${encodeURIComponent(back)}`, url)
     return NextResponse.redirect(login, { headers: { "cache-control": "no-store" } })
   }
 

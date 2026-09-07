@@ -11,6 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { Task01Icon } from "@hugeicons/core-free-icons"
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS } from "@/lib/constants"
 
+import { apiUrl } from "@/lib/base-path"
 interface FileInfo {
   id: string
   name: string
@@ -212,13 +213,13 @@ export function MessageList({
                           return (
                             <a
                               key={f.id}
-                              href={uploading ? undefined : f.path}
+                              href={uploading ? undefined : apiUrl(f.path)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className={`block rounded-md overflow-hidden max-w-[200px] border ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
                               onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
                             >
-                              <img src={f.path} alt={f.name} className="w-full h-auto" loading="lazy" />
+                              <img src={apiUrl(f.path)} alt={f.name} className="w-full h-auto" loading="lazy" />
                               <div className="relative px-1.5 py-0.5 text-[10px] text-muted-foreground bg-background/80 truncate overflow-hidden">
                                 {uploading && (
                                   <div className="absolute inset-0 bg-primary/20 animate-[gauge_1.5s_ease-in-out_infinite]" />
@@ -231,7 +232,7 @@ export function MessageList({
                         return (
                           <a
                             key={f.id}
-                            href={uploading ? undefined : f.path}
+                            href={uploading ? undefined : apiUrl(f.path)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className={`flex items-center gap-1.5 rounded bg-background/50 px-2 py-1 text-[11px] ${uploading ? "opacity-70" : "hover:underline"} relative overflow-hidden`}

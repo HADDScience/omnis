@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { EntityPicker, type PickerOption } from "./entity-picker"
 import { formatStock } from "@/lib/crm"
 import { cn } from "@/lib/utils"
+import { apiUrl } from "@/lib/base-path"
 
 interface StockView {
   id: string
@@ -121,7 +122,7 @@ export function StockPanel({
     }
     startTransition(async () => {
       try {
-        const res = await fetch("/api/crm/stock", {
+        const res = await fetch(apiUrl("/api/crm/stock"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -156,7 +157,7 @@ export function StockPanel({
     if (!shOrgId || !shProductId || shQtyNum < 1) return
     startTransition(async () => {
       try {
-        const res = await fetch("/api/crm/shipments", {
+        const res = await fetch(apiUrl("/api/crm/shipments"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -185,7 +186,7 @@ export function StockPanel({
     if (!mfgProductId || !mfgMaterialId || qtyNum < 1) return
     startTransition(async () => {
       try {
-        const res = await fetch("/api/crm/productions", {
+        const res = await fetch(apiUrl("/api/crm/productions"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

@@ -3,6 +3,7 @@
 import { useState } from "react"
 
 import { cn } from "@/lib/utils"
+import { apiUrl } from "@/lib/base-path"
 
 /**
  * 승인 버튼.
@@ -19,7 +20,7 @@ export function ApproveButton({ req }: { req: string }) {
     setPending(true)
     setError(null)
     try {
-      const res = await fetch("/api/ip-mcp/approve", {
+      const res = await fetch(apiUrl("/api/ip-mcp/approve"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ req }),

@@ -11,6 +11,7 @@ import { OmnisAsk } from "@/components/omnis/omnis-ask"
 import { TaskThread } from "@/app/(main)/tasks/[taskId]/task-sidebar"
 import { useRightPanel } from "./right-panel-context"
 import { cn } from "@/lib/utils"
+import { apiUrl } from "@/lib/base-path"
 
 interface Message {
   id: string
@@ -89,7 +90,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
 
   const loadRecentThreads = useCallback(async () => {
     try {
-      const res = await fetch("/api/chat/threads/recent")
+      const res = await fetch(apiUrl("/api/chat/threads/recent"))
       if (res.ok) setRecentThreads(await res.json())
     } catch {
       // 최근 스레드는 편의 기능이라 실패해도 패널은 그대로 쓴다

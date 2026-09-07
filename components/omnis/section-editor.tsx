@@ -36,6 +36,7 @@ import type {
   LinksSection,
 } from "@/lib/omnis-types"
 import { KEYVALUE_TYPE_LABELS } from "@/lib/omnis-types"
+import { apiUrl } from "@/lib/base-path"
 
 // ─── 파일 정보 타입 ──────────────────────────────────────
 interface FileInfo {
@@ -182,7 +183,7 @@ function FilesViewer({ section }: { section: FilesSection }) {
     if (section.fileIds.length === 0) return
     Promise.all(
       section.fileIds.map((fid) =>
-        fetch(`/api/files/${fid}`)
+        fetch(apiUrl(`/api/files/${fid}`))
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null)
       )
@@ -206,7 +207,7 @@ function FilesViewer({ section }: { section: FilesSection }) {
               <li key={f.id} className="flex items-center gap-2 text-sm">
                 <HugeiconsIcon icon={Attachment01Icon} size={12} className="text-muted-foreground shrink-0" />
                 <a
-                  href={f.path}
+                  href={apiUrl(f.path)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline underline-offset-2 hover:text-primary/80 truncate"
@@ -684,7 +685,7 @@ function FilesEditor({
     }
     Promise.all(
       section.fileIds.map((fid) =>
-        fetch(`/api/files/${fid}`)
+        fetch(apiUrl(`/api/files/${fid}`))
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null)
       )
@@ -700,7 +701,7 @@ function FilesEditor({
         for (const file of fileList) {
           const formData = new FormData()
           formData.append("file", file)
-          const res = await fetch("/api/files", { method: "POST", body: formData })
+          const res = await fetch(apiUrl("/api/files"), { method: "POST", body: formData })
           if (res.ok) {
             const record = await res.json()
             newIds.push(record.id)

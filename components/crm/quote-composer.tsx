@@ -20,6 +20,7 @@ import { RecipientSteps } from "./recipient-steps"
 import { useRecipient, type OrgLite } from "./use-recipient"
 import { quoteTotals, won } from "@/lib/crm"
 import { cn } from "@/lib/utils"
+import { apiUrl } from "@/lib/base-path"
 
 interface ProductLite {
   id: string
@@ -106,7 +107,7 @@ export function QuoteComposer({
     if (!canSave) return
     startTransition(async () => {
       try {
-        const res = await fetch("/api/crm/quotes", {
+        const res = await fetch(apiUrl("/api/crm/quotes"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

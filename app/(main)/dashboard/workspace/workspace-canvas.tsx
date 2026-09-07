@@ -23,6 +23,7 @@ import { resolveCollisions } from "./resolve-collisions"
 import { InspectorPanel, type InspectorData } from "./inspector-panel"
 import { WorkspaceToolbar, type GroupMode } from "./workspace-toolbar"
 import { TASK_STATUS_LABELS } from "@/lib/constants"
+import { apiUrl } from "@/lib/base-path"
 
 const nodeTypes = {
   productRoom: ProductRoomNode,
@@ -211,7 +212,7 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
 
   // 최초 로드: DB에서 레이아웃 가져오기
   useEffect(() => {
-    fetch("/api/workspace-layout")
+    fetch(apiUrl("/api/workspace-layout"))
       .then((r) => r.json())
       .then((data) => {
         const layout = data.layout as SavedLayout | null
@@ -266,7 +267,7 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
           viewport: getViewport(),
         }
         savedLayoutRef.current = layout
-        fetch("/api/workspace-layout", {
+        fetch(apiUrl("/api/workspace-layout"), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ layout }),
@@ -286,7 +287,7 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
     savedLayoutRef.current = null
     setNodes(applyLayout(initialNodes, null))
     setTimeout(() => fitView({ padding: 0.08 }), 50)
-    fetch("/api/workspace-layout", {
+    fetch(apiUrl("/api/workspace-layout"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ layout: null }),

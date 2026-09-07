@@ -13,6 +13,7 @@ import { EntityPicker, type PickerOption } from "./entity-picker"
 import { Step } from "./step"
 import { RecipientSteps } from "./recipient-steps"
 import { useRecipient, type OrgLite } from "./use-recipient"
+import { apiUrl } from "@/lib/base-path"
 
 interface ProductLite {
   id: string
@@ -63,7 +64,7 @@ export function SampleComposer({
     if (!canSave) return
     startTransition(async () => {
       try {
-        const res = await fetch("/api/crm/samples", {
+        const res = await fetch(apiUrl("/api/crm/samples"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

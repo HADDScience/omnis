@@ -18,6 +18,7 @@ import {
   type NotificationResponse,
 } from "@/lib/schemas/notification"
 
+import { apiUrl } from "@/lib/base-path"
 interface Notification {
   id: string
   type: string
@@ -40,7 +41,7 @@ export function NotificationBell() {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications")
+      const res = await fetch(apiUrl("/api/notifications"))
       if (!res.ok) return
       const data: Notification[] = await res.json()
       setNotifications(data)
@@ -75,7 +76,7 @@ export function NotificationBell() {
   async function respond(id: string, response: NotificationResponse) {
     setResponding(id)
     try {
-      const res = await fetch("/api/notifications", {
+      const res = await fetch(apiUrl("/api/notifications"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, response }),
@@ -99,7 +100,7 @@ export function NotificationBell() {
   }
 
   async function markAllRead() {
-    await fetch("/api/notifications", {
+    await fetch(apiUrl("/api/notifications"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ readAll: true }),
@@ -108,7 +109,7 @@ export function NotificationBell() {
   }
 
   async function markRead(id: string) {
-    await fetch("/api/notifications", {
+    await fetch(apiUrl("/api/notifications"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -119,12 +120,12 @@ export function NotificationBell() {
   }
 
   async function deleteOne(id: string) {
-    await fetch(`/api/notifications?id=${id}`, { method: "DELETE" })
+    await fetch(apiUrl(`/api/notifications?id=${id}`), { method: "DELETE" })
     setNotifications((prev) => prev.filter((n) => n.id !== id))
   }
 
   async function deleteAll() {
-    await fetch("/api/notifications?all=true", { method: "DELETE" })
+    await fetch(apiUrl("/api/notifications?all=true"), { method: "DELETE" })
     setNotifications([])
   }
 

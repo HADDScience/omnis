@@ -9,6 +9,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { CrmQuoteStatus } from "@/generated/prisma"
 import { cn } from "@/lib/utils"
+import { apiUrl } from "@/lib/base-path"
 
 /**
  * 견적 상태를 바꾼다.
@@ -45,7 +46,7 @@ export function QuoteStatusControl({
     setBusyKey(next)
     startTransition(async () => {
       try {
-        const res = await fetch(`/api/crm/quotes/${quoteId}`, {
+        const res = await fetch(apiUrl(`/api/crm/quotes/${quoteId}`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: next }),

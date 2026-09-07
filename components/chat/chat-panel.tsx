@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
+import { apiUrl } from "@/lib/base-path"
 
 interface Message {
   id: string
@@ -58,7 +59,7 @@ export function ChatPanel({
       if (lastFetchedAt.current) params.set("after", lastFetchedAt.current)
       if (filterTaskId) params.set("taskId", filterTaskId)
 
-      const res = await fetch(`/api/chat/messages?${params.toString()}`)
+      const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
       if (!res.ok) return
       const newMsgs = await res.json()
 
@@ -92,7 +93,7 @@ export function ChatPanel({
     try {
       const params = new URLSearchParams({ roomId, before: oldest.createdAt })
       if (filterTaskId) params.set("taskId", filterTaskId)
-      const res = await fetch(`/api/chat/messages?${params.toString()}`)
+      const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
       if (!res.ok) return
       const older: Message[] = await res.json()
       if (older.length < CHAT_PAGE_SIZE) setHasMoreOlder(false)
@@ -123,19 +124,19 @@ export function ChatPanel({
   }, [filterTaskId, fetchMessages])
 
   useEffect(() => {
-    fetch("/api/users")
+    fetch(apiUrl("/api/users"))
       .then((r) => r.json())
       .then(setUsers)
       .catch(() => {})
     fetchTasks()
-    fetch("/api/files")
+    fetch(apiUrl("/api/files"))
       .then((r) => r.json())
       .then(setUploadedFiles)
       .catch(() => {})
   }, [])
 
   function fetchTasks() {
-    fetch("/api/tasks")
+    fetch(apiUrl("/api/tasks"))
       .then((r) => r.json())
       .then((data: { id: string; name: string; slug: string }[]) => setTasks(data))
       .catch(() => {})
@@ -182,7 +183,7 @@ export function ChatPanel({
           setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 30))
           const form = new FormData()
           form.append("file", files[i])
-          const fRes = await fetch("/api/files", { method: "POST", body: form })
+          const fRes = await fetch(apiUrl("/api/files"), { method: "POST", body: form })
           if (fRes.ok) {
             const uploaded = await fRes.json()
             uploadedFiles.push(uploaded)
@@ -194,7 +195,7 @@ export function ChatPanel({
       // 처리 중 상태 표시
       if (hasAction) setProcessing(mentionSlug)
 
-      const res = await fetch("/api/chat/messages", {
+      const res = await fetch(apiUrl("/api/chat/messages"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

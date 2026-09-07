@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import type { CrmOrgType } from "@/generated/prisma"
+import { apiUrl } from "@/lib/base-path"
 
 export interface OrgLite {
   id: string
@@ -40,7 +41,7 @@ export function useRecipient(initialOrgs: OrgLite[]) {
   async function createOrg(name: string, onPick?: (o: OrgLite | null) => void) {
     setBusy(true)
     try {
-      const res = await fetch("/api/crm/orgs", {
+      const res = await fetch(apiUrl("/api/crm/orgs"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -66,7 +67,7 @@ export function useRecipient(initialOrgs: OrgLite[]) {
     if (!orgId) return
     setBusy(true)
     try {
-      const res = await fetch("/api/crm/contacts", {
+      const res = await fetch(apiUrl("/api/crm/contacts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId, name }),
@@ -93,7 +94,7 @@ export function useRecipient(initialOrgs: OrgLite[]) {
     if (!orgId) return
     setOrgs((prev) => prev.map((o) => (o.id === orgId ? { ...o, type } : o)))
     try {
-      const res = await fetch(`/api/crm/orgs/${orgId}`, {
+      const res = await fetch(apiUrl(`/api/crm/orgs/${orgId}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type }),

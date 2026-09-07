@@ -35,6 +35,7 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip"
 
+import { apiUrl } from "@/lib/base-path"
 /**
  * 서버가 쓰는 것과 **같은** 타입을 가져온다. 여기서 따로 선언해 두면 서버 쪽에
  * 값이 늘어났을 때 조용히 어긋나고, sourceHref 가 undefined 를 돌려주고,
@@ -217,7 +218,7 @@ export function OmnisAsk({ variant = "page" }: { variant?: "page" | "dock" }) {
   // 저장된 질문 내역 불러오기
   useEffect(() => {
     let cancelled = false
-    fetch("/api/omnis/ask")
+    fetch(apiUrl("/api/omnis/ask"))
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
         if (!cancelled && Array.isArray(data)) setHistory(data as QA[])
@@ -239,7 +240,7 @@ export function OmnisAsk({ variant = "page" }: { variant?: "page" | "dock" }) {
     }
     setLoading(true)
     try {
-      const res = await fetch("/api/omnis/ask", {
+      const res = await fetch(apiUrl("/api/omnis/ask"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: q }),

@@ -25,6 +25,7 @@ import { TASK_STATUS_LABELS, TASK_STATUS_COLORS } from "@/lib/constants"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { PriorityRating } from "@/components/ui/priority-rating"
 import { TaskCreateButton } from "@/components/chat/task-create-button"
+import { apiUrl } from "@/lib/base-path"
 
 interface Checklist {
   id: string
@@ -191,7 +192,7 @@ function TaskTable({
     setBulkUpdating(true)
     const ids = Array.from(selectedIds)
     await Promise.all(ids.map((id) =>
-      fetch(`/api/tasks/${id}`, {
+      fetch(apiUrl(`/api/tasks/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -226,7 +227,7 @@ function TaskTable({
     setBulkDeleting(true)
     const ids = Array.from(selectedIds)
     setDeletingIds((prev) => { const s = new Set(prev); ids.forEach((id) => s.add(id)); return s })
-    await Promise.all(ids.map((id) => fetch(`/api/tasks/${id}`, { method: "DELETE" })))
+    await Promise.all(ids.map((id) => fetch(apiUrl(`/api/tasks/${id}`), { method: "DELETE" })))
     setSelectedIds(new Set())
     setBulkDeleting(false)
     router.refresh()
@@ -237,7 +238,7 @@ function TaskTable({
     e.stopPropagation()
     if (!confirm(`"${task.name}" 업무를 삭제하시겠습니까?`)) return
     setDeletingIds((prev) => new Set(prev).add(task.id))
-    const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" })
+    const res = await fetch(apiUrl(`/api/tasks/${task.id}`), { method: "DELETE" })
     if (res.ok) router.refresh()
     else setDeletingIds((prev) => { const s = new Set(prev); s.delete(task.id); return s })
   }
@@ -482,7 +483,7 @@ function TaskCard({ task }: { task: Task }) {
     e.stopPropagation()
     if (!confirm(`"${task.name}" 업무를 삭제하시겠습니까?`)) return
     setDeleting(true)
-    const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" })
+    const res = await fetch(apiUrl(`/api/tasks/${task.id}`), { method: "DELETE" })
     if (res.ok) router.refresh()
     else setDeleting(false)
   }

@@ -9,6 +9,7 @@ import { DeleteRecordButton } from "./delete-record-button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { apiUrl } from "@/lib/base-path"
 
 interface Sample {
   id: string
@@ -54,7 +55,7 @@ export function SampleList({ samples: initial }: { samples: Sample[] }) {
     // 낙관적으로 먼저 바꾼다. 실패하면 되돌린다 — 누를 때마다 기다리게 하지 않는다.
     setSamples((prev) => prev.map((x) => (x.id === s.id ? { ...x, sent: next } : x)))
     try {
-      const res = await fetch("/api/crm/samples", {
+      const res = await fetch(apiUrl("/api/crm/samples"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: s.id, sent: next }),

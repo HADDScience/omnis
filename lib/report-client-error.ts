@@ -1,4 +1,5 @@
-/**
+
+import { apiUrl } from "@/lib/base-path"/**
  * 화면에서 터진 오류를 서버로 보낸다. 서버가 로그를 남기고 메일을 쏜다.
  *
  * 실패해도 조용히 넘어간다 — 오류를 보고하다 또 터지면 사용자에게 보이는 것은
@@ -9,7 +10,7 @@ export function reportClientError(
   scope: "global" | "page"
 ): void {
   try {
-    void fetch("/api/errors", {
+    void fetch(apiUrl("/api/errors"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

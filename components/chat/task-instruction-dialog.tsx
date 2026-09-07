@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+import { apiUrl } from "@/lib/base-path"
 interface TaskDraft {
   name: string
   background: string
@@ -90,7 +91,7 @@ export function TaskInstructionDialog({
 
   async function fetchProjects() {
     try {
-      const res = await fetch("/api/projects")
+      const res = await fetch(apiUrl("/api/projects"))
       if (res.ok) {
         setProjects(await res.json())
       }
@@ -102,7 +103,7 @@ export function TaskInstructionDialog({
   async function structureMessages() {
     setLoading(true)
     try {
-      const res = await fetch("/api/ai/structure-task", {
+      const res = await fetch(apiUrl("/api/ai/structure-task"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -128,7 +129,7 @@ export function TaskInstructionDialog({
 
       if (selectedProjectId === NEW_PROJECT_VALUE) {
         if (newProjectName.trim()) {
-          const res = await fetch("/api/projects", {
+          const res = await fetch(apiUrl("/api/projects"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name: newProjectName.trim() }),
@@ -144,7 +145,7 @@ export function TaskInstructionDialog({
       const selectedProject = projects.find((p) => p.id === projectId)
       const productId = selectedProject?.product?.id ?? draft.productId ?? null
 
-      const res = await fetch("/api/tasks", {
+      const res = await fetch(apiUrl("/api/tasks"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

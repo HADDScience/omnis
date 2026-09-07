@@ -3,6 +3,7 @@ import { createHash } from "crypto"
 
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { publicBase, publicUrl } from "@/lib/base-path"
 import {
   INSTRUCTIONS,
   PROTOCOL_VERSION,
@@ -56,8 +57,9 @@ const ACCESS_TTL_SEC = 60 * 60 * 8
  * 인가가 프로덕션으로 새어 나간다.
  */
 function baseOf(req: NextRequest): string {
-  const url = new URL(req.url)
-  return `${url.origin}/api/ip-mcp`
+  // 프록시(rewrite) 뒤에서는 요청 origin 이 내부 호스트(omnis-hadd)다. issuer 는
+  // 사람이 보는 주소여야 하므로 PUBLIC_URL 이 있으면 그것을 쓴다. basePath 도 붙는다.
+  return `${publicBase(req.url)}/api/ip-mcp`
 }
 
 function json(body: unknown, status = 200, extra: Record<string, string> = {}) {
@@ -88,7 +90,7 @@ function tailOf(req: NextRequest): string {
    * 주소 그대로여서 아래 정규식이 경로를 통째로 지워 버렸다 — 그 결과 규격대로
    * 찾아온 클라이언트만 엉뚱한 응답(서버 정보)을 받았다.
    */
-  const spec = /^\/(\.well-known\/[^/]+)\/api\/ip-mcp\/?$/.exec(pathname)
+  const spec = /^(?:\/[^/]+)?\/(\.well-known\/[^/]+)(?:\/[^/]+)?\/api\/ip-mcp\/?$/.exec(pathname)
   if (spec) return `/${spec[1]}`
 
   return pathname.replace(/^.*\/api\/ip-mcp/, "") || "/"
@@ -188,7 +190,7 @@ async function authorize(req: NextRequest) {
       RETURNING id`
   )[0]
 
-  return NextResponse.redirect(new URL(`/ip-mcp/authorize?req=${row.id}`, url.origin), {
+  return NextResponse.redirect(publicUrl(`/ip-mcp/authorize?req=${row.id}`, url), {
     headers: { "cache-control": "no-store" },
   })
 }

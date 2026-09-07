@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import { DemoAccountsCard } from "@/components/layout/demo-accounts-card"
 import { SocialSignInButton, type SocialProvider } from "@/components/auth/social-buttons"
+import { apiUrl } from "@/lib/base-path"
 
 /**
  * 로그인 뒤 돌아갈 곳. 기본은 대시보드다.
@@ -63,7 +64,7 @@ export default function LoginPage() {
   // 어떤 소셜이 켜져 있는지는 서버 설정이 정한다. 화면에 고정해 두면
   // 키를 넣지 않은 제공자 버튼이 떠서 누르면 깨진다.
   useEffect(() => {
-    fetch("/api/auth/providers")
+    fetch(apiUrl("/api/auth/providers"))
       .then((r) => r.json())
       .then((all: Record<string, unknown>) =>
         setSocials((["google", "kakao"] as const).filter((p) => p in all))

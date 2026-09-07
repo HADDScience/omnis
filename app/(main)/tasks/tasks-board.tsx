@@ -16,6 +16,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { apiUrl } from "@/lib/base-path"
 
 type Status = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE"
 
@@ -230,7 +231,7 @@ export function TasksBoard({ initialTasks }: TasksBoardProps) {
 
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)))
 
-    const res = await fetch(`/api/tasks/${taskId}`, {
+    const res = await fetch(apiUrl(`/api/tasks/${taskId}`), {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ status: newStatus }),

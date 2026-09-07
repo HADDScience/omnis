@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { HugeiconsIcon } from "@hugeicons/react"
 import { CheckmarkCircle02Icon, Delete02Icon, NoteEditIcon } from "@hugeicons/core-free-icons"
 import { TASK_STATUS_LABELS } from "@/lib/constants"
+import { apiUrl } from "@/lib/base-path"
 
 interface PersonalTask {
   id: string
@@ -140,7 +141,7 @@ export function DashboardPersonal({ currentUserId, tasks }: DashboardPersonalPro
   const reportDelayed = reportTasks.filter((t) => isDelayed(t) && t.status !== "DONE")
 
   const handleComplete = useCallback(async (taskId: string) => {
-    await fetch(`/api/tasks/${taskId}`, {
+    await fetch(apiUrl(`/api/tasks/${taskId}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "DONE" }),
@@ -150,7 +151,7 @@ export function DashboardPersonal({ currentUserId, tasks }: DashboardPersonalPro
 
   const handleArchive = useCallback(async (taskId: string) => {
     if (!confirm("이 업무를 삭제하시겠습니까?")) return
-    await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+    await fetch(apiUrl(`/api/tasks/${taskId}`), { method: "DELETE" })
     router.refresh()
   }, [router])
 

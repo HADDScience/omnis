@@ -4,8 +4,21 @@ import { fileURLToPath } from "node:url"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** @type {import('next').NextConfig} */
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || undefined
+
 const nextConfig = {
   output: "standalone",
+  /*
+   * 한 도메인의 하위 경로(/omnis)로 뜰 때. env 로 켜고 끈다 — 코드는 한 번만 바꾸고,
+   * 되돌리기는 env 를 비우고 재배포하는 것뿐이다. lib/base-path.ts 참조.
+   */
+  basePath,
+  assetPrefix: basePath,
+  /*
+   * next-auth/react 는 클라이언트에서 NEXTAUTH_URL 의 경로를 자기 basePath 로 삼는다.
+   * NEXT_PUBLIC_ 이 아니라 번들에 안 실리므로 여기서 실어 준다 (비밀이 아니다 — 주소다).
+   */
+  env: { NEXTAUTH_URL: process.env.NEXTAUTH_URL },
   devIndicators: false, // 좌측하단 Next.js 개발 툴박스 숨김
   typescript: {
     ignoreBuildErrors: false,

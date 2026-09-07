@@ -16,6 +16,7 @@ import type {
   WorkspaceProject,
 } from "@/lib/workspace-types"
 
+import { apiUrl } from "@/lib/base-path"
 interface DashboardWorkspaceProps {
   products: WorkspaceProduct[]
   projects: WorkspaceProject[]
@@ -64,7 +65,7 @@ export function DashboardWorkspace({
   const handleContextMenuSave = useCallback(
     async (taskId: string, updates: { projectId?: string; productId?: string | null }) => {
       try {
-        await fetch(`/api/tasks/${taskId}`, {
+        await fetch(apiUrl(`/api/tasks/${taskId}`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(updates),

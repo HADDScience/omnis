@@ -20,6 +20,7 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { InboxIcon, Search01Icon } from "@hugeicons/core-free-icons"
+import { apiUrl } from "@/lib/base-path"
 
 /**
  * 받침에 따라 조사를 고른다. 프로젝트명이 값으로 들어가므로 고정 조사를 쓰면
@@ -82,7 +83,7 @@ export function ProjectMerge({ projects }: { projects: MergeableProject[] }) {
     if (!source || !targetId) return
     setMerging(true)
     try {
-      const res = await fetch("/api/projects/merge", {
+      const res = await fetch(apiUrl("/api/projects/merge"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sourceId: source.id, targetId }),

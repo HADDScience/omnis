@@ -28,6 +28,7 @@ import {
   type CardContent as CardContentType,
 } from "@/lib/omnis-types"
 import { SectionViewer, SectionEditor } from "@/components/omnis/section-editor"
+import { apiUrl } from "@/lib/base-path"
 
 // ─── 타입 ────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
   const [timeMachineLoading, setTimeMachineLoading] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/omnis/cards/history?cardId=${card.id}`)
+    fetch(apiUrl(`/api/omnis/cards/history?cardId=${card.id}`))
       .then(async (r) => {
         const data = await r.json()
         if (!r.ok) throw new Error(data.error ?? "버전 기록을 불러오지 못했습니다")
@@ -141,7 +142,7 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
         text: textForGit,
       }
 
-      const res = await fetch("/api/omnis/cards", {
+      const res = await fetch(apiUrl("/api/omnis/cards"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -175,7 +176,7 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
   async function toggleBookmark() {
     setBookmarking(true)
     try {
-      const res = await fetch(bookmarked ? `/api/bookmarks/${card.id}` : "/api/bookmarks", {
+      const res = await fetch(apiUrl(bookmarked ? `/api/bookmarks/${card.id}` : "/api/bookmarks"), {
         method: bookmarked ? "DELETE" : "POST",
         headers: bookmarked ? undefined : { "Content-Type": "application/json" },
         body: bookmarked ? undefined : JSON.stringify({ cardId: card.id }),
@@ -204,7 +205,7 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
     }
     setTimeMachineLoading(true)
     try {
-      const res = await fetch(`/api/omnis/cards/history?cardId=${card.id}&hash=${hash}`)
+      const res = await fetch(apiUrl(`/api/omnis/cards/history?cardId=${card.id}&hash=${hash}`))
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "버전 내용을 불러오지 못했습니다")
       setTimeMachineContent(data.content || "")
@@ -240,7 +241,7 @@ export function OmnisCardDetail({ card, allCards, initialBookmarked }: OmnisCard
     if (!confirm(`이 버전(${hash.slice(0, 7)})으로 롤백하시겠습니까?`)) return
     setRolling(true)
     try {
-      const res = await fetch("/api/omnis/cards/history", {
+      const res = await fetch(apiUrl("/api/omnis/cards/history"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cardId: card.id, hash }),

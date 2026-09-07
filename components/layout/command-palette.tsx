@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Kbd } from "@/components/ui/kbd"
 import { useCommandPalette } from "./command-palette-context"
+import { apiUrl } from "@/lib/base-path"
 
 interface CardHit {
   id: string
@@ -81,7 +82,7 @@ export function CommandPalette() {
     setLoading(true)
     const controller = new AbortController()
     const timer = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, { signal: controller.signal })
+      fetch(apiUrl(`/api/search?q=${encodeURIComponent(trimmed)}`), { signal: controller.signal })
         .then((r) => r.json())
         .then((data: SearchResult) => setResults(data))
         .catch(() => {})

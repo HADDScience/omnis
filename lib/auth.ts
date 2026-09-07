@@ -6,6 +6,7 @@ import Kakao from "next-auth/providers/kakao"
 import { compareSync } from "bcryptjs"
 import { prisma } from "./db"
 import { resolveIdentity, linkIdentity, rememberIdentityEmail } from "./auth-identity"
+import { BASE_PATH } from "./base-path"
 
 // 소셜은 자격증명이 실제로 설정된 것만 켠다.
 // 키 없이 프로바이더를 등록하면 로그인 화면에 버튼은 뜨는데 누르면 깨진다.
@@ -120,9 +121,23 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       ;(session as { lastActiveAt?: number }).lastActiveAt = token.lastActiveAt as number | undefined
       return session
     },
+
+    /**
+     * 로그인·로그아웃 뒤 돌아갈 곳. 화면은 "/dashboard" 처럼 앱 안 경로를 넘기는데,
+     * NextAuth 는 그것을 호스트 루트에 붙인다 — basePath(/omnis) 아래 뜰 때는 그
+     * 자리가 홈페이지라 404 다. 앱 안 경로면 basePath 를 붙이고, 다른 오리진은 막는다.
+     */
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) {
+        return `${baseUrl}${url.startsWith(`${BASE_PATH}/`) || url === BASE_PATH ? url : `${BASE_PATH}${url}`}`
+      }
+      return new URL(url).origin === baseUrl ? url : `${baseUrl}${BASE_PATH}`
+    },
   },
+  // basePath 아래 뜰 때 NextAuth 가 자기 경로를 알아야 콜백·로그인 화면 주소가 맞는다.
+  basePath: `${BASE_PATH}/api/auth`,
   pages: {
-    signIn: "/login",
+    signIn: `${BASE_PATH}/login`,
   },
   session: {
     strategy: "jwt",

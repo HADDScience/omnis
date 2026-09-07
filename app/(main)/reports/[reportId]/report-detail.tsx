@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Edit02Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
+import { apiUrl } from "@/lib/base-path"
 
 interface Report {
   id: string
@@ -39,7 +40,7 @@ export function ReportDetail({ report }: { report: Report }) {
   async function handleSave() {
     setSaving(true)
     try {
-      await fetch(`/api/reports/weekly`, {
+      await fetch(apiUrl(`/api/reports/weekly`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: report.id, markdown: editValue }),
@@ -54,7 +55,7 @@ export function ReportDetail({ report }: { report: Report }) {
   async function handleSubmit() {
     setSubmitting(true)
     try {
-      await fetch(`/api/reports/weekly`, {
+      await fetch(apiUrl(`/api/reports/weekly`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: report.id, status: "제출 완료" }),

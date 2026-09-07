@@ -5,6 +5,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { Folder01Icon, File01Icon, ArrowLeft01Icon } from "@hugeicons/core-free-icons"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
+import { apiUrl } from "@/lib/base-path"
 
 interface Entry {
   name: string
@@ -38,7 +39,7 @@ export function NasBrowser({ initialPath }: { initialPath: string }) {
     setEntries(null)
     setError(null)
     try {
-      const res = await fetch(`/api/nas?path=${encodeURIComponent(p)}`)
+      const res = await fetch(apiUrl(`/api/nas?path=${encodeURIComponent(p)}`))
       if (!res.ok) {
         setError((await res.json().catch(() => null))?.error ?? "열 수 없습니다")
         return
@@ -46,7 +47,7 @@ export function NasBrowser({ initialPath }: { initialPath: string }) {
       const ct = res.headers.get("content-type") ?? ""
       if (!ct.includes("application/json")) {
         // 폴더가 아니라 파일이었다 — 새 탭에서 연다
-        window.open(`/api/nas?path=${encodeURIComponent(p)}`, "_blank", "noopener")
+        window.open(apiUrl(`/api/nas?path=${encodeURIComponent(p)}`), "_blank", "noopener")
         setEntries([])
         return
       }
@@ -122,7 +123,7 @@ export function NasBrowser({ initialPath }: { initialPath: string }) {
                 </button>
               ) : (
                 <a
-                  href={`/api/nas?path=${encodeURIComponent(e.path)}`}
+                  href={apiUrl(`/api/nas?path=${encodeURIComponent(e.path)}`)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-[13.5px] hover:bg-muted"

@@ -37,6 +37,7 @@ import { format } from "date-fns"
 import { parseSlashTask, resolveDeadline } from "./slash-command-parser"
 import { PrioritySchema, type TaskAiDraft } from "@/lib/schemas/task-ai"
 import { matchUserByName } from "@/lib/name-match"
+import { apiUrl } from "@/lib/base-path"
 
 interface TaskCmdModalV2Props {
   open: boolean
@@ -133,8 +134,8 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
   const refreshOptions = useCallback(async () => {
     try {
       const [projectList, productList] = await Promise.all([
-        fetch("/api/projects").then((r) => (r.ok ? r.json() : null)),
-        fetch("/api/products").then((r) => (r.ok ? r.json() : null)),
+        fetch(apiUrl("/api/projects")).then((r) => (r.ok ? r.json() : null)),
+        fetch(apiUrl("/api/products")).then((r) => (r.ok ? r.json() : null)),
       ])
       if (projectList) setProjects(projectList)
       if (productList) setProducts(productList)
@@ -179,9 +180,9 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     if (!open) return
     let cancelled = false
     Promise.all([
-      fetch("/api/users").then((r) => (r.ok ? r.json() : [])),
-      fetch("/api/projects").then((r) => (r.ok ? r.json() : [])),
-      fetch("/api/products").then((r) => (r.ok ? r.json() : [])),
+      fetch(apiUrl("/api/users")).then((r) => (r.ok ? r.json() : [])),
+      fetch(apiUrl("/api/projects")).then((r) => (r.ok ? r.json() : [])),
+      fetch(apiUrl("/api/products")).then((r) => (r.ok ? r.json() : [])),
     ])
       .then(([userList, projectList, productList]) => {
         if (cancelled) return
@@ -324,7 +325,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
   async function runAi() {
     setAiLoading(true)
     try {
-      const res = await fetch("/api/ai/structure-task", {
+      const res = await fetch(apiUrl("/api/ai/structure-task"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ rawMessage: rawCommand }),
@@ -351,7 +352,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     setRevising(true)
     try {
       const v = form.getValues()
-      const res = await fetch("/api/ai/revise-task-draft", {
+      const res = await fetch(apiUrl("/api/ai/revise-task-draft"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -401,7 +402,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
       // 제품·프로젝트·업무를 한 번에 보낸다.
       // 예전에는 /api/products → /api/projects → /api/tasks 를 차례로 호출해서,
       // 마지막 업무 생성이 실패하면 앞서 만든 제품·프로젝트가 주인 없이 남았다(§5-B-2).
-      const res = await fetch("/api/tasks", {
+      const res = await fetch(apiUrl("/api/tasks"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

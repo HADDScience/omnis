@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Delete02Icon } from "@hugeicons/core-free-icons"
+import { apiUrl } from "@/lib/base-path"
 
 interface Report {
   id: string
@@ -32,7 +33,7 @@ export function ReportList({ reports: initial }: { reports: Report[] }) {
   async function handleCreate() {
     setCreating(true)
     try {
-      const res = await fetch("/api/reports/weekly", {
+      const res = await fetch(apiUrl("/api/reports/weekly"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ generateDraft: true }),
@@ -84,7 +85,7 @@ function ReportCard({ report }: { report: Report }) {
     e.stopPropagation()
     if (!confirm(`"${report.title}" 보고서를 삭제하시겠습니까?`)) return
     setDeleting(true)
-    const res = await fetch(`/api/reports/weekly?id=${report.id}`, { method: "DELETE" })
+    const res = await fetch(apiUrl(`/api/reports/weekly?id=${report.id}`), { method: "DELETE" })
     if (res.ok) router.refresh()
     else setDeleting(false)
   }

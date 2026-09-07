@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
+import { apiUrl } from "@/lib/base-path"
 
 interface VersionEntry {
   hash: string
@@ -36,7 +37,7 @@ export function VersionHistory({ cardId }: VersionHistoryProps) {
   const router = useRouter()
 
   useEffect(() => {
-    fetch(`/api/omnis/${cardId}/versions`)
+    fetch(apiUrl(`/api/omnis/${cardId}/versions`))
       .then(async (r) => {
         const data = await r.json()
         if (!r.ok) throw new Error(data.error ?? "버전 기록을 불러오지 못했습니다")
@@ -51,7 +52,7 @@ export function VersionHistory({ cardId }: VersionHistoryProps) {
   }, [cardId])
 
   async function viewVersion(hash: string) {
-    const res = await fetch(`/api/omnis/${cardId}/versions/${hash}`)
+    const res = await fetch(apiUrl(`/api/omnis/${cardId}/versions/${hash}`))
     const data = await res.json()
     if (!res.ok) {
       toast.error(data.error ?? "버전 내용을 불러오지 못했습니다")
@@ -63,7 +64,7 @@ export function VersionHistory({ cardId }: VersionHistoryProps) {
   async function doRestore(hash: string) {
     if (!confirm(`이 버전(${hash.slice(0, 7)})으로 복원할까요? 새 커밋이 추가됩니다.`)) return
     setRestoring(hash)
-    const res = await fetch(`/api/omnis/${cardId}/restore`, {
+    const res = await fetch(apiUrl(`/api/omnis/${cardId}/restore`), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ hash }),
