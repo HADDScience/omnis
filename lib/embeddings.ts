@@ -36,7 +36,7 @@ interface RawChunk {
 
 // ─── 텍스트 추출 (소스별 청킹) ───────────────────────────
 
-function sectionToText(s: Section): string {
+export function sectionToText(s: Section): string {
   switch (s.type) {
     case "text":
       return s.body
