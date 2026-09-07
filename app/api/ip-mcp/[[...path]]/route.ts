@@ -3,7 +3,6 @@ import { createHash } from "crypto"
 
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { getMembership } from "@/lib/ip-data"
 import {
   INSTRUCTIONS,
   PROTOCOL_VERSION,
@@ -13,10 +12,14 @@ import {
   resolveCaller,
   runTool,
   sha256,
-} from "@/lib/ip-mcp"
+} from "@/lib/omnis-mcp"
 
 /**
- * HADD IP — 원격 MCP 서버 (Streamable HTTP) + OAuth 2.1 인가 서버.
+ * omnis-hadd — 원격 MCP 서버 (Streamable HTTP) + OAuth 2.1 인가 서버.
+ *
+ * hadd-ip 를 넓힌 것이다(2026-09-07). 주소(/api/ip-mcp)는 그대로 둔다 — issuer 와
+ * resource 식별자가 주소라 바꾸면 붙어 있는 커넥터가 전부 끊긴다. 도구 목록만 넓어졌고
+ * 인가는 Omnis 구성원 전원에게 열렸다(지식재산권 도구는 호출 시점에 멤버십으로 건다).
  *
  * Supabase 엣지 함수에서 옮겨 왔다. 프로토콜 처리와 OAuth 흐름은 원본 그대로이고,
  * 달라진 것은 세 가지다.
@@ -285,10 +288,7 @@ async function issueToken(req: NextRequest) {
 async function approve(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) return json({ error: "로그인이 필요합니다." }, 401)
-
-  // Omnis 계정이 있어도 지식재산권 구성원이 아니면 인가하지 않는다.
-  const membership = await getMembership(session.user.id)
-  if (!membership) return json({ error: "승인된 멤버가 아닙니다." }, 403)
+  // Omnis 구성원이면 누구나 붙는다. 지식재산권 도구는 호출할 때 따로 멤버십을 본다.
 
   let body: { req?: string }
   try {
@@ -399,14 +399,14 @@ export async function POST(req: NextRequest) {
         error: {
           code: -32001,
           message:
-            "토큰이 없거나 폐기되었습니다. IP 플랫폼의 「AI 도구 설치하기」에서 새로 발급하세요.",
+            "토큰이 없거나 폐기되었습니다. AI 도구에서 연결을 다시 시작하세요(OAuth). 개인 토큰은 IP 플랫폼의 「AI 도구 설치하기」에서 발급합니다.",
         },
       },
       401,
       {
         // OAuth 를 쓰는 클라이언트는 이 헤더를 보고 스스로 등록·인가를 시작한다.
         // `.well-known` 을 호스트 루트에 둘 수 없어서 주소를 명시해 준다.
-        "www-authenticate": `Bearer realm="hadd-ip", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
+        "www-authenticate": `Bearer realm="omnis-hadd", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
       }
     )
   }
