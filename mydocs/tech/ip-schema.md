@@ -86,6 +86,9 @@ RLS 는 없다. Prisma 는 DB 소유자로 접속하므로 켜 둔들 통과한�
 
 ## MCP 서버
 
+> **2026-09-07** — 이 서버는 `omnis-hadd` 로 넓어졌다(업무·채팅·지식·CRM 도구 12개 추가, 인가는 Omnis 구성원 전원).
+> 지금 구조는 [`omnis-mcp.md`](omnis-mcp.md) 가 정본이다. 아래는 지식재산권 부분의 원래 설계이고 그대로 유효하다.
+
 `oauth_clients` · `oauth_codes` · `oauth_requests` · `oauth_tokens` · `mcp_tokens` ·
 `mcp_guide_reads` 도 함께 옮겼다. 표만 먼저 옮기면 웹앱과 MCP 가 서로 다른 DB 를
 보게 되고, **둘 다 정상 동작하는 것처럼 보이면서** 데이터가 갈라지기 때문이다.

@@ -75,6 +75,7 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 |---|---|---|
 | [tech/auth-architecture.md](tech/auth-architecture.md) | canonical | 사내 도구 인증 구조 — Omnis 가 발급자 |
 | [tech/ip-schema.md](tech/ip-schema.md) | canonical | 지식재산권 스키마와 그 안의 도메인 규칙 |
+| [tech/omnis-mcp.md](tech/omnis-mcp.md) | canonical | omnis-hadd MCP — 도구 20개 · 권한 · 화면과 같은 쓰기 경로 |
 | [troubleshootings/supabase-limits.md](troubleshootings/supabase-limits.md) | canonical | Supabase 에서 무엇이 막혔고 어떻게 풀었나 |
 | [troubleshootings/migration-traps.md](troubleshootings/migration-traps.md) | reference | 이 작업에서 실제로 밟은 함정들 |
 | [troubleshootings/client-error-visibility.md](troubleshootings/client-error-visibility.md) | canonical | 화면이 흰 채로 죽는데 아무도 모르던 문제와 그 배관 |
