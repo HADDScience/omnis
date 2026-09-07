@@ -163,7 +163,7 @@ async function buildChatMessageChunks(
 ): Promise<RawChunk[] | null> {
   const msg = await prisma.chatMessage.findUnique({
     where: { id: messageId },
-    include: { author: { select: { name: true } } },
+    include: { author: { select: { name: true } }, task: { select: { name: true } } },
   })
   if (!msg) return null
 
@@ -173,7 +173,12 @@ async function buildChatMessageChunks(
   if (text.startsWith("__") || text.startsWith("🤖")) return null
   if (text.length < CHAT_MIN_LENGTH) return null
 
-  return [{ title: `${msg.author.name}의 메시지`, content: text }]
+  // 시각을 넣는다. 없으면 "오늘 올렸습니다" 같은 상대 표현을 모델이 질문 시점의 오늘로
+  // 읽는다 — 1년 전 이식 대화가 방금 일어난 일로 답변에 섞인 실측이 있다(2026-09-07).
+  const when = msg.createdAt.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16)
+  const lines = [`[채팅 ${when}] ${msg.author.name}: ${text}`]
+  if (msg.task?.name) lines.push(`관련 업무: ${msg.task.name}`)
+  return [{ title: `${msg.author.name}의 메시지 (${when.slice(0, 10)})`, content: lines.join("\n") }]
 }
 
 const TURN_LABEL: Record<string, string> = {
@@ -341,6 +346,71 @@ export async function syncEmbeddings(
   await prisma.embeddingChunk.deleteMany({
     where: { source, sourceId, chunkIndex: { gte: prepared.length } },
   })
+}
+
+/**
+ * 여러 엔티티를 한 번에 동기화한다 — 백필·이식용.
+ *
+ * `syncEmbeddings` 는 엔티티마다 Gemini 를 한 번 부른다. 채팅 수천 건을 그렇게 넣으면
+ * 하루 호출 한도(500)를 이식 한 번에 다 쓴다. 여기서는 바뀐 청크만 모아 100건씩
+ * 묶어 부르므로 호출 수가 1/100 로 준다. 저장 규칙은 `syncEmbeddings` 와 같다.
+ */
+export async function syncEmbeddingsBatch(
+  source: EmbeddingSource,
+  sourceIds: string[],
+  opts: { userId?: string; onProgress?: (done: number, total: number) => void } = {}
+): Promise<{ embedded: number; unchanged: number; removed: number }> {
+  const BATCH = 100
+  let embedded = 0, unchanged = 0, removed = 0
+
+  for (let i = 0; i < sourceIds.length; i += BATCH) {
+    const ids = sourceIds.slice(i, i + BATCH)
+    const existing = await prisma.embeddingChunk.findMany({
+      where: { source, sourceId: { in: ids } },
+      select: { sourceId: true, chunkIndex: true, contentHash: true },
+    })
+    const hashOfChunk = new Map(existing.map((e) => [`${e.sourceId}#${e.chunkIndex}`, e.contentHash]))
+
+    const stale: { sourceId: string; index: number; title: string; content: string; hash: string; input: string }[] = []
+    for (const sourceId of ids) {
+      const raw = await buildChunks(source, sourceId)
+      if (!raw || raw.length === 0) {
+        const { count } = await prisma.embeddingChunk.deleteMany({ where: { source, sourceId } })
+        removed += count
+        continue
+      }
+      raw.forEach((c, index) => {
+        const input = `${c.title}\n${c.content}`
+        const hash = hashOf(input)
+        if (hashOfChunk.get(`${sourceId}#${index}`) === hash) { unchanged++; return }
+        stale.push({ sourceId, index, title: c.title, content: c.content, hash, input })
+      })
+      await prisma.embeddingChunk.deleteMany({ where: { source, sourceId, chunkIndex: { gte: raw.length } } })
+    }
+
+    if (stale.length > 0) {
+      const vectors = await embedTexts(stale.map((s) => s.input), "RETRIEVAL_DOCUMENT", opts.userId)
+      for (let k = 0; k < stale.length; k++) {
+        const s = stale[k]
+        await prisma.$executeRaw`
+          INSERT INTO "EmbeddingChunk"
+            ("id", "source", "sourceId", "chunkIndex", "title", "content", "contentHash", "embedding", "createdAt", "updatedAt")
+          VALUES
+            (gen_random_uuid(), ${source}::"EmbeddingSource", ${s.sourceId}, ${s.index}, ${s.title}, ${s.content}, ${s.hash}, ${toVectorLiteral(vectors[k])}::vector, NOW(), NOW())
+          ON CONFLICT ("source", "sourceId", "chunkIndex")
+          DO UPDATE SET
+            "title" = EXCLUDED."title",
+            "content" = EXCLUDED."content",
+            "contentHash" = EXCLUDED."contentHash",
+            "embedding" = EXCLUDED."embedding",
+            "updatedAt" = NOW()
+        `
+      }
+      embedded += stale.length
+    }
+    opts.onProgress?.(Math.min(i + BATCH, sourceIds.length), sourceIds.length)
+  }
+  return { embedded, unchanged, removed }
 }
 
 /**
