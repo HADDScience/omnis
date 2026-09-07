@@ -57,7 +57,8 @@ Rules:
 
 const OutputSchema = z.object({
   title: z.string(),
-  summary: z.string(),
+  // 요약이 빈 원문에는 모델이 이 칸을 빼기도 한다. 빈 문자열로 받는다.
+  summary: z.string().optional().default(""),
   blocks: z.array(
     z.object({
       text: z.string().optional(),
