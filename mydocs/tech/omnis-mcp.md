@@ -7,8 +7,10 @@ last_verified: 2026-09-07
 
 # omnis-hadd — Omnis 의 원격 MCP 서버
 
-hadd-ip(지식재산권만 열던 서버)를 넓힌 것이다. 주소는 그대로 `<Omnis>/api/ip-mcp` —
-issuer 와 resource 식별자가 주소라 바꾸면 붙어 있는 커넥터가 전부 끊긴다. 이름만 `omnis-hadd` 다.
+hadd-ip(지식재산권만 열던 서버)를 넓힌 것이다. 이름만 `omnis-hadd` 다.
+
+**주소: `https://haddscience.vercel.app/omnis/api/ip-mcp`** (2026-09-07 한 도메인 이전 뒤). issuer 가 주소라
+옛 주소(`omnis-hadd.vercel.app/api/ip-mcp`)로 붙인 커넥터는 다시 연결해야 한다 — 옛 주소는 307 로 넘겨주지만 MCP 클라이언트는 POST redirect 를 따라가지 않는다.
 
 | 것 | 어디 |
 |---|---|
@@ -20,7 +22,7 @@ issuer 와 resource 식별자가 주소라 바꾸면 붙어 있는 커넥터가 
 
 ## 붙이는 법
 
-claude.ai → 설정 → 커넥터 → 커스텀 커넥터 추가 → 주소 `https://omnis-hadd.vercel.app/api/ip-mcp`.
+claude.ai → 설정 → 커넥터 → 커스텀 커넥터 추가 → 주소 `https://haddscience.vercel.app/omnis/api/ip-mcp`.
 OAuth 로 Omnis 로그인 → 승인 화면 → 끝. 8시간마다 자동 갱신. 이미 hadd-ip 로 붙여 둔 커넥터는
 **다시 연결하지 않아도** 도구 목록만 넓어진다(`tools/list` 는 매번 서버에서 온다).
 
