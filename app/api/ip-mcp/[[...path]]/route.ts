@@ -74,8 +74,21 @@ function fail(id: unknown, code: number, message: string) {
 
 /** 함수 이름 뒤에 붙은 부분만 본다. */
 function tailOf(req: NextRequest): string {
-  const url = new URL(req.url)
-  return url.pathname.replace(/^.*\/api\/ip-mcp/, "") || "/"
+  const { pathname } = new URL(req.url)
+
+  /*
+   * 규격대로 찾아온 주소를 알아본다.
+   *
+   * issuer 에 경로가 있으면 메타데이터는 호스트와 경로 **사이**에 `.well-known`
+   * 을 끼운 자리에 있어야 한다(RFC 8414 §3.1 · RFC 9728). next.config 의
+   * rewrite 가 그 주소를 이 핸들러로 보내 주는데, 재작성돼도 `req.url` 은 원래
+   * 주소 그대로여서 아래 정규식이 경로를 통째로 지워 버렸다 — 그 결과 규격대로
+   * 찾아온 클라이언트만 엉뚱한 응답(서버 정보)을 받았다.
+   */
+  const spec = /^\/(\.well-known\/[^/]+)\/api\/ip-mcp\/?$/.exec(pathname)
+  if (spec) return `/${spec[1]}`
+
+  return pathname.replace(/^.*\/api\/ip-mcp/, "") || "/"
 }
 
 // ─── OAuth 메타데이터 ───────────────────────────────────────────────
