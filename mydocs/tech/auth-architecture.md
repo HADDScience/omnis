@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/tech/auth-architecture.md
-last_verified: 2026-09-02
+last_verified: 2026-09-07
 ---
 
 # 사내 도구 인증 구조
@@ -17,8 +17,15 @@ last_verified: 2026-09-02
 | Omnis (업무관리) | Vercel | `https://omnis-hadd.vercel.app` |
 | Hub (런처) | GitHub Pages · 정적 | `https://haddscience.github.io/hub/` |
 | ip-platform | GitHub Pages · 정적 | `https://haddscience.github.io/ip-platform/` |
+| 홈페이지 관리 (`/admin`) | GitHub Pages · 정적 (실서비스는 Synology, 같은 번들) | `https://haddscience.github.io/admin/` · `https://haddscience.com/admin/` |
 
 Hub 와 ip-platform 은 같은 오리진, Omnis 는 다른 오리진이다. 이 사실이 구조 전체를 정한다.
+
+홈페이지 관리 화면은 로그인만이 아니라 **GitHub 커밋**도 Omnis 에 기댄다. 정적 앱은 GitHub
+토큰을 들 수 없으므로 `/api/website/github/<GitHub 경로>` 프록시가 세션을 확인한 뒤 서버
+토큰(`WEBSITE_GITHUB_TOKEN`)으로 대신 부른다. 커밋 author 는 프록시가 세션 사용자로 덮어쓴다.
+같은 번들이 두 오리진에 올라가므로 앱 id 가 둘(`website-admin` · `website-admin-com`)이고,
+클라이언트가 자기 오리진을 보고 고른다.
 
 ## 불변식
 
@@ -87,6 +94,7 @@ ES256. 정적 앱이 비밀키를 들 수 없으므로 검증은 `/api/sso/verif
 | `app/api/sso/redeem/route.ts` | grant → 세션. 1회용 강제 |
 | `app/api/sso/verify/route.ts` | 세션 유효성 재확인 |
 | `app/api/sso/jwks/route.ts` | 공개키 |
+| `app/api/website/github/[...path]/route.ts` | 홈페이지 관리 화면의 GitHub 프록시. 세션 확인 → 저장소 경로 제한 → author 덮어쓰기 |
 | `lib/auth.ts` | NextAuth v5. Credentials + Google + Kakao |
 | `lib/auth-identity.ts` | 소셜 연결 규칙. 콜백에서 분리해 실 DB 로 검증 가능하게 |
 

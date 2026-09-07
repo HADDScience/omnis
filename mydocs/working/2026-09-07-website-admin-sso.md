@@ -1,0 +1,65 @@
+---
+kind: snapshot
+status: active
+canonical: mydocs/tech/auth-architecture.md
+last_verified: 2026-09-07
+---
+
+# 2026-09-07 — 홈페이지 관리 화면 SSO · 작업 결과
+
+계획: [`mydocs/plans/2026-09-07-website-admin-sso.md`](../plans/2026-09-07-website-admin-sso.md)
+
+## 커밋
+
+| 단계 | 커밋 |
+|---|---|
+| 앱 등록 + verify-sso 검사 7건 | `c981559` |
+| GitHub 프록시 | `4dc26f6` |
+| 문서 · `.env.example` · 이 보고서 | (이 커밋) |
+
+## 실측
+
+### `npx tsx scripts/verify-sso.ts` (로컬 임시 키)
+
+```
+[6] 홈페이지 관리 앱
+  ✓ website-admin 등록
+  ✓ website-admin-com 등록
+  ✓ 복귀 경로 기본값은 /admin/
+  ✓ 같은 오리진의 다른 앱(/hub/)으로는 못 돌아감
+  ✓ github.io 세션을 haddscience.com 앱이 쓰면 거부
+  ✓ github.io 세션을 hub 가 쓰면 거부
+  ✓ 자기 앱에서는 통과
+
+통과: 43 passed, 0 failed
+```
+
+### 프록시 — 로컬 dev(3001) + 가짜 GitHub(3998, 요청을 기록만 함) + 로컬 DB 의 활성 사용자 토큰
+
+```
+1 토큰 없음 → 401                              401  {"error":"invalid_session"}
+2 hub 앱 토큰(다른 audience) → 401              401  {"error":"invalid_session"}
+3 다른 저장소 경로 → 403                          403  {"error":"path_not_allowed"}
+4 미등록 Origin → 403, CORS 헤더 없음             403  {"error":"origin_not_allowed"}   (Access-Control-Allow-Origin 0개)
+5 다른 앱 id 헤더(hub) → 400                    400  {"error":"unknown_app"}
+6 정상 GET → 200 (가짜 GitHub 통과)              200  {"ok": true, "echo_path": "/repos/HADDScience/HADDScience.github.io/contents/content/data/news?ref=main"}
+   응답 헤더: access-control-allow-origin: http://localhost:3000 · x-ratelimit-remaining: 4999
+7 OPTIONS preflight → 204                       204
+8 커밋 생성: author 를 남의 이름으로 보냄          200
+   가짜 GitHub 이 받은 본문: {"message":"t","tree":"abc","parents":["p"],"author":{"name":"허채정","email":"neuroheo@haddscience.com"}}
+   → 요청의 {"name":"공격자","email":"x@evil"} 이 세션 사용자로 바뀌어 나갔다
+9 DB 에 없는 사용자 토큰 → 403                    403  {"error":"account_inactive"}
+```
+
+### `npm run verify`
+
+typecheck 통과. lint 는 `components/settings/linked-accounts.tsx:45` 의 기존 오류 1건이 main 에도
+같은 상태로 있다(이 작업과 무관, 손대지 않음). 그 밖에는 경고뿐.
+
+## 남은 것 (사용자)
+
+1. GitHub 에서 fine-grained PAT 발급 — 저장소 `HADDScience/HADDScience.github.io` 하나, Contents: Read and write.
+2. Vercel 프로젝트 환경변수 `WEBSITE_GITHUB_TOKEN` 에 등록.
+3. `vercel deploy --prod --yes`.
+4. 홈페이지 저장소의 `feat/omnis-sso` 브랜치를 main 에 올려 배포. 그 전까지 github.io/admin 은 PAT 로그인 그대로다.
+5. github.io/admin 에서 실제 로그인 → 기사 저장 → 커밋 author 가 본인 이름인지 확인.
