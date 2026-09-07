@@ -40,6 +40,24 @@ const nextConfig = {
    * 있고, 404 를 주는 것보다는 나은 답이기 때문이다. 서버는 resource 값을
    * 검사하지 않으므로 어느 쪽으로 찾아오든 발급 결과는 같다.
    */
+  /*
+   * basePath 가 켜지면 루트 경로(/tasks, /sso/authorize, /api/…)는 Next 가 아예 받지 않는다.
+   * 옛 북마크·아직 옛 주소를 부르는 앱을 /omnis 아래로 넘긴다. 이 호스트로 직접 온
+   * 요청만 해당한다 — haddscience 가 rewrite 로 보내는 요청은 이미 /omnis 로 시작한다.
+   * (POST 는 307 이라 메서드가 유지되지만 CORS preflight 는 redirect 를 안 따라가므로,
+   * 브라우저에서 fetch 하는 앱은 새 주소로 빌드해야 한다.)
+   */
+  async redirects() {
+    if (!basePath) return []
+    return [
+      {
+        source: "/:path((?!omnis(?:/|$)|_next/|_vercel/).*)",
+        destination: `${basePath}/:path`,
+        basePath: false,
+        permanent: false,
+      },
+    ]
+  },
   async rewrites() {
     return [
       {

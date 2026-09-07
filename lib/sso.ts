@@ -46,6 +46,14 @@ const PRODUCTION_APPS: SsoApp[] = [
     basePath: "/hub",
   },
   {
+    // 한 도메인(haddscience.vercel.app) 아래 /hub 로 옮긴 허브. github.io 의 허브는
+    // DNS 를 붙일 때까지 나란히 산다 — 앱 id 는 오리진 하나에 묶이므로 따로 등록한다.
+    id: "hub-vercel",
+    label: "HADD Hub",
+    origin: "https://haddscience.vercel.app",
+    basePath: "/hub",
+  },
+  {
     id: "ip-platform",
     label: "지식재산권 팔로우업",
     origin: "https://haddscience.github.io",
