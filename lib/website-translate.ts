@@ -3,7 +3,14 @@ import { createHash } from "node:crypto"
 import { z } from "zod"
 
 import { callGemini } from "@/lib/ai"
-import { LANGS, type Lang, type PostBlock, type PostLocale } from "@/lib/schemas/website"
+import {
+  CardDeckSchema,
+  LANGS,
+  type CardDeck,
+  type Lang,
+  type PostBlock,
+  type PostLocale,
+} from "@/lib/schemas/website"
 
 /**
  * 홈페이지 기사 자동 번역. 사이트 저장소의 `scripts/translate-posts.mjs`(GitHub Actions 에서
@@ -137,4 +144,149 @@ export async function fillTranslations(
     }
   }
   return { content: next, failures }
+}
+
+// ─── 카드뉴스 덱 ────────────────────────────────────────────────
+
+/**
+ * 카드뉴스 덱 번역. 카드는 그림이라 서버가 굽지 못하고, 굽는 것은 브라우저 몫이다 —
+ * 서버는 **글자 칸만** 바꾼 덱을 돌려주고 편집기가 그것을 다시 굽는다.
+ *
+ * 그래서 모델에게 덱 구조를 통째로 넘기지 않는다. 번역할 문자열만 `{ id, text }` 로 뽑아
+ * 한 번에 보내고 같은 id 로 되꽂는다 — 레이아웃 · 배지 · 사진 · 카드 순서는 모델이
+ * 손댈 수 없는 자리에 둔다. 기사 번역(`translateLocale`)이 블록 수를 원문에서 가져오는 것과
+ * 같은 이유다.
+ */
+
+type Slot = { id: string; text: string }
+
+/** 번역할 문자열만 뽑는다. 여기 없는 필드는 원문 그대로 나간다. */
+function collectSlots(deck: CardDeck): Slot[] {
+  const slots: Slot[] = []
+  deck.cards.forEach((card, i) => {
+    const push = (field: string, value: string | undefined) => {
+      if (value !== undefined && value.trim() !== "") slots.push({ id: `${i}.${field}`, text: value })
+    }
+    if (card.type === "cover") {
+      push("title", card.title)
+      push("cta", card.cta)
+      return
+    }
+    if (card.type === "quote") {
+      push("quote", card.quote)
+      push("attrib", card.attrib)
+      return
+    }
+    push("headline", card.headline)
+    if (card.layout === "stat") {
+      card.stats.forEach((s, j) => {
+        push(`stats.${j}.label`, s.label)
+        push(`stats.${j}.unit`, s.unit)
+      })
+      push("body", card.body)
+      return
+    }
+    if (card.layout === "list") {
+      card.items.forEach((it, j) => {
+        push(`items.${j}.title`, it.title)
+        push(`items.${j}.desc`, it.desc)
+      })
+      return
+    }
+    if (card.layout === "standard" || card.layout === "image-top" || card.layout === "split") {
+      push("subtitle", card.subtitle)
+    }
+    push("body", card.body)
+    push("footnote", card.footnote)
+  })
+  return slots
+}
+
+const DECK_SYSTEM = `${SYSTEM}
+
+You are now translating a CARD NEWS deck for the same company — a series of square social
+cards. You get a flat list of the deck's text slots as [{ "id", "text" }]. Translate the
+"text" of each slot and answer with the same list.
+
+Card-specific rules:
+- Answer with exactly one entry per input entry, same "id" values, same order. Never add,
+  drop, merge or reorder entries, and never invent an id.
+- Keep it as short as the Korean — a card has little room. Never pad; if the English needs
+  fewer words, use fewer.
+- Keep every <b>…</b> tag exactly where it is: it marks the emphasis the card design draws.
+- Keep every \\n line break exactly where it is: the line breaks are the card's layout.
+- Keep emoji, including in headlines — this is card news, not a newsroom article.
+- A "stats.N.unit" slot is a unit of measure: give the natural English unit (배 → x,
+  개월 → months, 명 → people). Never translate the number that goes with it; it is not here.
+- Answer with JSON only, no prose, no code fences:
+  [ { "id": string, "text": string } ]`
+
+const DeckOutputSchema = z.array(z.object({ id: z.string(), text: z.string() }))
+
+export async function translateDeck(
+  deck: CardDeck,
+  from: Lang,
+  to: Lang,
+  userId?: string
+): Promise<CardDeck> {
+  const slots = collectSlots(deck)
+  if (slots.length === 0) return deck
+
+  const prompt = `${DECK_SYSTEM}\n\nTranslate from ${LANG_NAME[from]} to ${LANG_NAME[to]}.\n\n${JSON.stringify(slots, null, 2)}`
+  const raw = await callGemini(prompt, "websiteTranslateDeck", userId, 0.2)
+  const out = DeckOutputSchema.parse(JSON.parse(raw))
+
+  if (out.length !== slots.length) {
+    throw new Error(`칸 수가 다르다 — 원문 ${slots.length}개, 번역 ${out.length}개`)
+  }
+  const byId = new Map(out.map((s) => [s.id, s.text]))
+  const missing = slots.filter((s) => !byId.has(s.id)).map((s) => s.id)
+  if (missing.length > 0) throw new Error(`번역에서 빠진 칸: ${missing.join(", ")}`)
+
+  const cards = deck.cards.map((card, i) => {
+    const t = (field: string, fallback: string) => byId.get(`${i}.${field}`) ?? fallback
+    const keep = (field: string, value: string | undefined) =>
+      value === undefined ? {} : { [field]: t(field, value) }
+
+    if (card.type === "cover") {
+      return { ...card, title: t("title", card.title), cta: t("cta", card.cta) }
+    }
+    if (card.type === "quote") {
+      return { ...card, quote: t("quote", card.quote), attrib: t("attrib", card.attrib) }
+    }
+    const headline = t("headline", card.headline)
+    if (card.layout === "stat") {
+      return {
+        ...card,
+        headline,
+        stats: card.stats.map((s, j) => ({
+          ...s,
+          label: t(`stats.${j}.label`, s.label),
+          ...(s.unit === undefined ? {} : { unit: t(`stats.${j}.unit`, s.unit) }),
+        })),
+        ...keep("body", card.body),
+      }
+    }
+    if (card.layout === "list") {
+      return {
+        ...card,
+        headline,
+        items: card.items.map((it, j) => ({
+          ...it,
+          title: t(`items.${j}.title`, it.title),
+          ...(it.desc === undefined ? {} : { desc: t(`items.${j}.desc`, it.desc) }),
+        })),
+      }
+    }
+    return {
+      ...card,
+      headline,
+      ...("subtitle" in card ? keep("subtitle", card.subtitle) : {}),
+      body: t("body", card.body),
+      ...keep("footnote", card.footnote),
+    }
+  })
+
+  // 모델이 만질 수 없는 자리에 뒀더라도 마지막에 한 번 더 스키마로 거른다.
+  return CardDeckSchema.parse({ handle: deck.handle, cards })
 }
