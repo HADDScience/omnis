@@ -7,6 +7,8 @@ last_verified: 2026-09-07
 
 # 2026-09-07 — 홈페이지 관리 화면 SSO · 작업 결과
 
+> GitHub 프록시 부분은 같은 날 폐기됐다. 기사를 Neon 에 두기로 해서다 — [`2026-09-07-website-posts-db.md`](2026-09-07-website-posts-db.md).
+
 계획: [`mydocs/plans/2026-09-07-website-admin-sso.md`](../plans/2026-09-07-website-admin-sso.md)
 
 ## 커밋

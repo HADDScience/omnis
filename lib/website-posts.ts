@@ -91,7 +91,7 @@ export async function revalidateWebsite(): Promise<void> {
   const secret = process.env.WEBSITE_REVALIDATE_SECRET
   if (!origin || !secret) return
   try {
-    const res = await fetch(`${origin}/api/revalidate`, {
+    const res = await fetch(`${origin}/api/revalidate/`, {
       method: "POST",
       headers: { authorization: `Bearer ${secret}` },
       cache: "no-store",
