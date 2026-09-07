@@ -40,6 +40,8 @@ const DRY = flag("--dry-run")
 const SITE_URL = opt("--site-url") ?? "http://localhost:3123"
 const REPORT = path.resolve(opt("--report") ?? path.join(SITE, "mydocs/working/cardnews-rebuild"))
 const MAX_FIX = 3
+/** 보고서 폴더의 deck.en.json 이 있으면 번역을 건너뛴다 — dry-run 뒤 실제 실행에서 Gemini 를 두 번 쓰지 않게. */
+const REUSE_EN = flag("--reuse-en")
 
 if (!IDS.length) {
   console.error("--ids 가 필요하다")
@@ -60,6 +62,10 @@ interface SpecCard {
   sourceText: string
   photo: [number, number, number, number] | null
   card: Card
+  /** 원문 대조에서 뺄 줄. 사진 안에 박힌 글자(로고·표 이미지)처럼 새 카드에서 사진으로 남는 것. 이유를 함께 적는다. */
+  omit?: { line: string; why: string }[]
+  /** 이 옛 카드를 새 카드 여러 장으로 나눌 때: `card` 대신 쓴다. 대조는 합쳐서 한다. */
+  cards?: Card[]
 }
 interface Spec {
   id: string
@@ -205,11 +211,15 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   const reportDir = path.join(REPORT, id)
   fs.mkdirSync(reportDir, { recursive: true })
 
+  // 옛 카드 하나가 새 카드 여러 장이 될 수 있다(넘치는 목록을 둘로). 평평하게 펴고 출처를 기억한다.
+  const flat = spec.cards.flatMap((sc, si) => (sc.cards ?? [sc.card]).map((card) => ({ sc, si, card })))
+  const baseCards = flat.map((f) => f.card)
+
   // 1) 사진: 자르고 올린다. 렌더에는 data URL, 저장에는 NAS URL.
   const dataUrls = new Map<number, string>()
   const mediaUrls = new Map<number, string>()
-  for (const [i, sc] of spec.cards.entries()) {
-    const wantsPhoto = "image" in sc.card && (sc.card as { image?: { src: string } }).image?.src === "@photo"
+  for (const [i, { sc, card }] of flat.entries()) {
+    const wantsPhoto = "image" in card && (card as { image?: { src: string } }).image?.src === "@photo"
     if (!wantsPhoto) continue
     if (!sc.photo) throw new Error(`${id} 카드 ${i + 1}: image 가 @photo 인데 photo 영역이 없다`)
     const buf = await cropPhoto(SITE, id, sc.source, sc.photo)
@@ -226,18 +236,19 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
       if (!("image" in c) || !c.image || !urls.has(i)) return c
       return { ...c, image: { ...c.image, src: urls.get(i)! } } as Card
     })
-  const baseCards = spec.cards.map((sc) => sc.card)
   const koDeck = CardDeckSchema.parse({ handle: "@haddscience", cards: withSrc(baseCards, mediaUrls) })
   const koRender: CardDeck = { handle: koDeck.handle, cards: withSrc(baseCards, dataUrls) }
 
   // 2) 원문 글자 대조 (덱 텍스트 ⊇ 옛 카드 텍스트)
   const missing: string[] = []
   spec.cards.forEach((sc, i) => {
-    const have = norm(allText(baseCards[i]) + " @haddscience haddscience 알아보기")
+    const have = norm((sc.cards ?? [sc.card]).map(allText).join(" ") + " @haddscience haddscience 알아보기")
+    const omitted = new Set((sc.omit ?? []).map((o) => norm(o.line)))
     for (const raw of sc.sourceText.split("\n").map((l) => l.trim()).filter(Boolean)) {
       // 목록 카드의 "1 ", "• " 같은 표식은 마커로 그려지지 글자가 아니다
       const line = raw.replace(/^(\d{1,2}|[•·▪✅])\s+/, "")
-      if (!have.includes(norm(line))) missing.push(`카드 ${i + 1}: "${raw}"`)
+      if (omitted.has(norm(line)) || omitted.has(norm(raw))) continue
+      if (!have.includes(norm(line))) missing.push(`옛 카드 ${i + 1}: "${raw}"`)
     }
   })
 
@@ -252,7 +263,11 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
     content.en?.title
       ? { title: content.en.title, summary: content.en.summary ?? "" }
       : await translateLocale({ title: ko.title, summary: ko.summary, blocks: [] }, "ko", "en")
-  const enDeck = await translateDeck(koFinal, "ko", "en")
+  const cached = path.join(reportDir, "deck.en.json")
+  const enDeck: CardDeck =
+    REUSE_EN && fs.existsSync(cached)
+      ? CardDeckSchema.parse(JSON.parse(fs.readFileSync(cached, "utf8")))
+      : await translateDeck(koFinal, "ko", "en")
   const enRender: CardDeck = { handle: enDeck.handle, cards: withSrc(enDeck.cards, dataUrls) }
   const enSettled = await settle(h, enRender, `${id} en`)
   const enFinal: CardDeck = { handle: enDeck.handle, cards: withSrc(enSettled.deck.cards, mediaUrls) }
@@ -293,8 +308,8 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
 
   // 7) 대조표: 옛 | ko | en
   const rows: Buffer[] = []
-  for (let i = 0; i < spec.cards.length; i++) {
-    const old = await sharp(path.join(SITE, "public/news", id, spec.cards[i].source)).resize(360, 360).png().toBuffer()
+  for (let i = 0; i < flat.length; i++) {
+    const old = await sharp(path.join(SITE, "public/news", id, flat[i].sc.source)).resize(360, 360).png().toBuffer()
     const k = await sharp(path.join(reportDir, `ko-${String(i + 1).padStart(2, "0")}.png`)).resize(360, 360).png().toBuffer()
     const e = await sharp(path.join(reportDir, `en-${String(i + 1).padStart(2, "0")}.png`)).resize(360, 360).png().toBuffer()
     rows.push(await sharp({ create: { width: 1100, height: 360, channels: 3, background: "#fff" } }).composite([{ input: old, left: 0, top: 0 }, { input: k, left: 370, top: 0 }, { input: e, left: 740, top: 0 }]).png().toBuffer())
@@ -305,7 +320,7 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   fs.writeFileSync(path.join(reportDir, "deck.en.json"), JSON.stringify(enFinal, null, 2))
 
   const remaining = [...koSettled.issues, ...enSettled.issues].flat()
-  const line = `${id} ${spec.title.slice(0, 30)} — 카드 ${spec.cards.length} · 사진 ${dataUrls.size} · 수정 ${koSettled.fixes.length + enSettled.fixes.length} · 남은 문제 ${remaining.length} · 빠진 원문 ${missing.length}`
+  const line = `${id} ${spec.title.slice(0, 30)} — 옛 ${spec.cards.length} → 새 ${flat.length} · 사진 ${dataUrls.size} · 수정 ${koSettled.fixes.length + enSettled.fixes.length} · 남은 문제 ${remaining.length} · 빠진 원문 ${missing.length}`
   summary.push(line)
   console.log(line)
   for (const f of [...koSettled.fixes, ...enSettled.fixes]) console.log("  수정:", f)
