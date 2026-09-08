@@ -76,6 +76,19 @@ interface Spec {
   id: string
   title: string
   cards: SpecCard[]
+  /**
+   * 목록 썸네일로 쓸 옛 카드(`source` 파일명). 아임웹 목록이 쓰던 그 카드다 — 2026-09-08 전수 대조에서
+   * 옛 사이트가 글마다 특정 카드(표지가 아닌)를 골라 썼음을 확인했다. 없으면 첫 카드.
+   */
+  thumbnail?: string
+}
+
+/** spec.thumbnail(옛 카드 파일명)이 새 덱에서 몇 번째 카드인지. 옛 카드가 여러 장으로 나뉘었으면 그 첫 장. */
+function thumbIndex(spec: Spec, flat: { sc: SpecCard }[]): number {
+  if (!spec.thumbnail) return 0
+  const i = flat.findIndex((f) => f.sc.source === spec.thumbnail)
+  if (i < 0) throw new Error(`${spec.id}: thumbnail "${spec.thumbnail}" 이 cards 의 source 에 없다`)
+  return i
 }
 
 // ─── 카드 텍스트(alt 용). 사이트 lib/cardnews.ts 의 cardText 와 같은 규칙 ───
@@ -359,30 +372,31 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   const enFinal: CardDeck = { handle: enDeck.handle, cards: withSrc(enSettled.deck.cards, mediaUrls) }
 
   // 5) 굽기 · 업로드 · 블록
-  async function bake(deck: CardDeck, lang: "ko" | "en"): Promise<{ blocks: PostBlock[]; firstPng: Buffer }> {
+  async function bake(deck: CardDeck, lang: "ko" | "en"): Promise<{ blocks: PostBlock[]; pngs: Buffer[] }> {
     await h.lint(deck) // 무대에 올린다(data URL 사진)
     const blocks: PostBlock[] = []
-    let firstPng: Buffer | null = null
+    const pngs: Buffer[] = []
     for (let i = 0; i < deck.cards.length; i++) {
       const dataUrl = await h.png(i)
       const png = Buffer.from(dataUrl.split(",")[1], "base64")
-      if (!firstPng) firstPng = png
+      pngs.push(png)
       fs.writeFileSync(path.join(reportDir, `${lang}-${String(i + 1).padStart(2, "0")}.png`), png)
       const webp = await sharp(png).webp({ quality: 90 }).toBuffer()
       const name = named(`${lang}-${String(i + 1).padStart(2, "0")}.webp`)
       const src = DRY ? `/omnis/api/website/media/${id}/${name}` : (await storeMedia({ postId: id, bytes: webp, contentType: "image/webp", name })).url
       blocks.push({ type: "image", src, alt: cardText(deck.cards[i], deck) })
     }
-    return { blocks, firstPng: firstPng! }
+    return { blocks, pngs }
   }
   const koBaked = await bake(koSettled.deck, "ko")
   const enBaked = await bake(enSettled.deck, "en")
 
-  // 썸네일: 각 언어의 첫 카드 640. 표지에 글자가 박혀 있어 언어마다 다르다.
+  // 썸네일: 옛 사이트가 쓰던 카드(spec.thumbnail), 없으면 첫 카드. 640. 카드에 글자가 박혀 있어 언어마다 다르다.
+  const thumbAt = thumbIndex(spec, flat)
   const thumbOf = async (png: Buffer, name: string, fallback: string | null) =>
     DRY ? fallback : (await storeMedia({ postId: id, bytes: await sharp(png).resize(640, 640).webp({ quality: 85 }).toBuffer(), contentType: "image/webp", name })).url
-  const thumbUrl = await thumbOf(koBaked.firstPng, named("thumb.webp"), row.thumbnail)
-  const enThumbUrl = await thumbOf(enBaked.firstPng, named("thumb-en.webp"), null)
+  const thumbUrl = await thumbOf(koBaked.pngs[thumbAt], named("thumb.webp"), row.thumbnail)
+  const enThumbUrl = await thumbOf(enBaked.pngs[thumbAt], named("thumb-en.webp"), null)
 
   // 6) DB
   const nextKo: PostLocale = { ...ko, blocks: koBaked.blocks }
