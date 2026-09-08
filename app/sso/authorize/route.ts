@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { buildReturnUrl, issueGrant, resolveApp, safeReturnPath, ssoEnabled } from "@/lib/sso"
 
-import { publicUrl } from "@/lib/base-path"
+import { apiUrl, publicUrl } from "@/lib/base-path"
 /**
  * SSO 진입점. 사내 도구가 사람을 여기로 보내면, 로그인 여부를 확인해
  * 짧은 수명의 1회용 표(grant)를 프래그먼트에 달아 돌려보낸다.
@@ -62,7 +62,14 @@ export async function GET(req: NextRequest) {
   if (!session?.user?.id) {
     // 로그인 화면으로 보냈다가 이 요청을 그대로 다시 태운다.
     // callbackUrl 은 같은 오리진의 상대 경로라 NextAuth 의 기본 검사를 통과한다.
-    const back = `/sso/authorize?app=${encodeURIComponent(app.id)}&next=${encodeURIComponent(next)}`
+    //
+    // basePath 를 반드시 붙인다. 로그인 화면은 이 값을 window.location.assign 으로
+    // 그대로 넘기는데, 그건 Next 의 라우터가 아니라 브라우저라 접두사를 붙여 주지
+    // 않는다. 빠지면 /omnis 가 아니라 루트 도메인(홈페이지)으로 가고, 거기 로케일
+    // 리다이렉트가 /ko/sso/authorize 로 보내 404 로 끝난다.
+    const back = apiUrl(
+      `/sso/authorize?app=${encodeURIComponent(app.id)}&next=${encodeURIComponent(next)}`
+    )
     // 프록시 뒤에서는 url.origin 이 내부 호스트다 — 바깥 주소로 보낸다.
     const login = publicUrl(`/login?callbackUrl=${encodeURIComponent(back)}`, url)
     return NextResponse.redirect(login, { headers: { "cache-control": "no-store" } })

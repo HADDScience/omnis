@@ -283,7 +283,9 @@ export default function LoginPage() {
                 pending={social === provider}
                 onClick={() => {
                   setSocial(provider)
-                  signIn(provider, { callbackUrl: safeCallbackUrl() ?? "/dashboard" })
+                  signIn(provider, {
+                    callbackUrl: safeCallbackUrl() ?? apiUrl("/dashboard"),
+                  })
                 }}
               />
             ))}
