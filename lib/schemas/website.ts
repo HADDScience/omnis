@@ -23,6 +23,11 @@ export const PostBlockSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text }),
   z.object({ type: z.literal("quote"), text, cite: short.optional() }),
   z.object({
+    type: z.literal("links"),
+    title: short,
+    items: z.array(z.object({ label: short, href: z.string().url().max(2_000) })).max(50),
+  }),
+  z.object({
     type: z.literal("image"),
     src: z.string().max(2_000),
     alt: short,

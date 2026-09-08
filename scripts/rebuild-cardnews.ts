@@ -81,6 +81,11 @@ interface Spec {
    * 옛 사이트가 글마다 특정 카드(표지가 아닌)를 골라 썼음을 확인했다. 없으면 첫 카드.
    */
   thumbnail?: string
+  /**
+   * 본문 아래 "관련 기사" 링크 목록(웹에서만). 옛 글의 언론사 링크 카드가 여기로 온다 — URL 을 카드 그림에
+   * 박으면 읽지도 누르지도 못한다. 카드에는 `list` 로 언론사 이름만 남긴다.
+   */
+  links?: { label: string; href: string }[]
 }
 
 /** spec.thumbnail(옛 카드 파일명)이 새 덱에서 몇 번째 카드인지. 옛 카드가 여러 장으로 나뉘었으면 그 첫 장. */
@@ -122,7 +127,7 @@ function allText(card: Card): string {
   if (card.layout === "list") card.items.forEach((it) => parts.push(it.title, it.desc))
   return parts.filter(Boolean).join(" ")
 }
-const norm = (s: string) => s.replace(/<\/?b>/gi, "").replace(/[\s​]+/g, "")
+const norm = (s: string) => s.replace(/<\/?b>/gi, "").replace(/[\s​]+/g, "").toLowerCase()
 
 // ─── 고아 줄 자동 수정 ────────────────────────────────────────────
 // 검사가 알려준 홀로 남은 글자(tail)로 문단을 찾아, 그 문단에서 tail 앞의 두 낱말을 tail 과 함께
@@ -411,8 +416,10 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   const enThumbUrl = await thumbOf(enBaked.pngs[thumbAt], named("thumb-en.webp"), null)
 
   // 6) DB
-  const nextKo: PostLocale = { ...ko, blocks: koBaked.blocks }
-  const nextEn: PostLocale = { title: enLocale.title, summary: enLocale.summary, blocks: enBaked.blocks, translatedFrom: sourceHash(nextKo), ...(enThumbUrl ? { thumbnail: enThumbUrl } : {}) }
+  const linksKo: PostBlock[] = spec.links?.length ? [{ type: "links", title: "관련 기사", items: spec.links }] : []
+  const linksEn: PostBlock[] = spec.links?.length ? [{ type: "links", title: "Related articles", items: spec.links }] : []
+  const nextKo: PostLocale = { ...ko, blocks: [...koBaked.blocks, ...linksKo] }
+  const nextEn: PostLocale = { title: enLocale.title, summary: enLocale.summary, blocks: [...enBaked.blocks, ...linksEn], translatedFrom: sourceHash(nextKo), ...(enThumbUrl ? { thumbnail: enThumbUrl } : {}) }
   if (!DRY) {
     await prisma.websitePost.update({
       where: { id },

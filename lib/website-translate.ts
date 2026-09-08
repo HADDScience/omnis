@@ -79,7 +79,11 @@ export async function translateLocale(
     title: locale.title,
     summary: locale.summary,
     blocks: locale.blocks.map((b) =>
-      b.type === "image" ? { type: "image", alt: b.alt, ...(b.caption ? { caption: b.caption } : {}) } : b
+      b.type === "image"
+        ? { type: "image", alt: b.alt, ...(b.caption ? { caption: b.caption } : {}) }
+        : b.type === "links"
+          ? { type: "links", text: b.title } // 항목(언론사 이름·URL)은 번역하지 않는다
+          : b
     ),
   }
   const prompt = `${SYSTEM}\n\nTranslate from ${LANG_NAME[from]} to ${LANG_NAME[to]}.\n\n${JSON.stringify(input, null, 2)}`
@@ -103,6 +107,7 @@ export async function translateLocale(
     if (src.type === "quote") {
       return { type: "quote", text: t.text ?? src.text, ...(src.cite ? { cite: t.cite ?? src.cite } : {}) }
     }
+    if (src.type === "links") return { type: "links", title: t.text ?? src.title, items: src.items }
     return { type: src.type, text: t.text ?? src.text }
   })
 
