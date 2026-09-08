@@ -245,6 +245,13 @@ async function openHarness() {
 }
 
 /** 렌더 → 검사 → 고아 줄이면 문장을 고쳐 다시. 남은 문제와 최종 덱을 돌려준다. */
+/** 표지·인용 카드가 넘치면 글자를 한 단 줄인다(주로 영문). 이미 줄였으면 false. */
+function shrinkTitle(card: Card): boolean {
+  if (card.type === "cover" && card.titleSize !== "sm") { card.titleSize = "sm"; return true }
+  if (card.type === "quote" && card.quoteSize !== "sm") { card.quoteSize = "sm"; return true }
+  return false
+}
+
 async function settle(
   h: Awaited<ReturnType<typeof openHarness>>,
   deck: CardDeck,
@@ -260,6 +267,11 @@ async function settle(
     const next = structuredClone(current)
     let changed = false
     for (const i of overflows) {
+      if (shrinkTitle(next.cards[i])) {
+        changed = true
+        fixes.push(`${label} 카드 ${i + 1}: 넘침 → ${next.cards[i].type === "cover" ? "표지 제목" : "인용문"} sm`)
+        continue
+      }
       if (flattenRatio(next.cards[i]) || unwrapBody(next.cards[i])) {
         changed = true
         const img = (next.cards[i] as { image?: { ratio?: string; width?: number } }).image
@@ -404,7 +416,8 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   if (!DRY) {
     await prisma.websitePost.update({
       where: { id },
-      data: { content: { ...content, ko: nextKo, en: nextEn } as Prisma.InputJsonValue, deck: koFinal as unknown as Prisma.InputJsonValue, thumbnail: thumbUrl },
+      // 본문이 생겼으니 아임웹 원문으로 보내지 않는다(옛 글은 externalHref 만 있었다).
+      data: { content: { ...content, ko: nextKo, en: nextEn } as Prisma.InputJsonValue, deck: koFinal as unknown as Prisma.InputJsonValue, thumbnail: thumbUrl, externalHref: null },
     })
   }
 

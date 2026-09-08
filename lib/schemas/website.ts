@@ -60,13 +60,14 @@ const headline = z.string().max(1_000)
 const chapterBase = { type: z.literal("chapter"), badge, headline }
 
 export const CardSchema = z.union([
-  z.object({ type: z.literal("cover"), title: headline, cta: short, handle: short.optional() }),
+  z.object({ type: z.literal("cover"), title: headline, cta: short, handle: short.optional(), titleSize: z.enum(["sm"]).optional() }),
   z.object({
     type: z.literal("quote"),
     badge,
     quote: short,
     attrib: short,
     image: CardImageSchema.optional(),
+    quoteSize: z.enum(["sm"]).optional(),
   }),
   z.object({
     ...chapterBase,
