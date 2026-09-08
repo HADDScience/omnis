@@ -169,10 +169,17 @@
 }
 
 :root {
-  /* 화면 배율. html 의 zoom 과 --app-vh 가 같은 값을 봐야 한다 — 한 곳에서 고친다. */
+  /* 화면 배율. html 의 zoom 과 --app-vh/--app-vw 가 같은 값을 봐야 한다 — 한 곳에서 고친다. */
   --ui-zoom: 1.1;
-  /* zoom 이 걸린 좌표계에서의 뷰포트 높이. 화면을 꽉 채우는 셸은 100svh 가 아니라 이걸 쓴다. */
+  /* zoom 이 걸린 좌표계에서의 뷰포트 크기. 화면을 꽉 채우는 셸은 100svh/100vw 가 아니라 이걸 쓴다. */
   --app-vh: calc(100svh / var(--ui-zoom));
+  --app-vw: calc(100vw / var(--ui-zoom));
+
+  /* viewportFit: cover 로 받은 노치·제스처바 여백. 미지원 브라우저에선 0. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
@@ -365,4 +372,83 @@
 }
 .dark .omnis-spreadsheet--readonly .Spreadsheet tr:nth-child(even) td {
   background: oklch(1 0 0 / 3%);
+}
+
+/* ─── 폴더블 · 태블릿 대응 ────────────────────────────────
+   기기 계층 (CSS px 실측)
+     320  Galaxy Z Fold 커버(접힘) · iPhone SE        → 최소 지원 폭
+     360  Galaxy Z Flip 펼침 (360×880, 22:9 세로 긴 화면)
+     390~430 일반 스마트폰
+     672  Galaxy Z Fold 펼침 (673×841) — md(768) 미만이라 모바일 레이아웃
+     768~1024 태블릿 세로 / 1024+ 태블릿 가로·데스크톱
+   Z Fold 는 앱이 떠 있는 채로 펼쳐진다 — JS 1회 측정이 아니라
+   미디어쿼리와 matchMedia 구독으로만 분기한다. */
+@theme {
+  --breakpoint-xs: 22.5rem;  /* 360px — Z Flip 펼침 */
+  --breakpoint-fold: 42rem;  /* 672px — Z Fold 펼침 */
+}
+
+/* 110% 배율은 데스크톱 모니터가 커서 넣은 값이다(2026-09-04).
+   360px 폰에서 이 배율은 가로 33px 을 그대로 버리는 셈이고,
+   미디어쿼리가 보는 폭(360)과 실제 콘텐츠 폭(327)이 어긋난다.
+   그래서 md 미만에서는 배율을 끈다 — --app-vh/--app-vw 도 같이 1 로 맞춰진다. */
+@media (max-width: 767px) {
+  :root {
+    --ui-zoom: 1;
+  }
+}
+
+@utility pb-safe {
+  padding-bottom: var(--safe-bottom);
+}
+@utility px-safe {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* 터치 기기: 규칙 30(터치 타깃 ≥ 44px). 마우스 환경 밀도는 건드리지 않는다. */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  [role="tab"],
+  a[href],
+  summary,
+  select,
+  input[type="checkbox"],
+  input[type="radio"] {
+    touch-action: manipulation;
+  }
+
+  .touch-target,
+  [data-slot="tabs-trigger"],
+  /* 모바일 Sheet 사이드바만 — 데스크톱 아이콘 레일(size-8)은 건드리지 않는다 */
+  [data-mobile="true"] [data-sidebar="menu-button"] {
+    min-height: 44px;
+  }
+}
+
+/* 터치 기기에는 hover 가 없다 — hover 로만 나타나는 편집·삭제 버튼이
+   폰·태블릿에서 영영 눌리지 않는다 (규칙 30). Tailwind 가 생성한
+   class 이름을 속성 선택자로 잡아 한 곳에서 막는다. */
+@media (hover: none) {
+  [class*="group-hover:opacity-100"] {
+    opacity: 1;
+  }
+}
+
+/* 가로 스크롤 방지.
+
+   zoom 이 1 이 아닌 body 는 position:fixed 자손의 컨테이닝 블록이 된다.
+   그래서 닫힌 오른쪽 패널(translate-x-full 로 화면 밖에 세워 둔 380px)이
+   문서를 오른쪽으로 193px 늘려, 768px 이상에서 빈 공간으로 가로 스크롤이 됐다.
+   (1000px 뷰포트에서 실측: scrollWidth 1193)
+
+   body 의 overflow 는 뷰포트로 전파돼 body 자신은 클리핑하지 않으므로 소용이 없었다.
+   html 에 걸되 hidden 이 아니라 clip 을 쓴다 — clip 은 스크롤 컨테이너를 만들지 않아
+   내부 sticky 의 기준을 바꾸지 않는다. */
+html {
+  overflow-x: clip;
+}
+body {
+  overscroll-behavior-y: none;
 }

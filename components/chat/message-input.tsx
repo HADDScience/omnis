@@ -310,7 +310,7 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [], users =
   return (
     <div
       ref={dropRef}
-      className={`relative p-4 pt-2 ${dragging ? "ring-2 ring-primary ring-inset rounded-lg bg-primary/5" : ""}`}
+      className={`relative p-3 pt-2 sm:p-4 sm:pt-2 ${dragging ? "ring-2 ring-primary ring-inset rounded-lg bg-primary/5" : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -432,7 +432,7 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [], users =
                 variant="ghost"
                 size="icon"
                 aria-label="추가"
-                className="h-9 w-9 shrink-0"
+                className="size-10 shrink-0 md:size-9"
                 disabled={disabled || sending}
               />
             }
@@ -461,7 +461,8 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [], users =
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <div className="flex-1 max-h-[30px]">
+        {/* md 미만은 text-base(16px) — iOS 가 그보다 작은 입력에 포커스하면 화면을 확대한다 */}
+        <div className="max-h-[40px] flex-1 md:max-h-[30px]">
           <Textarea
             ref={textareaRef}
             value={content}
@@ -469,13 +470,15 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [], users =
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="메시지 입력...  / 명령 · @ 사람 · # 업무"
-            className="min-h-[30px] resize-none text-sm"
+            className="min-h-[40px] resize-none text-base md:min-h-[30px] md:text-sm"
             rows={1}
             disabled={disabled || sending}
           />
         </div>
         <Button
           size="icon"
+          aria-label="메시지 전송"
+          className="size-10 shrink-0 md:size-9"
           onClick={handleSend}
           disabled={(!content.trim() && attachedFiles.length === 0) || sending}
         >

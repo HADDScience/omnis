@@ -288,7 +288,7 @@ export function SectionEditor({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Input
             value={section.title}
             onChange={(e) => handleTitleChange(e.target.value)}

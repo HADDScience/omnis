@@ -55,7 +55,7 @@ export default async function OmnisCardPage({ params }: Props) {
   return (
     <>
       <Header title="HADD DB" />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         <div className="min-w-0 flex-1 overflow-auto">
           <OmnisCardDetail
             card={{

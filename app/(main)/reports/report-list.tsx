@@ -104,7 +104,7 @@ function ReportCard({ report }: { report: Report }) {
   return (
     <Card className="group">
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <Link href={`/reports/${report.id}`}>
             <CardTitle className="text-sm hover:text-primary transition-colors cursor-pointer">
               {report.title}

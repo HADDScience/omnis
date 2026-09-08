@@ -170,7 +170,7 @@ function KanbanColumn({
     <div
       ref={setNodeRef}
       className={[
-        "flex min-w-[260px] flex-1 flex-col rounded-lg border bg-muted/30 p-2.5 transition-colors",
+        "flex w-[min(260px,calc(var(--app-vw)-2.5rem))] min-w-[min(260px,calc(var(--app-vw)-2.5rem))] flex-1 snap-start flex-col rounded-lg border bg-muted/30 p-2.5 transition-colors sm:w-auto sm:min-w-[260px]",
         isOver ? "border-primary bg-primary/5" : "",
       ].join(" ")}
     >
@@ -246,7 +246,8 @@ export function TasksBoard({ initialTasks }: TasksBoardProps) {
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      <div className="flex h-full gap-2.5 overflow-auto p-4">
+      {/* 폰·폴더블: 컬럼 단위 가로 스냅 스크롤 (한 번에 한 컬럼씩 정렬) */}
+      <div className="flex h-full snap-x snap-mandatory gap-2.5 overflow-auto p-3 sm:snap-none sm:p-4">
         {COLUMNS.map((c) => (
           <KanbanColumn
             key={c.key}

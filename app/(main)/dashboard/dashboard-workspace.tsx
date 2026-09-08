@@ -10,6 +10,7 @@ import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons"
 import { WorkspaceCanvas } from "./workspace/workspace-canvas"
 import { TaskContextMenu } from "./workspace/task-context-menu"
 import { useWorkspaceNodes } from "./workspace/use-workspace-nodes"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import type {
   WorkspaceProduct,
   WorkspaceTaskItem,
@@ -29,7 +30,11 @@ export function DashboardWorkspace({
   tasks,
 }: DashboardWorkspaceProps) {
   const router = useRouter()
-  const [collapsed, setCollapsed] = useState(false)
+  const isMdUp = useMediaQuery("(min-width: 768px)")
+  // 좁은 화면에서는 기본 접힘 (규칙 30) — 600px 캔버스가 폰 화면을 다 덮고
+  // 세로 스크롤 제스처를 캔버스가 가로챈다. 사용자가 토글하면 그 선택을 따른다.
+  const [collapsed, setCollapsed] = useState<boolean | null>(null)
+  const isCollapsed = collapsed ?? !isMdUp
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -87,13 +92,16 @@ export function DashboardWorkspace({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
+        {/* CardHeader 는 grid — min-w-0 가 없으면 이 행이 축소되지 못하고
+            Card 의 overflow-hidden 에 잘려 나간다 (320px 실측 확인) */}
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-base">워크스페이스</CardTitle>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none">
+            {/* 제품 필터는 개수가 늘면 가로 스크롤 — 320px 에서도 줄이 깨지지 않게 */}
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] sm:flex-none">
               <button
                 onClick={() => setSelectedProductId(null)}
-                className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
+                className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
                   selectedProductId === null
                     ? "bg-foreground text-background"
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -109,7 +117,7 @@ export function DashboardWorkspace({
                       prev === p.id ? null : p.id
                     )
                   }
-                  className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
+                  className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
                     selectedProductId === p.id
                       ? "text-white"
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -131,20 +139,34 @@ export function DashboardWorkspace({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
-              onClick={() => setCollapsed(!collapsed)}
+              className="h-7 w-7 shrink-0"
+              aria-label={isCollapsed ? "워크스페이스 펼치기" : "워크스페이스 접기"}
+              aria-expanded={!isCollapsed}
+              onClick={() => setCollapsed(!isCollapsed)}
             >
               <HugeiconsIcon
-                icon={collapsed ? ArrowDown01Icon : ArrowUp01Icon}
+                icon={isCollapsed ? ArrowDown01Icon : ArrowUp01Icon}
                 size={14}
+                aria-hidden
               />
             </Button>
           </div>
         </div>
       </CardHeader>
-      {!collapsed && (
+      {isCollapsed ? (
+        <CardContent className="pt-0">
+          <button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            className="w-full rounded-md border border-dashed px-3 py-3 text-[11.5px] text-muted-foreground transition-colors hover:bg-muted/50"
+          >
+            워크스페이스 관계도 펼치기
+            {!isMdUp && " · 두 손가락으로 확대·이동합니다"}
+          </button>
+        </CardContent>
+      ) : (
         <CardContent className="p-0">
-          <div className="h-[600px] w-full">
+          <div className="h-[60svh] max-h-[600px] min-h-[320px] w-full md:h-[600px]">
             <ReactFlowProvider>
               <WorkspaceCanvas initialNodes={nodes} initialEdges={edges} />
             </ReactFlowProvider>

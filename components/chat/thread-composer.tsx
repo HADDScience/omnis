@@ -100,7 +100,7 @@ export function ThreadComposer({
         onKeyDown={onKey}
         disabled={sending}
         placeholder={taskSlug ? `#${taskSlug} 답장 (⌘+Enter)` : "답장 (⌘+Enter)"}
-        className="min-h-[60px] resize-none text-[12.5px] leading-relaxed disabled:opacity-60"
+        className="min-h-[60px] resize-none text-base leading-relaxed disabled:opacity-60 md:text-[12.5px]"
         aria-label="이 업무 스레드에 답장"
       />
       <div className="flex items-center justify-between">
@@ -110,7 +110,7 @@ export function ThreadComposer({
         <Button
           type="submit"
           size="sm"
-          className="h-7 gap-1 text-[11.5px]"
+          className="h-9 gap-1 text-[11.5px] md:h-7"
           disabled={sending || value.trim().length === 0}
         >
           {sending ? <Spinner className="h-3 w-3" /> : <HugeiconsIcon icon={Sent02Icon} size={11} />}

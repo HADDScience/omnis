@@ -172,7 +172,7 @@ export function TaskInstructionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
+      <DialogContent className="w-[calc(var(--app-vw)-2rem)] max-w-md">
         <DialogHeader>
           <DialogTitle>업무 확인</DialogTitle>
         </DialogHeader>

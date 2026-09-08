@@ -109,7 +109,7 @@ export function CommandPalette() {
       }}
       title="HADD DB 검색"
       description="HADD 카드, 업무, 보고서를 검색합니다"
-      className="w-[640px] max-w-[calc(100vw-32px)] sm:!max-w-[640px] p-0"
+      className="w-[640px] max-w-[calc(var(--app-vw)-32px)] sm:!max-w-[640px] p-0"
       shouldFilter={false}
     >
       <div className="relative">

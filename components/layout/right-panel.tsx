@@ -135,11 +135,13 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
         aria-hidden={!open}
         className={cn(
           "fixed right-0 top-0 z-[var(--z-banner)] flex h-[var(--app-vh)] flex-col border-l bg-background shadow-[-4px_0_16px_rgba(0,0,0,0.08)] transition-transform duration-200 motion-reduce:transition-none dark:shadow-[-4px_0_16px_rgba(0,0,0,0.35)]",
-          "w-[min(380px,92vw)]",
+          // 92vw 를 그대로 쓰면 안 된다 — vw 는 zoom 을 모르므로 배율만큼 화면을 넘친다
+          // (--app-vh 주석과 같은 함정). zoom 을 나눈 --app-vw 로 계산한다.
+          "w-[min(380px,calc(var(--app-vw)*0.92))]",
           open ? "translate-x-0" : "pointer-events-none translate-x-full"
         )}
       >
-        <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2">
+        <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2 md:h-11">
           <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
             {tabs.map((t) => (
               <button
@@ -152,7 +154,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
                 aria-pressed={view === t.key}
                 title={t.hint ?? t.label}
                 className={cn(
-                  "inline-flex h-7 shrink-0 items-center rounded-md border px-2.5 text-[12px] whitespace-nowrap transition-colors",
+                  "inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] whitespace-nowrap transition-colors md:h-7",
                   view === t.key
                     ? "border-primary/30 bg-primary/10 font-medium text-primary"
                     : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -176,7 +178,8 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
 
         {/* 열려 있을 때만 내용을 만든다 — 닫힌 패널이 3초마다 폴링할 이유가 없다 */}
         {open && (
-          <div className="flex min-h-0 flex-1 flex-col">
+          // pb-safe: 안드로이드 제스처바·홈 인디케이터에 입력창이 가리지 않게
+          <div className="pb-safe flex min-h-0 flex-1 flex-col">
             {view === "task" && task ? (
               <TaskThread taskId={task.id} taskName={task.name} messages={task.messages} />
             ) : view === "ai" ? (

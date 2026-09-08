@@ -94,13 +94,14 @@ export function DashboardView({
   }, [period, tasksForProgress])
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
+    <div className="flex flex-1 flex-col gap-3 p-3 sm:gap-4 sm:p-4">
       {/* 업무 진행률 */}
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
+          {/* CardHeader 는 grid — min-w-0 없이는 이 행이 축소되지 못하고 잘린다 */}
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-sm font-medium">업무 진행률</CardTitle>
-            <div className="flex items-center gap-1 rounded-md border p-0.5">
+            <div className="flex shrink-0 items-center gap-1 rounded-md border p-0.5">
               {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((key) => (
                 <button
                   key={key}
@@ -122,7 +123,7 @@ export function DashboardView({
             <Progress value={periodStats.rate} className="flex-1" />
             <span className="text-sm font-medium">{periodStats.rate}%</span>
           </div>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>전체 {periodStats.total}건</span>
             <span>완료 {periodStats.done}</span>
             <span>진행 {periodStats.inProgress}</span>

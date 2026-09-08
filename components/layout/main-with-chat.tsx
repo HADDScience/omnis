@@ -50,7 +50,8 @@ export function MainWithChat({
 
   return (
     <>
-      <div className="flex h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] min-h-0 flex-col overflow-hidden">
+      {/* px-safe: 가로 모드 노치·펀치홀 영역을 피한다 (viewportFit: cover) */}
+      <div className="px-safe flex h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] min-h-0 flex-col overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-auto">{children}</div>
         </div>

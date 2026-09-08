@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { TimeQuarterPassIcon, EyeIcon, BackwardIcon } from "@hugeicons/core-free-icons"
+import {
+  TimeQuarterPassIcon,
+  EyeIcon,
+  BackwardIcon,
+  ArrowUp01Icon,
+  ArrowDown01Icon,
+} from "@hugeicons/core-free-icons"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { apiUrl } from "@/lib/base-path"
+import { useMediaQuery } from "@/hooks/use-media-query"
 
 interface VersionEntry {
   hash: string
@@ -35,6 +42,11 @@ export function VersionHistory({ cardId }: VersionHistoryProps) {
   const [viewing, setViewing] = useState<{ hash: string; content: string } | null>(null)
   const [restoring, setRestoring] = useState<string | null>(null)
   const router = useRouter()
+
+  // 좁은 화면에서는 기본 접힘 — 사용자가 토글하면 그 선택을 따른다
+  const isLgUp = useMediaQuery("(min-width: 1024px)")
+  const [expanded, setExpanded] = useState<boolean | null>(null)
+  const isOpen = expanded ?? isLgUp
 
   useEffect(() => {
     fetch(apiUrl(`/api/omnis/${cardId}/versions`))
@@ -80,13 +92,26 @@ export function VersionHistory({ cardId }: VersionHistoryProps) {
   }
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-l bg-card">
-      <div className="flex items-center gap-2 border-b px-4 py-3">
+    // lg 이상: 우측 고정 레일 / 그 아래: 본문 하단에 붙는 접힘 섹션.
+    // 320px 에서 320px 레일을 붙이면 본문이 사라진다 (규칙 16 모바일 단일 컬럼).
+    <aside className="flex w-full shrink-0 flex-col border-t bg-card lg:h-full lg:w-80 lg:border-l lg:border-t-0 xl:w-96">
+      <button
+        type="button"
+        onClick={() => setExpanded(!isOpen)}
+        aria-expanded={isOpen}
+        className="flex w-full items-center gap-2 border-b px-4 py-3 text-left transition-colors hover:bg-muted/40 lg:pointer-events-none lg:hover:bg-transparent"
+      >
         <HugeiconsIcon icon={TimeQuarterPassIcon} size={14} className="text-muted-foreground" />
         <span className="text-[12.5px] font-semibold">버전 히스토리</span>
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">{history.length}</span>
-      </div>
-      <div className="flex-1 overflow-auto">
+        <HugeiconsIcon
+          icon={isOpen ? ArrowUp01Icon : ArrowDown01Icon}
+          size={14}
+          className="text-muted-foreground lg:hidden"
+          aria-hidden
+        />
+      </button>
+      <div className={`${isOpen ? "flex" : "hidden"} max-h-[60svh] flex-1 flex-col overflow-auto lg:flex lg:max-h-none`}>
         {loading ? (
           <div className="p-4 text-center text-[11px] text-muted-foreground">불러오는 중...</div>
         ) : history.length === 0 ? (

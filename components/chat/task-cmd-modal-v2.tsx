@@ -479,7 +479,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="grid max-h-[min(85vh,720px)] w-full max-w-[min(640px,calc(100vw-2rem))] grid-rows-[auto_1fr_auto] gap-0 p-0 sm:max-w-[640px]">
+      <DialogContent className="grid max-h-[min(85vh,720px)] w-full max-w-[min(640px,calc(var(--app-vw)-2rem))] grid-rows-[auto_1fr_auto] gap-0 p-0 sm:max-w-[640px]">
         <DialogHeader className="border-b px-5 py-3.5">
           <DialogTitle className="flex items-center gap-2 text-[14px] font-semibold">
             <HugeiconsIcon icon={Task01Icon} size={14} className="text-primary" />

@@ -151,7 +151,7 @@ export function NotificationBell() {
           </Badge>
         )}
       </PopoverTrigger>
-      <PopoverContent align="end" side="bottom" className="w-80 max-h-[min(400px,calc(100vh-80px))] overflow-hidden p-0">
+      <PopoverContent align="end" side="bottom" className="w-[min(20rem,calc(var(--app-vw)-1.5rem))] max-h-[min(400px,calc(var(--app-vh)-80px))] overflow-hidden p-0">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="text-sm font-medium">알림</span>
           <div className="flex items-center gap-1">

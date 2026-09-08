@@ -133,12 +133,12 @@ export function HaddDbLanding({
 
   return (
     <div className="h-full overflow-auto">
-      <div className="mx-auto max-w-[960px] px-12 pb-16 pt-12">
+      <div className="mx-auto max-w-[960px] px-4 pb-16 pt-8 sm:px-8 md:px-12 md:pt-12">
         <div className="mb-7 text-center">
           <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             HADD DB
           </div>
-          <h1 className="my-2 text-[32px] font-bold tracking-[-0.03em]">
+          <h1 className="my-2 text-[24px] font-bold tracking-[-0.03em] sm:text-[32px]">
             회사의 모든 지식, 한 번의 검색으로.
           </h1>
           <p className="text-[14px] text-muted-foreground">
@@ -153,8 +153,9 @@ export function HaddDbLanding({
             className="flex flex-1 items-center gap-3 rounded-lg border bg-card px-5 py-4 text-[15px] text-muted-foreground shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-colors hover:border-border-strong"
           >
             <HugeiconsIcon icon={Search01Icon} size={16} />
-            <span className="flex-1 text-left">검색 · &quot;{topTrigger}&quot;</span>
-            <Kbd>⌘K</Kbd>
+            <span className="flex-1 truncate text-left">검색 · &quot;{topTrigger}&quot;</span>
+            {/* 물리 키보드가 없는 기기에선 단축키 힌트를 숨긴다 */}
+            <Kbd className="hidden md:inline-flex">⌘K</Kbd>
           </button>
           <Link
             href="/omnis?create=1"
@@ -244,7 +245,7 @@ export function HaddDbLanding({
           />
         </Link>
 
-        <div className="mt-12 grid grid-cols-3 gap-4 md:gap-5">
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 md:mt-12 md:gap-5 lg:grid-cols-3">
           {(activeFilter === "bookmarks"
             ? [
                 { title: "즐겨찾기", items: bookmarks },
@@ -267,7 +268,7 @@ export function HaddDbLanding({
                   className={[
                     "flex flex-col gap-2 pr-1",
                     withFade
-                      ? "max-h-[calc(100vh-380px)] overflow-y-auto [mask-image:linear-gradient(to_bottom,black_85%,transparent)] [&::-webkit-scrollbar]:hidden"
+                      ? "max-h-[calc(var(--app-vh)-380px)] overflow-y-auto [mask-image:linear-gradient(to_bottom,black_85%,transparent)] [&::-webkit-scrollbar]:hidden"
                       : "",
                   ].join(" ")}
                 >

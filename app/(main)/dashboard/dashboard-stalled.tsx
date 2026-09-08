@@ -69,7 +69,7 @@ export function DashboardStalled({ groups }: { groups: StalledGroups }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-sm font-medium">
             <HugeiconsIcon icon={Alert02Icon} size={15} className="text-muted-foreground" aria-hidden />
             멈춰 있는 업무

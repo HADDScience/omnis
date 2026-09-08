@@ -157,7 +157,7 @@ export function ProjectMerge({ projects }: { projects: MergeableProject[] }) {
       </Card>
 
       <Dialog open={source !== null} onOpenChange={(o) => !o && closeMerge()}>
-        <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
+        <DialogContent className="w-[calc(var(--app-vw)-2rem)] max-w-md">
           <DialogHeader>
             <DialogTitle>{source ? `'${source.name}' 합치기` : "프로젝트 합치기"}</DialogTitle>
             <DialogDescription className="text-xs">

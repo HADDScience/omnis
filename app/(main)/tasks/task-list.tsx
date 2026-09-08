@@ -78,9 +78,9 @@ export function TaskList({ tasks, projects, tableOnly }: TaskListProps) {
   const totalShown = projectGroups.reduce((s, g) => s + g.tasks.length, 0) + unlinkedTasks.length
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+    <div className="flex flex-col gap-4 p-3 sm:p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full flex-1 sm:w-auto sm:min-w-[200px]">
           <HugeiconsIcon icon={Search01Icon} size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="프로젝트 또는 업무 검색..."
@@ -494,7 +494,7 @@ function TaskCard({ task }: { task: Task }) {
     <Link href={`/tasks/${task.id}`}>
       <Card className="group hover:border-primary/30 transition-colors cursor-pointer">
         <CardHeader className="py-3 pb-1">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <Badge variant="secondary" className={`shrink-0 text-[10px] ${TASK_STATUS_COLORS[task.status] ?? ""}`}>
                 {TASK_STATUS_LABELS[task.status] ?? task.status}
