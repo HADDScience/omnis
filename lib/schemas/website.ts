@@ -35,6 +35,8 @@ export const PostLocaleSchema = z.object({
   title: short,
   summary: short,
   blocks: z.array(PostBlockSchema).max(500),
+  /** 이 언어 전용 썸네일(영문 카드뉴스의 첫 장). 없으면 공통 thumbnail. */
+  thumbnail: z.string().max(2_000).optional(),
   /** 이 번역이 만들어진 원문의 해시. 원문 로케일에는 없다. */
   translatedFrom: z.string().optional(),
   /** 사람이 직접 손본 번역. 자동 번역이 덮어쓰지 않는다. */

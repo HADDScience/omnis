@@ -292,13 +292,15 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   const koBaked = await bake(koSettled.deck, "ko")
   const enBaked = await bake(enSettled.deck, "en")
 
-  // 썸네일: 첫 카드 640
-  const thumb = await sharp(koBaked.firstPng).resize(640, 640).webp({ quality: 85 }).toBuffer()
-  const thumbUrl = DRY ? row.thumbnail : (await storeMedia({ postId: id, bytes: thumb, contentType: "image/webp", name: "rebuild-thumb.webp" })).url
+  // 썸네일: 각 언어의 첫 카드 640. 표지에 글자가 박혀 있어 언어마다 다르다.
+  const thumbOf = async (png: Buffer, name: string, fallback: string | null) =>
+    DRY ? fallback : (await storeMedia({ postId: id, bytes: await sharp(png).resize(640, 640).webp({ quality: 85 }).toBuffer(), contentType: "image/webp", name })).url
+  const thumbUrl = await thumbOf(koBaked.firstPng, "rebuild-thumb.webp", row.thumbnail)
+  const enThumbUrl = await thumbOf(enBaked.firstPng, "rebuild-thumb-en.webp", null)
 
   // 6) DB
   const nextKo: PostLocale = { ...ko, blocks: koBaked.blocks }
-  const nextEn: PostLocale = { title: enLocale.title, summary: enLocale.summary, blocks: enBaked.blocks, translatedFrom: sourceHash(nextKo) }
+  const nextEn: PostLocale = { title: enLocale.title, summary: enLocale.summary, blocks: enBaked.blocks, translatedFrom: sourceHash(nextKo), ...(enThumbUrl ? { thumbnail: enThumbUrl } : {}) }
   if (!DRY) {
     await prisma.websitePost.update({
       where: { id },
