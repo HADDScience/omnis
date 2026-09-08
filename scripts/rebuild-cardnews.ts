@@ -28,6 +28,7 @@ import { prisma } from "../lib/db"
 import { Prisma } from "../generated/prisma"
 import { CardDeckSchema, type Card, type CardDeck, type PostBlock, type PostLocale } from "../lib/schemas/website"
 import { storeMedia } from "../lib/website-media"
+import { deleteObject } from "../lib/storage"
 import { sourceHash, translateDeck, translateLocale } from "../lib/website-translate"
 
 // ─── 인자 ───────────────────────────────────────────────────────────
@@ -39,7 +40,11 @@ const IDS = (opt("--ids") ?? "").split(",").filter(Boolean)
 const DRY = flag("--dry-run")
 const SITE_URL = opt("--site-url") ?? "http://localhost:3123"
 const REPORT = path.resolve(opt("--report") ?? path.join(SITE, "mydocs/working/cardnews-rebuild"))
-const MAX_FIX = 3
+const MAX_FIX = 6
+/** 이번 실행의 파일 이름 접두. 같은 이름을 다시 쓰면 storeMedia 가 "이미 있음"으로 넘기고 엣지 캐시(1년)도
+ *  옛 그림을 계속 준다 — 2026-09-08 실제로 겪었다. 실행마다 새 이름을 쓰고 이전 rebuild 파일은 지운다. */
+const RUN = new Date().toISOString().slice(2, 16).replace(/[-T:]/g, "")
+const named = (kind: string) => `rebuild-${RUN}-${kind}`
 /** 보고서 폴더의 deck.en.json 이 있으면 번역을 건너뛴다 — dry-run 뒤 실제 실행에서 Gemini 를 두 번 쓰지 않게. */
 const REUSE_EN = flag("--reuse-en")
 
@@ -152,6 +157,64 @@ function applyFix(card: Card, issue: Issue): boolean {
   return false
 }
 
+// ─── 사진 비율 ──────────────────────────────────────────────────────
+// 상자 비율이 사진과 어긋나면 cover 가 한쪽을 잘라낸다(2026-09-08: 4:3 사진이 16:10 상자에서
+// 위쪽 현수막을 잃었다). 레이아웃이 허용하는 비율 중 사진에 가장 가까운 것을 고르고,
+// 글이 넘치면 한 단계씩 납작한 비율로 물러난다 — 사진을 자르는 것보다 낫다.
+type Ratio = "16/9" | "16/10" | "4/3" | "1/1" | "3/4"
+const RATIO_VALUE: Record<Ratio, number> = { "16/9": 16 / 9, "16/10": 1.6, "4/3": 4 / 3, "1/1": 1, "3/4": 0.75 }
+/** 레이아웃별로 쓸 수 있는 비율, 세로가 긴 것부터. image-top 은 hero 높이 상한(44%) 때문에 납작한 둘만. */
+function allowedRatios(card: Card): Ratio[] {
+  if (card.type === "quote") return ["1/1", "4/3", "16/10", "16/9"]
+  if (card.type === "chapter" && card.layout === "image-top") return ["16/10", "16/9"]
+  return ["3/4", "1/1", "4/3", "16/10", "16/9"]
+}
+function fitRatio(card: Card, photoAspect: number): void {
+  if (!("image" in card) || !card.image) return
+  const options = allowedRatios(card)
+  const best = options.reduce((a, b) => (Math.abs(RATIO_VALUE[b] - photoAspect) < Math.abs(RATIO_VALUE[a] - photoAspect) ? b : a))
+  card.image.ratio = best
+}
+/**
+ * 넘칠 때: 먼저 사진 폭을 줄인다(100 → 80 → 65 → 50). 옛 카드뉴스가 그렇게 풀었고 사진이
+ * 잘리지 않는다. 폭을 다 줄였으면 비율을 한 단계 납작하게. 더 못 가면 false.
+ */
+const WIDTHS = [100, 80, 65, 50] as const
+function flattenRatio(card: Card): boolean {
+  if (!("image" in card) || !card.image) return false
+  const w = card.image.width ?? 100
+  const wi = WIDTHS.indexOf(w as (typeof WIDTHS)[number])
+  if (wi >= 0 && wi < WIDTHS.length - 1) {
+    card.image.width = WIDTHS[wi + 1]
+    return true
+  }
+  const options = allowedRatios(card)
+  // 폭·비율을 다 썼으면 제목을 한 단 줄인다(standard 만 있는 옵션). 글자를 지우는 것보다 낫다.
+  if (card.type === "chapter" && card.layout === "standard" && card.headlineSize !== "sm" && card.image.ratio === options[options.length - 1]) {
+    card.headlineSize = "sm"
+    return true
+  }
+  const cur = (card.image.ratio as Ratio | undefined) ?? (card.type === "quote" ? "1/1" : card.type === "chapter" && card.layout === "image-top" ? "16/10" : "4/3")
+  const i = options.indexOf(cur)
+  if (i >= 0 && i < options.length - 1) {
+    card.image.ratio = options[i + 1]
+    return true
+  }
+  return unwrapBody(card)
+}
+
+/**
+ * 정말 마지막 수단: 본문의 수동 줄바꿈(한 줄짜리 \n)을 풀어 브라우저가 다시 감싸게 한다.
+ * 옛 카드의 줄 구조를 그대로 옮긴 \n 이 번역문에서는 줄을 늘리기만 한다. 문단 사이(\n\n)는 둔다.
+ */
+function unwrapBody(card: Card): boolean {
+  if (!("body" in card) || typeof card.body !== "string") return false
+  const next = card.body.replace(/([^\n])\n(?!\n)/g, "$1 ")
+  if (next === card.body) return false
+  card.body = next
+  return true
+}
+
 // ─── 브라우저 ───────────────────────────────────────────────────────
 interface Harness {
   load(deckJson: string): Promise<{ issues: Issue[][] }>
@@ -179,9 +242,18 @@ async function settle(
   for (let round = 0; ; round++) {
     const { issues } = await h.lint(current)
     const orphans = issues.flatMap((list, i) => list.filter((x) => x.kind === "orphan").map((x) => ({ i, x })))
-    if (!orphans.length || round >= MAX_FIX) return { deck: current, issues, fixes }
+    const overflows = issues.flatMap((list, i) => (list.some((x) => x.kind === "overflow") ? [i] : []))
+    if ((!orphans.length && !overflows.length) || round >= MAX_FIX) return { deck: current, issues, fixes }
     const next = structuredClone(current)
     let changed = false
+    for (const i of overflows) {
+      if (flattenRatio(next.cards[i]) || unwrapBody(next.cards[i])) {
+        changed = true
+        const img = (next.cards[i] as { image?: { ratio?: string; width?: number } }).image
+        const hs = (next.cards[i] as { headlineSize?: string }).headlineSize
+        fixes.push(`${label} 카드 ${i + 1}: 넘침 → 사진 폭 ${img?.width ?? 100}% · 비율 ${img?.ratio}${hs === "sm" ? " · 제목 sm" : ""}`)
+      }
+    }
     for (const { i, x } of orphans) {
       if (applyFix(next.cards[i], x)) {
         changed = true
@@ -211,6 +283,14 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   const reportDir = path.join(REPORT, id)
   fs.mkdirSync(reportDir, { recursive: true })
 
+  // 이전 실행이 남긴 rebuild-* 사진을 NAS 와 목록에서 지운다(이번 실행 것만 남게).
+  if (!DRY) {
+    const old = await prisma.websiteMedia.findMany({ where: { postId: id, key: { contains: "/rebuild-" } }, select: { key: true, id: true } })
+    for (const m of old) await deleteObject(m.key)
+    await prisma.websiteMedia.deleteMany({ where: { id: { in: old.map((m) => m.id) } } })
+    if (old.length) console.log(`  이전 rebuild 사진 ${old.length}장 정리`)
+  }
+
   // 옛 카드 하나가 새 카드 여러 장이 될 수 있다(넘치는 목록을 둘로). 평평하게 펴고 출처를 기억한다.
   const flat = spec.cards.flatMap((sc, si) => (sc.cards ?? [sc.card]).map((card) => ({ sc, si, card })))
   const baseCards = flat.map((f) => f.card)
@@ -222,13 +302,14 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
     const wantsPhoto = "image" in card && (card as { image?: { src: string } }).image?.src === "@photo"
     if (!wantsPhoto) continue
     if (!sc.photo) throw new Error(`${id} 카드 ${i + 1}: image 가 @photo 인데 photo 영역이 없다`)
+    fitRatio(card, sc.photo[2] / sc.photo[3])
     const buf = await cropPhoto(SITE, id, sc.source, sc.photo)
     fs.writeFileSync(path.join(reportDir, `photo-${String(i + 1).padStart(2, "0")}.webp`), buf)
     dataUrls.set(i, `data:image/webp;base64,${buf.toString("base64")}`)
     if (!DRY) {
-      const stored = await storeMedia({ postId: id, bytes: buf, contentType: "image/webp", name: `rebuild-photo-${String(i + 1).padStart(2, "0")}.webp` })
+      const stored = await storeMedia({ postId: id, bytes: buf, contentType: "image/webp", name: named(`photo-${String(i + 1).padStart(2, "0")}.webp`) })
       mediaUrls.set(i, stored.url)
-    } else mediaUrls.set(i, `/omnis/api/website/media/${id}/rebuild-photo-${String(i + 1).padStart(2, "0")}.webp`)
+    } else mediaUrls.set(i, `/omnis/api/website/media/${id}/${named(`photo-${String(i + 1).padStart(2, "0")}.webp`)}`)
   }
   /** 사진이 있는 카드의 src 를 표의 값으로 바꾼다(렌더용 data URL ↔ 저장용 NAS URL). */
   const withSrc = (cards: Card[], urls: Map<number, string>): Card[] =>
@@ -268,6 +349,11 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
     REUSE_EN && fs.existsSync(cached)
       ? CardDeckSchema.parse(JSON.parse(fs.readFileSync(cached, "utf8")))
       : await translateDeck(koFinal, "ko", "en")
+  // 영문 덱의 사진 상자 비율·초점은 한국어 덱을 따른다(재사용한 영문 덱은 비율이 낡았을 수 있다).
+  enDeck.cards.forEach((c, i) => {
+    const k = koFinal.cards[i]
+    if ("image" in c && c.image && "image" in k && k.image) c.image = { ...c.image, ratio: k.image.ratio, pos: k.image.pos, width: k.image.width }
+  })
   const enRender: CardDeck = { handle: enDeck.handle, cards: withSrc(enDeck.cards, dataUrls) }
   const enSettled = await settle(h, enRender, `${id} en`)
   const enFinal: CardDeck = { handle: enDeck.handle, cards: withSrc(enSettled.deck.cards, mediaUrls) }
@@ -283,7 +369,7 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
       if (!firstPng) firstPng = png
       fs.writeFileSync(path.join(reportDir, `${lang}-${String(i + 1).padStart(2, "0")}.png`), png)
       const webp = await sharp(png).webp({ quality: 90 }).toBuffer()
-      const name = `rebuild-${lang}-${String(i + 1).padStart(2, "0")}.webp`
+      const name = named(`${lang}-${String(i + 1).padStart(2, "0")}.webp`)
       const src = DRY ? `/omnis/api/website/media/${id}/${name}` : (await storeMedia({ postId: id, bytes: webp, contentType: "image/webp", name })).url
       blocks.push({ type: "image", src, alt: cardText(deck.cards[i], deck) })
     }
@@ -295,8 +381,8 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   // 썸네일: 각 언어의 첫 카드 640. 표지에 글자가 박혀 있어 언어마다 다르다.
   const thumbOf = async (png: Buffer, name: string, fallback: string | null) =>
     DRY ? fallback : (await storeMedia({ postId: id, bytes: await sharp(png).resize(640, 640).webp({ quality: 85 }).toBuffer(), contentType: "image/webp", name })).url
-  const thumbUrl = await thumbOf(koBaked.firstPng, "rebuild-thumb.webp", row.thumbnail)
-  const enThumbUrl = await thumbOf(enBaked.firstPng, "rebuild-thumb-en.webp", null)
+  const thumbUrl = await thumbOf(koBaked.firstPng, named("thumb.webp"), row.thumbnail)
+  const enThumbUrl = await thumbOf(enBaked.firstPng, named("thumb-en.webp"), null)
 
   // 6) DB
   const nextKo: PostLocale = { ...ko, blocks: koBaked.blocks }
@@ -321,7 +407,18 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   fs.writeFileSync(path.join(reportDir, "deck.ko.json"), JSON.stringify(koFinal, null, 2))
   fs.writeFileSync(path.join(reportDir, "deck.en.json"), JSON.stringify(enFinal, null, 2))
 
-  const remaining = [...koSettled.issues, ...enSettled.issues].flat()
+  // 영문 덱에 한글·한자가 남았으면(번역 누락) 문제로 친다. 모델이 가끔 낱말을 빼먹는다.
+  const hangulLeft: string[] = []
+  enSettled.deck.cards.forEach((c, i) => {
+    const t = allText(c)
+    const m = t.match(/[가-힣\u4e00-\u9fff]+/g)
+    if (m) hangulLeft.push(`en 카드 ${i + 1}: 한글·한자 남음 "${m.join(" ")}"`)
+  })
+  const remaining = [
+    ...hangulLeft.map((message) => ({ kind: "overflow" as const, label: "번역", message })),
+    ...koSettled.issues.flatMap((list, i) => list.map((x) => ({ ...x, message: `ko 카드 ${i + 1}: ${x.message}` }))),
+    ...enSettled.issues.flatMap((list, i) => list.map((x) => ({ ...x, message: `en 카드 ${i + 1}: ${x.message}` }))),
+  ]
   const line = `${id} ${spec.title.slice(0, 30)} — 옛 ${spec.cards.length} → 새 ${flat.length} · 사진 ${dataUrls.size} · 수정 ${koSettled.fixes.length + enSettled.fixes.length} · 남은 문제 ${remaining.length} · 빠진 원문 ${missing.length}`
   summary.push(line)
   console.log(line)

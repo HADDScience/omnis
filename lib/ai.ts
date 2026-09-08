@@ -47,8 +47,14 @@ export async function callGemini(
     generationConfig: {
       temperature,
       maxOutputTokens,
-      // 구조화 추출은 깊은 추론이 불필요 → thinking 비활성으로 토큰 ~50%↓ + 속도↑ + 503 회피
-      ...(endpoint === "structureTask" ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      // 구조화 추출은 깊은 추론이 불필요 → thinking 비활성으로 토큰 ~50%↓ + 속도↑ + 503 회피.
+      // 번역은 thinking 토큰이 maxOutputTokens 를 먹어 긴 덱의 응답이 중간에 끊겼다(2026-09-08).
+      // 그렇다고 0 으로 끄면 "현장" 을 "現場" 로 쓰는 오역이 고정돼, 작은 예산만 준다.
+      ...(endpoint === "structureTask"
+        ? { thinkingConfig: { thinkingBudget: 0 } }
+        : endpoint.startsWith("websiteTranslate")
+          ? { thinkingConfig: { thinkingBudget: 1024 } }
+          : {}),
     },
   })
   // 503(모델 과부하)·일시적 429(rate, spend cap 제외)는 재시도. spend cap 429는 즉시 중단.

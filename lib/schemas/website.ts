@@ -50,6 +50,8 @@ export const CardImageSchema = z.object({
   src: z.string().max(2_000),
   ratio: z.enum(["16/9", "16/10", "4/3", "1/1", "3/4"]).optional(),
   pos: z.string().max(40).optional(),
+  /** 상자 폭(%). 글이 길면 사진을 작게 넣는다. 기본 100 */
+  width: z.union([z.literal(100), z.literal(80), z.literal(65), z.literal(50)]).optional(),
 })
 
 const badge = z.string().max(200)

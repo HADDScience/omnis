@@ -173,6 +173,8 @@ function collectSlots(deck: CardDeck): Slot[] {
       push("cta", card.cta)
       return
     }
+    // 배지는 보통 "chapter 01" 같은 영문 라벨이라 두지만, "대표 한마디" 처럼 한글이면 번역한다.
+    if (/[가-힣]/.test(card.badge)) push("badge", card.badge)
     if (card.type === "quote") {
       push("quote", card.quote)
       push("attrib", card.attrib)
@@ -217,6 +219,8 @@ Card-specific rules:
 - Keep every <b>…</b> tag exactly where it is: it marks the emphasis the card design draws.
 - Keep every \\n line break exactly where it is: the line breaks are the card's layout.
 - Keep emoji, including in headlines — this is card news, not a newsroom article.
+- The output must be entirely in the target language. Never leave Korean or Chinese
+  characters (e.g. 現場) in an English translation.
 - A "stats.N.unit" slot is a unit of measure: give the natural English unit (배 → x,
   개월 → months, 명 → people). Never translate the number that goes with it; it is not here.
 - Answer with JSON only, no prose, no code fences:
@@ -234,8 +238,41 @@ export async function translateDeck(
   if (slots.length === 0) return deck
 
   const prompt = `${DECK_SYSTEM}\n\nTranslate from ${LANG_NAME[from]} to ${LANG_NAME[to]}.\n\n${JSON.stringify(slots, null, 2)}`
-  const raw = await callGemini(prompt, "websiteTranslateDeck", userId, 0.2)
-  const out = DeckOutputSchema.parse(JSON.parse(raw))
+  // 모델이 가끔 JSON 을 깨뜨려 보낸다(따옴표 누락 등). 같은 프롬프트로 최대 3번 받는다.
+  let out: z.infer<typeof DeckOutputSchema> | null = null
+  let lastErr: unknown = null
+  for (let attempt = 0; attempt < 3 && !out; attempt++) {
+    const raw = await callGemini(prompt, "websiteTranslateDeck", userId, 0.2)
+    try {
+      out = DeckOutputSchema.parse(JSON.parse(raw))
+    } catch (err) {
+      lastErr = err
+      console.warn(`[website-translate] 덱 번역 응답 파싱 실패 (${attempt + 1}/3):`, raw.slice(0, 200))
+    }
+  }
+  if (!out) throw lastErr instanceof Error ? lastErr : new Error("덱 번역 응답을 읽지 못했다")
+
+  // 영문 결과에 한글·한자가 남은 칸("현장 확인하기" → "symposium現場" 같은 것)은 그 칸만 다시 시킨다.
+  if (to === "en") {
+    const leftover = out.filter((s) => /[가-힣\u4e00-\u9fff]/.test(s.text))
+    if (leftover.length > 0) {
+      const again = `${DECK_SYSTEM}\n\nThe previous translation left Korean or Chinese characters in these entries. Translate each "text" fully into English — every character must be English or emoji. In particular 현장 means "the venue" / "on site" / "the scene" — never write 現場 or 现场. Answer with the same list.\n\n${JSON.stringify(
+        leftover.map((s) => ({ id: s.id, text: slots.find((x) => x.id === s.id)?.text ?? s.text })),
+        null,
+        2
+      )}`
+      const raw = await callGemini(again, "websiteTranslateDeck", userId, 0.4)
+      try {
+        const fixed = DeckOutputSchema.parse(JSON.parse(raw))
+        const byId = new Map(fixed.map((s) => [s.id, s.text]))
+        out = out.map((s) => (byId.has(s.id) && !/[가-힣\u4e00-\u9fff]/.test(byId.get(s.id)!) ? { ...s, text: byId.get(s.id)! } : s))
+      } catch (err) {
+        console.warn("[website-translate] 잔여 한글 재번역 실패:", err instanceof Error ? err.message : err)
+      }
+      // 그래도 남으면 알려진 오역만 손으로 바꾼다. 모델이 "현장" 을 한자로 쓰는 버릇이 있다(2026-09-08 실측).
+      out = out.map((s) => ({ ...s, text: s.text.replace(/\s*[現现]場?场?/g, " venue").replace(/\s+([.!?])/g, "$1") }))
+    }
+  }
 
   if (out.length !== slots.length) {
     throw new Error(`칸 수가 다르다 — 원문 ${slots.length}개, 번역 ${out.length}개`)
@@ -253,12 +290,14 @@ export async function translateDeck(
       return { ...card, title: t("title", card.title), cta: t("cta", card.cta) }
     }
     if (card.type === "quote") {
-      return { ...card, quote: t("quote", card.quote), attrib: t("attrib", card.attrib) }
+      return { ...card, badge: t("badge", card.badge), quote: t("quote", card.quote), attrib: t("attrib", card.attrib) }
     }
+    const badge = t("badge", card.badge)
     const headline = t("headline", card.headline)
     if (card.layout === "stat") {
       return {
         ...card,
+        badge,
         headline,
         stats: card.stats.map((s, j) => ({
           ...s,
@@ -271,6 +310,7 @@ export async function translateDeck(
     if (card.layout === "list") {
       return {
         ...card,
+        badge,
         headline,
         items: card.items.map((it, j) => ({
           ...it,
@@ -281,6 +321,7 @@ export async function translateDeck(
     }
     return {
       ...card,
+      badge,
       headline,
       ...("subtitle" in card ? keep("subtitle", card.subtitle) : {}),
       body: t("body", card.body),
