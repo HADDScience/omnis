@@ -1,36 +1,18 @@
 import { Header } from "@/components/layout/header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { LinkedAccounts } from "@/components/settings/linked-accounts"
-import { prisma } from "@/lib/db"
-import { ProjectMerge, type MergeableProject } from "./project-merge"
 
 export const dynamic = "force-dynamic"
 
+/**
+ * 여기는 내 계정을 보는 자리다. 프로젝트 정리(병합)는 남의 업무까지 옮기는
+ * 작업이라 개인 설정이 아니다 — /tasks/projects 로 옮겼다. (2026-09-09)
+ */
 export default async function SettingsPage() {
-  const projects = await prisma.project.findMany({
-    where: { archived: false },
-    orderBy: { name: "asc" },
-    select: {
-      id: true,
-      name: true,
-      product: { select: { name: true } },
-      _count: { select: { tasks: { where: { archived: false } } } },
-    },
-  })
-
-  const mergeable: MergeableProject[] = projects.map((p) => ({
-    id: p.id,
-    name: p.name,
-    productName: p.product?.name ?? null,
-    taskCount: p._count.tasks,
-  }))
-
   return (
     <>
       <Header title="설정" />
       <div className="flex flex-1 flex-col gap-4 p-4">
-        <ProjectMerge projects={mergeable} />
-
         <Card>
           <CardHeader>
             <CardTitle className="text-base">시스템 설정</CardTitle>
