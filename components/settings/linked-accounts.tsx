@@ -33,6 +33,14 @@ export function LinkedAccounts() {
   const [available, setAvailable] = useState<SocialProvider[]>([])
   const [busy, setBusy] = useState<SocialProvider | null>(null)
 
+  // 선언보다 먼저 부르면 호이스팅 덕에 돌긴 하지만 lint 가 막는다 — 순서를 맞춘다
+  function reload() {
+    fetch(apiUrl("/api/account/identities"))
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setIdentities)
+      .catch(() => setIdentities([]))
+  }
+
   useEffect(() => {
     // 어떤 소셜이 켜져 있는지는 서버 설정이 정한다. 화면에 고정해 두면
     // 키를 넣지 않은 제공자 버튼이 떠서 누르면 깨진다.
@@ -45,13 +53,6 @@ export function LinkedAccounts() {
 
     reload()
   }, [])
-
-  function reload() {
-    fetch(apiUrl("/api/account/identities"))
-      .then((r) => (r.ok ? r.json() : []))
-      .then(setIdentities)
-      .catch(() => setIdentities([]))
-  }
 
   async function unlink(provider: SocialProvider) {
     setBusy(provider)

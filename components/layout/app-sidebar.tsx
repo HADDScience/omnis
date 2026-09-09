@@ -34,6 +34,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Kbd } from "@/components/ui/kbd"
@@ -93,12 +94,22 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
   const router = useRouter()
   const commandPalette = useCommandPalette()
   const rightPanel = useRightPanel()
+  const { isMobile, setOpenMobile } = useSidebar()
   useEffect(() => setMounted(true), [])
+
+  /**
+   * 모바일에서 사이드바는 화면을 덮는 Sheet 다. 항목을 눌러 이동해도 그대로 열려
+   * 있어서, 도착한 화면을 보려면 한 번 더 닫아야 했다. 고른 순간 닫는다.
+   * 데스크톱은 옆에 붙박이로 있는 레일이라 건드리지 않는다.
+   */
+  const closeOnMobile = () => {
+    if (isMobile) setOpenMobile(false)
+  }
 
   return (
     <Sidebar>
       <SidebarHeader className="px-2.5 pb-2 pt-3">
-        <Link href="/dashboard" className="flex items-center gap-2 px-1.5 pb-3">
+        <Link href="/dashboard" onClick={closeOnMobile} className="flex items-center gap-2 px-1.5 pb-3">
           <div className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-primary p-[4px]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={apiUrl("/omnis-logo.png")} alt="Omnis" className="h-full w-full object-contain" />
@@ -113,7 +124,10 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
             업무·지식재산권·재고·견적을 한 번에 훑어 준다. 검색은 ⌘K 로 그대로 열린다. */}
         <button
           type="button"
-          onClick={() => rightPanel.openWith("ai")}
+          onClick={() => {
+            closeOnMobile()
+            rightPanel.openWith("ai")
+          }}
           className="ai-rainbow-border flex h-8 w-full items-center gap-2 rounded-md border border-border bg-muted px-2.5 text-[12px] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
         >
           <HugeiconsIcon icon={AiMagicIcon} size={14} className="opacity-80" />
@@ -121,7 +135,10 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
         </button>
         <button
           type="button"
-          onClick={() => commandPalette.open()}
+          onClick={() => {
+            closeOnMobile()
+            commandPalette.open()
+          }}
           className="mt-1.5 flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <HugeiconsIcon icon={Search01Icon} size={13} className="opacity-70" />
@@ -149,9 +166,9 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
                       }
                       render={
                         external ? (
-                          <a href={item.href} target="_blank" rel="noopener noreferrer" />
+                          <a href={item.href} target="_blank" rel="noopener noreferrer" onClick={closeOnMobile} />
                         ) : (
-                          <Link href={item.href} />
+                          <Link href={item.href} onClick={closeOnMobile} />
                         )
                       }
                     >
@@ -184,7 +201,7 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
                   <SidebarMenuButton
                     size="sm"
                     className="has-data-[pending]:bg-sidebar-accent has-data-[pending]:text-sidebar-accent-foreground"
-                    render={<Link href={f.href} />}
+                    render={<Link href={f.href} onClick={closeOnMobile} />}
                   >
                     <span
                       className="inline-block h-[5px] w-[5px] rounded-full"
@@ -236,15 +253,24 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/settings")}>
+            <DropdownMenuItem onClick={() => {
+                closeOnMobile()
+                router.push("/settings")
+              }}>
               <HugeiconsIcon icon={UserIcon} size={14} className="text-muted-foreground" />
               프로필
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/settings")}>
+            <DropdownMenuItem onClick={() => {
+                closeOnMobile()
+                router.push("/settings")
+              }}>
               <HugeiconsIcon icon={UserGroupIcon} size={14} className="text-muted-foreground" />
               팀 설정
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/settings")}>
+            <DropdownMenuItem onClick={() => {
+                closeOnMobile()
+                router.push("/settings")
+              }}>
               <HugeiconsIcon icon={Notification03Icon} size={14} className="text-muted-foreground" />
               알림 설정
             </DropdownMenuItem>
