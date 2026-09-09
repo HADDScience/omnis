@@ -115,8 +115,8 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-svh bg-background text-foreground lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
-      <aside className="relative hidden overflow-hidden bg-[#0b1020] text-white lg:flex lg:min-h-svh lg:flex-col lg:justify-between">
+    <main className="grid h-dvh min-h-0 overflow-y-auto bg-background text-foreground lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
+      <aside className="relative hidden overflow-hidden bg-[#0b1020] text-white lg:flex lg:h-full lg:flex-col lg:justify-between">
         <div className="absolute inset-0 bg-[linear-gradient(135deg,#0b1020_0%,#172554_46%,#4f46e5_100%)]" />
         <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:44px_44px]" />
         <div className="absolute right-[-120px] top-20 h-[360px] w-[360px] rounded-full border border-white/15" />
@@ -162,7 +162,7 @@ export default function LoginPage() {
         </div>
       </aside>
 
-      <section className="flex min-h-svh items-center justify-center bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-5 py-10 dark:bg-[linear-gradient(180deg,var(--background)_0%,#111111_100%)] sm:px-8">
+      <section className="flex min-h-full items-center justify-center bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-5 py-10 dark:bg-[linear-gradient(180deg,var(--background)_0%,#111111_100%)] sm:px-8">
         <div className="w-full max-w-[420px]">
           <div className="mb-9 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2.5">
