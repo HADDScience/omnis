@@ -141,7 +141,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
           open ? "translate-x-0" : "pointer-events-none translate-x-full"
         )}
       >
-        <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2 md:h-11">
+        <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2 md:h-11 [@media(pointer:coarse)]:h-[52px]">
           <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
             {tabs.map((t) => (
               <button
@@ -154,7 +154,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
                 aria-pressed={view === t.key}
                 title={t.hint ?? t.label}
                 className={cn(
-                  "inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] whitespace-nowrap transition-colors md:h-7",
+                  "touch-target inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] whitespace-nowrap transition-colors md:h-7",
                   view === t.key
                     ? "border-primary/30 bg-primary/10 font-medium text-primary"
                     : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -168,6 +168,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
           <Button
             variant="ghost"
             size="icon-sm"
+            className="touch-target"
             aria-label="패널 닫기"
             title="패널 닫기 (C)"
             onClick={() => setOpen(false)}

@@ -116,7 +116,7 @@ function MemberCard({ member }: { member: MemberStat }) {
               <Link
                 key={t.id}
                 href={`/tasks/${t.id}`}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted transition-colors"
+                className="flex items-start gap-2 px-3 py-1.5 hover:bg-muted transition-colors"
               >
                 <Badge
                   variant="secondary"
@@ -124,7 +124,9 @@ function MemberCard({ member }: { member: MemberStat }) {
                 >
                   {TASK_STATUS_LABELS[t.status]?.slice(0, 2) ?? t.status}
                 </Badge>
-                <span className="text-xs truncate">{t.name}</span>
+                {/* min-w-0 이 없으면 truncate 가 먹지 않아 줄이 카드를 밀어낸다 —
+                    Card 의 overflow-hidden 이 200px 에서 145px 을 잘라내고 있었다 */}
+                <span className="min-w-0 flex-1 line-clamp-2 text-xs">{t.name}</span>
               </Link>
             ))
           )}

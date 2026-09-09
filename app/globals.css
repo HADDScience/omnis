@@ -260,7 +260,11 @@
     }
   html {
     @apply font-sans;
-    font-size: 13px;
+    /* 13px 을 절대값으로 박으면 사용자가 브라우저에서 키워 둔 기본 글꼴 크기를
+       통째로 무시한다. 81.25% = 13/16 — 기본값(16px)에서는 13px 그대로이고,
+       사용자가 20px 로 키워 두면 16.25px 로 같은 비율만큼 따라 커진다.
+       (실측 2026-09-09: 시스템 글꼴·화면 크기 확대가 웹에 닿는 경로) */
+    font-size: 81.25%;
     letter-spacing: -0.01em;
 
     /* 화면이 작다는 지적(2026-09-04). 브라우저에서 110% 로 키우면 딱 맞는다고 해서
@@ -419,11 +423,18 @@
     touch-action: manipulation;
   }
 
-  .touch-target,
   [data-slot="tabs-trigger"],
   /* 모바일 Sheet 사이드바만 — 데스크톱 아이콘 레일(size-8)은 건드리지 않는다 */
   [data-mobile="true"] [data-sidebar="menu-button"] {
     min-height: 44px;
+  }
+
+  /* 아이콘 하나짜리 버튼은 세로만 키우면 세로로 긴 알약이 된다 — 정사각으로 맞춘다.
+     min-width 를 줘도 이들은 모두 shrink-0 이고 옆의 제목은 truncate 라
+     200px 폭에서도 가로로 넘치지 않는다(실측 2026-09-09). */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 

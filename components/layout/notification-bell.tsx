@@ -141,7 +141,7 @@ export function NotificationBell() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
-          <Button variant="ghost" size="icon" className="relative h-8 w-8" />
+          <Button variant="ghost" size="icon" className="touch-target relative h-8 w-8" />
         }
       >
         <HugeiconsIcon icon={Notification03Icon} size={18} />

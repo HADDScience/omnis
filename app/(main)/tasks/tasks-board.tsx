@@ -136,7 +136,9 @@ function TaskCard({ task }: { task: KanbanTask }) {
         {(task.productName || task.projectName) && (
           <span
             className={[
-              "inline-flex h-4 max-w-[160px] items-center truncate rounded-full border px-1.5 text-[9px] font-medium leading-none",
+              // max-w-[160px] + truncate 는 화면 폭과 무관하게 프로젝트명을 잘랐다 —
+              // 실측에서 12건 전부, 최대 110px 이 잘려 있었다. 폭은 카드에 맡기고 두 줄까지 편다.
+              "line-clamp-2 max-w-full rounded-full border px-1.5 py-0.5 text-[9px] font-medium leading-tight",
               projectColorClass(task.productName ?? task.projectName ?? ""),
             ].join(" ")}
             title={[task.productName, task.projectName].filter(Boolean).join(" / ")}

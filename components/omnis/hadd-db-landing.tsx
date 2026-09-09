@@ -212,7 +212,7 @@ export function HaddDbLanding({
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[13.5px] font-semibold">사내 자료 (NAS)</div>
-            <div className="truncate text-[11.5px] text-muted-foreground">
+            <div className="text-[11.5px] leading-snug text-muted-foreground">
               아직 카드로 정리되지 않고 시놀로지에 파일로만 있는 것들
             </div>
           </div>
@@ -234,7 +234,7 @@ export function HaddDbLanding({
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[13.5px] font-semibold">옴니스에게 질문하기</div>
-            <div className="truncate text-[11.5px] text-muted-foreground">
+            <div className="text-[11.5px] leading-snug text-muted-foreground">
               자연어로 물어보면 사내 지식에서 바로 답을 찾아드려요
             </div>
           </div>
@@ -293,8 +293,8 @@ export function HaddDbLanding({
               <div className="p-3 text-[11px] text-muted-foreground">기록 없음</div>
             ) : (
               activityLogs.map((log) => (
-                <div key={log.id} className="flex items-center gap-2 border-b px-3 py-2 last:border-b-0">
-                  <span className="min-w-0 flex-1 truncate text-[12px]">{log.title}</span>
+                <div key={log.id} className="flex items-start gap-2 border-b px-3 py-2 last:border-b-0">
+                  <span className="min-w-0 flex-1 line-clamp-2 text-[12px]">{log.title}</span>
                   <span className="text-[10px] text-muted-foreground">{log.userName ?? "system"}</span>
                 </div>
               ))
