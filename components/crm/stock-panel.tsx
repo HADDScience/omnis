@@ -20,6 +20,8 @@ interface StockView {
   name: string
   spec: string | null
   kind: string | null
+  /** 용량(ml). 없으면 규격 문자열만 있는 품목(세트·동결건조 등) */
+  volumeMl: number | null
   unit: "PIECE" | "GRAM"
   inQty: number
   outQty: number
@@ -49,6 +51,74 @@ interface ProductionView {
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
+
+/**
+ * 1개에 드는 원료 그램을 보여줄 때만 반올림한다.
+ * 계산에 쓰는 gramsPerUnit 자체는 건드리지 않는다 — 0.0074 × 3 을 미리 자르면
+ * 소요량이 틀어진다. 화면에는 2.22e-2 가 "0.022199999999999998g" 로 나오던 것만 막는다.
+ */
+const perUnitLabel = (g: number) => `${Math.round(g * 10000) / 10000}`
+
+/**
+ * 완제품을 제품 → 타입 → 용량 세 단으로 묶는다.
+ *
+ * 평평한 목록으로 두면 "애드젤"이 시린지 5ml·시린지 2ml·바이알 5ml·세트·동결건조로
+ * 다섯 줄에 흩어져, 애드젤이 통틀어 몇 개 남았는지를 사람이 눈으로 더해야 했다.
+ * (사용자 지적, 2026-09-09)
+ *
+ * 타입(kind)이 비어 있는 품목이 있다 — 라이브젤·고정제. 빈 타입에 "기타" 같은
+ * 이름을 지어 붙이면 없는 분류를 만드는 셈이라, 소제목 없이 제품 바로 아래에 둔다.
+ */
+export interface GoodsGroup {
+  name: string
+  /** 이 제품에 속한 품목 수 */
+  count: number
+  /** 잔량 합계. 단위가 섞여 있으면 더하지 않는다 */
+  total: number | null
+  unit: "PIECE" | "GRAM"
+  kinds: { kind: string; items: StockView[] }[]
+}
+
+function groupGoods(goods: StockView[]): GoodsGroup[] {
+  const byName = new Map<string, StockView[]>()
+  for (const g of goods) {
+    const arr = byName.get(g.name)
+    if (arr) arr.push(g)
+    else byName.set(g.name, [g])
+  }
+
+  // 용량 순 — 숫자로 아는 것이 먼저, 모르는 것(세트·동결건조)은 뒤에 이름 순
+  const byVolume = (a: StockView, b: StockView) => {
+    if (a.volumeMl != null && b.volumeMl != null) return a.volumeMl - b.volumeMl
+    if (a.volumeMl != null) return -1
+    if (b.volumeMl != null) return 1
+    return (a.spec ?? "").localeCompare(b.spec ?? "", "ko")
+  }
+
+  return [...byName.entries()].map(([name, items]) => {
+    const unit = items[0].unit
+    const mixedUnit = items.some((i) => i.unit !== unit)
+
+    const byKind = new Map<string, StockView[]>()
+    for (const it of items) {
+      const k = it.kind ?? ""
+      const arr = byKind.get(k)
+      if (arr) arr.push(it)
+      else byKind.set(k, [it])
+    }
+
+    return {
+      name,
+      count: items.length,
+      total: mixedUnit ? null : items.reduce((sum, i) => sum + i.balance, 0),
+      unit,
+      kinds: [...byKind.entries()]
+        // 타입 없는 묶음이 맨 위 — 제품 바로 아래에 붙어야 읽힌다
+        .sort((a, b) => (a[0] === "" ? -1 : b[0] === "" ? 1 : a[0].localeCompare(b[0], "ko")))
+        .map(([kind, list]) => ({ kind, items: [...list].sort(byVolume) })),
+    }
+  })
+}
 
 /**
  * 재고 화면.
@@ -211,6 +281,7 @@ export function StockPanel({
   }
 
   // 원료든 완제품이든 다 고를 수 있다. 실사는 완제품에도 필요하다.
+  const goodsGroups = groupGoods(goods)
   const allItems = [...materials, ...goods]
   const inItem = allItems.find((x) => x.id === inItemId) ?? null
   const stockOptions: PickerOption[] = allItems.map((m) => ({
@@ -570,13 +641,96 @@ export function StockPanel({
           </div>
         )}
 
-        <div className="flex flex-col gap-2">
-          {goods.map((g) => (
-            <StockCard key={g.id} s={g} />
+        <div className="flex flex-col gap-3">
+          {goodsGroups.map((grp) => (
+            <section key={grp.name} className="overflow-hidden rounded-xl border bg-card">
+              <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b bg-muted/40 px-4 py-2.5">
+                <h3 className="min-w-0 text-[14px] font-semibold">{grp.name}</h3>
+                <span className="shrink-0 text-[11px] text-muted-foreground">{grp.count}종</span>
+                {grp.total != null && (
+                  <span
+                    className={cn(
+                      "ml-auto shrink-0 font-mono text-[15px] font-bold",
+                      grp.total < 0 && "text-destructive"
+                    )}
+                  >
+                    {formatStock(grp.total, grp.unit)}
+                  </span>
+                )}
+              </header>
+
+              {grp.kinds.map((k) => (
+                <div key={k.kind || "_"} className="border-b last:border-b-0">
+                  {k.kind && (
+                    <div className="px-4 pt-2.5">
+                      <Badge variant="outline" className="text-[10.5px]">
+                        {k.kind}
+                      </Badge>
+                    </div>
+                  )}
+                  <div className="flex flex-col divide-y">
+                    {k.items.map((s) => (
+                      <StockRow key={s.id} s={s} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </section>
           ))}
         </div>
       </section>
     </>
+  )
+}
+
+/**
+ * 용량 한 줄. 제품명·타입은 위 계층이 이미 말했으므로 되풀이하지 않는다.
+ * 이동 내역은 접어 둔다 — 품목마다 6줄씩 펼쳐 두면 그룹이 다시 안 보인다.
+ */
+function StockRow({ s }: { s: StockView }) {
+  return (
+    <div className="px-4 py-2.5">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="text-[13px] font-medium">{s.spec ?? "규격 없음"}</span>
+        <span className="font-mono text-[10.5px] text-muted-foreground">{s.code}</span>
+        {s.gramsPerUnit != null && (
+          <span className="text-[10.5px] text-muted-foreground">1개에 {perUnitLabel(s.gramsPerUnit)}g</span>
+        )}
+        <span
+          className={cn(
+            "ml-auto shrink-0 font-mono text-[14px] font-semibold",
+            s.balance < 0 && "text-destructive"
+          )}
+        >
+          {formatStock(s.balance, s.unit)}
+        </span>
+      </div>
+      <div className="mt-0.5 flex flex-wrap gap-x-3 font-mono text-[10.5px] text-muted-foreground">
+        <span>입고 {formatStock(s.inQty, s.unit)}</span>
+        <span>출고 {formatStock(s.outQty, s.unit)}</span>
+      </div>
+
+      {s.moves.length > 0 && (
+        <details className="mt-1.5">
+          <summary className="w-fit cursor-pointer list-none text-[11px] text-muted-foreground underline-offset-2 hover:underline">
+            이동 내역 {s.moves.length}건
+          </summary>
+          <div className="mt-1.5 flex flex-col gap-1 border-t pt-2">
+            {s.moves.map((m) => (
+              <div key={m.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px]">
+                <span className="font-mono text-muted-foreground">{m.movedAt}</span>
+                <Badge variant={m.direction === "IN" ? "secondary" : "outline"}>
+                  {m.direction === "IN" ? "입고" : "출고"}
+                </Badge>
+                <span className="font-mono">{formatStock(m.quantity, s.unit)}</span>
+                {/* 메모는 자르지 않는다 — 320px 에서 141px 이 잘려 나가고 있었다 */}
+                {m.note && <span className="min-w-0 text-muted-foreground">{m.note}</span>}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
   )
 }
 
@@ -588,7 +742,7 @@ function StockCard({ s }: { s: StockView }) {
         {s.spec && <span className="text-[12px] text-muted-foreground">{s.spec}</span>}
         {s.kind && <Badge variant="outline">{s.kind}</Badge>}
         {s.gramsPerUnit != null && (
-          <span className="text-[11px] text-muted-foreground">1개에 {s.gramsPerUnit}g</span>
+          <span className="text-[11px] text-muted-foreground">1개에 {perUnitLabel(s.gramsPerUnit)}g</span>
         )}
         <span
           className={cn(
@@ -613,7 +767,7 @@ function StockCard({ s }: { s: StockView }) {
                 {m.direction === "IN" ? "입고" : "출고"}
               </Badge>
               <span className="font-mono">{formatStock(m.quantity, s.unit)}</span>
-              {m.note && <span className="truncate text-muted-foreground">{m.note}</span>}
+              {m.note && <span className="min-w-0 text-muted-foreground">{m.note}</span>}
             </div>
           ))}
         </div>
