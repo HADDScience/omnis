@@ -11,6 +11,8 @@ import {
   MailAtSign01Icon,
   ShieldKeyIcon,
   WorkflowSquare08Icon,
+  ViewIcon,
+  ViewOffIcon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,6 +58,7 @@ export default function LoginPage() {
   const router = useRouter()
   const [name, setName] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [socials, setSocials] = useState<SocialProvider[]>([])
@@ -234,14 +237,27 @@ export default function LoginPage() {
                 />
                 <Input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   placeholder="비밀번호"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="h-12 rounded-lg border-border bg-white pl-10 pr-3 text-[14px] shadow-sm placeholder:text-muted-foreground/70 dark:bg-input/30"
+                  className="h-12 rounded-lg border-border bg-white pl-10 pr-11 text-[14px] shadow-sm placeholder:text-muted-foreground/70 dark:bg-input/30"
                 />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                >
+                  <HugeiconsIcon
+                    icon={showPassword ? ViewOffIcon : ViewIcon}
+                    size={17}
+                    aria-hidden
+                  />
+                </button>
               </div>
             </div>
 
