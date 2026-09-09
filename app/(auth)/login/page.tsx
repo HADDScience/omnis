@@ -78,10 +78,15 @@ export default function LoginPage() {
   // 연결되지 않은 소셜로 들어온 경우. 소셜만으로는 계정이 만들어지지 않는다.
   // useSearchParams 를 쓰면 이 페이지가 정적 프리렌더를 못 하므로 효과 안에서 직접 읽는다.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("error") === "notlinked") {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get("error") === "notlinked") {
       setError(
         "아직 이 계정에 연결되지 않은 소셜 로그인입니다. 이름·비밀번호로 로그인한 뒤 설정 → 소셜 로그인 연결에서 연결해 주세요."
       )
+      // 오류는 한 번만 보여준다. 주소에 남겨 두면 새로고침하거나
+      // 자격 증명 로그인을 다시 시도할 때 소셜 로그인 오류가 되살아난다.
+      url.searchParams.delete("error")
+      window.history.replaceState(null, "", url.toString())
     }
   }, [])
 
