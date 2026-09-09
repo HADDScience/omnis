@@ -13,6 +13,7 @@ export function RightPanelTrigger() {
     <Button
       variant="ghost"
       size="icon-sm"
+      className="touch-target"
       aria-label={label}
       aria-pressed={open}
       title={`${label} (C)`}

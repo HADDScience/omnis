@@ -85,8 +85,12 @@ export function DashboardStalled({ groups }: { groups: StalledGroups }) {
         <Tabs defaultValue={LANES[0].key}>
           <TabsList className="grid w-full grid-cols-3">
             {LANES.map((lane) => (
-              <TabsTrigger key={lane.key} value={lane.key} className="gap-1.5 text-[12px]">
-                <span className="truncate">{lane.label}</span>
+              <TabsTrigger
+                key={lane.key}
+                value={lane.key}
+                className="h-auto gap-1.5 py-1.5 text-[12px] whitespace-normal"
+              >
+                <span className="text-center leading-tight">{lane.label}</span>
                 {groups[lane.key].length > 0 && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px]">
                     {groups[lane.key].length}
@@ -118,9 +122,11 @@ export function DashboardStalled({ groups }: { groups: StalledGroups }) {
                         <li key={t.id}>
                           <Link
                             href={`/tasks/${t.id}`}
-                            className="flex min-h-11 items-center gap-3 px-3 py-2 transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                            className="flex min-h-11 items-start gap-3 px-3 py-2 transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
                           >
-                            <span className="min-w-0 flex-1 truncate text-[13px]">{t.name}</span>
+                            {/* 한 줄로 자르면 320px 에서 제목의 252px 이 사라진다.
+                                주어지는 정보량이 화면 폭에 따라 달라지지 않게 두 줄까지 편다. */}
+                            <span className="min-w-0 flex-1 line-clamp-2 text-[13px]">{t.name}</span>
                             <Badge variant="outline" className="shrink-0 text-[10px]">
                               {t.ownerName}
                             </Badge>

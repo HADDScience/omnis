@@ -265,7 +265,8 @@ function SidebarTrigger({
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
-      className={cn(className)}
+      // touch-target — 터치 기기에서 44×44 로 커진다(규칙 30). 26×26 이었다
+      className={cn("touch-target", className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()

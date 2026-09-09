@@ -95,7 +95,8 @@ export function TaskCard({ task, variant = "board", className }: TaskCardProps) 
         </Badge>
         <span
           className={cn(
-            "min-w-0 flex-1 truncate text-[13px] font-medium",
+            // 한 줄로 자르면 좁은 화면에서 제목 절반이 사라진다 — 두 줄까지 편다
+            "min-w-0 flex-1 line-clamp-2 text-[13px] font-medium",
             isDone && "text-muted-foreground line-through",
           )}
         >

@@ -51,6 +51,9 @@ export default async function CrmInventoryPage() {
       name: p.name,
       spec: p.spec,
       kind: p.kind,
+      // 용량 정렬용 — "1ml"·"2ml"·"5ml" 을 문자열로 세우면 10ml 이 1ml 뒤가 아니라
+      // 1ml 옆에 붙는다. 숫자로 세운다.
+      volumeMl: p.volumeMl ? Number(p.volumeMl) : null,
       unit: p.stockUnit,
       inQty,
       outQty,

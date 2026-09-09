@@ -118,7 +118,13 @@ export default async function TasksPage({ searchParams }: Props) {
               전체
             </Badge>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1.5">
+            <Link
+              href="/tasks/projects"
+              className="inline-flex h-8 shrink-0 items-center rounded-md px-2.5 text-[11.5px] font-medium transition-colors hover:bg-muted hover:text-foreground"
+            >
+              프로젝트 정리
+            </Link>
             <TaskCreateButton />
           </div>
         </div>
