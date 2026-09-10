@@ -95,7 +95,7 @@ export const OMNIS_TOOLS = [
   {
     name: "ask_omnis",
     description:
-      "옴니스 AI 에게 묻는다. 업무·채팅·지식 카드·주간보고·지식재산권·CRM 을 검색하고 현황 전량을 붙여 답한다. 「X 어디까지 됐어」「지연된 업무」「재고 얼마 남았어」처럼 현황을 묻는 질문에 먼저 쓴다. 화면의 「Omnis AI 에게 질문하기」와 같은 것이다.",
+      "옴니스 AI 에게 묻는다. 질문에 맞춰 검색·업무·CRM·지식재산권 도구를 스스로 골라 부르고 답한다. 「X 어디까지 됐어」「지연된 업무」「재고 얼마 남았어」처럼 현황을 묻는 질문에 먼저 쓴다. 화면의 「Omnis AI 에게 질문하기」와 같은 것이다.",
     inputSchema: {
       type: "object",
       properties: { question: { type: "string", description: "한국어 질문. 500자 이내." } },

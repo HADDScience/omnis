@@ -555,7 +555,18 @@ export async function answerWithOmnis(
   if (chunks.length === 0 && !taskOverview) {
     return "참고할 만한 사내 자료를 찾지 못했어요. 질문을 더 구체적으로 바꾸거나, 옴니스 카드에 관련 내용을 추가해 주세요."
   }
+  return callGemini(buildOmnisAnswerPrompt(question, chunks, taskOverview), "omnisAsk", userId, 0.3)
+}
 
+/**
+ * 옴니스 답변 프롬프트 본문. answerWithOmnis 와 bench/ 가 같은 문장을 쓴다 —
+ * 벤치마크가 프로덕션과 다른 프롬프트를 재면 비교가 무의미해서 여기서만 만든다.
+ */
+export function buildOmnisAnswerPrompt(
+  question: string,
+  chunks: { title: string; content: string; sourceLabel: string }[],
+  taskOverview?: string
+): string {
   const references =
     chunks.length > 0
       ? chunks
@@ -571,7 +582,7 @@ export async function answerWithOmnis(
     : ""
 
   const today = new Date().toISOString().slice(0, 10)
-  const prompt = `당신은 HADD Science의 사내 지식 비서 "옴니스"입니다.
+  return `당신은 HADD Science의 사내 지식 비서 "옴니스"입니다.
 오늘 날짜는 ${today}입니다.
 아래 [참고 자료]와 [현황 자료]를 근거로 직원의 질문에 답하세요.
 
@@ -590,6 +601,163 @@ ${references}${overviewSection}
 ${question}
 
 [답변]`
+}
 
-  return callGemini(prompt, "omnisAsk", userId, 0.3)
+// ─── 함수 호출 루프 (도구 라우팅) ────────────────────────────────
+//
+// 옴니스 질문을 "검색 top-K + 현황 전량" 대신 모델이 도구를 골라 부르는 루프로 푼다.
+// 벤치(2026-09-09, mydocs/working/2026-09-09-benchmark-round1.md)에서 이 방식이 10문항 만점,
+// 질문당 8원, 4.9초로 현행(1.6점 · 15.8원 · 7.9초)을 앞섰다. JSON 프로토콜 대신 Gemini
+// 네이티브 함수 호출을 쓴다 — 벤치에서 산문으로 새던 실패를 없애기 위해서다.
+
+export interface GeminiFunctionDeclaration {
+  name: string
+  description: string
+  parameters?: Record<string, unknown>
+}
+
+export interface GeminiToolCall {
+  name: string
+  args: Record<string, unknown>
+}
+
+export interface ToolLoopUsage {
+  promptTokens: number
+  candidateTokens: number
+  thinkingTokens: number
+  cachedTokens: number
+}
+
+export interface ToolLoopResult {
+  text: string
+  usage: ToolLoopUsage
+  /** 모델 호출 횟수 */
+  calls: number
+  /** 도구 호출 자취 */
+  trace: { step: number; tool: string; args: Record<string, unknown>; resultChars: number; ms: number }[]
+  /** 모델 호출에 걸린 시간 합계(ms) · 도구 실행 시간 합계(ms) */
+  llmMs: number
+  toolMs: number
+  /** 단계 한도 안에 답을 못 냈으면 이유 */
+  error?: string
+}
+
+export interface ToolLoopOptions {
+  model?: string
+  /** 2.5 계열은 budget(0 = 끔), 3.x 계열은 level */
+  thinking?: { budget?: number; level?: "minimal" | "low" | "medium" | "high" }
+  maxSteps?: number
+  temperature?: number
+  endpoint?: string
+  userId?: string
+}
+
+type GeminiPart = Record<string, unknown> & {
+  text?: string
+  thought?: boolean
+  functionCall?: { name: string; args?: Record<string, unknown> }
+}
+
+/**
+ * 시스템 지시 + 도구 목록으로 질문을 풀 때까지 모델과 도구를 번갈아 부른다.
+ * 도구 실행은 호출자가 준다(runTool). 모델이 낸 parts 는 thoughtSignature 까지 그대로 되돌려 보낸다 —
+ * Gemini 3 는 함수 호출 뒤 그 서명이 없으면 거절한다.
+ */
+export async function runGeminiToolLoop(
+  system: string,
+  question: string,
+  tools: GeminiFunctionDeclaration[],
+  runTool: (call: GeminiToolCall) => Promise<string>,
+  opts: ToolLoopOptions = {}
+): Promise<ToolLoopResult> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다")
+  const model = opts.model ?? "gemini-3.8-flash"
+  const endpoint = opts.endpoint ?? "toolLoop"
+  const maxSteps = opts.maxSteps ?? 6
+  const generationConfig: Record<string, unknown> = { temperature: opts.temperature ?? 0.2, maxOutputTokens: 4096 }
+  if (opts.thinking?.budget !== undefined) generationConfig.thinkingConfig = { thinkingBudget: opts.thinking.budget }
+  else if (opts.thinking?.level) generationConfig.thinkingConfig = { thinkingLevel: opts.thinking.level.toUpperCase() }
+
+  const contents: { role: "user" | "model"; parts: GeminiPart[] }[] = [{ role: "user", parts: [{ text: question }] }]
+  const usage: ToolLoopUsage = { promptTokens: 0, candidateTokens: 0, thinkingTokens: 0, cachedTokens: 0 }
+  const trace: ToolLoopResult["trace"] = []
+  let calls = 0
+  let llmMs = 0
+  let toolMs = 0
+
+  for (let step = 1; step <= maxSteps; step++) {
+    const body = JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents,
+      tools: [{ functionDeclarations: tools }],
+      toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+      generationConfig,
+    })
+    await assertGeminiUsageAllowed({ endpoint, userId: opts.userId, estimatedTokens: estimateGeminiTokens([body]) + 4096 })
+
+    const t0 = performance.now()
+    let res: Response | undefined
+    let lastErr = ""
+    for (let attempt = 0; attempt < 6; attempt++) {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      })
+      if (res.ok) break
+      lastErr = await res.text()
+      const transient = res.status === 503 || (res.status === 429 && !/spend(ing)? cap/i.test(lastErr))
+      if (!transient || attempt === 5) throw new Error(`Gemini API 오류 (${endpoint}): ${res.status} ${lastErr}`)
+      await new Promise((r) => setTimeout(r, Math.min(2000 * (attempt + 1), 9000)))
+    }
+    if (!res?.ok) throw new Error(`Gemini API 오류 (${endpoint}): ${lastErr}`)
+    llmMs += performance.now() - t0
+    calls++
+
+    const data = (await res.json()) as {
+      candidates?: { content?: { parts?: GeminiPart[] }; finishReason?: string }[]
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; cachedContentTokenCount?: number; totalTokenCount?: number }
+    }
+    const u = data.usageMetadata
+    if (u) {
+      usage.promptTokens += u.promptTokenCount ?? 0
+      usage.candidateTokens += u.candidatesTokenCount ?? 0
+      usage.thinkingTokens += u.thoughtsTokenCount ?? 0
+      usage.cachedTokens += u.cachedContentTokenCount ?? 0
+      try {
+        await recordGeminiUsage({ endpoint, promptTokens: u.promptTokenCount ?? 0, candidateTokens: u.candidatesTokenCount ?? 0, totalTokens: u.totalTokenCount ?? 0, userId: opts.userId })
+      } catch (err) {
+        console.error("[gemini-usage] 사용량 기록 실패", { endpoint, err })
+      }
+    }
+
+    const parts = data.candidates?.[0]?.content?.parts ?? []
+    const callsInTurn = parts.filter((p) => p.functionCall)
+    if (callsInTurn.length === 0) {
+      const text = parts.filter((p) => !p.thought).map((p) => p.text ?? "").join("").trim()
+      return { text, usage, calls, trace, llmMs: Math.round(llmMs), toolMs: Math.round(toolMs) }
+    }
+
+    // 모델 턴은 받은 그대로(thoughtSignature 포함) 되돌리고, 도구 결과를 한 턴에 모아 보낸다.
+    contents.push({ role: "model", parts })
+    const responses: GeminiPart[] = []
+    for (const p of callsInTurn) {
+      const call = { name: p.functionCall!.name, args: p.functionCall!.args ?? {} }
+      const tt = performance.now()
+      let result: string
+      try {
+        result = await runTool(call)
+      } catch (err) {
+        result = `오류: ${String(err).slice(0, 300)}`
+      }
+      const ms = Math.round(performance.now() - tt)
+      toolMs += ms
+      trace.push({ step, tool: call.name, args: call.args, resultChars: result.length, ms })
+      responses.push({ functionResponse: { name: call.name, response: { result: result.slice(0, 12_000) } } })
+    }
+    contents.push({ role: "user", parts: responses })
+  }
+
+  return { text: "", usage, calls, trace, llmMs: Math.round(llmMs), toolMs: Math.round(toolMs), error: `${maxSteps}단계 안에 답을 내지 못했습니다` }
 }

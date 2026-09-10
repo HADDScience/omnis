@@ -2,10 +2,11 @@
 //
 // 검색(top-K) + 현황 전량(업무·지식재산권·CRM) + 생성. 라우트에서 그대로 옮겼다(2026-09-07).
 import { prisma } from "@/lib/db"
+import type { Prisma } from "@/generated/prisma/client"
 import { assigneeLabel } from "@/lib/task-assignees"
-import { retrieveContext, type EmbeddingSource } from "@/lib/embeddings"
+import { retrieveContext, retrieveHybrid, type EmbeddingSource, type RetrievedChunk } from "@/lib/embeddings"
 import { stockBalance, quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
-import { answerWithOmnis } from "@/lib/ai"
+import { answerWithOmnis, runGeminiToolLoop, type GeminiFunctionDeclaration, type ToolLoopUsage } from "@/lib/ai"
 import { writeActivity } from "@/lib/api"
 import { listCases, listOpenTurns } from "@/lib/ip-data"
 
@@ -225,16 +226,149 @@ export async function buildIpOverview(): Promise<string> {
 }
 
 
+export interface AskSource { id: string; source: EmbeddingSource; sourceId: string; title: string; sourceLabel: string; similarity: number }
+
+export interface AskMeta {
+  mode: "route" | "baseline"
+  model: string
+  /** 모델 호출 횟수 (route 는 2 이상) */
+  calls: number
+  usage: ToolLoopUsage
+  /** 전체 · 모델 호출 합계 · 도구(검색·DB) 합계 */
+  ms: { total: number; llm: number; tools: number }
+  trace: { step: number; tool: string; args: Record<string, unknown>; resultChars: number; ms: number }[]
+}
+
 export interface AskResult {
   id: string
   question: string
   answer: string
-  sources: { id: string; source: EmbeddingSource; sourceId: string; title: string; sourceLabel: string; similarity: number }[]
+  sources: AskSource[]
   createdAt: Date
+  /** 비용·시간 관찰용. 화면은 안 쓰고 e2e·벤치가 읽는다 */
+  meta: AskMeta
+}
+
+/** 어느 길로 답할지. 기본은 도구 라우팅. 되돌릴 일이 있으면 OMNIS_ASK_MODE=baseline */
+export function askMode(): "route" | "baseline" {
+  return process.env.OMNIS_ASK_MODE === "baseline" ? "baseline" : "route"
+}
+
+export interface RouteOptions {
+  model?: string
+  thinking?: { budget?: number; level?: "minimal" | "low" | "medium" | "high" }
+  /** 기록(OmnisQuery·활동) 없이 답만 — 벤치용 */
+  dryRun?: boolean
 }
 
 /** 질문 한 번 — 검색·생성·기록까지. 실패는 그대로 던진다(호출자가 응답 형식을 정한다). */
 export async function askOmnis(question: string, userId: string): Promise<AskResult> {
+  if (askMode() === "route") return askOmnisRoute(question, userId)
+  return askOmnisBaseline(question, userId)
+}
+
+const ROUTE_TOOL_EXCLUDE = new Set(["ask_omnis", "post_message", "create_task", "search_knowledge"])
+
+function routeSystemPrompt(today: string, userName: string): string {
+  return `당신은 HADD Science 의 사내 지식 비서 "옴니스" 입니다. 오늘은 ${today} 이고, 질문한 사람은 ${userName} 입니다.
+직원의 질문에 답하려면 도구를 골라 부르세요. 한 번에 여러 도구를 불러도 됩니다. 최대 5번까지 부를 수 있습니다.
+
+도구 고르는 법:
+- 대화 내용·진행 상황·"누가 뭐라고 했나" 는 search_knowledge 로 찾으세요. 사람 이름·기관명·제품명처럼 고유명사가 있으면 그것을 query 에 넣으세요.
+- 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true), 한 업무의 체크리스트·최근 대화는 get_task.
+- 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org, 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
+- 첫 도구 결과로 충분하면 바로 답하세요. 부족할 때만 더 부르세요.
+
+답변 규칙:
+- 도구 결과에 있는 내용만으로 답하세요. 결과에 없으면 추측하지 말고 "관련 내용을 찾지 못했습니다" 라고 답하세요.
+- search_knowledge 결과를 근거로 쓰면 문장 끝에 [1], [2] 처럼 그 결과의 번호를 표기하세요. 다른 도구 결과는 번호 없이 씁니다.
+- 건수·금액·재고는 도구 결과의 값을 그대로 쓰세요. "전부" 를 물으면 하나도 빠뜨리지 말고 나열하세요.
+- 한국어로 간결하게. 항목이 여러 개면 마크다운 목록이나 표를 쓰세요.`
+}
+
+/**
+ * 도구 라우팅 — 모델이 필요한 자료만 도구로 꺼내 답한다.
+ * 검색(search_knowledge)은 여기서 직접 처리한다: 출처 목록에 청크 메타가 필요해서다.
+ * 나머지 도구는 MCP 서버(lib/omnis-mcp)의 runTool 을 그대로 쓴다 — 화면과 MCP 가 같은 길.
+ */
+export async function askOmnisRoute(question: string, userId: string, opts: RouteOptions = {}): Promise<AskResult> {
+  const t0 = performance.now()
+  const { OMNIS_TOOLS, runTool } = await import("@/lib/omnis-mcp")
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, role: true } })
+  if (!user) throw new Error("사용자를 찾지 못했습니다")
+  const caller = { userId, name: user.name, role: user.role === "ADMIN" ? ("ADMIN" as const) : ("MEMBER" as const), ip: null }
+  const model = opts.model ?? process.env.OMNIS_ASK_MODEL ?? "gemini-3.8-flash"
+  const thinking = opts.thinking ?? (model.startsWith("gemini-2.5") ? { budget: 0 } : { level: "low" as const })
+
+  const tools: GeminiFunctionDeclaration[] = [
+    {
+      name: "search_knowledge",
+      description: "의미 + 키워드 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권 조각을 돌려준다. 대화 내용·진행 상황·결정을 물으면 먼저 쓴다.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "검색어. 고유명사(사람·기관·제품)를 포함한다" },
+          sources: { type: "array", items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE"] }, description: "생략하면 전부" },
+          limit: { type: "integer", description: "기본 8, 최대 20" },
+        },
+        required: ["query"],
+      },
+    },
+    ...OMNIS_TOOLS.filter((t) => !ROUTE_TOOL_EXCLUDE.has(t.name)).map((t) => {
+      const schema = t.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[] }
+      const hasProps = schema.properties && Object.keys(schema.properties).length > 0
+      return { name: t.name, description: t.description, ...(hasProps ? { parameters: schema } : {}) }
+    }),
+    { name: "ip_overview", description: "상표·특허 전량 한 줄 요약과 우리 차례로 남은 지식재산권 업무. 상표·특허·출원·등록을 물으면 쓴다." },
+  ]
+
+  const found = new Map<string, RetrievedChunk>()
+  const runOne = async (call: { name: string; args: Record<string, unknown> }): Promise<string> => {
+    if (call.name === "search_knowledge") {
+      const q = typeof call.args.query === "string" ? call.args.query : question
+      const sources = Array.isArray(call.args.sources)
+        ? call.args.sources.filter((s): s is EmbeddingSource => typeof s === "string" && s in SOURCE_LABEL)
+        : undefined
+      const limit = Math.min(Math.max(Number(call.args.limit) || 8, 1), 20)
+      const { chunks } = await retrieveHybrid(q, { limit, sources, userId })
+      if (chunks.length === 0) return "비슷한 조각이 없습니다."
+      return chunks
+        .map((c) => {
+          if (!found.has(c.id)) found.set(c.id, c)
+          const n = [...found.keys()].indexOf(c.id) + 1
+          return `[${n}] ${SOURCE_LABEL[c.source]} · ${c.title}\n${c.content.slice(0, 1500)}`
+        })
+        .join("\n\n")
+    }
+    if (call.name === "ip_overview") return (await buildIpOverview()) || "지식재산권 자료가 없습니다."
+    const r = await runTool(call.name, call.args, caller)
+    return "error" in r ? `오류: ${r.error}` : r.text
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const loop = await runGeminiToolLoop(routeSystemPrompt(today, user.name), question, tools, runOne, {
+    model, thinking, maxSteps: 6, endpoint: "omnisAsk.route", userId,
+  })
+  const answer = loop.text || (loop.error ? `답을 정리하지 못했습니다 (${loop.error}). 질문을 더 구체적으로 바꿔 주세요.` : "관련 내용을 찾지 못했습니다.")
+
+  const sources: AskSource[] = [...found.values()].map((c) => ({
+    id: c.id, source: c.source, sourceId: c.sourceId, title: c.title, sourceLabel: SOURCE_LABEL[c.source], similarity: Math.round(c.similarity * 100),
+  }))
+  const meta: AskMeta = {
+    mode: "route", model, calls: loop.calls, usage: loop.usage,
+    ms: { total: Math.round(performance.now() - t0), llm: loop.llmMs, tools: loop.toolMs }, trace: loop.trace,
+  }
+
+  if (opts.dryRun) return { id: "", question, answer, sources, createdAt: new Date(), meta }
+
+  const saved = await prisma.omnisQuery.create({ data: { userId, question, answer, sources: sources as unknown as Prisma.InputJsonValue } })
+  await writeActivity({ userId, action: "omnis.asked", entity: "OMNIS_QUERY", entityId: saved.id, title: `질문: ${question}` })
+  return { id: saved.id, question: saved.question, answer: saved.answer, sources, createdAt: saved.createdAt, meta }
+}
+
+/** 이전 방식 — 벡터 top-8 + 업무·지식재산권·CRM 전량 요약. OMNIS_ASK_MODE=baseline 일 때만 */
+export async function askOmnisBaseline(question: string, userId: string): Promise<AskResult> {
+  const t0 = performance.now()
   // 1. Retrieval — 질문과 유사한 사내 지식 청크 검색
   const chunks = await retrieveContext(question, {
     limit: 8,
@@ -285,5 +419,12 @@ export async function askOmnis(question: string, userId: string): Promise<AskRes
     title: `질문: ${question}`,
   })
 
-  return { id: saved.id, question: saved.question, answer: saved.answer, sources, createdAt: saved.createdAt }
+  return {
+    id: saved.id, question: saved.question, answer: saved.answer, sources, createdAt: saved.createdAt,
+    meta: {
+      mode: "baseline", model: "gemini-2.5-flash", calls: 1,
+      usage: { promptTokens: 0, candidateTokens: 0, thinkingTokens: 0, cachedTokens: 0 },
+      ms: { total: Math.round(performance.now() - t0), llm: 0, tools: 0 }, trace: [],
+    },
+  }
 }

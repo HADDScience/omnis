@@ -496,3 +496,82 @@ export async function retrieveContext(
 
   return rows.filter((r) => r.similarity >= minSimilarity)
 }
+
+// ─── 하이브리드 검색 (벡터 + 키워드, RRF) ──────────────────────────
+//
+// 벡터만으로는 "케이바이오랩스", "비보젤" 같은 고유명사 질문을 놓친다. 벤치(2026-09-09,
+// mydocs/working/2026-09-09-benchmark-round1.md)에서 키워드 일치를 RRF 로 섞으면 같은 모델에서
+// 0.1~0.2 점 오르고 비용은 같았다. Neon 에서 BM25 확장(pg_search)이 2026-09-21 에 끝나
+// ILIKE 로 센다 — 청크가 수만 건이라 충분히 빠르다.
+
+const KEYWORD_STOP = new Set([
+  "어디까지", "진행", "진행됐어", "됐어", "어떻게", "뭐야", "누가", "언제", "어느", "어땠어", "결과", "건은", "건에서",
+  "이랑", "그리고", "대해", "대한", "관련", "최근", "올린", "무엇", "뭘", "했고", "했어", "정했어", "있었어", "하기로",
+  "알려줘", "알려", "보여줘", "정리해줘", "몇", "전부", "모두",
+])
+const KEYWORD_PARTICLES = ["이랑", "에서는", "에서", "으로", "은요", "는요", "이야", "이나", "까지", "부터", "에게", "한테", "처럼", "보다", "은", "는", "이", "가", "을", "를", "의", "에", "도", "로", "과", "와", "랑"]
+
+/**
+ * 질문에서 검색어를 뽑는다. 형태소 분석 없이 조사만 걷어내는 거친 방식이다.
+ * "케이바이오랩스 검수사진이랑" → "케이바이오랩스", "검수사진".
+ */
+export function extractKeywords(question: string): string[] {
+  const raw = question.replace(/[?？!.,·()\[\]"'“”]/g, " ").split(/\s+/).filter(Boolean)
+  const out = new Set<string>()
+  for (const tok of raw) {
+    let t = tok
+    for (const p of KEYWORD_PARTICLES) {
+      if (t.length > p.length + 1 && t.endsWith(p)) { t = t.slice(0, -p.length); break }
+    }
+    if (t.length < 2 || KEYWORD_STOP.has(t) || KEYWORD_STOP.has(tok)) continue
+    if (/^\d+$/.test(t)) continue
+    out.add(t)
+  }
+  return [...out]
+}
+
+interface KeywordRow { id: string; source: EmbeddingSource; sourceId: string; chunkIndex: number; title: string; content: string; hits: number }
+
+/**
+ * 벡터 상위 20 + 키워드 상위 20 을 RRF(1/(60+순위))로 합쳐 상위 limit 개.
+ * similarity 는 벡터 쪽 값이고, 키워드로만 잡힌 청크는 0 이다.
+ */
+export async function retrieveHybrid(
+  query: string,
+  opts: RetrieveOptions = {}
+): Promise<{ chunks: RetrievedChunk[]; keywords: string[] }> {
+  const q = query.trim()
+  if (!q) return { chunks: [], keywords: [] }
+  const limit = opts.limit ?? 8
+  const sources = opts.sources?.length ? opts.sources : ALL_SOURCES
+  const keywords = extractKeywords(q)
+
+  const [vec, kw] = await Promise.all([
+    retrieveContext(q, { limit: 20, minSimilarity: 0, sources, userId: opts.userId }),
+    keywords.length === 0
+      ? Promise.resolve([] as KeywordRow[])
+      : prisma.$queryRawUnsafe<KeywordRow[]>(
+          `SELECT "id","source","sourceId","chunkIndex","title","content",
+                  (${keywords.map((_, i) => `(CASE WHEN "content" ILIKE $${i + 1} OR "title" ILIKE $${i + 1} THEN 1 ELSE 0 END)`).join(" + ")}) AS hits
+           FROM "EmbeddingChunk"
+           WHERE "source" = ANY($${keywords.length + 1}::"EmbeddingSource"[])
+             AND (${keywords.map((_, i) => `"content" ILIKE $${i + 1} OR "title" ILIKE $${i + 1}`).join(" OR ")})
+           ORDER BY hits DESC, "updatedAt" DESC
+           LIMIT 20`,
+          ...keywords.map((k) => `%${k}%`),
+          sources
+        ),
+  ])
+
+  const score = new Map<string, { s: number; row: RetrievedChunk }>()
+  const add = (rows: (RetrievedChunk | KeywordRow)[]) =>
+    rows.forEach((r, i) => {
+      const cur = score.get(r.id)
+      const row: RetrievedChunk = cur?.row ?? { ...r, similarity: "similarity" in r ? r.similarity : 0 }
+      score.set(r.id, { s: (cur?.s ?? 0) + 1 / (60 + i + 1), row })
+    })
+  add(vec)
+  add(kw)
+  const chunks = [...score.values()].sort((a, b) => b.s - a.s).slice(0, limit).map((x) => x.row)
+  return { chunks, keywords }
+}
