@@ -132,7 +132,8 @@ export function ProjectMerge({ projects }: { projects: MergeableProject[] }) {
             <ul className="flex flex-col divide-y rounded-md border">
               {projects.map((p) => (
                 <li key={p.id} className="flex min-h-12 items-center gap-3 px-3 py-2">
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{p.name}</span>
+                  {/* 프로젝트 이름이 잘리면 어느 것을 합치는지 알 수 없다. 행 높이는 자유로우니 다 편다 */}
+                  <span className="min-w-0 flex-1 text-[13px]">{p.name}</span>
                   {p.productName && (
                     <Badge variant="outline" className="shrink-0 text-[10px]">
                       {p.productName}
@@ -198,7 +199,7 @@ export function ProjectMerge({ projects }: { projects: MergeableProject[] }) {
                         targetId === p.id ? "bg-primary/10" : ""
                       }`}
                     >
-                      <span className="min-w-0 flex-1 truncate text-[13px]">{p.name}</span>
+                      <span className="min-w-0 flex-1 text-[13px]">{p.name}</span>
                       <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                         업무 {p.taskCount}
                       </span>
