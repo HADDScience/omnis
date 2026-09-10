@@ -11,6 +11,8 @@ import {
   MailAtSign01Icon,
   ShieldKeyIcon,
   WorkflowSquare08Icon,
+  ViewIcon,
+  ViewOffIcon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,6 +58,7 @@ export default function LoginPage() {
   const router = useRouter()
   const [name, setName] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [socials, setSocials] = useState<SocialProvider[]>([])
@@ -75,10 +78,15 @@ export default function LoginPage() {
   // 연결되지 않은 소셜로 들어온 경우. 소셜만으로는 계정이 만들어지지 않는다.
   // useSearchParams 를 쓰면 이 페이지가 정적 프리렌더를 못 하므로 효과 안에서 직접 읽는다.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("error") === "notlinked") {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get("error") === "notlinked") {
       setError(
         "아직 이 계정에 연결되지 않은 소셜 로그인입니다. 이름·비밀번호로 로그인한 뒤 설정 → 소셜 로그인 연결에서 연결해 주세요."
       )
+      // 오류는 한 번만 보여준다. 주소에 남겨 두면 새로고침하거나
+      // 자격 증명 로그인을 다시 시도할 때 소셜 로그인 오류가 되살아난다.
+      url.searchParams.delete("error")
+      window.history.replaceState(null, "", url.toString())
     }
   }, [])
 
@@ -112,8 +120,8 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-svh bg-background text-foreground lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
-      <aside className="relative hidden overflow-hidden bg-[#0b1020] text-white lg:flex lg:min-h-svh lg:flex-col lg:justify-between">
+    <main className="grid h-dvh min-h-0 overflow-y-auto bg-background text-foreground lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
+      <aside className="relative hidden overflow-hidden bg-[#0b1020] text-white lg:flex lg:h-full lg:flex-col lg:justify-between">
         <div className="absolute inset-0 bg-[linear-gradient(135deg,#0b1020_0%,#172554_46%,#4f46e5_100%)]" />
         <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:44px_44px]" />
         <div className="absolute right-[-120px] top-20 h-[360px] w-[360px] rounded-full border border-white/15" />
@@ -159,7 +167,7 @@ export default function LoginPage() {
         </div>
       </aside>
 
-      <section className="flex min-h-svh items-center justify-center bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-5 py-10 dark:bg-[linear-gradient(180deg,var(--background)_0%,#111111_100%)] sm:px-8">
+      <section className="flex min-h-full items-center justify-center bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-5 py-10 dark:bg-[linear-gradient(180deg,var(--background)_0%,#111111_100%)] sm:px-8">
         <div className="w-full max-w-[420px]">
           <div className="mb-9 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2.5">
@@ -234,14 +242,27 @@ export default function LoginPage() {
                 />
                 <Input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   placeholder="비밀번호"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="h-12 rounded-lg border-border bg-white pl-10 pr-3 text-[14px] shadow-sm placeholder:text-muted-foreground/70 dark:bg-input/30"
+                  className="h-12 rounded-lg border-border bg-white pl-10 pr-11 text-[14px] shadow-sm placeholder:text-muted-foreground/70 dark:bg-input/30"
                 />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                >
+                  <HugeiconsIcon
+                    icon={showPassword ? ViewOffIcon : ViewIcon}
+                    size={17}
+                    aria-hidden
+                  />
+                </button>
               </div>
             </div>
 
