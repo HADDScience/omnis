@@ -13,6 +13,7 @@ import {
   ArrowRight02Icon,
   FolderLibraryIcon,
   StarIcon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons"
 import { Kbd } from "@/components/ui/kbd"
 import { useCommandPalette } from "@/components/layout/command-palette-context"
@@ -222,6 +223,23 @@ export function HaddDbLanding({
             className="shrink-0 text-muted-foreground"
             aria-hidden
           />
+        </Link>
+
+        {/* AI 카드 제안 진입 — 업무에서 뽑은 지식을 사람이 확인한다 */}
+        <Link
+          href="/omnis/proposals"
+          className="mt-3.5 flex items-center gap-3 rounded-lg border bg-card px-5 py-3.5 transition-colors hover:border-border-strong hover:bg-muted/40"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <HugeiconsIcon icon={SparklesIcon} size={19} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold">AI 카드 제안</div>
+            <div className="truncate text-[11.5px] text-muted-foreground">
+              업무가 끝나면 AI 가 찾아낸 회사 지식을 확인하고 카드에 반영해요
+            </div>
+          </div>
+          <HugeiconsIcon icon={ArrowRight02Icon} size={16} className="shrink-0 text-muted-foreground" aria-hidden />
         </Link>
 
         {/* 옴니스 RAG 질문 진입 — 자연어 질문 → 사내 지식 기반 답변 */}

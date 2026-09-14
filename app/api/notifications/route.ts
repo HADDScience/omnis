@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
+import { proposeFromTaskSafe } from "@/lib/card-proposals"
 import {
   ALLOWED_RESPONSES,
   NotificationActionSchema,
@@ -143,6 +144,8 @@ async function respondToAction(
       `${userName}님이 #${task.slug} 업무를 완료했습니다.`,
       task.id
     )
+    // 업무가 끝나면 그 대화에서 회사 지식을 뽑아 카드 갱신을 제안한다 (실패해도 완료는 그대로).
+    proposeFromTaskSafe(task.id, { trigger: "task_done", userId })
     return NextResponse.json({ ok: true, status: "DONE" })
   }
 

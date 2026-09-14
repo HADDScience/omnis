@@ -30,6 +30,7 @@ model User {
   weeklyReports    WeeklyReport[]
   omnisUpdates     OmnisCard[]
   omnisVersions    OmnisCardVersion[]
+  cardDecisions    CardProposal[]
   omnisQueries     OmnisQuery[]
   notifications    Notification[]
   omnisViewLogs    OmnisViewLog[]
@@ -165,11 +166,12 @@ model Task {
   notionId       String?
   sourceMessages Json?
 
-  checklists Checklist[]
-  messages   ChatMessage[]
-  files      File[]
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  checklists    Checklist[]
+  messages      ChatMessage[]
+  files         File[]
+  cardProposals CardProposal[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@index([status])
   @@index([projectId])
@@ -293,11 +295,12 @@ model WeeklyReport {
 // ─── 옴니스 지식 베이스 ──────────────────────────────────
 
 model OmnisCategory {
-  id        String      @id @default(uuid())
-  name      String      @unique
+  id        String         @id @default(uuid())
+  name      String         @unique
   icon      String?
-  sortOrder Int         @default(0)
+  sortOrder Int            @default(0)
   cards     OmnisCard[]
+  proposals CardProposal[]
 }
 
 model OmnisCard {
@@ -310,9 +313,14 @@ model OmnisCard {
   version     Int                @default(1)
   updatedById String?
   updatedBy   User?              @relation(fields: [updatedById], references: [id])
+  /// 이 카드의 근거. [{ kind: "task"|"message", id, label }] — AI 가 쓴 내용은 근거 없이 남기지 않는다.
+  sourceRefs  Json?
+  /// AI 가 마지막으로 반영한 시각. 사람이 고치면 그대로 두고 updatedAt 만 움직인다.
+  aiUpdatedAt DateTime?
   versions    OmnisCardVersion[]
   viewLogs    OmnisViewLog[]
   bookmarks   Bookmark[]
+  proposals   CardProposal[]
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -320,18 +328,83 @@ model OmnisCard {
 }
 
 model OmnisCardVersion {
-  id               String    @id @default(uuid())
+  id               String         @id @default(uuid())
   cardId           String
-  card             OmnisCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  card             OmnisCard      @relation(fields: [cardId], references: [id], onDelete: Cascade)
   content          Json
   version          Int
   restoredFromHash String?
   createdById      String?
-  createdBy        User?     @relation(fields: [createdById], references: [id])
-  createdAt        DateTime  @default(now())
+  createdBy        User?          @relation(fields: [createdById], references: [id])
+  /// 이 판을 누가 썼나. AI 가 쓴 문장을 사람이 쓴 문장과 구분한다 (충돌 시 사람이 이긴다).
+  authorKind       CardAuthorKind @default(HUMAN)
+  createdAt        DateTime       @default(now())
 
   @@index([cardId, version])
   @@index([createdById])
+}
+
+enum CardAuthorKind {
+  HUMAN
+  AI
+}
+
+enum CardProposalStatus {
+  /// 사람의 판단을 기다린다
+  PENDING
+  /// 사람이 수락해 카드에 반영됐다
+  ACCEPTED
+  /// 사람이 거절했다
+  REJECTED
+  /// 수락률이 임계치를 넘어 사람 확인 없이 반영됐다
+  AUTO_APPLIED
+  /// 같은 카드에 더 새로운 제안이 와서 밀렸다
+  SUPERSEDED
+}
+
+/// AI 가 만든 지식 카드 갱신 제안.
+///
+/// 사람이 카드를 직접 쓰는 구조로는 한 번도 채워지지 않았다(카드 0장·조회 0).
+/// 그래서 AI 가 업무 중 생긴 변화를 제안으로 올리고, 사람이 수락·거절한다.
+/// 수락이 꾸준히 많으면 `shouldAutoApply()` 가 자동 적용으로 넘긴다 — lib/card-proposals.ts.
+///
+/// 배경: mydocs/plans/2026-09-10-ai-maintained-cards.md
+model CardProposal {
+  id     String             @id @default(uuid())
+  status CardProposalStatus @default(PENDING)
+
+  /// 기존 카드를 고치는 제안이면 그 카드. 새 카드 제안이면 null
+  cardId     String?
+  /// 카드가 지워져도 제안은 남는다 — 이 표가 수락률의 근거라 판단 기록을 잃으면 안 된다.
+  card       OmnisCard?     @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  /// 새 카드 제안일 때 들어갈 분류
+  categoryId String?
+  category   OmnisCategory? @relation(fields: [categoryId], references: [id])
+
+  title      String
+  /// 제안하는 카드 본문 전체 (CardContent 형태 — 통째로 다시 쓴다, 증분이 아니다)
+  content    Json
+  /// 왜 이렇게 바꾸는지 한 줄
+  reason     String
+  /// 근거 [{ kind, id, label }]. 비어 있으면 만들지 않는다
+  sourceRefs Json
+
+  /// 무엇이 이 제안을 불렀나 — task_done · weekly · manual · seed
+  trigger       String
+  triggerTaskId String?
+  triggerTask   Task?   @relation(fields: [triggerTaskId], references: [id], onDelete: SetNull)
+
+  decidedById String?
+  decidedBy   User?     @relation(fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+  /// 되돌린 시각. 자동 적용된 것을 사람이 되돌리면 수락률에 거절로 반영된다
+  revertedAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+  @@index([cardId])
+  @@index([triggerTaskId])
 }
 
 // 옴니스 RAG 질문·답변 내역 (사용자별)

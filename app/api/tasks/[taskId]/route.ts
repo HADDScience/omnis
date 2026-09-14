@@ -4,6 +4,7 @@ import { resolveActionsFor } from "@/lib/notifications"
 import { auth } from "@/lib/auth"
 import { syncEmbeddingsSafe, deleteEmbeddingsSafe } from "@/lib/embeddings"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
+import { proposeFromTaskSafe } from "@/lib/card-proposals"
 import type { Prisma, Priority, TaskStatus } from "@/generated/prisma/client"
 
 interface Props {
@@ -100,6 +101,8 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   // 그러지 않으면 이미 끝난 업무를 알림이 계속 재촉한다.
   if (status === "DONE") {
     await resolveActionsFor(taskId, "confirm_done")
+    // 업무가 끝나면 그 대화에서 회사 지식을 뽑아 카드 갱신을 제안한다 (실패해도 완료는 그대로).
+    proposeFromTaskSafe(taskId, { trigger: "task_done", userId: session.user.id })
   }
 
   // archived 처리 시 syncEmbeddings가 임베딩을 삭제, 그 외에는 갱신
