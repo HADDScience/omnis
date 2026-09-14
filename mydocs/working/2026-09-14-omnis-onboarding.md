@@ -129,3 +129,18 @@ Testing stopped early after 1 maximum allowed failures.
 ![실제 업무 카드로 구성한 자동 재생 장면](onboarding-preview/desktop.png)
 
 ![모바일 다크 모드 첫 장면](onboarding-preview/mobile.png)
+
+## 사용자 재시험 중 서버 종료 확인
+
+「업무 시작하기」 오류 제보 뒤 조회에서 3000 포트의 리스너가 없었고 curl은 HTTP 000을 반환했다. 기존 dev 로그에는 해당 시점의 예외가 남아 있지 않았다. 종료된 서버로 인해 지연 로드하는 스포트라이트 청크를 받지 못했을 가능성이 있으나, 사용자 브라우저의 실제 오류 문구는 아직 확인하지 못했다.
+
+서버를 작업 실행 세션과 분리된 프로세스(`start_new_session=True`, stdin DEVNULL, 로그 `/tmp/omnis-onboarding-dev-persistent.log`)로 다시 시작했다. 제품 코드는 변경하지 않았다.
+
+```text
+재시작 후 /login: HTTP 200
+$ npx playwright test tests/feature/onboarding.spec.ts --project=feature --grep '8장면 자동 재생' --retries=0 --output=/tmp/omnis-onboarding-start-regression
+✓ 8장면 자동 재생·일시정지·최종 CTA·스포트라이트 (15.7s)
+1 passed (16.3s)
+```
+
+업무 시작하기 → 스포트라이트 8단계 → 안내 종료 경로와 브라우저 pageerror 없음 검사를 다시 통과했다. 사용자 기존 오류 화면은 새로고침이 필요하다.
