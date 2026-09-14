@@ -21,6 +21,8 @@ model User {
   role            Role     @default(MEMBER)
   passwordHash    String
   isActive        Boolean  @default(true)
+  onboardingVideoSeenAt DateTime?
+  onboardingCompletedAt DateTime?
   workspaceLayout Json?
   createdAt       DateTime @default(now())
 

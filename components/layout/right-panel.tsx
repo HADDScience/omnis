@@ -132,6 +132,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
       )}
 
       <aside
+        data-onboarding="conversation"
         aria-hidden={!open}
         className={cn(
           "fixed right-0 top-0 z-[var(--z-banner)] flex h-[var(--app-vh)] flex-col border-l bg-background shadow-[-4px_0_16px_rgba(0,0,0,0.08)] transition-transform duration-200 motion-reduce:transition-none dark:shadow-[-4px_0_16px_rgba(0,0,0,0.35)]",

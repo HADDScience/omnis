@@ -12,7 +12,7 @@ import { Task01Icon } from "@hugeicons/core-free-icons"
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS } from "@/lib/constants"
 
 import { apiUrl } from "@/lib/base-path"
-interface FileInfo {
+export interface FileInfo {
   id: string
   name: string
   path: string
@@ -203,53 +203,7 @@ export function MessageList({
                   <p className="whitespace-pre-wrap break-words">
                     <MessageContent content={msg.content} tasks={tasks} isMe={isMe && !selectionMode} />
                   </p>
-                  {msg.files && msg.files.length > 0 && (
-                    <div className="flex flex-col gap-1.5 mt-1.5">
-                      {msg.files.map((f) => {
-                        const isImage = f.mimeType?.startsWith("image/")
-                        const uploading = (f as FileInfo)._uploading
-
-                        if (isImage) {
-                          return (
-                            <a
-                              key={f.id}
-                              href={uploading ? undefined : apiUrl(f.path)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={`block rounded-md overflow-hidden max-w-[200px] border ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
-                              onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
-                            >
-                              <img src={apiUrl(f.path)} alt={f.name} className="w-full h-auto" loading="lazy" />
-                              <div className="relative px-1.5 py-0.5 text-[10px] text-muted-foreground bg-background/80 truncate overflow-hidden">
-                                {uploading && (
-                                  <div className="absolute inset-0 bg-primary/20 animate-[gauge_1.5s_ease-in-out_infinite]" />
-                                )}
-                                <span className="relative">{uploading ? "업로드 중..." : f.name}</span>
-                              </div>
-                            </a>
-                          )
-                        }
-                        return (
-                          <a
-                            key={f.id}
-                            href={uploading ? undefined : apiUrl(f.path)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`flex items-center gap-1.5 rounded bg-background/50 px-2 py-1 text-[11px] ${uploading ? "opacity-70" : "hover:underline"} relative overflow-hidden`}
-                            onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
-                          >
-                            {uploading && (
-                              <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />
-                            )}
-                            <span className="truncate relative">{f.name}</span>
-                            <span className="shrink-0 text-muted-foreground relative">
-                              {uploading ? "업로드 중..." : f.size < 1024 ? `${f.size}B` : f.size < 1048576 ? `${Math.round(f.size / 1024)}KB` : `${(f.size / 1048576).toFixed(1)}MB`}
-                            </span>
-                          </a>
-                        )
-                      })}
-                    </div>
-                  )}
+                  {msg.files && msg.files.length > 0 && <MessageFiles files={msg.files} />}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-muted-foreground">
@@ -321,7 +275,58 @@ function cutPathTail(raw: string): string {
   return m ? p.slice(0, sep + 1 + m.index!) : p
 }
 
-function MessageContent({ content, tasks, isMe = false }: { content: string; tasks: TaskRef[]; isMe?: boolean }) {
+/** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 이름 · 크기. 채팅과 업무 스레드가 같이 쓴다. */
+export function MessageFiles({ files }: { files: FileInfo[] }) {
+  return (
+    <div className="flex flex-col gap-1.5 mt-1.5">
+      {files.map((f) => {
+        const isImage = f.mimeType?.startsWith("image/")
+        const uploading = f._uploading
+
+        if (isImage) {
+          return (
+            <a
+              key={f.id}
+              href={uploading ? undefined : apiUrl(f.path)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`block rounded-md overflow-hidden max-w-[200px] border ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
+              onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
+            >
+              <img src={apiUrl(f.path)} alt={f.name} className="w-full h-auto" loading="lazy" />
+              <div className="relative px-1.5 py-0.5 text-[10px] text-muted-foreground bg-background/80 truncate overflow-hidden">
+                {uploading && (
+                  <div className="absolute inset-0 bg-primary/20 animate-[gauge_1.5s_ease-in-out_infinite]" />
+                )}
+                <span className="relative">{uploading ? "업로드 중..." : f.name}</span>
+              </div>
+            </a>
+          )
+        }
+        return (
+          <a
+            key={f.id}
+            href={uploading ? undefined : apiUrl(f.path)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex items-center gap-1.5 rounded bg-background/50 px-2 py-1 text-[11px] ${uploading ? "opacity-70" : "hover:underline"} relative overflow-hidden`}
+            onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
+          >
+            {uploading && (
+              <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />
+            )}
+            <span className="truncate relative">{f.name}</span>
+            <span className="shrink-0 text-muted-foreground relative">
+              {uploading ? "업로드 중..." : f.size < 1024 ? `${f.size}B` : f.size < 1048576 ? `${Math.round(f.size / 1024)}KB` : `${(f.size / 1048576).toFixed(1)}MB`}
+            </span>
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
+export function MessageContent({ content, tasks, isMe = false }: { content: string; tasks: TaskRef[]; isMe?: boolean }) {
   const mentionClass = isMe
     ? "font-medium text-white/90 underline decoration-white/40 hover:decoration-white"
     : "font-medium text-blue-700 dark:text-blue-300 hover:underline"

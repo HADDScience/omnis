@@ -1,27 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
-import { resolveActionsFor } from "@/lib/notifications"
 import { auth } from "@/lib/auth"
-import { syncEmbeddingsSafe, deleteEmbeddingsSafe } from "@/lib/embeddings"
+import { deleteEmbeddingsSafe } from "@/lib/embeddings"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
-import { proposeFromTaskSafe } from "@/lib/card-proposals"
-import type { Prisma, Priority, TaskStatus } from "@/generated/prisma/client"
+import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 
 interface Props {
   params: Promise<{ taskId: string }>
-}
-
-interface UpdateTaskBody {
-  status?: TaskStatus
-  name?: string
-  priority?: Priority
-  deadline?: string | null
-  archived?: boolean
-  background?: string | null
-  expectedResult?: string | null
-  projectId?: string | null
-  productId?: string | null
-  workStart?: string
 }
 
 export async function GET(_req: NextRequest, { params }: Props) {
@@ -62,61 +47,16 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   }
 
   const { taskId } = await params
-  const body = await parseJson<UpdateTaskBody>(req)
+  const body = await parseJson<UpdateTaskInput>(req)
   if (!body) return apiError(400, "잘못된 JSON 요청")
-  // categoryId는 #12에서 폐기 (UI/AI 미사용). DB 컬럼은 Phase 4 drop 예정.
-  const { status, name, priority, deadline, archived, background, expectedResult, projectId, productId } = body
 
-  const ALLOWED_STATUS = new Set(["TODO", "IN_PROGRESS", "REVIEW", "DONE"])
-  if (status !== undefined && !ALLOWED_STATUS.has(status)) {
-    return apiError(400, `지원하지 않는 상태 값: ${status}`)
-  }
+  const userId = session.user.id
+  if (!userId) return apiError(401, "인증 필요")
 
-  const data: Prisma.TaskUncheckedUpdateInput = {}
-  if (status !== undefined) data.status = status
-  if (name !== undefined) data.name = name
-  if (priority !== undefined) data.priority = priority
-  if (deadline !== undefined) data.deadline = deadline ? new Date(deadline) : null
-  if (archived !== undefined) data.archived = archived
-  if (background !== undefined) data.background = background
-  if (expectedResult !== undefined) data.expectedResult = expectedResult
-  if (projectId !== undefined) data.projectId = projectId
-  if (productId !== undefined) data.productId = productId
-
-  // 완료 시 workEnd 설정
-  if (status === "DONE") data.workEnd = new Date()
-  if (status === "IN_PROGRESS" && !body.workStart) data.workStart = new Date()
-
-  const task = await prisma.task.update({
-    where: { id: taskId },
-    data,
-    include: {
-      assignees: { select: { user: { select: { id: true, name: true } } } },
-      instructor: { select: { id: true, name: true } },
-      checklists: true,
-    },
-  })
-
-  // 담당자가 알림을 거치지 않고 상세에서 바로 완료했다면, 떠 있는 "완료로 표시할까요?"를 거둔다.
-  // 그러지 않으면 이미 끝난 업무를 알림이 계속 재촉한다.
-  if (status === "DONE") {
-    await resolveActionsFor(taskId, "confirm_done")
-    // 업무가 끝나면 그 대화에서 회사 지식을 뽑아 카드 갱신을 제안한다 (실패해도 완료는 그대로).
-    proposeFromTaskSafe(taskId, { trigger: "task_done", userId: session.user.id })
-  }
-
-  // archived 처리 시 syncEmbeddings가 임베딩을 삭제, 그 외에는 갱신
-  await syncEmbeddingsSafe("TASK", taskId, session.user.id)
-  await writeActivity({
-    userId: session.user.id,
-    action: "task.updated",
-    entity: "TASK",
-    entityId: task.id,
-    title: `업무 수정: ${task.name}`,
-    metadata: { status: task.status },
-  })
-
-  return NextResponse.json(task)
+  // 알맹이는 lib/task-update 에 있다 — MCP(update_task)도 같은 함수를 부른다.
+  const result = await updateTask(taskId, userId, body)
+  if ("error" in result) return apiError(400, result.error)
+  return NextResponse.json(result.task)
 }
 
 export async function DELETE(_req: NextRequest, { params }: Props) {

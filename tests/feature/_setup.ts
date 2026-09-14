@@ -7,7 +7,11 @@ export const MEMBERS = ["사원1", "사원2", "사원3"] as const
 export const ALL_USERS = [...ADMINS, ...MEMBERS] as const
 export type DemoUser = (typeof ALL_USERS)[number]
 
-export async function login(page: Page, name: DemoUser, password = DEMO_PASSWORD) {
+export async function login(
+  page: Page,
+  name: DemoUser,
+  password = DEMO_PASSWORD
+) {
   await page.goto("/login")
   await page.getByRole("textbox", { name: "이름" }).fill(name)
   await page.getByRole("textbox", { name: "비밀번호" }).fill(password)
@@ -25,24 +29,12 @@ export async function expectLoggedIn(page: Page, name: DemoUser) {
   await expect(page.getByText(name).first()).toBeVisible({ timeout: 5_000 })
 }
 
-export const CHAT_DOCK_OPEN_BUTTON_TITLE = "열기"
-
 export async function openChatDock(page: Page) {
-  const opened = await page.evaluate(() => {
-    const btn = [...document.querySelectorAll("button")].find(
-      (b) => (b as HTMLButtonElement).title === "열기",
-    ) as HTMLButtonElement | undefined
-    if (btn) {
-      btn.click()
-      return true
-    }
-    return false
-  })
-  if (opened) {
-    await page.waitForTimeout(400)
+  const input = page.getByPlaceholder(
+    "메시지 입력...  / 명령 · @ 사람 · # 업무"
+  )
+  if (!(await input.isVisible())) {
+    await page.getByRole("button", { name: "채팅 열기", exact: true }).click()
   }
-  await page
-    .getByRole("textbox", { name: /메시지 입력/ })
-    .first()
-    .waitFor({ state: "visible", timeout: 5_000 })
+  await expect(input).toBeVisible()
 }

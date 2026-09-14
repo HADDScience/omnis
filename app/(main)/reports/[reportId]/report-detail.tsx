@@ -121,7 +121,7 @@ export function ReportDetail({ report }: { report: Report }) {
               </div>
             </div>
           ) : markdown ? (
-            <div className="prose prose-sm dark:prose-invert max-w-none [&_table]:text-xs [&_th]:px-2 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1 [&_table]:w-full">
+            <div className="omnis-md [&_table]:text-xs [&_th]:px-2 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1 [&_table]:w-full">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {markdown}
               </ReactMarkdown>

@@ -154,6 +154,7 @@ function Sidebar({
   side = "left",
   variant = "sidebar",
   collapsible = "offcanvas",
+  mobileModal = true,
   className,
   children,
   dir,
@@ -162,6 +163,8 @@ function Sidebar({
   side?: "left" | "right"
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
+  /** Let the onboarding dialog own focus while showing the real mobile menu. */
+  mobileModal?: boolean
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
 
@@ -182,8 +185,10 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+      <Sheet modal={mobileModal} open={openMobile} onOpenChange={setOpenMobile} {...props}>
         <SheetContent
+          initialFocus={mobileModal ? undefined : false}
+          finalFocus={mobileModal ? undefined : false}
           dir={dir}
           data-sidebar="sidebar"
           data-slot="sidebar"

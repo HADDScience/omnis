@@ -51,6 +51,8 @@ import { useCommandPalette } from "@/components/layout/command-palette-context"
 import { LinkPendingMark } from "@/components/ui/pending-link"
 import { useRightPanel } from "@/components/layout/right-panel-context"
 
+import { useOnboarding } from "@/components/onboarding/onboarding-provider"
+import { ShineBorder } from "@/components/magicui/shine-border"
 import { apiUrl } from "@/lib/base-path"
 /**
  * 사이드바 메뉴.
@@ -88,6 +90,9 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
+  const onboarding = useOnboarding()
+  const [profileOpen, setProfileOpen] = useState(false)
+  const tourMenu = onboarding.spotlightTarget === "mcp" || onboarding.spotlightTarget === "replay"
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -107,7 +112,7 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
   }
 
   return (
-    <Sidebar>
+    <Sidebar mobileModal={!onboarding.active}>
       <SidebarHeader className="px-2.5 pb-2 pt-3">
         <Link href="/dashboard" onClick={closeOnMobile} className="flex items-center gap-2 px-1.5 pb-3">
           <div className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-primary p-[4px]">
@@ -128,6 +133,7 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
             closeOnMobile()
             rightPanel.openWith("ai")
           }}
+          data-onboarding="ai"
           className="ai-rainbow-border flex h-8 w-full items-center gap-2 rounded-md border border-border bg-muted px-2.5 text-[12px] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
         >
           <HugeiconsIcon icon={AiMagicIcon} size={14} className="opacity-80" />
@@ -150,13 +156,14 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="text-[10px] uppercase tracking-wider">메뉴</SidebarGroupLabel>
-          <SidebarGroupContent>
+          <SidebarGroupContent data-onboarding="resources">
             <SidebarMenu>
               {navItems.map((item) => {
                 const external = "external" in item && item.external
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
+                      data-onboarding={item.href === "/tasks" ? "tasks" : undefined}
                       size="sm"
                       className="has-data-[pending]:bg-sidebar-accent has-data-[pending]:text-sidebar-accent-foreground"
                       // 밖에 있는 도구는 이 앱의 경로가 아니므로 현재 위치로 켜지지 않는다.
@@ -218,11 +225,13 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter className="border-t p-1.5">
-        <DropdownMenu>
+        <DropdownMenu open={tourMenu || profileOpen} onOpenChange={open => { if (!tourMenu) setProfileOpen(open) }} modal={!onboarding.active}>
           <DropdownMenuTrigger
             render={
               <button
                 type="button"
+                data-onboarding="profile"
+                aria-label="프로필 메뉴"
                 suppressHydrationWarning
                 className="flex w-full items-center gap-2 rounded-md px-1.5 py-2 text-left transition-colors hover:bg-muted data-[popup-open]:bg-muted"
               />
@@ -241,7 +250,7 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
             </div>
             <HugeiconsIcon icon={ArrowUp01Icon} size={10} className="shrink-0 text-muted-foreground" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" className="w-[180px]">
+          <DropdownMenuContent align="start" side="top" className="w-[220px]" finalFocus={tourMenu ? false : undefined}>
             <DropdownMenuGroup>
               <DropdownMenuLabel className="leading-tight">
                 <div className="text-[12.5px] font-semibold">{userName ?? "사용자"}</div>
@@ -252,6 +261,16 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
                 )}
               </DropdownMenuLabel>
             </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem data-onboarding="mcp" className="relative min-h-11 gap-2 rounded-md text-primary" onClick={() => { setProfileOpen(false); closeOnMobile(); onboarding.openMcp() }}>
+              <ShineBorder shineColor={["#ff3d81", "#ff8a00", "#ffd60a", "#34d399", "#38bdf8", "#a855f7"]} borderWidth={1.5} />
+              <HugeiconsIcon icon={AiMagicIcon} size={16} aria-hidden />
+              Omnis MCP 등록
+            </DropdownMenuItem>
+            <DropdownMenuItem data-onboarding="replay" className="min-h-11 gap-2" onClick={() => { setProfileOpen(false); closeOnMobile(); onboarding.replay() }}>
+              <HugeiconsIcon icon={BookOpen01Icon} size={16} aria-hidden />
+              온보딩 튜토리얼
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => {
                 closeOnMobile()
