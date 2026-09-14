@@ -1,7 +1,7 @@
 ---
 kind: snapshot
 status: active
-canonical: mydocs/plans/2026-09-14-omnis-onboarding.md
+canonical: mydocs/plans/archives/2026-09-14-omnis-onboarding.md
 last_verified: 2026-09-14
 ---
 
