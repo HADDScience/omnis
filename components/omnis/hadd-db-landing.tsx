@@ -13,6 +13,7 @@ import {
   FolderLibraryIcon,
   StarIcon,
   SparklesIcon,
+  HierarchyIcon,
 } from "@hugeicons/core-free-icons"
 import { Kbd } from "@/components/ui/kbd"
 import { useCommandPalette } from "@/components/layout/command-palette-context"
@@ -217,6 +218,23 @@ export function HaddDbLanding({
             </Link>
           ))}
         </nav>
+
+        {/* Context 그래프 — 대상 하나를 가운데 두고 DB 연결(실선)과 의미상 이웃(점선)을 펼친다 */}
+        <Link
+          href="/omnis/context"
+          className="mt-3.5 flex items-center gap-3 rounded-lg border bg-card px-5 py-3.5 transition-colors hover:border-border-strong hover:bg-muted/40"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <HugeiconsIcon icon={HierarchyIcon} size={19} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold">Context 살펴보기</div>
+            <div className="text-[11.5px] leading-snug text-muted-foreground">
+              업무 · 사람 · 기관 · 특허가 어떻게 이어져 있는지, AI 가 무엇을 읽는지 그래프로
+            </div>
+          </div>
+          <HugeiconsIcon icon={ArrowRight02Icon} size={16} className="shrink-0 text-muted-foreground" aria-hidden />
+        </Link>
 
         {/* 사내 자료(NAS) 진입.
             사이드바에 「사내 자료」로 따로 서 있었는데 HADD DB 와 무엇이 다른지

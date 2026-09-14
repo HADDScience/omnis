@@ -143,7 +143,7 @@ export default async function RecordsPage({ searchParams }: Props) {
                       {r.fundingKrw !== null && Number(r.fundingKrw) > 0 && <span>지원금 {won(Number(r.fundingKrw))}</span>}
                       {r.grantNo && <span>과제번호 {r.grantNo}</span>}
                       {r.project && (
-                        <Link href={`/tasks?project=${r.project.id}`} className="hover:underline">
+                        <Link href="/tasks/projects" className="hover:underline">
                           업무 프로젝트 · {r.project.name}
                         </Link>
                       )}
