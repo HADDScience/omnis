@@ -53,7 +53,7 @@ const PROFILE_FIELDS: { key: keyof ProfileForm; type?: "date"; hint?: string; wi
   { key: "nameKo", required: true },
   { key: "nameEn" },
   { key: "bizRegNo", required: true, hint: "000-00-00000" },
-  { key: "bizType", hint: "개인과세사업자 · 법인 — 세무사 확인 뒤 적는다" },
+  { key: "bizType", hint: "개인과세사업자 · 법인 — 법인으로 전환하면 바꾸고 법인등록번호를 채운다" },
   { key: "corpRegNo", hint: "법인일 때만 · 000000-0000000" },
   { key: "industry" },
   { key: "industryCode" },

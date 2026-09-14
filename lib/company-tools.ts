@@ -22,7 +22,7 @@ export async function companyProfileText(): Promise<string> {
       "# 회사 기본정보",
       `- 상호: ${p.nameKo}${p.nameEn ? ` (${p.nameEn})` : ""}`,
       `- 사업자등록번호: ${p.bizRegNo ?? "—"}`,
-      `- 사업자 형태: ${p.bizType ?? "확인 필요 (번호 체계와 결산서로는 개인과세사업자)"}`,
+      `- 사업자 형태: ${p.bizType ?? "—"}`,
       `- 업종: ${[p.industry, p.industryCode && `(${p.industryCode})`].filter(Boolean).join(" ") || "—"}`,
       `- 설립일: ${ymd(p.foundedOn) ?? "—"}`,
       `- 홈페이지: ${p.homepage ?? "—"}`,

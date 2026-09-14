@@ -417,13 +417,14 @@ async function importCompany() {
     hqAddress: pick(/본사\s*:\s*([^\n]+)/),
     labAddress: pick(/연구소\s*:\s*([^\n]+)/),
     partnerAddress: pick(/연구협력기관\s*:\s*([^\n]+)/),
-    bizType: null,
+    // 법인 전환은 아직 안 했고 2026년에는 하지 않을 예정 (작업지시자 확인 2026-09-14)
+    bizType: "개인과세사업자",
     asOfDate: ymd(2026, 3, 23),
   }
   console.log("\n━━ 회사 기본정보")
   for (const [k, v] of Object.entries(data)) console.log(`   ${k}: ${v instanceof Date ? iso(v) : (v ?? "—")}`)
   if (data.bizRegNo !== OUR_BIZ_NO) console.log(`   ⚠ 사업자번호가 세금계산서(${OUR_BIZ_NO})와 다르다`)
-  console.log("   bizType: 비움 — 사업자번호 가운데 52 는 개인과세사업자 체계, 결산서도 개인. 법인 전환 여부 확인 뒤 채운다")
+  console.log("   bizType: 개인과세사업자 — 법인 전환 전(2026년에는 전환하지 않음, 2026-09-14 확인)")
   if (!APPLY) return
   await prisma.companyProfile.upsert({ where: { id: "hadd" }, create: { id: "hadd", ...data }, update: data })
   console.log("  ✓ 회사 기본정보 저장")

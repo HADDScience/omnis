@@ -145,7 +145,7 @@ export default async function CompanyPage() {
     ? [
         ["상호", `${profile.nameKo}${profile.nameEn ? ` (${profile.nameEn})` : ""}`],
         ["사업자등록번호", profile.bizRegNo],
-        ["사업자 형태", profile.bizType ?? "확인 필요 — 번호 체계와 결산서로는 개인과세사업자"],
+        ["사업자 형태", profile.bizType],
         ...(profile.corpRegNo ? ([["법인등록번호", profile.corpRegNo]] as [string, string][]) : []),
         ["업종", [profile.industry, profile.industryCode && `(${profile.industryCode})`].filter(Boolean).join(" ") || null],
         ["설립일", ymd(profile.foundedOn)],
