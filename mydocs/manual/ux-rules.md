@@ -120,6 +120,14 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - (E) 데스크톱 전용 컴포넌트(예: 워크스페이스 캔버스)는 모바일에서 "데스크톱에서 열어보세요" 안내
 - (S) 모든 신규 client 컴포넌트
 
+44px 은 **rem 유틸리티로 만들 수 없다.** 루트 글꼴이 81.25% 라 `min-h-11`(2.75rem)은
+실제로 35.75px 이다. `globals.css` 의 `.touch-target`(px 고정, `@media (pointer: coarse)`)을
+붙인다. 붙인 뒤에는 부모 높이도 같이 봐야 한다 — `h-12` 헤더는 39px 이라 44px 버튼이
+들어가지 않는다. 함정 목록: [`../troubleshootings/narrow-viewport-traps.md`](../troubleshootings/narrow-viewport-traps.md)
+
+**(a) 가로 스크롤 없음은 320px 이 아니라 200px 까지 본다.** 시스템 화면 크기 확대와
+브라우저 확대가 겹치면 CSS 뷰포트가 거기까지 내려간다.
+
 ---
 
 ## viewport 책임 표 (Phase 1)

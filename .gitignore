@@ -61,3 +61,12 @@ data/omnis/
 
 # 카톡 이식 품질 시나리오 — 실제 사내 업무가 적혀 있어 공개 저장소에 두지 않는다 (KAKAO_DATA_DIR/eval/ 에 둔다)
 import-tools/eval-*.json
+
+# E2E 시나리오 계정 (비밀번호) — 저장소에 올리지 않는다
+tests/scenario/accounts.local.json
+
+# 벤치마크 결과 — 답변에 사내 대화가 그대로 들어간다
+bench/results/
+
+# E2E 시나리오 리포트 — 답변에 사내 대화가 들어간다
+tests/scenario/reports/

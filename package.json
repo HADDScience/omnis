@@ -20,13 +20,17 @@
     "db:snapshot": "bash scripts/pull-prod-snapshot.sh",
     "db:embed": "tsx prisma/backfill-embeddings.ts",
     "kakao": "tsx import-tools/kakao.ts",
+    "bench": "tsx bench/run.ts",
+    "bench:report": "tsx bench/report.ts",
     "db:studio": "prisma studio",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "test:e2e": "playwright test --project=feature",
     "test:e2e:vercel": "BASE_URL=https://omnis-omega.vercel.app NEXT_PUBLIC_IS_DEMO=true playwright test --project=feature",
     "test:e2e:headed": "playwright test --project=feature --headed",
-    "test:e2e:ui": "playwright test --project=feature --ui"
+    "test:e2e:ui": "playwright test --project=feature --ui",
+    "test:scenario": "playwright test --project=scenario",
+    "test:scenario:headed": "playwright test --project=scenario --headed"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",

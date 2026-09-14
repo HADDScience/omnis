@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 
 import { auth } from "@/lib/auth"
+import { apiUrl } from "@/lib/base-path"
 import { prisma } from "@/lib/db"
 import { getMembership } from "@/lib/ip-data"
 import { ApproveButton } from "./approve-button"
@@ -28,7 +29,11 @@ export default async function AuthorizePage({
   const session = await auth()
 
   if (!session?.user?.id) {
-    redirect(`/login?callbackUrl=${encodeURIComponent(`/ip-mcp/authorize?req=${req ?? ""}`)}`)
+    // callbackUrl 에도 basePath 를 붙인다 — 로그인 화면이 브라우저 이동으로 넘기므로
+    // 접두사가 빠지면 루트 도메인으로 가서 404 다 (sso/authorize 와 같은 결함).
+    redirect(
+      `/login?callbackUrl=${encodeURIComponent(apiUrl(`/ip-mcp/authorize?req=${req ?? ""}`))}`
+    )
   }
 
   const membership = await getMembership(session.user.id)

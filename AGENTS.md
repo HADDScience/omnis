@@ -149,11 +149,20 @@ npm run build           # prisma generate + next build (DATABASE_URL 필요)
 ## Git 워크플로우
 
 ```
-feat/{주제}  ──커밋──커밋──┐
-                            └─→ main 머지 (검증 후) ──→ vercel deploy --prod --yes
+feat/{주제} ──커밋──푸시──┐                    ┌─→ 프리뷰 자동 배포
+                          └─→ PR ─── 머지 ──┴─→ main ──→ 프로덕션 자동 배포
 ```
 
-- Vercel git 자동배포는 꺼져 있다. 배포는 수동이다
+- **Vercel 이 이 저장소에 연결돼 있다. 푸시가 곧 배포다.**
+  브랜치를 푸시하면 프리뷰가, `main` 에 머지하면 프로덕션(`omnis-hadd.vercel.app`)이 나간다.
+  확인: `gh api repos/HADDScience/omnis/deployments` · `vercel ls omnis-hadd`
+- `vercel deploy --prod --yes` 로 손으로 올릴 수도 있지만 **커밋하지 않은 것까지 올라간다.**
+  다른 세션의 미커밋 변경이 있으면 검증하지 않은 남의 작업이 운영에 나간다. 기본은 푸시다
+- **자동 배포에 게이트가 없다.** Vercel 은 `npm run build` 만 돌린다 — lint 와 e2e 는
+  돌지 않고, `main` 은 브랜치 보호가 없어 곧장 푸시할 수 있다. 그래서 푸시 전에
+  품질 게이트를 사람이 돌린다(위 "품질 게이트")
+- **마이그레이션은 배포에 딸려 오지 않는다.** `build` 는 `prisma generate && next build` 다.
+  스키마를 바꿨으면 `npm run db:deploy` 를 따로 돌린다
 - 커밋 메시지는 기존 스타일을 따른다: `feat(scope): 한국어 요약` / `fix(scope):` / `docs(scope):`
 - 커밋 메시지에는 **무엇을 했는지가 아니라 왜 그랬는지**를 적는다. 무엇을 했는지는 diff 가 말한다
 - 작업 단계가 바뀌면 현재 단계를 커밋한 뒤 다음 단계를 시작한다
