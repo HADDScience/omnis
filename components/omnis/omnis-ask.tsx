@@ -184,25 +184,98 @@ const tableComponent: Components["table"] = ({ node, children }) => {
   )
 }
 
+/**
+ * 모델은 줄바꿈 한 번으로 줄을 나눠 쓴다(「**관리번호:** …⏎**현재 단계:** …」). 마크다운은 이것을 한 문단으로
+ * 붙여 버리므로 줄 끝에 hard break(공백 두 칸)를 넣는다. 목록 · 표 · 제목 · 인용 · 코드 블록 줄은 건드리지 않는다.
+ * 줄 바로 아래가 `---` 면 그 줄이 제목(setext)으로 바뀌므로 빈 줄을 끼운다.
+ */
+function keepLineBreaks(md: string): string {
+  const lines = md.split("\n")
+  const BLOCK = /^\s*([-*+]\s|\d+[.)]\s|#{1,6}\s|\||>|```)/
+  const RULE = /^\s*(-{3,}|\*{3,}|_{3,}|={3,})\s*$/
+  let inCode = false
+  return lines
+    .map((line, i) => {
+      if (/^\s*```/.test(line)) {
+        inCode = !inCode
+        return line
+      }
+      const next = lines[i + 1]
+      if (inCode || next === undefined || !line.trim() || !next.trim()) return line
+      if (RULE.test(next)) return RULE.test(line) ? line : `${line}\n`
+      if (BLOCK.test(next) || /^\s*(\||#{1,6}\s)/.test(line) || RULE.test(line)) return line
+      return `${line}  `
+    })
+    .join("\n")
+}
+
+/** 각주 토큰 — [1] · [1, 2] · [7-9]. 모델이 여러 번호를 한 괄호에 묶어 쓴다 */
+const CITE_TOKEN = /(\[\d+(?:\s*[,，~–-]\s*\d+)*\])/
+/** 출원·등록·사건번호처럼 하이픈으로 이은 번호 (10-2766706, 10-2021-0119577) */
+const ID_NUMBER = /(\b\d{2,}(?:-\d{2,})+\b)/
+
+/** "[1, 3-5]" → [1, 3, 4, 5]. 범위가 20을 넘으면 연도 같은 것으로 보고 펼치지 않는다 */
+function citeNumbers(token: string): number[] {
+  const nums: number[] = []
+  for (const part of token.slice(1, -1).split(/\s*[,，]\s*/)) {
+    const range = /^(\d+)\s*[~–-]\s*(\d+)$/.exec(part)
+    if (range) {
+      const [a, b] = [Number(range[1]), Number(range[2])]
+      if (b < a || b - a > 20) return []
+      for (let n = a; n <= b; n++) nums.push(n)
+    } else if (/^\d+$/.test(part)) nums.push(Number(part))
+  }
+  return nums
+}
+
 /** qa.sources를 클로저로 잡아 각주를 출처와 연결한 마크다운 컴포넌트 생성 */
 function buildMarkdownComponents(sources: Source[]): Components {
-  const decorate = (children: ReactNode): ReactNode =>
-    Children.map(children, (child) => {
-      if (typeof child !== "string" || !child.includes("[")) return child
-      const parts = child.split(/(\[\d+\])/)
-      if (parts.length === 1) return child
-      return parts.map((part, i) => {
-        const m = /^\[(\d+)\]$/.exec(part)
-        if (!m) return part
-        return (
-          <Citation key={i} num={m[1]} source={sources[Number(m[1]) - 1]} />
+  // 출처 번호 범위를 벗어난 괄호([2024-2025] 같은 것)는 각주로 보지 않는다
+  const maxCite = sources.length || 30
+
+  const decorateText = (text: string, keyBase: number): ReactNode => {
+    if (!text.includes("[") && !/\d-\d/.test(text)) return text
+    const out: ReactNode[] = []
+    text.split(CITE_TOKEN).forEach((seg, i) => {
+      if (i % 2 === 1) {
+        const nums = citeNumbers(seg)
+        if (nums.length > 0 && nums.every((n) => n >= 1 && n <= maxCite)) {
+          nums.forEach((n, j) =>
+            out.push(<Citation key={`${keyBase}-${i}-${j}`} num={String(n)} source={sources[n - 1]} />)
+          )
+          return
+        }
+      }
+      seg.split(ID_NUMBER).forEach((s, k) => {
+        if (!s) return
+        out.push(
+          k % 2 === 1 ? (
+            <span key={`${keyBase}-${i}-n${k}`} className="omnis-nowrap">
+              {s}
+            </span>
+          ) : (
+            s
+          )
         )
       })
     })
+    return out
+  }
+
+  const decorate = (children: ReactNode): ReactNode =>
+    Children.map(children, (child, idx) => (typeof child === "string" ? decorateText(child, idx) : child))
+
   return {
     p: ({ children }) => <p>{decorate(children)}</p>,
     li: ({ children }) => <li>{decorate(children)}</li>,
     strong: ({ children }) => <strong>{decorate(children)}</strong>,
+    em: ({ children }) => <em>{decorate(children)}</em>,
+    h1: ({ children }) => <h3>{decorate(children)}</h3>,
+    h2: ({ children }) => <h3>{decorate(children)}</h3>,
+    h3: ({ children }) => <h3>{decorate(children)}</h3>,
+    h4: ({ children }) => <h4>{decorate(children)}</h4>,
+    td: ({ children }) => <td>{decorate(children)}</td>,
+    th: ({ children }) => <th>{decorate(children)}</th>,
     table: tableComponent,
   }
 }
@@ -443,9 +516,9 @@ function AnswerBlock({ qa }: { qa: QA }) {
       {/* 답변 + 출처 */}
       <div className="rounded-xl border bg-card p-4">
         <TooltipProvider delay={150}>
-          <div className="prose prose-sm dark:prose-invert max-w-none">
+          <div className="omnis-md">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-              {qa.answer}
+              {keepLineBreaks(qa.answer)}
             </ReactMarkdown>
           </div>
         </TooltipProvider>
