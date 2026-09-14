@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar"
 import { MainWithChat } from "@/components/layout/main-with-chat"
 import { CommandPaletteProvider } from "@/components/layout/command-palette-context"
 import { RightPanelProvider } from "@/components/layout/right-panel-context"
+import { OnboardingProvider } from "@/components/onboarding/onboarding-provider"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 export default async function MainLayout({
@@ -18,6 +19,12 @@ export default async function MainLayout({
   if (!session?.user) {
     redirect("/login")
   }
+
+  const onboarding = await prisma.user.findFirst({
+    where: { id: session.user.id, isActive: true },
+    select: { onboardingVideoSeenAt: true, onboardingCompletedAt: true },
+  })
+  if (!onboarding) redirect("/login")
 
   // 최신 메시지 한 페이지를 가져와 화면 표시용 오름차순으로 정렬
   const recentMessages = await prisma.chatMessage.findMany({
@@ -40,6 +47,10 @@ export default async function MainLayout({
     <SidebarProvider>
       <CommandPaletteProvider>
         <RightPanelProvider>
+        <OnboardingProvider key={session.user.id} initialState={{
+          onboardingVideoSeenAt: onboarding.onboardingVideoSeenAt?.toISOString() ?? null,
+          onboardingCompletedAt: onboarding.onboardingCompletedAt?.toISOString() ?? null,
+        }}>
         <AppSidebar
           userName={session.user.name}
           userEmail={session.user.email}
@@ -53,6 +64,7 @@ export default async function MainLayout({
             {children}
           </MainWithChat>
         </SidebarInset>
+        </OnboardingProvider>
         </RightPanelProvider>
       </CommandPaletteProvider>
     </SidebarProvider>

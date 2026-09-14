@@ -92,3 +92,12 @@
 }
 @media (max-height: 750px) and (min-width: 768px) { .intro-header { padding-top: 8px; padding-bottom: 8px; }.intro-chapter { gap: 18px; padding-top: 8px; padding-bottom: 12px; }.intro-copy h1 { font-size: 40px; }.has-demo .intro-copy h1 { font-size: 30px; }.intro-chat-body { min-height: 225px; padding: 16px; }.intro-copy p { margin-top: 10px; }.intro-footer { padding-bottom: 8px; }.intro-mark { width: 75px; height: 75px; } }
 @media (prefers-reduced-motion: reduce) { .omnis-tour-surface *, .omnis-tour-surface *::before { animation: none !important; transition: none !important; } }
+.spotlight-surface { overflow: hidden; }
+.spotlight-shade { position: absolute; inset: 0; }
+.spotlight-card { position: absolute; left: 50%; top: 20%; width: min(330px, calc(100% - 32px)); padding: 24px; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 18px 60px #00000030; animation: intro-arrive .4s both; max-height: calc(100% - 32px); overflow: auto; }
+.spotlight-card h2 { font-size: 20px; font-weight: 600; letter-spacing: -.04em; line-height: 1.4; }
+.spotlight-card p { font-size: 13px; line-height: 1.85; margin: 13px 0 20px; color: var(--muted-foreground); word-break: keep-all; }
+.spotlight-card .spotlight-fallback { font-size: 11px; margin-top: -10px; }
+.spotlight-controls { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; font-size: 12px; }.spotlight-controls button { padding: 0 4px; }.spotlight-controls button:last-child { color: var(--primary); }
+.intro-real-task { padding: 14px; gap: 15px; border: 0; background: transparent; }.intro-real-task > span { font-size: 18px; line-height: 1.5; }.intro-check [data-slot="checkbox"] { min-height: 0; }.intro-composer textarea { font-size: 11px; }.intro-composer .intro-send { flex-shrink: 0; }
+@media (max-width: 767px) { .spotlight-card { padding: 20px; }.intro-real-task { padding: 0; gap: 10px; }.intro-real-task > span { font-size: 15px; } }
