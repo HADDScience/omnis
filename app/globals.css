@@ -107,6 +107,94 @@
   background: color-mix(in oklch, var(--primary) 32%, transparent);
 }
 
+/* 마크다운 본문 — 옴니스 답변 · 주간보고 · 지식 카드 섹션.
+   예전에는 `prose prose-sm` 을 썼는데 @tailwindcss/typography 가 설치돼 있지 않아 아무 효과가 없었다(2026-09-14).
+   Tailwind 초기화 스타일이 그대로 남아 목록 글머리 · 들여쓰기 · 문단 간격 · 제목 크기가 전부 사라진 채로 보였다.
+   필요한 만큼만 여기서 정한다. components 레이어라 [&_table]:… 같은 유틸리티가 위에 덮을 수 있다. */
+@layer components {
+  .omnis-md {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: var(--foreground);
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  .omnis-md > :first-child { margin-top: 0; }
+  .omnis-md > :last-child { margin-bottom: 0; }
+  .omnis-md p { margin: 0.55em 0; }
+  .omnis-md h1,
+  .omnis-md h2,
+  .omnis-md h3,
+  .omnis-md h4 {
+    margin: 1.15em 0 0.4em;
+    font-weight: 650;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+  }
+  .omnis-md h1 { font-size: 1.125rem; }
+  .omnis-md h2 { font-size: 1.05rem; }
+  .omnis-md h3 { font-size: 0.975rem; }
+  .omnis-md h4 { font-size: 0.9rem; }
+  .omnis-md ul,
+  .omnis-md ol {
+    margin: 0.45em 0;
+    padding-inline-start: 1.4em;
+  }
+  .omnis-md ul { list-style: disc; }
+  .omnis-md ol { list-style: decimal; }
+  .omnis-md ul ul,
+  .omnis-md ol ul { list-style: circle; }
+  .omnis-md li { margin: 0.2em 0; padding-inline-start: 0.1em; }
+  .omnis-md li::marker { color: var(--muted-foreground); }
+  .omnis-md ol > li::marker { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .omnis-md li > p { margin: 0.15em 0; }
+  .omnis-md li > ul,
+  .omnis-md li > ol { margin: 0.15em 0 0.4em; }
+  .omnis-md li + li:has(> ul, > ol) { margin-top: 0.6em; }
+  .omnis-md strong { font-weight: 650; }
+  .omnis-md a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+  .omnis-md hr { margin: 1em 0; border: 0; border-top: 1px solid var(--border); }
+  .omnis-md blockquote {
+    margin: 0.6em 0;
+    padding-inline-start: 0.8em;
+    border-inline-start: 3px solid var(--border);
+    color: var(--muted-foreground);
+  }
+  .omnis-md code {
+    padding: 0.1em 0.35em;
+    border-radius: 0.3em;
+    background: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+  .omnis-md pre {
+    margin: 0.6em 0;
+    padding: 0.75em 0.9em;
+    overflow-x: auto;
+    border-radius: 0.5em;
+    background: var(--muted);
+  }
+  .omnis-md pre code { padding: 0; background: none; }
+  .omnis-md table {
+    display: block;
+    max-width: 100%;
+    margin: 0.6em 0;
+    overflow-x: auto;
+    border-collapse: collapse;
+    word-break: normal;
+  }
+  .omnis-md th,
+  .omnis-md td {
+    padding: 0.35em 0.6em;
+    border: 1px solid var(--border);
+    text-align: start;
+    vertical-align: top;
+  }
+  .omnis-md th { background: var(--muted); font-weight: 600; }
+  /* 출원·등록번호(10-2766706) 가 하이픈에서 줄바꿈되지 않게 */
+  .omnis-md .omnis-nowrap { white-space: nowrap; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ai-rainbow-border::before,
   .ai-fill-glow {

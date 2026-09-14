@@ -132,7 +132,7 @@ function ReportCard({ report }: { report: Report }) {
           <>
             <div className={`relative ${expanded ? "" : "max-h-[120px] overflow-hidden"}`}>
               {markdown ? (
-                <div className="prose prose-sm dark:prose-invert max-w-none text-sm [&_table]:text-xs [&_th]:px-2 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1">
+                <div className="omnis-md text-sm [&_table]:text-xs [&_th]:px-2 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {markdown}
                   </ReactMarkdown>
