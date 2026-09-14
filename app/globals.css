@@ -463,3 +463,7 @@ html {
 body {
   overscroll-behavior-y: none;
 }
+
+/* Magic UI Shine Border — shared by the MCP menu and its introduction. */
+@theme inline { --animate-shine: shine var(--duration) infinite linear; }
+@keyframes shine { 0%, 100% { background-position: 0% 0%; } 50% { background-position: 100% 100%; } }

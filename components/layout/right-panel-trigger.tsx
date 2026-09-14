@@ -11,6 +11,7 @@ export function RightPanelTrigger() {
   const label = open ? "패널 닫기" : task ? `${task.name} 스레드 열기` : "채팅 열기"
   return (
     <Button
+      data-onboarding="chat-trigger"
       variant="ghost"
       size="icon-sm"
       className="touch-target"

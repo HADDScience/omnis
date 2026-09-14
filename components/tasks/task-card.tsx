@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import type { ReactNode } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -43,6 +44,8 @@ const cardVariants = cva(
 interface TaskCardProps extends VariantProps<typeof cardVariants> {
   task: TaskCardData
   className?: string
+  /** Tutorial previews share the real card without linking to a demo task. */
+  readOnly?: boolean
 }
 
 function formatDeadline(deadline: string | null, isDone: boolean) {
@@ -64,7 +67,11 @@ function formatDeadline(deadline: string | null, isDone: boolean) {
   }
 }
 
-export function TaskCard({ task, variant = "board", className }: TaskCardProps) {
+function CardSurface({ readOnly, href, className, children }: { readOnly: boolean; href: string; className: string; children: ReactNode }) {
+  return readOnly ? <div className={cn(className, "cursor-default")}>{children}</div> : <Link href={href} className={className}>{children}</Link>
+}
+
+export function TaskCard({ task, variant = "board", className, readOnly = false }: TaskCardProps) {
   const isDone = task.status === "DONE"
   const deadlineInfo = formatDeadline(task.deadline, isDone)
   const overdue = deadlineInfo?.overdue ?? false
@@ -79,7 +86,8 @@ export function TaskCard({ task, variant = "board", className }: TaskCardProps) 
 
   if (variant === "list") {
     return (
-      <Link
+      <CardSurface
+        readOnly={readOnly}
         href={`/tasks/${task.id}`}
         className={cn(
           cardVariants({ variant: "list" }),
@@ -114,13 +122,14 @@ export function TaskCard({ task, variant = "board", className }: TaskCardProps) 
             {deadlineInfo.text}
           </span>
         )}
-      </Link>
+      </CardSurface>
     )
   }
 
   // board variant — 세로 카드
   return (
-    <Link
+    <CardSurface
+        readOnly={readOnly}
       href={`/tasks/${task.id}`}
       className={cn(
         cardVariants({ variant: "board" }),
@@ -159,6 +168,6 @@ export function TaskCard({ task, variant = "board", className }: TaskCardProps) 
           </span>
         )}
       </div>
-    </Link>
+    </CardSurface>
   )
 }

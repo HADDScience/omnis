@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test"
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000"
-const IS_REMOTE = /^https?:\/\//.test(BASE_URL) && !BASE_URL.includes("localhost")
+const IS_REMOTE =
+  /^https?:\/\//.test(BASE_URL) && !BASE_URL.includes("localhost")
 
 export default defineConfig({
   testDir: "./tests",
@@ -16,8 +17,8 @@ export default defineConfig({
     headless: true,
     viewport: { width: 1440, height: 900 },
     screenshot: "only-on-failure",
-    trace: "retain-on-failure",
-    video: "retain-on-failure",
+    trace: process.env.E2E_ISOLATED === "true" ? "off" : "retain-on-failure",
+    video: process.env.E2E_ISOLATED === "true" ? "off" : "retain-on-failure",
   },
   projects: [
     {
