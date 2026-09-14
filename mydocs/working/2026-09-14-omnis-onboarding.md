@@ -213,3 +213,33 @@ $ curl localhost:3000/login (HTTP 상태 확인)
 ```
 
 새 검증은 수동 이동 후 타이머 초기화·자동 진행 재개·마지막 장면 대기·확대 단계 순서·일시정지·320/390/1440px 화면 경계·모션 감소를 포함한다. 가상 시계로 재생 시 CSS 등장 애니메이션이 다른 시점을 가리켜 확대 테스트의 스크린샷 저장은 제거하고 DOM 경계와 상태를 검증한다. 기존 전체 E2E의 데모 계정 부재 제한은 앞 절과 동일하다.
+
+## PR·배포 준비 (사용자 요청)
+
+사용자가 PR 생성·머지·배포 확인을 요청했다. origin/main의 변경을 충돌 없이 병합했다. 원격 최신 AGENTS.md에서 자동 배포가 활성임을 확인하여 PR 머지 전에 운영 마이그레이션을 적용했다.
+
+```text
+$ npm run verify
+0 errors, 41 warnings (exit 0)
+$ npm run build
+exit 0
+$ npm run test:e2e -- tests/feature/onboarding.spec.ts --retries=0 --output=/tmp/omnis-release-onboarding
+11 passed (1.7m)
+$ npm run test:e2e -- --max-failures=1 --retries=0 --output=/tmp/omnis-release-e2e
+1 failed (팀장 로그인), 42 did not run, 2 passed (1.4m)
+로컬 데모 계정 읽기 조회: 0 / 5
+```
+
+전체 E2E 게이트 예외 여부를 사용자에게 요청했다. 답변 전에는 브랜치 push·PR 생성·머지를 진행하지 않는다. PR 본문은 로컬 임시 파일에 준비했다.
+
+운영 Vercel 환경을 별도 임시 파일로 확인하고 non-pooling Neon 호스트를 검증한 뒤 `npx prisma migrate deploy`를 실행했다. Pending은 이번 `20260914000000_onboarding` 1개뿐이었다.
+
+```text
+29 migrations found
+Applying migration 20260914000000_onboarding
+All migrations have been successfully applied.
+컬럼 확인: onboardingCompletedAt / onboardingVideoSeenAt, 모두 nullable YES
+잘못된 온보딩 상태: 0
+```
+
+앱 운영 배포는 아직 수행하지 않았다. nullable 컬럼만 추가된 상태라 기존 앱과 호환된다.
