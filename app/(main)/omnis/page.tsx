@@ -1,7 +1,8 @@
 import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { HaddDbLanding } from "@/components/omnis/hadd-db-landing"
+import { HaddDbLanding, type ContextTile } from "@/components/omnis/hadd-db-landing"
+import { compactWon, invoiceRevenue } from "@/lib/company-context"
 import { CreateCardDialog } from "@/components/omnis/create-card-dialog"
 import { getCardVersion } from "@/lib/omnis-git"
 
@@ -21,7 +22,12 @@ export default async function OmnisPage({ searchParams }: Props) {
 
   const userId = session?.user?.id as string | undefined
 
-  const [categories, totalCards, recent, popular, mine, bookmarks, recentViews, activityLogs] = await Promise.all([
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN"
+  const thisYear = new Date().getUTCFullYear()
+
+  const [contextTiles, [categories, totalCards, recent, popular, mine, bookmarks, recentViews, activityLogs]] = await Promise.all([
+    loadContextTiles(isAdmin, thisYear),
+    Promise.all([
     prisma.omnisCategory.findMany({
       orderBy: { sortOrder: "asc" },
       include: { _count: { select: { cards: true } } },
@@ -96,6 +102,7 @@ export default async function OmnisPage({ searchParams }: Props) {
       take: 8,
       include: { user: { select: { name: true } } },
     }),
+    ]),
   ])
 
   const bookmarkedIds = new Set(bookmarks.map((b) => b.cardId))
@@ -127,6 +134,7 @@ export default async function OmnisPage({ searchParams }: Props) {
           어디서든 열 수 있어야 하기 때문이다. */}
       <Header title="HADD DB" />
       <HaddDbLanding
+        contextTiles={contextTiles}
         totalCards={totalCards}
         categoryCount={categories.length}
         categories={categories.map((c) => ({ name: c.name, count: c._count.cards }))}
@@ -152,6 +160,37 @@ export default async function OmnisPage({ searchParams }: Props) {
       />
     </>
   )
+}
+
+/** 회사 Context 타일 — 사람이 쓰는 카드가 아니라 이식 · 업무에서 쌓이는 회사 자료로 들어가는 입구 */
+async function loadContextTiles(isAdmin: boolean, thisYear: number): Promise<ContextTile[]> {
+  const [profile, lastConfirmed, provisional, records, latestRecord, staff, market, invoices] = await Promise.all([
+    prisma.companyProfile.findUnique({ where: { id: "hadd" }, select: { nameKo: true } }),
+    prisma.companyYear.findFirst({ where: { basis: "CONFIRMED" }, orderBy: { year: "desc" } }),
+    invoiceRevenue(thisYear),
+    prisma.companyRecord.count(),
+    prisma.companyRecord.findFirst({ where: { startsOn: { not: null } }, orderBy: { startsOn: "desc" }, select: { title: true } }),
+    isAdmin ? prisma.staffProfile.count({ where: { employment: "EMPLOYED" } }) : Promise.resolve(null),
+    prisma.marketCompany.count(),
+    prisma.taxInvoice.count(),
+  ])
+  const tiles: ContextTile[] = [
+    {
+      href: "/omnis/company",
+      title: "회사 정보",
+      value: lastConfirmed?.revenueKrw != null ? `${lastConfirmed.year} 매출 ${compactWon(Number(lastConfirmed.revenueKrw))}` : profile ? "기본정보" : "비어 있음",
+      meta: provisional.invoices > 0 ? `${thisYear} 잠정 ${compactWon(provisional.total)} · 세금계산서 ${invoices}장` : (profile?.nameKo ?? "이식 전"),
+    },
+    {
+      href: "/omnis/records",
+      title: "연혁·실적",
+      value: `${records}건`,
+      meta: latestRecord?.title ?? "이식 전",
+    },
+    { href: "/omnis/market", title: "시장기업", value: `${market}곳`, meta: "경쟁 · 유사 기업" },
+  ]
+  if (staff !== null) tiles.push({ href: "/omnis/staff", title: "인력", value: `재직 ${staff}명`, meta: "관리자 전용 · 서명·직인" })
+  return tiles
 }
 
 function formatRelative(d: Date, now: number): string {

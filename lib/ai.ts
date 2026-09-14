@@ -29,6 +29,8 @@ function cleanCodeBlocks(text: string): string {
 export interface CallGeminiOptions {
   /** 기본 gemini-2.5-flash. 싼 판정에는 gemini-2.5-flash-lite 를 준다 */
   model?: string
+  /** 함께 보여 줄 파일 (PDF · 이미지). base64 로 인라인 전송한다 — 세금계산서 판독 등 */
+  files?: { mimeType: string; data: string }[]
 }
 
 export async function callGemini(
@@ -47,11 +49,11 @@ export async function callGemini(
   await assertGeminiUsageAllowed({
     endpoint,
     userId,
-    estimatedTokens: estimateGeminiTokens([prompt]) + maxOutputTokens,
+    estimatedTokens: estimateGeminiTokens([prompt]) + maxOutputTokens + (opts.files?.length ?? 0) * 1_500,
   })
 
   const reqBody = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
+    contents: [{ parts: [...(opts.files ?? []).map((f) => ({ inlineData: { mimeType: f.mimeType, data: f.data } })), { text: prompt }] }],
     generationConfig: {
       temperature,
       maxOutputTokens,

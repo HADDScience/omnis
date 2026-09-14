@@ -9,6 +9,7 @@ const TABS = [
   { href: "/crm/quotes", label: "견적" },
   { href: "/crm/samples", label: "샘플요청" },
   { href: "/crm/inventory", label: "재고·출고" },
+  { href: "/crm/invoices", label: "세금계산서" },
   { href: "/crm/orgs", label: "기관" },
 ] as const
 

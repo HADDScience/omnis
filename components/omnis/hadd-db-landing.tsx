@@ -8,7 +8,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   BookOpen01Icon,
   Search01Icon,
-  PlusSignIcon,
   BubbleChatSparkIcon,
   ArrowRight02Icon,
   FolderLibraryIcon,
@@ -32,7 +31,16 @@ interface CardSummary {
   meta?: string
 }
 
+/** 회사 Context 입구 — 회사 정보 · 연혁 · 시장기업 · 인력(관리자) */
+export interface ContextTile {
+  href: string
+  title: string
+  value: string
+  meta: string
+}
+
 interface HaddDbLandingProps {
+  contextTiles: ContextTile[]
   totalCards: number
   categoryCount: number
   categories: { name: string; count: number }[]
@@ -118,6 +126,7 @@ function CardEntry({ c, emphasized = false }: { c: CardSummary; emphasized?: boo
 }
 
 export function HaddDbLanding({
+  contextTiles,
   totalCards,
   categoryCount,
   categories,
@@ -147,6 +156,8 @@ export function HaddDbLanding({
           </p>
         </div>
 
+        {/* 사람이 문서를 한 땀씩 쓰는 곳이 아니라 Context 를 살펴보는 곳이다(2026-09-14 결정) —
+            「새 카드」 버튼을 앞에서 뺐다. 카드는 AI 가 업무에서 뽑아 제안한다. */}
         <div className="flex items-stretch gap-2">
           <button
             type="button"
@@ -158,14 +169,6 @@ export function HaddDbLanding({
             {/* 물리 키보드가 없는 기기에선 단축키 힌트를 숨긴다 */}
             <Kbd className="hidden md:inline-flex">⌘K</Kbd>
           </button>
-          <Link
-            href="/omnis?create=1"
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg border bg-primary px-4 py-4 text-[13.5px] font-semibold text-primary-foreground shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-opacity hover:opacity-90"
-            aria-label="새 지식카드 만들기"
-          >
-            <HugeiconsIcon icon={PlusSignIcon} size={15} />
-            새 카드
-          </Link>
         </div>
 
         {/*
@@ -199,6 +202,21 @@ export function HaddDbLanding({
             </Link>
           ))}
         </div>
+
+        {/* 회사 Context — 이식 · 업무에서 쌓이는 회사 자료. 카드처럼 사람이 쓰지 않는다 */}
+        <nav aria-label="회사 Context" className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+          {contextTiles.map((t) => (
+            <Link
+              key={t.href}
+              href={t.href}
+              className="touch-target min-w-0 rounded-lg border bg-card px-3.5 py-3 transition-colors hover:border-border-strong hover:bg-muted/40"
+            >
+              <div className="text-[11.5px] text-muted-foreground">{t.title}</div>
+              <div className="mt-0.5 truncate text-[14.5px] font-semibold tabular-nums">{t.value}</div>
+              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{t.meta}</div>
+            </Link>
+          ))}
+        </nav>
 
         {/* 사내 자료(NAS) 진입.
             사이드바에 「사내 자료」로 따로 서 있었는데 HADD DB 와 무엇이 다른지
