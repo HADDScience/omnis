@@ -74,19 +74,18 @@ export async function postChatMessage(input: PostMessageInput) {
   await persistMentions(message.id, trimmedContent).catch(() => {})
 
   {
-    // 업무 해석: #슬러그 멘션 OR 스레드 연결(taskId). 스레드에서 쓴 메시지는 멘션 없어도 그 업무로 처리.
-    const task = mention
-      ? await prisma.task.findUnique({
-          where: { slug: mention.slug },
-          select: { id: true, name: true, status: true, background: true, expectedResult: true, assignees: { select: { userId: true } }, instructorId: true, slug: true },
-        })
-      : linkedTaskId
-        ? await prisma.task.findUnique({
-            where: { id: linkedTaskId },
-            select: { id: true, name: true, status: true, background: true, expectedResult: true, assignees: { select: { userId: true } }, instructorId: true, slug: true },
-          })
-        : null
-    const restText = mention ? mention.restText : trimmedContent
+    // 업무 해석: 스레드 연결(taskId)이 먼저, 없으면 #슬러그 멘션.
+    // 스레드에서 다른 업무를 #멘션해도 그 업무로 옮겨 가지 않는다 — 스레드 안의 멘션은 참조다(2026-09-14).
+    const taskSelect = {
+      id: true, name: true, status: true, background: true, expectedResult: true,
+      assignees: { select: { userId: true } }, instructorId: true, slug: true,
+    } as const
+    const threadTask = linkedTaskId ? await prisma.task.findUnique({ where: { id: linkedTaskId }, select: taskSelect }) : null
+    const task = threadTask ?? (mention ? await prisma.task.findUnique({ where: { slug: mention.slug }, select: taskSelect }) : null)
+    const restText = threadTask || !mention ? trimmedContent : mention.restText
+    // 채팅에서 완료된 업무를 #멘션한 것은 참조다 — 메시지·파일만 잇고 AI 재구성·상태 변경은 하지 않는다.
+    // 예전에는 재구성이 '완료'를 '진행 중'으로 되돌렸다. 완료된 업무의 스레드에 직접 쓴 글은 예전처럼 처리한다.
+    const referenceOnly = !!task && !threadTask && task.status === "DONE"
 
     if (task && restText.trim().length > 0) {
       // 메시지를 업무에 연결
@@ -110,7 +109,9 @@ export async function postChatMessage(input: PostMessageInput) {
         ...new Set([...task.assignees.map((a) => a.userId), task.instructorId]),
       ].filter((id) => id !== user.id)
 
-      if (process.env.GEMINI_API_KEY) {
+      if (referenceOnly) {
+        // 참조만 — 메시지와 파일은 위에서 이미 이었다. 알림도 보내지 않는다(업무에 변화가 없다).
+      } else if (process.env.GEMINI_API_KEY) {
         // 이 업무에 연결된 모든 메시지 + 파일 수집
         const allMessages = await prisma.chatMessage.findMany({
           where: { taskId: task.id },
@@ -253,7 +254,7 @@ export async function postChatMessage(input: PostMessageInput) {
       }
 
       // 멘션으로 변경된 업무 카드·체크리스트를 임베딩에 반영
-      await syncEmbeddingsSafe("TASK", task.id, user.id)
+      if (!referenceOnly) await syncEmbeddingsSafe("TASK", task.id, user.id)
     } else if (task) {
       await prisma.chatMessage.update({ where: { id: message.id }, data: { taskId: task.id } })
     }

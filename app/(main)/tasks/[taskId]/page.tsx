@@ -32,7 +32,10 @@ export default async function TaskDetailPage({ params }: Props) {
     prisma.chatMessage.findMany({
       where: { taskId },
       orderBy: { createdAt: "asc" },
-      include: { author: { select: { id: true, name: true } } },
+      include: {
+        author: { select: { id: true, name: true } },
+        files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
+      },
     }),
     prisma.file.findMany({
       where: { taskId },
@@ -84,6 +87,7 @@ export default async function TaskDetailPage({ params }: Props) {
     author: { id: m.author.id, name: m.author.name },
     isTaskInstruction: m.isTaskInstruction,
     kind: m.kind,
+    files: m.files,
   }))
 
   return (

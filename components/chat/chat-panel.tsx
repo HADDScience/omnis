@@ -42,7 +42,8 @@ export function ChatPanel({
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [users, setUsers] = useState<User[]>([])
-  const [tasks, setTasks] = useState<{ id: string; name: string; slug: string }[]>([])
+  // status 는 # 자동완성이 진행 중 · 완료를 나눠 보여 주는 데 쓴다 (/api/tasks 가 이미 준다)
+  const [tasks, setTasks] = useState<{ id: string; name: string; slug: string; status?: string }[]>([])
   const [uploadedFiles, setUploadedFiles] = useState<{ id: string; name: string; path: string; mimeType: string }[]>([])
   const [processing, setProcessing] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map()) // msgId → 0~100
@@ -138,7 +139,7 @@ export function ChatPanel({
   function fetchTasks() {
     fetch(apiUrl("/api/tasks"))
       .then((r) => r.json())
-      .then((data: { id: string; name: string; slug: string }[]) => setTasks(data))
+      .then((data: { id: string; name: string; slug: string; status?: string }[]) => setTasks(data))
       .catch(() => {})
   }
 
