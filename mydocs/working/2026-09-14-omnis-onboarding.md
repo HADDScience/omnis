@@ -185,3 +185,31 @@ exit 0
 전체 기존 E2E의 데모 계정 부재 제한은 앞 절과 같다. 운영 반영은 하지 않았고, 로컬 서버 `/login` HTTP 200을 확인했다.
 
 ![좁은 모바일에서도 재생 버튼과 장면이 함께 표시됨](onboarding-preview/mobile-fit.png)
+
+## 입력·메시지 확대와 스토리 수동 탐색
+
+사용자 요청으로 자동 전용 재생 결정을 변경했다. 좌측 35% 탭은 이전, 우측 65% 탭은 다음 장면이며 자동 재생도 유지한다. 수동 이동은 새 장면을 처음부터 시작한다. 첫 이전·마지막 다음은 비활성이고 최종 CTA는 별도로 유지한다. 명명된 네이티브 버튼으로 키보드 탐색도 제공한다.
+
+업무 지시·완료 보고·추가 지시의 입력창 확대 → 2.4초 전송 시 원위치 → 3.2~5초 전송 메시지 확대 → 전체 업무 상태 확인 순서다. 타이머로 일시정지와 동기화한다. 모바일 확대율은 줄이고 모션 감소에서는 확대를 생략한다. UX 관련 항목: 테마 토큰·기존 UI 재사용·접근 가능한 버튼·모바일 경계·최종 CTA 도달 확인.
+
+```text
+$ npx playwright test tests/feature/onboarding.spec.ts --project=feature --retries=0 --output=/tmp/omnis-onboarding-story
+11 passed (2.2m)
+
+$ npx playwright test tests/feature/onboarding.spec.ts --project=feature --grep '입력 확대' --retries=0 --output=/tmp/omnis-onboarding-zoom-capture-final
+1 passed (10.9s)
+
+$ npm run verify
+✖ 41 problems (0 errors, 41 warnings)
+exit 0
+
+$ npm run build
+✓ Compiled successfully in 9.8s
+✓ Generating static pages using 11 workers (46/46) in 104.2ms
+exit 0
+
+$ curl localhost:3000/login (HTTP 상태 확인)
+200
+```
+
+새 검증은 수동 이동 후 타이머 초기화·자동 진행 재개·마지막 장면 대기·확대 단계 순서·일시정지·320/390/1440px 화면 경계·모션 감소를 포함한다. 가상 시계로 재생 시 CSS 등장 애니메이션이 다른 시점을 가리켜 확대 테스트의 스크린샷 저장은 제거하고 DOM 경계와 상태를 검증한다. 기존 전체 E2E의 데모 계정 부재 제한은 앞 절과 동일하다.

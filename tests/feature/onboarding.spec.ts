@@ -239,7 +239,6 @@ test.describe("onboarding", () => {
         )
         .toBe(true)
     }
-    await page.screenshot({ path: "/tmp/omnis-onboarding-message-zoom.png" })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await expect(page.locator(".intro-message-focus")).toHaveCSS(
       "transform",
