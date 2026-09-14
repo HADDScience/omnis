@@ -65,16 +65,21 @@ type Box = {
   height: number
   viewportWidth: number
   viewportHeight: number
+  cardX: number
+  cardY: number
+  connector: string
 }
 
 function Stop({
   index,
   onAdvance,
   onFinish,
+  onPrevious,
 }: {
   index: number
   onAdvance: () => void
   onFinish: () => void
+  onPrevious: () => void
 }) {
   const stop = stops[index]
   const panel = useRightPanel()
@@ -84,6 +89,7 @@ function Stop({
   useEffect(() => {
     latest.current = { panel, sidebar }
   }, [panel, sidebar])
+  const card = useRef<HTMLElement>(null)
   const [box, setBox] = useState<Box | null>(null)
   const [settled, setSettled] = useState(false)
   const clock = useTourClock(7000, onAdvance, settled)
@@ -100,7 +106,7 @@ function Stop({
       if (!surface) return
       const selector =
         stop.target === "conversation"
-          ? '[data-onboarding="conversation"]'
+          ? '[data-onboarding="conversation"] textarea, [data-onboarding="conversation"] [aria-label="옴니스에게 보낼 질문"]'
           : `[data-onboarding="${stop.target}"]`
       const node = [...document.querySelectorAll<HTMLElement>(selector)].find(
         (item) => {
@@ -122,59 +128,113 @@ function Stop({
       const outer = surface.getBoundingClientRect()
       const scale = outer.width / surface.clientWidth || 1
       const rect = node.getBoundingClientRect()
-      const x = Math.max(8, (rect.left - outer.left) / scale - 5)
-      const y = Math.max(8, (rect.top - outer.top) / scale - 5)
-      setBox({
+      // Intersect the real control with its scroll containers before adding the halo.
+      let left = Math.max(0, rect.left)
+      let top = Math.max(0, rect.top)
+      let right = Math.min(window.innerWidth, rect.right)
+      let bottom = Math.min(window.innerHeight, rect.bottom)
+      for (
+        let parent = node.parentElement;
+        parent && parent !== document.body;
+        parent = parent.parentElement
+      ) {
+        const style = getComputedStyle(parent)
+        const bounds = parent.getBoundingClientRect()
+        if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+          left = Math.max(left, bounds.left)
+          right = Math.min(right, bounds.right)
+        }
+        if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+          top = Math.max(top, bounds.top)
+          bottom = Math.min(bottom, bounds.bottom)
+        }
+      }
+      if (right <= left || bottom <= top) {
+        setBox(null)
+        return
+      }
+      const vw = surface.clientWidth
+      const vh = surface.clientHeight
+      const x = Math.max(4, (left - outer.left) / scale - 5)
+      const y = Math.max(4, (top - outer.top) / scale - 5)
+      const width = Math.min((right - outer.left) / scale + 5, vw - 4) - x
+      const height = Math.min((bottom - outer.top) / scale + 5, vh - 4) - y
+      const cw = Math.min(330, vw - 32)
+      const ch = Math.min(card.current?.offsetHeight ?? 300, vh - 32)
+      const clampX = (value: number) =>
+        Math.max(16, Math.min(value, vw - cw - 16))
+      const clampY = (value: number) =>
+        Math.max(16, Math.min(value, vh - ch - 16))
+      const gap = 20
+      let cardX: number
+      let cardY: number
+      let connector = ""
+      if (x + width + gap + cw <= vw - 16 || x - gap - cw >= 16) {
+        const toRight = x + width + gap + cw <= vw - 16
+        cardX = toRight ? x + width + gap : x - gap - cw
+        cardY = clampY(y + height / 2 - ch / 2)
+        const anchorY = Math.max(
+          cardY + 20,
+          Math.min(y + height / 2, cardY + ch - 20)
+        )
+        const fromX = toRight ? x + width : x
+        const toX = toRight ? cardX : cardX + cw
+        connector = `M ${fromX} ${y + height / 2} C ${(fromX + toX) / 2} ${y + height / 2}, ${(fromX + toX) / 2} ${anchorY}, ${toX} ${anchorY}`
+      } else {
+        cardX = clampX(x + width / 2 - cw / 2)
+        const belowFits = y + height + gap + ch <= vh - 16
+        const aboveFits = y - gap - ch >= 16
+        const below = belowFits || (!aboveFits && y + height / 2 < vh / 2)
+        cardY = clampY(below ? y + height + gap : y - gap - ch)
+        if (belowFits || aboveFits) {
+          const anchorX = Math.max(
+            cardX + 20,
+            Math.min(x + width / 2, cardX + cw - 20)
+          )
+          const fromY = below ? y + height : y
+          const toY = below ? cardY : cardY + ch
+          connector = `M ${x + width / 2} ${fromY} C ${x + width / 2} ${(fromY + toY) / 2}, ${anchorX} ${(fromY + toY) / 2}, ${anchorX} ${toY}`
+        }
+      }
+      const next = {
         x,
         y,
-        width: Math.max(
-          0,
-          Math.min(rect.width / scale + 10, surface.clientWidth - x - 8)
-        ),
-        height: Math.max(
-          0,
-          Math.min(rect.height / scale + 10, surface.clientHeight - y - 8)
-        ),
-        viewportWidth: surface.clientWidth,
-        viewportHeight: surface.clientHeight,
-      })
+        width,
+        height,
+        viewportWidth: vw,
+        viewportHeight: vh,
+        cardX,
+        cardY,
+        connector,
+      }
+      setBox((previous) =>
+        previous &&
+        Object.keys(next).every(
+          (key) => previous[key as keyof Box] === next[key as keyof Box]
+        )
+          ? previous
+          : next
+      )
     }
-    measure()
-    const interval = window.setInterval(measure, 100)
+    // Follow menu transitions and scrolling in the same frame, without a 100ms trailing hole.
+    let frame = 0
+    const track = () => {
+      measure()
+      frame = requestAnimationFrame(track)
+    }
+    frame = requestAnimationFrame(track)
     return () => {
       clearTimeout(timeout)
-      clearInterval(interval)
+      cancelAnimationFrame(frame)
     }
   }, [stop, sidebar.isMobile, setSpotlightTarget])
-  const cardWidth = box ? Math.min(330, box.viewportWidth - 32) : 330
-  const cardStyle = !box
-    ? undefined
-    : box.viewportWidth >= 768 &&
-        box.x + box.width + cardWidth + 35 < box.viewportWidth
-      ? {
-          left: box.x + box.width + 20,
-          top: Math.min(
-            Math.max(16, box.y),
-            Math.max(16, box.viewportHeight - 270)
-          ),
-          width: cardWidth,
-        }
-      : box.viewportWidth >= 768 && box.x > cardWidth + 35
-        ? {
-            left: box.x - cardWidth - 20,
-            top: Math.min(
-              Math.max(16, box.y),
-              Math.max(16, box.viewportHeight - 270)
-            ),
-            width: cardWidth,
-          }
-        : {
-            left: 16,
-            width: cardWidth,
-            ...(box.y + box.height / 2 > box.viewportHeight / 2
-              ? { top: 16 }
-              : { top: "auto", bottom: 16 }),
-          }
+  const cardStyle = box
+    ? {
+        left: box.cardX,
+        top: box.cardY,
+        width: Math.min(330, box.viewportWidth - 32),
+      }
+    : undefined
   const conversationIsAi =
     stop.target === "conversation" &&
     typeof document !== "undefined" &&
@@ -208,7 +268,7 @@ function Stop({
           width="100%"
           height="100%"
           fill="black"
-          fillOpacity=".62"
+          fillOpacity=".56"
           mask="url(#omnis-spotlight-hole)"
         />
         {box && (
@@ -223,8 +283,19 @@ function Stop({
             strokeWidth="2"
           />
         )}
+        {box?.connector && (
+          <path
+            d={box.connector}
+            fill="none"
+            stroke="var(--primary)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            opacity=".85"
+          />
+        )}
       </svg>
       <section
+        ref={card}
         className="spotlight-card"
         style={cardStyle}
         data-tour-stop={stop.target}
@@ -249,12 +320,27 @@ function Stop({
             <i style={{ transform: `scaleX(${clock.elapsed / 7000})` }} />
           </span>
         </div>
-        <div className="spotlight-controls">
+        <div className="spotlight-playback">
           <button onClick={clock.toggle}>
-            {clock.paused ? "재생" : "일시정지"}
+            {clock.paused ? "▷ 재생" : "Ⅱ 일시정지"}
           </button>
-          <button onClick={onFinish}>
-            {index === stops.length - 1 ? "안내 마치기" : "안내 건너뛰기"}
+          <span>
+            {clock.paused
+              ? "일시정지 중"
+              : `자동 진행 · ${Math.max(1, Math.ceil((7000 - clock.elapsed) / 1000))}초`}
+          </span>
+        </div>
+        <div className="spotlight-controls">
+          <button
+            disabled={index === 0}
+            onClick={onPrevious}
+            aria-label="이전 안내"
+          >
+            ← 이전
+          </button>
+          <button onClick={onFinish}>안내 건너뛰기</button>
+          <button className="spotlight-next" onClick={onAdvance}>
+            {index === stops.length - 1 ? "안내 마치기" : "다음 →"}
           </button>
         </div>
         <span role="status" className="sr-only">
@@ -292,9 +378,10 @@ export default function SpotlightTour({ onFinish }: { onFinish: () => void }) {
         onAdvance={() =>
           index === stops.length - 1
             ? onFinish()
-            : setIndex((value) => value + 1)
+            : setIndex(index + 1)
         }
         onFinish={onFinish}
+        onPrevious={() => setIndex(Math.max(0, index - 1))}
       />
     </TourSurface>
   )

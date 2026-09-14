@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Task01Icon,
@@ -194,6 +194,16 @@ function Workflow({ step, elapsed }: { step: number; elapsed: number }) {
   const beat = Math.floor(elapsed / 2800)
   const creating = step === 2
   const completing = step === 3
+  const sent = elapsed >= 2400
+  const message = creating
+    ? "/업무 신규 고객 제안서를 준비해 주세요. 담당자는 김하드, 금요일까지 부탁해요."
+    : completing
+      ? "#신규 고객 제안서 준비 제안서 작성을 마쳤습니다. 확인 부탁드려요."
+      : "#신규 고객 제안서 준비 샘플 일정도 추가해서 다시 진행해 주세요."
+  const typed = message.slice(
+    0,
+    Math.floor(message.length * Math.min(1, elapsed / 2000))
+  )
   const state = creating
     ? "할 일"
     : completing
@@ -233,27 +243,39 @@ function Workflow({ step, elapsed }: { step: number; elapsed: number }) {
                 ? "담당자 · 김하드"
                 : "추가 지시"}
           </span>
-          <div className="intro-bubble" key={`${step}-message`}>
-            {creating ? (
-              <>
-                <code>/업무</code> 신규 고객 제안서를 준비해 주세요.
-                <br />
-                담당자는 김하드, 금요일까지 부탁해요.
-              </>
-            ) : completing ? (
-              <>
-                <code>#신규 고객 제안서 준비</code>
-                <br />
-                제안서 작성을 마쳤습니다. 확인 부탁드려요.
-              </>
-            ) : (
-              <>
-                <code>#신규 고객 제안서 준비</code>
-                <br />
-                샘플 일정도 추가해서 다시 진행해 주세요.
-              </>
-            )}
-          </div>
+          {sent ? (
+            <div
+              className="intro-bubble intro-message-sent"
+              key={`${step}-message`}
+            >
+              {creating ? (
+                <>
+                  <code>/업무</code> 신규 고객 제안서를 준비해 주세요.
+                  <br />
+                  담당자는 김하드, 금요일까지 부탁해요.
+                </>
+              ) : completing ? (
+                <>
+                  <code>#신규 고객 제안서 준비</code>
+                  <br />
+                  제안서 작성을 마쳤습니다. 확인 부탁드려요.
+                </>
+              ) : (
+                <>
+                  <code>#신규 고객 제안서 준비</code>
+                  <br />
+                  샘플 일정도 추가해서 다시 진행해 주세요.
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="intro-typing-hint">
+              <span />
+              <span />
+              <span />
+              <small>메시지를 입력하고 있어요</small>
+            </div>
+          )}
           {beat >= 1 && (
             <div className="intro-reveal">
               {creating ? (
@@ -287,25 +309,27 @@ function Workflow({ step, elapsed }: { step: number; elapsed: number }) {
             </div>
           )}
         </div>
-        <div className="intro-composer">
+        <div className="intro-composer" data-sent={sent}>
           <Textarea
             readOnly
             tabIndex={-1}
             aria-label="예시 메시지 입력"
             className="min-h-0 resize-none border-0 text-xs shadow-none"
             value={
-              creating && elapsed < 2200
-                ? "/업무 신규 고객 제안서를 준비해 주세요.".slice(
-                    0,
-                    Math.floor(elapsed / 65)
-                  )
-                : ""
+              sent
+                ? ""
+                : typed + (Math.floor(elapsed / 400) % 2 === 0 ? "▍" : "")
             }
             placeholder={
               creating ? "/ 명령 · 파일 첨부" : "# 업무 언급 · 스레드 답장"
             }
           />
-          <span className="intro-send">↑</span>
+          <span
+            className={`intro-send ${sent ? "intro-send-confirmed" : ""}`}
+            aria-hidden="true"
+          >
+            {sent && elapsed < 3000 ? "✓" : "↑"}
+          </span>
         </div>
       </div>
       <div className="intro-flow-arrow" aria-hidden="true">
@@ -336,6 +360,26 @@ function Chapter({
 }) {
   const chapter = chapters[step]
   const clock = useTourClock(chapter.duration, onAdvance)
+  const viewport = useRef<HTMLDivElement>(null)
+  const frame = useRef<HTMLDivElement>(null)
+  const content = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const slot = viewport.current!
+    const scene = content.current!
+    const fitted = frame.current!
+    const fit = () => {
+      const scale = Math.min(
+        1,
+        slot.clientHeight / Math.max(1, scene.offsetHeight)
+      )
+      fitted.style.setProperty("--intro-fit-scale", String(scale))
+    }
+    const observer = new ResizeObserver(fit)
+    observer.observe(slot)
+    observer.observe(scene)
+    fit()
+    return () => observer.disconnect()
+  }, [])
   return (
     <div
       className="intro-stage"
@@ -353,97 +397,102 @@ function Chapter({
         </span>
         <button onClick={onFinish}>건너뛰기</button>
       </header>
-      <section
-        className={`intro-chapter ${step >= 2 && step <= 6 ? "has-demo" : ""}`}
-        key={step}
-      >
-        {(step === 0 || step === 7) && <Mark />}
-        <div className="intro-copy">
-          <span className="intro-eyebrow">
-            {String(step + 1).padStart(2, "0")} / OMNIS
-          </span>
-          <h1>{chapter.title}</h1>
-          <p>{chapter.caption}</p>
-        </div>
-        {step === 1 && (
-          <div className="intro-concepts">
-            {[
-              [Task01Icon, "업무"],
-              [BubbleChatIcon, "대화"],
-              [BookOpen01Icon, "지식"],
-            ].map(([icon, title], i) => (
-              <div
-                key={String(title)}
-                style={{ animationDelay: `${i * 160}ms` }}
-              >
-                <HugeiconsIcon icon={icon as typeof Task01Icon} size={30} />
-                <span>{String(title)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {step >= 2 && step <= 4 && (
-          <Workflow step={step} elapsed={clock.elapsed} />
-        )}
-        {step === 5 && (
-          <div className="intro-mcp-map">
-            <div className="intro-profile-preview">
-              <span className="intro-chat-label">내 프로필</span>
-              <div className="intro-profile-person">
-                <Avatar className="h-7 w-7">
-                  <AvatarFallback>김</AvatarFallback>
-                </Avatar>
-                <strong>김하드</strong>
-                <span>MEMBER</span>
-              </div>
-              <div className="intro-mcp-highlight">
-                <ShineBorder shineColor={rainbow} borderWidth={1.5} />
-                <HugeiconsIcon icon={AiMagicIcon} size={21} />
-                Omnis MCP 등록 <span>↗</span>
-              </div>
-              <div className="intro-profile-muted">온보딩 튜토리얼</div>
+      <div ref={viewport} className="intro-viewport">
+        <div ref={frame} className="intro-fit">
+          <section
+            ref={content}
+            className={`intro-chapter ${step >= 2 && step <= 6 ? "has-demo" : ""}`}
+            key={step}
+          >
+            {(step === 0 || step === 7) && <Mark />}
+            <div className="intro-copy">
+              <span className="intro-eyebrow">
+                {String(step + 1).padStart(2, "0")} / OMNIS
+              </span>
+              <h1>{chapter.title}</h1>
+              <p>{chapter.caption}</p>
             </div>
-            <div className="intro-link-line" aria-hidden="true">
-              <i />
-              <span>OAuth 연결</span>
-            </div>
-            <div className="intro-ai-orb">
-              <HugeiconsIcon icon={AiMagicIcon} size={36} />
-              <strong>나의 AI</strong>
-              <span>업무 · 지식 · 회사 자원</span>
-            </div>
-          </div>
-        )}
-        {step === 6 && (
-          <div className="intro-tools">
-            {[
-              [UserGroupIcon, "CRM", "고객과 견적을 함께"],
-              [Legal01Icon, "지식재산권", "회사의 아이디어와 권리"],
-              [BookOpen01Icon, "HADD DB", "쌓이는 우리 회사의 지식"],
-            ].map(([icon, title, description], i) => (
-              <div
-                key={String(title)}
-                style={{ animationDelay: `${i * 200}ms` }}
-              >
-                <HugeiconsIcon icon={icon as typeof Task01Icon} size={32} />
-                <strong>{String(title)}</strong>
-                <p>{String(description)}</p>
-                <div className="intro-mini-lines" aria-hidden="true">
+            {step === 1 && (
+              <div className="intro-concepts">
+                {[
+                  [Task01Icon, "업무"],
+                  [BubbleChatIcon, "대화"],
+                  [BookOpen01Icon, "지식"],
+                ].map(([icon, title], i) => (
+                  <div
+                    key={String(title)}
+                    style={{ animationDelay: `${i * 160}ms` }}
+                  >
+                    <HugeiconsIcon icon={icon as typeof Task01Icon} size={30} />
+                    <span>{String(title)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {step >= 2 && step <= 4 && (
+              <Workflow step={step} elapsed={clock.elapsed} />
+            )}
+            {step === 5 && (
+              <div className="intro-mcp-map">
+                <div className="intro-profile-preview">
+                  <span className="intro-chat-label">내 프로필</span>
+                  <div className="intro-profile-person">
+                    <Avatar className="h-7 w-7">
+                      <AvatarFallback>김</AvatarFallback>
+                    </Avatar>
+                    <strong>김하드</strong>
+                    <span>MEMBER</span>
+                  </div>
+                  <div className="intro-mcp-highlight">
+                    <ShineBorder shineColor={rainbow} borderWidth={1.5} />
+                    <HugeiconsIcon icon={AiMagicIcon} size={21} />
+                    Omnis MCP 등록 <span>↗</span>
+                  </div>
+                  <div className="intro-profile-muted">온보딩 튜토리얼</div>
+                </div>
+                <div className="intro-link-line" aria-hidden="true">
                   <i />
-                  <i />
-                  <i />
+                  <span>OAuth 연결</span>
+                </div>
+                <div className="intro-ai-orb">
+                  <HugeiconsIcon icon={AiMagicIcon} size={36} />
+                  <strong>나의 AI</strong>
+                  <span>업무 · 지식 · 회사 자원</span>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            )}
+            {step === 6 && (
+              <div className="intro-tools">
+                {[
+                  [UserGroupIcon, "CRM", "고객과 견적을 함께"],
+                  [Legal01Icon, "지식재산권", "회사의 아이디어와 권리"],
+                  [BookOpen01Icon, "HADD DB", "쌓이는 우리 회사의 지식"],
+                ].map(([icon, title, description], i) => (
+                  <div
+                    key={String(title)}
+                    style={{ animationDelay: `${i * 200}ms` }}
+                  >
+                    <HugeiconsIcon icon={icon as typeof Task01Icon} size={32} />
+                    <strong>{String(title)}</strong>
+                    <p>{String(description)}</p>
+                    <div className="intro-mini-lines" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+      <footer className="intro-footer">
         {step === 7 && (
           <button className="intro-start" onClick={onFinish}>
             업무 시작하기 <span aria-hidden="true">→</span>
           </button>
         )}
-      </section>
-      <footer className="intro-footer">
         <div className="intro-progress" aria-label={`${step + 1} / 8 단계`}>
           {chapters.map((item, i) => (
             <span key={item.name}>

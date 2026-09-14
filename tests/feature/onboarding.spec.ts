@@ -59,6 +59,197 @@ test.describe("onboarding", () => {
       .toBe(true)
   }
 
+  test("낮은 창과 확대 배율에서도 장면과 재생 버튼이 잘리지 않는다", async ({
+    page,
+  }) => {
+    await page.clock.install()
+    await login(page)
+    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
+    await page.clock.fastForward(4100)
+    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "2")
+    await page.clock.fastForward(5100)
+    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "3")
+    await page.clock.fastForward(9000)
+    await page.getByRole("button", { name: "일시정지", exact: true }).click()
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    for (const [width, height, zoom] of [
+      [1440, 800, 1.25],
+      [1024, 600, 1.1],
+      [390, 844, 1],
+      [320, 568, 1],
+    ]) {
+      await page.setViewportSize({ width, height })
+      await page.evaluate(
+        (value) =>
+          document.documentElement.style.setProperty(
+            "--ui-zoom",
+            String(value)
+          ),
+        zoom
+      )
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(() => {
+              const surface = document.querySelector(".intro-surface")!
+              const selectors = [
+                ".intro-header",
+                ".intro-copy",
+                ".intro-workflow",
+                ".intro-footer",
+              ]
+              return (
+                surface.scrollHeight <= surface.clientHeight + 1 &&
+                selectors.every((selector) => {
+                  const box = document
+                    .querySelector(selector)!
+                    .getBoundingClientRect()
+                  return (
+                    box.top >= -1 &&
+                    box.left >= -1 &&
+                    box.bottom <= innerHeight + 1 &&
+                    box.right <= innerWidth + 1
+                  )
+                })
+              )
+            }),
+          { message: `${width}×${height}, zoom ${zoom}` }
+        )
+        .toBe(true)
+    }
+    await page.screenshot({
+      animations: "disabled",
+      path: "/tmp/omnis-onboarding-fit-mobile.png",
+    })
+  })
+
+  test("업무 지시·완료 보고·추가 지시는 타이핑 후 전송되며 실제 쓰기는 없다", async ({
+    page,
+  }) => {
+    await page.clock.install()
+    await login(page)
+    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
+    await page.clock.fastForward(4100)
+    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "2")
+    await page.clock.fastForward(5100)
+    const writes: string[] = []
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        /\/api\/(tasks|chat)/.test(request.url())
+      )
+        writes.push(request.url())
+    })
+    for (const [step, duration] of [
+      [3, 12000],
+      [4, 12000],
+      [5, 10000],
+    ]) {
+      await expect(page.locator(".intro-stage")).toHaveAttribute(
+        "data-step",
+        String(step)
+      )
+      await page.clock.fastForward(900)
+      const input = page.locator(".intro-composer textarea")
+      await expect(input).not.toHaveValue("")
+      await expect(page.locator(".intro-bubble")).toHaveCount(0)
+      await page.clock.fastForward(1800)
+      await expect(input).toHaveValue("")
+      await expect(page.locator(".intro-message-sent")).toBeVisible()
+      await expect(page.locator(".intro-send-confirmed")).toHaveText("✓")
+      await page.clock.fastForward(duration - 2600)
+    }
+    expect(writes).toEqual([])
+  })
+
+  test("스포트라이트는 실제 대상에 밀착하고 설명창이 겹치지 않으며 앞뒤로 이동한다", async ({
+    page,
+  }) => {
+    await page.clock.install()
+    await login(page)
+    await skipVideo(page)
+    const targets = [
+      "tasks",
+      "chat-trigger",
+      "conversation",
+      "ai",
+      "resources",
+      "profile",
+      "mcp",
+      "replay",
+    ]
+    for (const target of targets) {
+      await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
+        "data-tour-stop",
+        target
+      )
+      await page.clock.fastForward(1300)
+      await expect
+        .poll(
+          async () =>
+            page.evaluate((name) => {
+              const target = document.querySelector(
+                name === "conversation"
+                  ? '[data-onboarding="conversation"] textarea'
+                  : `[data-onboarding="${name}"]`
+              )
+              const hole = document.querySelector(
+                ".spotlight-shade > rect[stroke]"
+              )
+              const card = document.querySelector(".spotlight-card")
+              if (!target || !hole || !card) return false
+              const t = target.getBoundingClientRect(),
+                h = hole.getBoundingClientRect(),
+                c = card.getBoundingClientRect()
+              const tight =
+                Math.abs(t.left - h.left) <= 8 &&
+                Math.abs(t.top - h.top) <= 8 &&
+                Math.abs(t.right - h.right) <= 8 &&
+                Math.abs(t.bottom - h.bottom) <= 8
+              const separate =
+                c.right <= h.left ||
+                c.left >= h.right ||
+                c.bottom <= h.top ||
+                c.top >= h.bottom
+              return (
+                tight &&
+                separate &&
+                c.top >= 0 &&
+                c.bottom <= innerHeight &&
+                c.left >= 0 &&
+                c.right <= innerWidth
+              )
+            }, target),
+          { message: `정확한 강조 영역과 설명 위치: ${target}` }
+        )
+        .toBe(true)
+      if (target === "chat-trigger") {
+        await page.getByRole("button", { name: "이전 안내" }).click()
+        await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
+          "data-tour-stop",
+          "tasks"
+        )
+        await page.getByRole("button", { name: "다음 →", exact: true }).click()
+        await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
+          "data-tour-stop",
+          "chat-trigger"
+        )
+      }
+      if (target === "mcp")
+        await page.screenshot({
+          animations: "disabled",
+          path: "/tmp/omnis-onboarding-precise-spotlight.png",
+        })
+      await page
+        .getByRole("button", {
+          name: target === "replay" ? "안내 마치기" : "다음 →",
+          exact: true,
+        })
+        .click()
+    }
+    await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
+  })
+
   test("8장면 자동 재생·일시정지·최종 CTA·스포트라이트", async ({ page }) => {
     const errors: string[] = []
     page.on("pageerror", (error) => errors.push(error.message))
