@@ -144,3 +144,44 @@ $ npx playwright test tests/feature/onboarding.spec.ts --project=feature --grep 
 ```
 
 업무 시작하기 → 스포트라이트 8단계 → 안내 종료 경로와 브라우저 pageerror 없음 검사를 다시 통과했다. 사용자 기존 오류 화면은 새로고침이 필요하다.
+
+## 화면 잘림·타이핑·스포트라이트 후속 개선
+
+사용자의 잘린 화면 캡처와 후속 요청 2건을 반영했다.
+
+- 장면의 최소 높이가 화면보다 커질 수 있던 flex 구조를 고정 높이 셸로 바꾸고 `ResizeObserver`로 장면과 남은 공간을 측정한다. 설명 장면만 비례 축소하며 헤더·재생 버튼·업무 시작하기 버튼은 바깥에 유지한다. 낮은 모바일에서는 중복 카드 설명과 부가 정보를 줄인다. 기존의 세로 스크롤 방식은 이 방식으로 대체했다.
+- 3·4·5번 장면 모두 입력창에 글자가 입력되고, 2.4초에 입력창이 비워지면서 전송 버튼 반응과 말풍선 등장 효과가 시작된다. 이후 파일·AI 응답·업무 상태 변화가 이어진다. 타이핑·전송도 기존 재생 시계와 일시정지·모션 감소 설정을 따른다.
+- 스포트라이트의 100ms 간격 추적을 프레임 단위 추적으로 바꾸고, 값이 바뀐 경우만 상태를 갱신한다. 스크롤 컨테이너에 가려진 부분을 제외한 경계에 5px 여백을 둔다.
+- 대화 안내는 패널 전체 대신 실제 입력창을 비춘다. 설명창의 실측 높이와 화면 여유에 따라 좌·우·상·하 위치를 선택하고 연결선을 그린다. 이전·다음·일시정지·건너뛰기와 자동 진행 잔여 시간을 제공한다.
+
+```text
+수정 전:
+$ npx playwright test tests/feature/onboarding.spec.ts --project=feature --grep '낮은 창' --retries=0 --output=/tmp/omnis-onboarding-fit-before
+1 failed
+Expected: true
+Received: false
+(장면·하단 버튼이 viewport 안에 모두 들어오는 조건)
+
+수정 후:
+$ npx playwright test tests/feature/onboarding.spec.ts --project=feature --retries=0 --output=/tmp/omnis-onboarding-refined-final
+✓ 낮은 창과 확대 배율에서도 장면과 재생 버튼이 잘리지 않는다
+✓ 업무 지시·완료 보고·추가 지시는 타이핑 후 전송되며 실제 쓰기는 없다
+✓ 스포트라이트는 실제 대상에 밀착하고 설명창이 겹치지 않으며 앞뒤로 이동한다
+✓ 기존 자동 진행·계정 이력·MCP·거부 사례·저장 실패·입력 보존·모바일 검증 6개
+9 passed (1.0m)
+
+$ npm run verify
+✖ 41 problems (0 errors, 41 warnings)
+exit 0 (기존 경고만)
+
+$ npm run build
+✓ Compiled successfully in 6.8s
+✓ Generating static pages using 11 workers (46/46) in 181.8ms
+exit 0
+```
+
+화면 크기/앱 CSS 배율 조합: 1440×800/1.25, 1024×600/1.1, 390×844/1, 320×568/1. 스포트라이트 테스트는 표시되는 테두리와 실제 요소 경계의 차이가 8px 이하이고 설명창과 겹치지 않음을 검사한다. SVG defs 안의 비표시 mask는 좌표 검사 대상에서 제외했다. 브라우저 실제 화면 캡처도 확인했다.
+
+전체 기존 E2E의 데모 계정 부재 제한은 앞 절과 같다. 운영 반영은 하지 않았고, 로컬 서버 `/login` HTTP 200을 확인했다.
+
+![좁은 모바일에서도 재생 버튼과 장면이 함께 표시됨](onboarding-preview/mobile-fit.png)
