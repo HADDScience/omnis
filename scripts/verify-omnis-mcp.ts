@@ -1,5 +1,5 @@
 /**
- * omnis-hadd MCP 검증 — 옴니스 도구를 실제로 돌린다. (OAuth·지식재산권 도구는 verify-ip-mcp.ts)
+ * hadd-omnis MCP 검증 — 옴니스 도구를 실제로 돌린다. (OAuth·지식재산권 도구는 verify-ip-mcp.ts)
  *
  *   IP_MCP_BASE=http://localhost:3000 npx tsx scripts/verify-omnis-mcp.ts
  *
@@ -7,9 +7,17 @@
  * "지식재산권 도구는 구성원에게만" 이 둘 다 검증된다. 끝나면 만든 것을 전부 지운다.
  * ask_omnis·post_message 는 Gemini 를 실제로 부른다(각 1~2회).
  */
-import { createHash, randomBytes } from "crypto"
+import { createHash, createHmac, randomBytes } from "crypto"
 import { hashSync } from "bcryptjs"
 import { prisma } from "../lib/db"
+import { deleteObject, objectKeyFor } from "../lib/storage"
+
+/** 서명은 맞고 시각만 지난 링크 — 만료 거절을 보려고 lib/omnis-mcp 의 형식을 그대로 흉내 낸다. */
+function forgeExpiredLink(userId: string): string {
+  const payload = Buffer.from(JSON.stringify({ u: userId, t: null, e: Math.floor(Date.now() / 1000) - 60 })).toString("base64url")
+  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? ""
+  return `${payload}.${createHmac("sha256", secret).update(`mcp-upload.${payload}`).digest("base64url")}`
+}
 
 const BASE = process.env.IP_MCP_BASE ?? "http://localhost:3000"
 const MCP = `${BASE}/api/ip-mcp`
@@ -77,6 +85,7 @@ async function main() {
   })
   await prisma.$executeRaw`DELETE FROM ip.members WHERE user_id = ${user.id}`
   let createdTaskId: string | null = null
+  const uploadedIds: string[] = []
 
   try {
     console.log("\n[1] 인가 — Omnis 구성원 전원")
@@ -84,10 +93,11 @@ async function main() {
 
     console.log("\n[2] 도구 목록·지침")
     const init = (await rpc("initialize", {})).body.result as { serverInfo: { name: string }; instructions: string }
-    check("서버 이름이 omnis-hadd", init.serverInfo.name === "omnis-hadd")
+    check("서버 이름이 hadd-omnis", init.serverInfo.name === "hadd-omnis")
     check("지침에 옴니스와 지식재산권 안내가 함께 있다", init.instructions.includes("ask_omnis") && init.instructions.includes("read_guide"))
+    check("지침에 파일 올리는 법이 있다", init.instructions.includes("upload_file") && init.instructions.includes("create_upload_link"))
     const tools = ((await rpc("tools/list", undefined, token)).body.result as { tools: { name: string }[] }).tools
-    check(`도구 20개 (옴니스 12 + 지식재산권 8) — ${tools.length}`, tools.length === 20)
+    check(`도구 22개 (옴니스 14 + 지식재산권 8) — ${tools.length}`, tools.length === 22)
 
     console.log("\n[3] 거부되어야 하는 것")
     const bad = await rpc("tools/list", undefined, "hadd_nope")
@@ -149,8 +159,64 @@ async function main() {
 
     const ask = await call("ask_omnis", { question: "__MCP 검증용 업무__ 는 누가 담당이야?" }, token)
     check("ask_omnis 가 답과 근거를 준다", !isErr(ask) && text(ask).includes("근거:"), text(ask).slice(0, 160))
+
+    console.log("\n[6] 파일 올리기")
+    const fileIdOf = (s: string) => s.match(/파일 ID ([0-9a-f-]{36})/)?.[1] ?? ""
+    const noBody = await call("upload_file", { name: "빈.md" }, token)
+    check("본문 없는 upload_file 은 isError", isErr(noBody), text(noBody))
+    const both = await call("upload_file", { name: "a.md", content: "a", content_base64: "YQ==" }, token)
+    check("content 와 content_base64 를 함께 주면 isError", isErr(both), text(both))
+    const huge = await call("upload_file", { name: "큰.txt", content: "a".repeat(4 * 1024 * 1024 + 1) }, token)
+    check("4MB 넘는 파일은 isError", isErr(huge) && text(huge).includes("MB"), text(huge))
+    const ghostTask = await call("upload_file", { name: "a.md", content: "a", task: "__없는_업무_이름__" }, token)
+    check("없는 업무에 올리면 isError", isErr(ghostTask))
+
+    const md = await call("upload_file", { name: "__MCP 검증__.md", content: "# 검증\n한글 본문", task: slug }, token)
+    const mdId = fileIdOf(text(md))
+    if (mdId) uploadedIds.push(mdId)
+    check("upload_file(content) 가 파일 ID 를 준다", !isErr(md) && Boolean(mdId), text(md))
+    const mdRow = mdId ? await prisma.file.findUnique({ where: { id: mdId } }) : null
+    check("업무 첨부로 기록되고 크기·형식이 맞다", mdRow?.taskId === createdTaskId && mdRow?.size === Buffer.byteLength("# 검증\n한글 본문") && (mdRow?.mimeType ?? "").startsWith("text/markdown"), JSON.stringify(mdRow))
+
+    const png = await call("upload_file", { name: "__점__.png", content_base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" }, token)
+    const pngId = fileIdOf(text(png))
+    if (pngId) uploadedIds.push(pngId)
+    check("upload_file(content_base64) 가 이미지 형식을 이름으로 채운다", !isErr(png) && (await prisma.file.findUnique({ where: { id: pngId } }))?.mimeType === "image/png", text(png))
+
+    const link = await call("create_upload_link", { task: slug }, token)
+    const url = text(link).match(/https?:\/\/\S+\/upload\?t=[^\s'"]+/)?.[0] ?? ""
+    check("create_upload_link 가 링크를 준다", !isErr(link) && Boolean(url), text(link))
+    const form = () => { const f = new FormData(); f.append("file", new Blob(["a,b\n1,2\n"]), "__링크 검증__.csv"); return f }
+    const badSig = await fetch(url.replace(/(t=[^.]+\.)(.)/, (_, head: string, c: string) => head + (c === "A" ? "B" : "A")), { method: "POST", body: form() })
+    check("서명이 틀린 링크는 401", badSig.status === 401, String(badSig.status))
+    const noToken = await fetch(`${MCP}/upload`, { method: "POST", body: form() })
+    check("토큰 없는 업로드는 401", noToken.status === 401, String(noToken.status))
+    const expired = await fetch(`${MCP}/upload?t=${forgeExpiredLink(user.id)}`, { method: "POST", body: form() })
+    check("만료된 링크는 401", expired.status === 401, String(expired.status))
+    const noFile = await fetch(url, { method: "POST", body: new FormData() })
+    check("file 필드가 없으면 400", noFile.status === 400, String(noFile.status))
+    const up = await fetch(url, { method: "POST", body: form() })
+    const upBody = (await up.json()) as { id?: string; name?: string }
+    if (upBody.id) uploadedIds.push(upBody.id)
+    check("링크로 올리면 201 + 파일 ID", up.status === 201 && Boolean(upBody.id), JSON.stringify(upBody))
+    const csvRow = upBody.id ? await prisma.file.findUnique({ where: { id: upBody.id } }) : null
+    check("링크 업로드도 업무 첨부 · 형식은 이름으로", csvRow?.taskId === createdTaskId && (csvRow?.mimeType ?? "").startsWith("text/csv"), JSON.stringify(csvRow))
+
+    const ghostFile = await call("post_message", { task: slug, content: "첨부", files: ["00000000-0000-0000-0000-000000000000"] }, token)
+    check("없는 파일 ID 로 post_message 는 isError", isErr(ghostFile), text(ghostFile))
+    const attached = await call("post_message", { task: slug, content: "검증 자료 첨부합니다", files: [mdId, upBody.id] }, token)
+    check("post_message 가 첨부 수를 말한다", !isErr(attached) && text(attached).includes("첨부 2"), text(attached))
+    const linked = await prisma.file.findMany({ where: { id: { in: [mdId, upBody.id ?? ""] } }, select: { messageId: true } })
+    check("두 파일이 같은 메시지에 붙었다", linked.length === 2 && !!linked[0].messageId && linked[0].messageId === linked[1].messageId)
+    const reuse = await call("post_message", { task: slug, content: "다시", files: [mdId] }, token)
+    check("이미 다른 메시지에 붙은 파일은 isError", isErr(reuse) && text(reuse).includes("이미"), text(reuse))
   } finally {
     // ─── 정리 ───
+    // 파일이 메시지·업무를 FK 로 물고 있어 먼저 지운다. NAS 실물도 함께.
+    for (const f of await prisma.file.findMany({ where: { id: { in: uploadedIds } }, select: { id: true, name: true } })) {
+      await deleteObject(objectKeyFor(f.id, f.name)).catch((e) => console.log(`  (NAS 정리 실패 ${f.name}: ${e})`))
+    }
+    await prisma.file.deleteMany({ where: { id: { in: uploadedIds } } })
     if (createdTaskId) {
       await prisma.notification.deleteMany({ where: { entityId: createdTaskId } }).catch(() => {})
       await prisma.chatMention.deleteMany({ where: { message: { taskId: createdTaskId } } }).catch(() => {})

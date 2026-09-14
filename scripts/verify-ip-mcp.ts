@@ -102,7 +102,7 @@ async function main() {
   console.log("\n[3] initialize·ping 은 인증 없이 통한다")
   const init = await rpc("initialize", {})
   const initResult = init.body.result as { serverInfo?: { name: string }; instructions?: string }
-  check("initialize 가 서버 정보를 준다", initResult?.serverInfo?.name === "omnis-hadd")
+  check("initialize 가 서버 정보를 준다", initResult?.serverInfo?.name === "hadd-omnis")
   check("instructions 가 실려 온다", Boolean(initResult?.instructions))
 
   console.log("\n[4] 동적 클라이언트 등록 (RFC 7591)")

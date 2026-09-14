@@ -1,6 +1,6 @@
-// omnis-hadd — 원격 MCP 서버의 알맹이 (도구·지침·토큰).
+// hadd-omnis — 원격 MCP 서버의 알맹이 (도구·지침·토큰).
 //
-// hadd-ip 를 넓힌 것이다. 지식재산권 도구는 `lib/ip-mcp.ts` 그대로 두고(설명 한 글자도
+// hadd-ip 를 넓힌 것이다(2026-09-07 omnis-hadd, 2026-09-14 hadd-omnis 로 이름을 바꿨다). 지식재산권 도구는 `lib/ip-mcp.ts` 그대로 두고(설명 한 글자도
 // 안 바꿨다 — 그 문장들은 모델이 틀렸던 것을 하나씩 막으며 다듬은 것이다), 그 옆에
 // 옴니스 본체(업무·채팅·지식·CRM)를 여는 도구를 붙였다.
 //
@@ -12,9 +12,10 @@
 // 권한
 //  Omnis 계정이 살아 있으면 누구나 붙는다. 지식재산권 도구만 ip.members 로 한 번 더 건다.
 //  Prisma 는 DB 소유자로 붙으므로 이 파일이 곧 권한 경계다.
-import { randomBytes } from "crypto"
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
 
 import { prisma } from "@/lib/db"
+import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { TASK_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/constants"
 import { retrieveContext, sectionToText, syncEmbeddingsSafe, type EmbeddingSource } from "@/lib/embeddings"
 import { migrateContent } from "@/lib/omnis-types"
@@ -33,7 +34,8 @@ import {
 } from "@/lib/ip-mcp"
 
 export { PROTOCOL_VERSION, randomToken, sha256, type ToolResult } from "@/lib/ip-mcp"
-export const SERVER_INFO = { name: "omnis-hadd", version: "2.0.0" }
+export const SERVER_INFO = { name: "hadd-omnis", version: "2.1.0" }
+export { MAX_UPLOAD_BYTES }
 
 export interface Caller {
   userId: string
@@ -83,6 +85,7 @@ export const INSTRUCTIONS = [
   "「어떻게 돼가?」 같은 질문은 ask_omnis 가 가장 낫습니다 — 전체 현황과 검색을 합쳐 답합니다. 특정 업무의 원문이 필요하면 get_task.",
   "업무에 지시·보고를 남길 때는 post_message 에 task 를 함께 줍니다. 그러면 화면에서 #슬러그 로 쓴 것과 똑같이 업무 카드가 AI 로 재구성되고 담당자에게 알림이 갑니다.",
   "사람 이름은 list_members 의 정식 이름을 씁니다. 업무는 슬러그·ID·이름 일부 어느 것으로든 찾습니다 — 사용자에게 ID 를 되묻지 않습니다.",
+  "파일은 upload_file(텍스트·작은 파일) 또는 create_upload_link(셸에서 curl 로 올리는 링크)로 올리고, 받은 파일 ID 를 post_message 의 files 에 넣어 채팅·업무 스레드에 붙입니다.",
   "",
   IP_INSTRUCTIONS.replace("HADD SCIENCE 지식재산권 기록 서버입니다.", "지식재산권 도구(list_ip·get_ip·add_progress …)는 구성원에게만 열립니다."),
 ].join("\n")
@@ -163,8 +166,40 @@ export const OMNIS_TOOLS = [
       properties: {
         content: { type: "string", description: "올릴 글. #슬러그 를 직접 적어도 된다." },
         task: { type: "string", description: "업무 슬러그·ID·이름 일부. 생략하면 스레드 없이 전체 채팅에." },
+        files: { type: "array", items: { type: "string" }, description: "첨부할 파일 ID. upload_file·create_upload_link 로 받은 것" },
       },
       required: ["content"],
+    },
+  },
+  {
+    name: "upload_file",
+    description: [
+      "파일을 Omnis 첨부로 올린다(회사 NAS 에 저장). 돌려받은 파일 ID 를 post_message 의 files 에 넣어야 채팅·업무 스레드에 첨부로 보인다.",
+      "텍스트(md·csv·txt·json …)는 content 에 그대로, 작은 바이너리는 content_base64 로. 둘 중 하나만.",
+      "PDF·이미지·오피스 파일처럼 큰 것을 셸이 있는 환경에서 올릴 때는 create_upload_link 가 낫다 — 본문을 인자로 옮기지 않는다.",
+      `task 를 주면 그 업무의 첨부 목록에도 바로 보인다. 최대 ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.`,
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "확장자를 포함한 파일 이름. 예: 킥오프_회의록.md" },
+        content: { type: "string", description: "텍스트 파일 본문 (UTF-8)" },
+        content_base64: { type: "string", description: "바이너리 파일 본문 (base64)" },
+        mime_type: { type: "string", description: "생략하면 확장자로 정한다" },
+        task: { type: "string", description: "업무 슬러그·ID·이름 일부" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "create_upload_link",
+    description: [
+      "셸(curl)로 파일을 직접 올리는 10분짜리 링크를 만든다. `curl -F file=@경로 '<링크>'` 가 파일 ID 를 JSON 으로 돌려주고, 그 ID 를 post_message 의 files 에 넣는다.",
+      `여러 번 쓸 수 있다. 최대 ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB. 링크가 곧 사용자 권한이므로 대화 밖으로 옮기지 않는다.`,
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: { task: { type: "string", description: "업무 슬러그·ID·이름 일부. 주면 올린 파일이 그 업무 첨부로 들어간다." } },
     },
   },
   {
@@ -307,9 +342,89 @@ async function findUsers(names: string[]): Promise<{ ids: string[]; missing: str
   return { ids, missing }
 }
 
+// ─── 파일 ───────────────────────────────────────────────────────────
+//
+// 화면(app/api/files POST)과 같은 순서 — NAS 에 먼저 올리고, 성공한 뒤에만 File 을 적는다.
+// 그 라우트는 배포 파일이라 건드리지 않고(ai-pairing.md) 같은 저장 함수를 부른다.
+
+const MIME_BY_EXT: Record<string, string> = {
+  md: "text/markdown", txt: "text/plain", csv: "text/csv", json: "application/json", html: "text/html",
+  pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  hwp: "application/x-hwp", hwpx: "application/hwp+zip", zip: "application/zip",
+}
+
+/** 준 형식이 없거나 curl 기본값(octet-stream)이면 확장자로 정한다. 텍스트는 한글이 깨지지 않게 charset 을 붙인다. */
+function mimeFor(name: string, given: string): string {
+  const g = given.trim()
+  if (g && g !== "application/octet-stream") return g
+  const type = MIME_BY_EXT[name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream"
+  return type.startsWith("text/") ? `${type}; charset=utf-8` : type
+}
+
+export async function saveUpload(input: {
+  name: string; body: Buffer; mimeType: string; taskId: string | null
+}): Promise<{ id: string; name: string; size: number } | { error: string }> {
+  const name = input.name.trim().replace(/[/\\]/g, "_")
+  if (!name) return { error: "name 이 비어 있습니다." }
+  if (input.body.length === 0) return { error: "빈 파일입니다." }
+  if (input.body.length > MAX_UPLOAD_BYTES) {
+    return { error: `파일이 너무 큽니다. ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 이하만 올릴 수 있습니다.` }
+  }
+  const id = randomUUID()
+  const mimeType = mimeFor(name, input.mimeType)
+  await putObject(objectKeyFor(id, name), input.body, mimeType)
+  return prisma.file.create({
+    data: { id, name, path: `/api/files/${id}/raw`, size: input.body.length, mimeType, taskId: input.taskId },
+    select: { id: true, name: true, size: true },
+  })
+}
+
+/**
+ * 업로드 링크 — `{payload}.{hmac}`. 표를 새로 만들지 않으려고 상태 없는 서명으로 한다.
+ * claude.ai 커넥터는 OAuth 토큰을 모델에게 보여주지 않으므로, 셸에서 curl 로 올리려면 링크 자체가 자격이어야 한다.
+ */
+const UPLOAD_LINK_TTL_SEC = 10 * 60
+
+function uploadSignature(payload: string): string {
+  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
+  if (!secret) throw new Error("AUTH_SECRET 이 설정되지 않았습니다")
+  return createHmac("sha256", secret).update(`mcp-upload.${payload}`).digest("base64url")
+}
+
+export function signUploadLink(userId: string, taskId: string | null): string {
+  const payload = Buffer.from(
+    JSON.stringify({ u: userId, t: taskId, e: Math.floor(Date.now() / 1000) + UPLOAD_LINK_TTL_SEC })
+  ).toString("base64url")
+  return `${payload}.${uploadSignature(payload)}`
+}
+
+export async function verifyUploadLink(token: string): Promise<{ taskId: string | null } | null> {
+  const [payload, sig, extra] = token.split(".")
+  if (!payload || !sig || extra !== undefined) return null
+  const a = Buffer.from(sig)
+  const b = Buffer.from(uploadSignature(payload))
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null
+  let p: { u?: unknown; t?: unknown; e?: unknown }
+  try {
+    p = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"))
+  } catch {
+    return null
+  }
+  if (typeof p.u !== "string" || typeof p.e !== "number" || p.e * 1000 < Date.now()) return null
+  // 링크를 만든 뒤 계정이 닫혔으면 막는다 — resolveCaller 와 같은 기준.
+  const user = await prisma.user.findUnique({ where: { id: p.u }, select: { isActive: true } })
+  if (!user?.isActive) return null
+  return { taskId: typeof p.t === "string" ? p.t : null }
+}
+
 // ─── 실행 ───────────────────────────────────────────────────────────
 
-export async function runTool(name: string, args: Record<string, unknown>, caller: Caller): Promise<ToolResult> {
+export async function runTool(
+  name: string, args: Record<string, unknown>, caller: Caller, ctx: { base: string } = { base: "" }
+): Promise<ToolResult> {
   if (IP_TOOL_NAMES.has(name)) {
     if (!caller.ip) {
       return { error: "지식재산권 도구는 구성원에게만 열립니다. 이 계정은 지식재산권 구성원이 아닙니다 — 담당자에게 권한을 요청하세요." }
@@ -417,15 +532,82 @@ export async function runTool(name: string, args: Record<string, unknown>, calle
         const t = await prisma.task.findUnique({ where: { id: found.id }, select: { id: true, slug: true } })
         taskId = t?.id; slug = t?.slug
       }
+      // 첨부 — 있는 파일이고 아직 어느 메시지에도 붙지 않은 것만. 화면 라우트는 확인 없이 붙이지만,
+      // 여기서는 모델이 ID 를 잘못 옮기면 남의 메시지 첨부를 빼앗아 온다.
+      const fileIds = Array.isArray(args.files) ? [...new Set(args.files.map(String).map((s) => s.trim()).filter(Boolean))] : []
+      if (fileIds.length) {
+        const rows = await prisma.file.findMany({ where: { id: { in: fileIds } }, select: { id: true, name: true, messageId: true } })
+        const missing = fileIds.filter((id) => !rows.some((r) => r.id === id))
+        if (missing.length) return { error: `없는 파일 ID: ${missing.join(", ")}. upload_file 로 받은 ID 를 넣으세요.` }
+        const taken = rows.filter((r) => r.messageId)
+        if (taken.length) return { error: `이미 다른 메시지에 붙은 파일입니다: ${taken.map((r) => r.name).join(", ")}. 새로 올리세요.` }
+      }
       // #슬러그가 본문에 이미 있으면 그대로, 없으면 앞에 붙인다 — 화면에서 쓰는 것과 같은 모양.
       const body = slug && !/#[a-z0-9가-힣_-]+/i.test(content) ? `#${slug} ${content}` : content
       const { message, taskUpdate } = await postChatMessage({
         user: { id: caller.userId, name: caller.name }, roomId: "default-room", content: body, taskId,
+        fileIds: fileIds.length ? fileIds : undefined,
       })
       const out = [`올렸습니다 (${kst(message?.createdAt ?? new Date(), true)} · ${caller.name}).`]
+      if (message?.files.length) out.push(`첨부 ${message.files.length}: ${message.files.map((f) => f.name).join(", ")}`)
       if (message?.task) out.push(`업무: #${message.task.slug} ${message.task.name}`)
       out.push(taskUpdate ? `업무 처리: ${taskUpdate.summary ?? taskUpdate.statusLabel ?? taskUpdate.action}` : "업무 카드 변경 없음 (정보 공유로 판단)")
       return { text: out.join("\n") }
+    }
+
+    case "upload_file": {
+      const fileName = str(args.name)
+      const hasText = typeof args.content === "string"
+      const hasB64 = typeof args.content_base64 === "string"
+      if (!fileName) return { error: "name 이 비어 있습니다. 확장자를 포함해 주세요." }
+      if (hasText === hasB64) return { error: "content(텍스트) 와 content_base64(바이너리) 중 하나만 주세요." }
+      const b64 = hasB64 ? (args.content_base64 as string).replace(/\s/g, "") : ""
+      if (hasB64 && !/^[A-Za-z0-9+/_-]*={0,2}$/.test(b64)) return { error: "content_base64 가 base64 가 아닙니다." }
+      let taskId: string | null = null
+      let slug = ""
+      if (str(args.task)) {
+        const found = await findTask(str(args.task))
+        if ("error" in found) return found
+        const t = await prisma.task.findUnique({ where: { id: found.id }, select: { id: true, slug: true } })
+        taskId = t?.id ?? null; slug = t?.slug ?? ""
+      }
+      const saved = await saveUpload({
+        name: fileName,
+        body: hasText ? Buffer.from(args.content as string, "utf8") : Buffer.from(b64, "base64"),
+        mimeType: str(args.mime_type),
+        taskId,
+      })
+      if ("error" in saved) return saved
+      return {
+        text: [
+          `올렸습니다: ${saved.name} (${(saved.size / 1024).toFixed(1)}KB) · 파일 ID ${saved.id}`,
+          ...(slug ? [`업무 #${slug} 첨부 목록에 들어갔습니다.`] : []),
+          `채팅에 붙이려면 post_message 의 files 에 "${saved.id}" 를 넣으세요.`,
+        ].join("\n"),
+      }
+    }
+
+    case "create_upload_link": {
+      if (!ctx.base) return { error: "이 서버 주소를 알 수 없어 링크를 만들 수 없습니다." }
+      let taskId: string | null = null
+      let slug = ""
+      if (str(args.task)) {
+        const found = await findTask(str(args.task))
+        if ("error" in found) return found
+        const t = await prisma.task.findUnique({ where: { id: found.id }, select: { id: true, slug: true } })
+        taskId = t?.id ?? null; slug = t?.slug ?? ""
+      }
+      const url = `${ctx.base}/upload?t=${signUploadLink(caller.userId, taskId)}`
+      return {
+        text: [
+          `업로드 링크 (10분, ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 이하${slug ? ` · 업무 #${slug} 첨부` : ""}):`,
+          url,
+          "",
+          `curl -sS -F 'file=@<파일 경로>' '${url}'`,
+          "",
+          "응답 JSON 의 id 를 post_message 의 files 에 넣으세요. 여러 파일이면 같은 링크로 한 번씩 올립니다.",
+        ].join("\n"),
+      }
     }
 
     case "create_task": {

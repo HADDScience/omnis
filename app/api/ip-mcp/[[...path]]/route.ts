@@ -12,11 +12,14 @@ import {
   randomToken,
   resolveCaller,
   runTool,
+  saveUpload,
   sha256,
+  verifyUploadLink,
+  MAX_UPLOAD_BYTES,
 } from "@/lib/omnis-mcp"
 
 /**
- * omnis-hadd — 원격 MCP 서버 (Streamable HTTP) + OAuth 2.1 인가 서버.
+ * hadd-omnis — 원격 MCP 서버 (Streamable HTTP) + OAuth 2.1 인가 서버.
  *
  * hadd-ip 를 넓힌 것이다(2026-09-07). 주소(/api/ip-mcp)는 그대로 둔다 — issuer 와
  * resource 식별자가 주소라 바꾸면 붙어 있는 커넥터가 전부 끊긴다. 도구 목록만 넓어졌고
@@ -331,6 +334,37 @@ async function approve(req: NextRequest) {
   return json({ redirect: target.toString() })
 }
 
+/**
+ * create_upload_link 가 준 링크로 들어오는 파일 (multipart, 필드 이름 file).
+ * 사람은 Bearer 토큰이 아니라 링크의 서명으로 안다 — lib/omnis-mcp 의 signUploadLink.
+ */
+async function uploadViaLink(req: NextRequest) {
+  const grant = await verifyUploadLink(new URL(req.url).searchParams.get("t") ?? "")
+  if (!grant) {
+    return json({ error: "링크가 만료되었거나 올바르지 않습니다. create_upload_link 로 다시 만드세요." }, 401)
+  }
+
+  let form: FormData
+  try {
+    form = await req.formData()
+  } catch {
+    return json({ error: "multipart/form-data 의 file 필드로 보내세요. 예: curl -F file=@경로 '<링크>'" }, 400)
+  }
+  const file = form.get("file")
+  if (!file || typeof file === "string") {
+    return json({ error: "file 필드가 없습니다. 예: curl -F file=@경로 '<링크>'" }, 400)
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return json({ error: `파일이 너무 큽니다. ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 이하만 올릴 수 있습니다.` }, 413)
+  }
+
+  const saved = await saveUpload({
+    name: file.name, body: Buffer.from(await file.arrayBuffer()), mimeType: file.type, taskId: grant.taskId,
+  })
+  if ("error" in saved) return json(saved, 400)
+  return json({ ...saved, next: `post_message 의 files 에 "${saved.id}" 를 넣으면 첨부로 붙습니다.` }, 201)
+}
+
 // ─── 라우팅 ─────────────────────────────────────────────────────────
 
 export async function OPTIONS() {
@@ -363,6 +397,7 @@ export async function POST(req: NextRequest) {
   if (tail === "/register") return registerClient(req)
   if (tail === "/token") return issueToken(req)
   if (tail === "/approve") return approve(req)
+  if (tail === "/upload") return uploadViaLink(req)
 
   let message: { id?: unknown; method?: string; params?: Record<string, unknown> }
   try {
@@ -408,7 +443,7 @@ export async function POST(req: NextRequest) {
       {
         // OAuth 를 쓰는 클라이언트는 이 헤더를 보고 스스로 등록·인가를 시작한다.
         // `.well-known` 을 호스트 루트에 둘 수 없어서 주소를 명시해 준다.
-        "www-authenticate": `Bearer realm="omnis-hadd", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
+        "www-authenticate": `Bearer realm="hadd-omnis", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
       }
     )
   }
@@ -418,7 +453,7 @@ export async function POST(req: NextRequest) {
   if (method === "tools/call") {
     const name = params?.name as string
     const args = (params?.arguments as Record<string, unknown>) ?? {}
-    const result = await runTool(name, args, caller)
+    const result = await runTool(name, args, caller, { base })
 
     if ("error" in result) {
       // 도구가 실패한 것은 프로토콜 오류가 아니다. isError 로 알려 모델이
