@@ -26,13 +26,21 @@ interface MentionItem {
 }
 
 interface MessageInputProps {
+  /** 실패하면 던진다 — 입력한 글과 첨부를 비우지 않고 남겨 둔다. */
   onSend: (content: string, files?: File[]) => Promise<void>
   disabled?: boolean
-  tasks?: { id: string; name: string; slug: string }[]
+  tasks?: { id: string; name: string; slug: string; status?: string }[]
   files?: { id: string; name: string; path: string; mimeType: string }[]
   /** @멘션 대상. 없으면 사람 멘션이 동작하지 않는다. */
   users?: { id: string; name: string }[]
+  /** `/업무` 명령과 「업무 지시」 메뉴. 업무 스레드처럼 명령을 받을 곳이 없으면 끈다. */
+  commands?: boolean
+  placeholder?: string
+  ariaLabel?: string
 }
+
+/** # 자동완성에 보일 업무 — 진행 중인 것이 먼저, 완료된 업무는 뒤에 「완료」 표시와 함께 */
+const TASK_SUGGESTIONS = 8
 
 /** 후보 종류별 삽입 접두사 */
 const PREFIX: Record<MentionItem["type"], string> = {
@@ -42,7 +50,16 @@ const PREFIX: Record<MentionItem["type"], string> = {
   file: "@",
 }
 
-export function MessageInput({ onSend, disabled, tasks = [], files = [], users = [] }: MessageInputProps) {
+export function MessageInput({
+  onSend,
+  disabled,
+  tasks = [],
+  files = [],
+  users = [],
+  commands = true,
+  placeholder = "메시지 입력...  / 명령 · @ 사람 · # 업무",
+  ariaLabel = "메시지 입력",
+}: MessageInputProps) {
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
@@ -78,11 +95,18 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [], users =
         }))
       )
     } else if (mentionType === "task") {
+      // 완료된 업무도 언급할 수 있어야 한다(지난 결과를 가리키는 일이 많다). 다만 진행 중인 것에 밀리지 않게
+      // 자리를 나눈다 — 진행 중 최대 5개, 남는 자리에 완료.
+      const matched = tasks.filter((t) => t.name.toLowerCase().includes(query) || t.slug.toLowerCase().includes(query))
+      const active = matched.filter((t) => t.status !== "DONE").slice(0, 5)
+      const done = matched.filter((t) => t.status === "DONE").slice(0, TASK_SUGGESTIONS - active.length)
       setMentionItems(
-        tasks
-          .filter((t) => t.name.toLowerCase().includes(query) || t.slug.toLowerCase().includes(query))
-          .slice(0, 5)
-          .map((t) => ({ id: t.slug, label: t.name, hint: `#${t.slug}`, type: "task" as const }))
+        [...active, ...done].map((t) => ({
+          id: t.slug,
+          label: t.name,
+          hint: t.status === "DONE" ? `완료 · #${t.slug}` : `#${t.slug}`,
+          type: "task" as const,
+        }))
       )
     } else {
       // 사람이 먼저, 파일이 뒤에. 예전에는 파일만 나와서 @멘션이 사실상 없는 기능이었다.
@@ -110,7 +134,7 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [], users =
     const textBeforeCursor = value.slice(0, cursorPos)
 
     // 명령은 맨 앞에서만 — 문장 중간의 "/"는 명령이 아니라 그냥 슬래시다.
-    const slashMatch = textBeforeCursor.match(/^\/([^\s]*)$/)
+    const slashMatch = commands ? textBeforeCursor.match(/^\/([^\s]*)$/) : null
     const hashMatch = textBeforeCursor.match(/#([^\s#@]*)$/)
     const atMatch = textBeforeCursor.match(/@([^\s#@]*)$/)
 
@@ -271,6 +295,8 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [], users =
       setPreviews(new Map())
       setAttachedFiles([])
       textareaRef.current?.focus()
+    } catch {
+      // 보내지 못했다 — 쓴 글과 첨부를 그대로 둔다. 알림은 onSend 쪽이 띄운다.
     } finally {
       setSending(false)
     }
@@ -444,11 +470,13 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [], users =
               <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
               파일 업로드
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={startTaskCommand}>
-              <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
-              업무 지시
-              <span className="ml-auto font-mono text-[10px] text-muted-foreground">/업무</span>
-            </DropdownMenuItem>
+            {commands && (
+              <DropdownMenuItem onClick={startTaskCommand}>
+                <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
+                업무 지시
+                <span className="ml-auto font-mono text-[10px] text-muted-foreground">/업무</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => startMention("user")}>
               <HugeiconsIcon icon={AtIcon} size={14} aria-hidden />
               사람 언급
@@ -469,7 +497,8 @@ export function MessageInput({ onSend, disabled, tasks = [], files = [], users =
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="메시지 입력...  / 명령 · @ 사람 · # 업무"
+            placeholder={placeholder}
+            aria-label={ariaLabel}
             className="min-h-[40px] resize-none text-base md:min-h-[30px] md:text-sm"
             rows={1}
             disabled={disabled || sending}

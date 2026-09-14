@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ReactFlowProvider } from "@xyflow/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,6 +18,9 @@ import type {
 } from "@/lib/workspace-types"
 
 import { apiUrl } from "@/lib/base-path"
+
+const SHOW_DONE_KEY = "omnis:workspace-show-done"
+
 interface DashboardWorkspaceProps {
   products: WorkspaceProduct[]
   projects: WorkspaceProject[]
@@ -36,6 +39,28 @@ export function DashboardWorkspace({
   const [collapsed, setCollapsed] = useState<boolean | null>(null)
   const isCollapsed = collapsed ?? !isMdUp
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  // 완료된 업무는 기본으로 숨긴다 — 쌓일수록 진행 중인 업무가 관계도에서 묻힌다(2026-09-14).
+  // 보기를 켜면 이 브라우저에 기억한다.
+  const [showDone, setShowDone] = useState(false)
+  useEffect(() => {
+    try {
+      setShowDone(window.localStorage.getItem(SHOW_DONE_KEY) === "1")
+    } catch {
+      // 저장소를 못 읽으면 숨긴 채로 시작한다
+    }
+  }, [])
+  const toggleShowDone = useCallback(() => {
+    setShowDone((prev) => {
+      try {
+        window.localStorage.setItem(SHOW_DONE_KEY, prev ? "0" : "1")
+      } catch {
+        // 저장 실패는 이번 방문에만 영향이 있다
+      }
+      return !prev
+    })
+  }, [])
+  const doneCount = tasks.filter((t) => t.status === "DONE").length
+  const visibleTasks = showDone ? tasks : tasks.filter((t) => t.status !== "DONE")
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
@@ -61,7 +86,7 @@ export function DashboardWorkspace({
   const { nodes, edges } = useWorkspaceNodes({
     products,
     projects,
-    tasks,
+    tasks: visibleTasks,
     selectedProductId,
     onTaskContextMenu: handleTaskContextMenu,
     onTaskClick: handleTaskClick,
@@ -136,6 +161,21 @@ export function DashboardWorkspace({
                 </button>
               ))}
             </div>
+            {doneCount > 0 && (
+              <button
+                type="button"
+                onClick={toggleShowDone}
+                aria-pressed={showDone}
+                title={showDone ? "완료된 업무를 관계도에서 숨깁니다" : "완료된 업무도 관계도에 보여 줍니다"}
+                className={`touch-target shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
+                  showDone
+                    ? "border-foreground/25 bg-foreground/10 text-foreground"
+                    : "border-transparent bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                {showDone ? `완료 숨기기 · ${doneCount}` : `완료 보기 · ${doneCount}`}
+              </button>
+            )}
             <Button
               variant="ghost"
               size="icon"

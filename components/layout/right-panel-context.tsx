@@ -21,6 +21,7 @@ export interface PanelTaskContext {
     author: { id: string; name: string }
     isTaskInstruction: boolean
     kind?: string
+    files?: { id: string; name: string; path: string; size: number; mimeType: string }[]
   }[]
 }
 
