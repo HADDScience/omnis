@@ -24,6 +24,7 @@ import { createNotification } from "@/lib/notifications"
 import { getMembership, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
+import { companyProfileText, companyRecordsText, contextText, marketCompaniesText, staffText, taxInvoicesText } from "@/lib/company-tools"
 import {
   TOOLS as IP_TOOLS,
   INSTRUCTIONS as IP_INSTRUCTIONS,
@@ -83,6 +84,7 @@ export const INSTRUCTIONS = [
   "「어떻게 돼가?」 같은 질문은 ask_omnis 가 가장 낫습니다 — 전체 현황과 검색을 합쳐 답합니다. 특정 업무의 원문이 필요하면 get_task.",
   "업무에 지시·보고를 남길 때는 post_message 에 task 를 함께 줍니다. 그러면 화면에서 #슬러그 로 쓴 것과 똑같이 업무 카드가 AI 로 재구성되고 담당자에게 알림이 갑니다.",
   "사람 이름은 list_members 의 정식 이름을 씁니다. 업무는 슬러그·ID·이름 일부 어느 것으로든 찾습니다 — 사용자에게 ID 를 되묻지 않습니다.",
+  "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
   "",
   IP_INSTRUCTIONS.replace("HADD SCIENCE 지식재산권 기록 서버입니다.", "지식재산권 도구(list_ip·get_ip·add_progress …)는 구성원에게만 열립니다."),
 ].join("\n")
@@ -222,6 +224,51 @@ export const OMNIS_TOOLS = [
     name: "get_omnis_card",
     description: "지식 카드 본문 전부. card 는 ID 또는 제목 일부.",
     inputSchema: { type: "object", properties: { card: { type: "string" } }, required: ["card"] },
+  },
+  // ─── 회사 Context (lib/company-tools) — 개인정보는 내보내지 않는다 ───
+  {
+    name: "company_profile",
+    description:
+      "회사 기본정보(상호·사업자등록번호·업종·설립일·주소·홈페이지)와 연도별 재무(매출·제품/용역·자산·부채·자본·순이익·상시근로자). 매출은 공급가액이고 확정(결산서)·잠정(결산 전 세금계산서 합)·계획을 나눠 준다. 지원서·과제 서식에 들어갈 회사 정보나 매출을 물으면 쓴다.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "list_company_records",
+    description:
+      "회사 연혁·실적 — 지원사업(정부과제)·수상·학회·전시·포럼·교육·네트워킹·주요 사건. 기간·주관기관·지원금·과제번호가 있다. 「수상 내역」「수행한 정부과제」「작년 전시회」 를 물으면 쓴다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "제목·기관·과제명 일부" },
+        kind: {
+          type: "string",
+          enum: ["GRANT", "AWARD", "EXHIBITION", "FORUM", "EDUCATION", "NETWORKING", "INTERNAL", "MILESTONE"],
+          description: "GRANT 지원사업 · AWARD 수상 · EXHIBITION 학회·전시 · FORUM 포럼·세미나 · EDUCATION 교육 · NETWORKING 네트워킹 · INTERNAL 내부행사 · MILESTONE 주요 사건",
+        },
+        year: { type: "integer", description: "시작 연도" },
+      },
+    },
+  },
+  {
+    name: "list_tax_invoices",
+    description: "발행된 세금계산서 — 날짜·기관·품목·공급가액·제품/용역 구분·연결된 견적, 연도별 매출 합. 「올해 누구에게 얼마 팔았나」「기관별 매출」 을 물으면 쓴다.",
+    inputSchema: { type: "object", properties: { year: { type: "integer" }, org: { type: "string", description: "기관명 일부" } } },
+  },
+  {
+    name: "list_staff",
+    description: "인력 — 재직자의 이름·소속·직급·하드사이언스 역할(CAO·CMO 등)·담당 업무·학력·4대보험 가입 여부. 과제 참여연구원 구성이나 직함을 물으면 쓴다. 연락처·생년월일·서명은 주지 않는다.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "list_market_companies",
+    description: "시장·경쟁 기업(오가노이드·배양 소재 관련) — 국가·분류·주력 제품·매출 원문. 경쟁사·시장 조사를 물으면 쓴다. 거래처는 find_org.",
+    inputSchema: { type: "object", properties: { query: { type: "string" }, segment: { type: "string" } } },
+  },
+  {
+    name: "get_context",
+    description:
+      "대상 하나(업무·프로젝트·사람·기관·견적·세금계산서·연혁·특허·카드)와 DB 로 이어진 것, 의미상 가까운 것. 「국일그래핀과 엮인 견적·세금계산서」「이 과제에 딸린 업무」 처럼 관계를 물으면 쓴다. node 는 이전 결과의 key, 없으면 query 에 이름을 준다.",
+    inputSchema: { type: "object", properties: { node: { type: "string" }, query: { type: "string" } } },
   },
 ] as const
 
@@ -583,6 +630,19 @@ export async function runTool(name: string, args: Record<string, unknown>, calle
       const body = cc.sections.map((s) => { const t = sectionToText(s).trim(); return t ? `${s.title ? `## ${s.title}\n` : ""}${t}` : "" }).filter(Boolean).join("\n\n")
       return { text: `# [${card.category.name}] ${card.title}\n갱신 ${kst(card.updatedAt)} · v${card.version}${card.tags.length ? ` · ${card.tags.join(", ")}` : ""}\n\n${body || "(본문 없음)"}` }
     }
+
+    case "company_profile":
+      return { text: await companyProfileText() }
+    case "list_company_records":
+      return { text: await companyRecordsText(args) }
+    case "list_tax_invoices":
+      return { text: await taxInvoicesText(args) }
+    case "list_staff":
+      return { text: await staffText() }
+    case "list_market_companies":
+      return { text: await marketCompaniesText(args) }
+    case "get_context":
+      return contextText(args, caller.role === "ADMIN")
   }
 
   return { error: `모르는 도구입니다: ${name}` }
