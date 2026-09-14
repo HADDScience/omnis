@@ -3,7 +3,7 @@ import { Readable } from "node:stream"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { writeActivity } from "@/lib/api"
-import { getObject } from "@/lib/storage"
+import { getStaffAsset } from "@/lib/staff-assets"
 
 interface Props {
   params: Promise<{ assetId: string }>
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest, { params }: Props) {
 
   let object
   try {
-    object = await getObject(asset.objectKey)
+    object = await getStaffAsset(asset.objectKey)
   } catch (err) {
     console.error("[staff-assets] NAS 읽기 실패", { assetId, err })
     return NextResponse.json({ error: "NAS 에서 이미지를 읽지 못했습니다" }, { status: 502 })
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest, { params }: Props) {
     metadata: { staffId: asset.staff.id, kind: asset.kind },
   })
 
-  const fileName = `${asset.staff.name}_${label}.png`
+  const fileName = `${asset.staff.name}_${label}.${asset.mimeType === "image/jpeg" ? "jpg" : "png"}`
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
     headers: {
       "Content-Type": asset.mimeType,

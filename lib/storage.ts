@@ -47,7 +47,6 @@ function absolutePathFor(key: string): string {
   return `${env("SYNOLOGY_WEBDAV_BASE_PATH").replace(/\/+$/, "")}/${key}`
 }
 
-const objectUrl = (key: string) => davUrl(absolutePathFor(key))
 
 export interface DavResponse {
   status: number
@@ -93,8 +92,8 @@ function drain(res: DavResponse) {
 /** 파일이 놓일 디렉터리를 공유폴더부터 한 단계씩 만든다.
  *  베이스 경로가 아직 없을 수도 있으므로 key가 아니라 절대 경로 전체를 훑는다.
  *  이미 있는 단계는 405를 돌려주는데, 그건 정상이므로 무시한다. */
-async function ensureParents(key: string) {
-  const segments = absolutePathFor(key).split("/").filter(Boolean).slice(0, -1)
+async function ensureParents(absolutePath: string) {
+  const segments = absolutePath.split("/").filter(Boolean).slice(0, -1)
   let prefix = ""
   for (const segment of segments) {
     prefix = `${prefix}/${segment}`
@@ -102,13 +101,17 @@ async function ensureParents(key: string) {
   }
 }
 
-export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
-  let res = await dav("PUT", objectUrl(key), body, contentType)
+// ─── 절대 경로로 다루기 ─────────────────────────────────────────────
+// 첨부파일(SYNOLOGY_WEBDAV_BASE_PATH) 밖에 두어야 하는 것 — 서명·직인처럼 권한이 좁은 폴더 — 이 쓴다.
+// 첨부파일은 아래 putObject/getObject/deleteObject(키)를 쓴다.
+
+export async function putAt(absolutePath: string, body: Buffer, contentType: string): Promise<void> {
+  let res = await dav("PUT", davUrl(absolutePath), body, contentType)
   if (res.status === 409) {
     // 상위 디렉터리가 없다. 만들고 한 번만 다시 시도한다.
     drain(res)
-    await ensureParents(key)
-    res = await dav("PUT", objectUrl(key), body, contentType)
+    await ensureParents(absolutePath)
+    res = await dav("PUT", davUrl(absolutePath), body, contentType)
   }
   drain(res)
   if (res.status < 200 || res.status >= 300) {
@@ -116,8 +119,8 @@ export async function putObject(key: string, body: Buffer, contentType: string):
   }
 }
 
-export async function getObject(key: string): Promise<DavResponse> {
-  const res = await dav("GET", objectUrl(key))
+export async function getAt(absolutePath: string): Promise<DavResponse> {
+  const res = await dav("GET", davUrl(absolutePath))
   if (res.status !== 200) {
     drain(res)
     throw new Error(`NAS 다운로드 실패 (HTTP ${res.status})`)
@@ -125,14 +128,38 @@ export async function getObject(key: string): Promise<DavResponse> {
   return res
 }
 
-/** 객체를 지운다. 이미 없으면(404) 성공으로 본다 — 지우려던 결과와 같다. */
-export async function deleteObject(key: string): Promise<void> {
-  const res = await dav("DELETE", objectUrl(key))
+/** 지운다. 이미 없으면(404) 성공으로 본다 — 지우려던 결과와 같다. */
+export async function deleteAt(absolutePath: string): Promise<void> {
+  const res = await dav("DELETE", davUrl(absolutePath))
   drain(res)
   if (res.status === 404) return
   if (res.status < 200 || res.status >= 300) {
     throw new Error(`NAS 삭제 실패 (HTTP ${res.status})`)
   }
+}
+
+/** 파일·폴더가 있는지. 덮어쓰지 않으려고 쓴다 */
+export async function existsAt(absolutePath: string): Promise<boolean> {
+  const res = await dav("PROPFIND", davUrl(absolutePath), undefined, undefined, { Depth: "0" })
+  drain(res)
+  if (res.status === 404) return false
+  if (res.status === 207 || res.status === 200) return true
+  throw new Error(`NAS 확인 실패 (HTTP ${res.status})`)
+}
+
+// ─── 첨부파일 (베이스 경로 + 키) ────────────────────────────────────
+
+export function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+  return putAt(absolutePathFor(key), body, contentType)
+}
+
+export function getObject(key: string): Promise<DavResponse> {
+  return getAt(absolutePathFor(key))
+}
+
+/** 객체를 지운다. 이미 없으면(404) 성공으로 본다 — 지우려던 결과와 같다. */
+export function deleteObject(key: string): Promise<void> {
+  return deleteAt(absolutePathFor(key))
 }
 
 /** File.id로부터 NAS 저장 키를 만든다. 업로드·다운로드가 같은 규칙을 쓰도록 여기 한 곳에 둔다. */

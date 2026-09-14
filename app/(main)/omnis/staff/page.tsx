@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/header"
 import { Badge } from "@/components/ui/badge"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { SignatureActions } from "@/components/company/signature-actions"
+import { StaffAssetUpload } from "@/components/company/staff-asset-upload"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { ymd } from "@/lib/company-context"
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic"
  *
  * 개인정보(생년월일 · 연락처 · 과학기술인번호)와 서명 · 직인이 있다.
  * 서명 · 직인은 미리보기를 띄우지 않는다. 「복사」 · 「파일로 받기」 를 누를 때만 꺼내고, 그때마다 활동 로그가 남는다.
+ * 파일은 권한이 좁은 NAS 폴더(08. 개인정보/옴니스 서명·직인)에 둔다 — lib/staff-assets. 「바꾸기」 로 더 큰 스캔본을 올린다.
  * 비재직자는 이름 · 소속 · 비재직 표시만 있다(2026-09-14 결정).
  */
 export default async function StaffPage() {
@@ -99,20 +101,28 @@ export default async function StaffPage() {
                 </dl>
 
                 <div className="mt-3 flex flex-wrap items-center gap-3 border-t pt-3">
-                  {s.assets.length === 0 ? (
+                  {s.assets.length === 0 && (
                     <span className="text-[12px] text-muted-foreground">등록된 서명·직인이 없습니다</span>
-                  ) : (
-                    s.assets.map((a) => (
-                      <div key={a.id} className="flex flex-wrap items-center gap-2">
-                        <span className="text-[12px] text-muted-foreground">
-                          {a.kind === "SEAL" ? "직인" : "서명"}
-                          {a.width && a.height ? ` ${a.width}×${a.height}` : ""}
-                          {a.width && a.width < 150 ? " · 작아서 인쇄 시 깨질 수 있음" : ""}
-                        </span>
-                        <SignatureActions assetId={a.id} staffName={s.name} kind={a.kind} />
-                      </div>
-                    ))
                   )}
+                  {s.assets.map((a) => (
+                    <div key={a.id} className="flex flex-wrap items-center gap-2">
+                      <span className="text-[12px] text-muted-foreground">
+                        {a.kind === "SEAL" ? "직인" : "서명"}
+                        {a.width && a.height ? ` ${a.width}×${a.height}` : ""}
+                        {a.width && a.width < 300 ? " · 작아서 인쇄 시 흐릴 수 있음 — 더 큰 스캔본으로 바꾸기를 권장" : ""}
+                      </span>
+                      <SignatureActions assetId={a.id} staffName={s.name} kind={a.kind} />
+                      <StaffAssetUpload staffId={s.id} staffName={s.name} kind={a.kind} replacing />
+                    </div>
+                  ))}
+                  <span className="ml-auto flex flex-wrap gap-1">
+                    {!s.assets.some((a) => a.kind === "SIGNATURE") && (
+                      <StaffAssetUpload staffId={s.id} staffName={s.name} kind="SIGNATURE" replacing={false} />
+                    )}
+                    {!s.assets.some((a) => a.kind === "SEAL") && (
+                      <StaffAssetUpload staffId={s.id} staffName={s.name} kind="SEAL" replacing={false} />
+                    )}
+                  </span>
                 </div>
               </li>
             ))}
