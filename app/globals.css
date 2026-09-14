@@ -548,6 +548,48 @@
 html {
   overflow-x: clip;
 }
+
+/* 떠 있는 창(팝오버 · 드롭다운 · 툴팁 …)의 위치를 html zoom 에 맞춘다.
+
+   base-ui(floating-ui)는 트리거 위치를 화면 px(zoom 이 곱해진 값)로 재고, 그 값을 zoom 이 걸린
+   좌표계의 translate 로 쓴다. 그래서 창이 zoom 배만큼 오른쪽·아래로 밀린다 — 1920px 화면에서
+   알림 창이 오른쪽으로 177px 넘쳤고, 채팅 + 메뉴가 버튼에서 152px 떨어져 화면 아래로 잘렸다(2026-09-14 실측).
+   positionMethod="fixed" 는 더 나빴고, 위치 잡는 칸에 zoom 을 거꾸로 거는 것은 뒤집기 계산이 깨졌다.
+
+   위치 잡는 칸(Positioner)을 scale 로 1/zoom 줄이면 translate 가 화면 px 그대로 놓이고,
+   안의 창에 zoom 을 다시 걸면 크기가 그대로이면서 floating-ui 가 재는 너비도 화면 너비와 같아진다.
+   scale 은 레이아웃을 바꾸지 않아 계산에 되먹임이 없고, 클릭 좌표도 함께 맞는다.
+   md 미만은 --ui-zoom 이 1 이라 아무 일도 하지 않는다.
+   셀렉트는 선택 항목을 트리거에 겹쳐 놓는 다른 방식이라 이미 맞다 — 넣으면 오히려 어긋난다. */
+div:has(
+    > :is(
+        [data-slot="popover-content"],
+        [data-slot="dropdown-menu-content"],
+        [data-slot="dropdown-menu-sub-content"],
+        [data-slot="context-menu-content"],
+        [data-slot="context-menu-sub-content"],
+        [data-slot="hover-card-content"],
+        [data-slot="tooltip-content"],
+        [data-slot="combobox-content"],
+        [data-slot="navigation-menu-content"]
+      )
+  ) {
+  transform-origin: 0 0;
+  scale: calc(1 / var(--ui-zoom));
+}
+:is(
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="context-menu-content"],
+    [data-slot="context-menu-sub-content"],
+    [data-slot="hover-card-content"],
+    [data-slot="tooltip-content"],
+    [data-slot="combobox-content"],
+    [data-slot="navigation-menu-content"]
+  ) {
+  zoom: var(--ui-zoom);
+}
 body {
   overscroll-behavior-y: none;
 }
