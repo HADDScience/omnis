@@ -8,6 +8,7 @@ import { createNotification } from "@/lib/notifications"
 import { rebuildTask } from "@/lib/ai"
 import { persistMentions } from "@/lib/mentions"
 import { syncEmbeddings, syncEmbeddingsSafe } from "@/lib/embeddings"
+import { getSystemUserId } from "@/lib/system-user"
 
 export interface PostMessageInput {
   user: { id: string; name: string }
@@ -260,21 +261,18 @@ export async function postChatMessage(input: PostMessageInput) {
     }
   }
 
-  // Gemini 판단 결과를 시스템 메시지로 DB에 저장
+  // Gemini 판단 결과를 시스템 메시지로 DB에 저장.
+  // 작성자는 시스템 계정이다 — 예전에는 정렬 없는 첫 ADMIN 이라 업무와 무관한 관리자 이름이 찍혔다(lib/system-user.ts).
   if (taskUpdate) {
-    const systemUser = await prisma.user.findFirst({ where: { name: "HADD MCP" } })
-      ?? await prisma.user.findFirst({ where: { role: "ADMIN" } })
-    if (systemUser) {
-      await prisma.chatMessage.create({
-        data: {
-          roomId,
-          authorId: systemUser.id,
-          content: `🤖 ${taskUpdate.summary || taskUpdate.statusLabel || "업무 업데이트"}`,
-          taskId: linkedTaskId,
-          kind: taskUpdate.kind ?? "NORMAL",
-        },
-      })
-    }
+    await prisma.chatMessage.create({
+      data: {
+        roomId,
+        authorId: await getSystemUserId(),
+        content: `🤖 ${taskUpdate.summary || taskUpdate.statusLabel || "업무 업데이트"}`,
+        taskId: linkedTaskId,
+        kind: taskUpdate.kind ?? "NORMAL",
+      },
+    })
   }
 
   // 업데이트된 메시지 다시 조회

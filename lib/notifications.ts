@@ -1,5 +1,107 @@
 import { prisma } from "@/lib/db"
-import type { NotificationAction } from "@/lib/schemas/notification"
+import {
+  ALLOWED_RESPONSES,
+  NotificationActionSchema,
+  type NotificationAction,
+  type NotificationResponse,
+} from "@/lib/schemas/notification"
+
+export type ActionResult =
+  | { ok: true; alreadyResolved?: true; status?: "DONE" }
+  | { error: string; code: 400 | 404 }
+
+/**
+ * 액션 알림에 응답한다 — 화면(PATCH /api/notifications)과 MCP(respond_notification)가 같은 길을 쓴다.
+ * 라우트에서 옮겼다(2026-09-14).
+ *
+ * 응답 기록(resolvedAt)을 `resolvedAt: null` 조건부 updateMany 로 먼저 선점해,
+ * 더블클릭이나 두 탭에서 동시에 눌러도 부수효과(업무 완료 처리·지시자 알림)가
+ * 두 번 일어나지 않게 한다.
+ */
+export async function respondToAction(
+  userId: string,
+  userName: string,
+  notificationId: string,
+  response: NotificationResponse
+): Promise<ActionResult> {
+  const notification = await prisma.notification.findFirst({
+    where: { id: notificationId, userId },
+  })
+  if (!notification) return { error: "알림 없음", code: 404 }
+
+  const action = NotificationActionSchema.safeParse(notification.actionType)
+  if (!action.success) return { error: "응답할 수 있는 알림이 아닙니다", code: 400 }
+  if (!ALLOWED_RESPONSES[action.data].includes(response)) {
+    return { error: "이 알림에 허용되지 않는 응답입니다", code: 400 }
+  }
+
+  const claimed = await prisma.notification.updateMany({
+    where: { id: notificationId, userId, resolvedAt: null },
+    data: { resolvedAt: new Date(), read: true },
+  })
+  // 이미 응답한 알림 — 부수효과를 다시 일으키지 않고 조용히 성공 처리한다.
+  if (claimed.count === 0) return { ok: true, alreadyResolved: true }
+
+  const taskId = notification.entityId
+  if (!taskId) return { ok: true }
+
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, slug: true, name: true, instructorId: true, status: true },
+  })
+  if (!task) return { ok: true }
+
+  if (response === "accept") {
+    await notifyInstructor(
+      task.instructorId,
+      userId,
+      "task_accepted",
+      `업무 확인: ${task.name}`,
+      `${userName}님이 #${task.slug} 업무를 확인했습니다.`,
+      task.id
+    )
+    return { ok: true }
+  }
+
+  if (response === "confirm_done") {
+    await prisma.$transaction([
+      prisma.task.update({
+        where: { id: task.id },
+        data: { status: "DONE", workEnd: new Date() },
+      }),
+      prisma.checklist.updateMany({
+        where: { taskId: task.id, done: false },
+        data: { done: true },
+      }),
+    ])
+    await notifyInstructor(
+      task.instructorId,
+      userId,
+      "task_status_changed",
+      "업무 완료",
+      `${userName}님이 #${task.slug} 업무를 완료했습니다.`,
+      task.id
+    )
+    return { ok: true, status: "DONE" }
+  }
+
+  // defer — 응답 기록만 남긴다. 마감일이 지나면 다시 물어본다.
+  return { ok: true }
+}
+
+async function notifyInstructor(
+  instructorId: string,
+  actorId: string,
+  type: string,
+  title: string,
+  content: string,
+  entityId: string
+) {
+  if (instructorId === actorId) return
+  await prisma.notification.create({
+    data: { userId: instructorId, type, title, content, entityId },
+  })
+}
 
 /**
  * 알림 생성 단일 진입점.

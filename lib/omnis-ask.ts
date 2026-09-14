@@ -1,4 +1,4 @@
-// 옴니스 질문 — 화면(app/api/omnis/ask)과 MCP(omnis-hadd)가 같은 길을 쓴다.
+// 옴니스 질문 — 화면(app/api/omnis/ask)과 MCP(hadd-omnis)가 같은 길을 쓴다.
 //
 // 검색(top-K) + 현황 전량(업무·지식재산권·CRM) + 생성. 라우트에서 그대로 옮겼다(2026-09-07).
 import { prisma } from "@/lib/db"

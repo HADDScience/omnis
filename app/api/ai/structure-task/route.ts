@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { structureTask } from "@/lib/ai"
 import { fallbackAiDraft } from "@/lib/schemas/task-ai"
+import { SYSTEM_USER_ID } from "@/lib/system-user"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -48,6 +49,8 @@ export async function POST(req: NextRequest) {
       orderBy: { sortOrder: "asc" },
     }),
     prisma.user.findMany({
+      // 시스템 계정(🤖 메시지 작성자)은 담당자 후보가 아니다.
+      where: { id: { not: SYSTEM_USER_ID } },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
