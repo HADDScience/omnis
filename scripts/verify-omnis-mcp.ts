@@ -258,6 +258,9 @@ async function main() {
     check("빈 마감은 지운다", !isErr(clear) && (await prisma.task.findUnique({ where: { slug }, select: { deadline: true } }))?.deadline === null)
     check("활동 기록이 남는다 (화면과 같은 길)", (await prisma.activityLog.count({ where: { userId: user.id, action: "task.updated", entityId: createdTaskId ?? "" } })) >= 2)
 
+    // Gemini 가 살아 있으면 앞의 post_message 가 체크리스트를 재구성해 둔다. 알려진 상태에서 시작한다.
+    await prisma.checklist.deleteMany({ where: { taskId: createdTaskId ?? "" } })
+    for (const name of ["첫째", "둘째"]) await prisma.checklist.create({ data: { taskId: createdTaskId ?? "", name } })
     const ghostItem = await call("update_checklist", { task: slug, check: ["__없는항목__"] }, token)
     check("없는 항목은 isError 이고 아무것도 안 바뀐다", isErr(ghostItem) && (await prisma.checklist.count({ where: { taskId: createdTaskId ?? "", done: true } })) === 0, text(ghostItem))
     const outOfRange = await call("update_checklist", { task: slug, check: ["9"] }, token)

@@ -86,6 +86,25 @@ $ (다시 미리보기)
 
 검증이 남긴 데이터: `__` 로 시작하는 사용자·업무·파일·OAuth 클라이언트 0건.
 
+### main 위로 rebase 한 뒤 (push 전)
+
+PR #9(`feat/thread-attach-mention`, `lib/chat-post.ts` 수정)가 먼저 머지돼 `origin/main 4c85a28` 위로 rebase 했다. 충돌 없음.
+PR #9 는 package.json·prisma 를 바꾸지 않았다.
+
+```
+$ npm run verify    → exit 0 (0 errors, 41 warnings — 기존)
+$ npm run build     → exit 0, ✓ Compiled successfully
+$ verify-ip-mcp         → 37 passed, 0 failed
+$ verify-system-author  → 10 passed, 0 failed
+$ verify-moved-routes   → 13 passed, 0 failed
+$ verify-omnis-mcp      → 74 passed, 2 failed   (첫 실행)
+$ verify-omnis-mcp      → 76 passed, 0 failed   (체크리스트 검증 수정 뒤)
+```
+
+Gemini 상한이 풀려 이번에는 `post_message` 가 실제 AI 재구성을 돌렸고, 그것이 검증용 업무의 체크리스트를 바꿔 놓아
+체크리스트 검증 2건이 가정한 초기 목록과 달라졌다. 도구는 두 경우 모두 맞게 응답했다(「아무것도 바꾸지 않았습니다」).
+검증이 체크리스트를 알려진 상태로 되돌리고 시작하도록 고쳤다.
+
 ## 남은 것
 
 - **프로덕션 반영**: 푸시·PR·배포는 승인 뒤. 배포 뒤 프로덕션에서 백필 미리보기 → `--apply`. 마이그레이션은 없다.

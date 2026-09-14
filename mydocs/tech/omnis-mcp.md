@@ -119,14 +119,16 @@ MCP 전용 지름길을 만들면 알림·AI 재구성·완료 확인·색인·�
 
 ```
 IP_MCP_BASE=http://localhost:3100 npx tsx --env-file=.env scripts/verify-ip-mcp.ts        → 37 passed, 0 failed
-IP_MCP_BASE=http://localhost:3100 npx tsx --env-file=.env scripts/verify-omnis-mcp.ts     → 73 passed, 3 failed
+IP_MCP_BASE=http://localhost:3100 npx tsx --env-file=.env scripts/verify-omnis-mcp.ts     → 76 passed, 0 failed
 BASE=http://localhost:3100 npx tsx --env-file=.env scripts/verify-system-author.ts        → 10 passed, 0 failed
 BASE=http://localhost:3100 npx tsx --env-file=.env scripts/verify-moved-routes.ts         → 13 passed, 0 failed
 ```
 
-`verify-omnis-mcp` 의 실패 3건(`search_knowledge` · `post_message` 처리 결과 · `ask_omnis`)은 로컬 Gemini 키가 월 지출 상한에 걸려
-429 를 받은 것이다(dev 로그: `Your project has exceeded its monthly spending cap`). 새 영역 [6]~[10](파일 올리기·읽기, 업무 수정·체크리스트,
-알림 응답, 시스템 계정)은 전부 통과.
+main `4c85a28`(PR #9) 위로 rebase 한 뒤의 결과다. 그 전 실행에서는 로컬 Gemini 키가 월 지출 상한(429)에 걸려
+Gemini 를 부르는 3건이 실패했고, 상한이 풀린 뒤 통과했다.
+
+`verify-omnis-mcp` 는 Gemini 가 살아 있으면 `post_message` 가 체크리스트를 실제로 재구성한다. 체크리스트 검증은 그 뒤
+목록을 알려진 상태로 되돌리고 시작한다 — 그러지 않으면 Gemini 가 살아 있을 때만 실패한다.
 
 거부 사례가 들어 있다 — 가짜 토큰 401, 비구성원의 `list_ip`, 모르는 도구·담당자·업무, 본문 없는/둘 다 준/4MB 넘는 업로드,
 서명이 틀린·만료된·토큰 없는 업로드 링크, 업로드 링크로 내려받기, 서명이 틀린 내려받기 링크, 없는 파일, 이미 붙은 파일의 재사용,
