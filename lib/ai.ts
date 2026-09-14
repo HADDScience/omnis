@@ -26,24 +26,34 @@ function cleanCodeBlocks(text: string): string {
     .trim()
 }
 
+export interface CallGeminiOptions {
+  /** 기본 gemini-2.5-flash. 싼 판정에는 gemini-2.5-flash-lite 를 준다 */
+  model?: string
+  /** 함께 보여 줄 파일 (PDF · 이미지). base64 로 인라인 전송한다 — 세금계산서 판독 등 */
+  files?: { mimeType: string; data: string }[]
+}
+
 export async function callGemini(
   prompt: string,
   endpoint: string,
   userId?: string,
-  temperature = 0.3
+  temperature = 0.3,
+  opts: CallGeminiOptions = {}
 ): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다")
   const maxOutputTokens = 8192
+  const model = opts.model ?? "gemini-2.5-flash"
+  const url = GEMINI_API_URL.replace("gemini-2.5-flash", model)
 
   await assertGeminiUsageAllowed({
     endpoint,
     userId,
-    estimatedTokens: estimateGeminiTokens([prompt]) + maxOutputTokens,
+    estimatedTokens: estimateGeminiTokens([prompt]) + maxOutputTokens + (opts.files?.length ?? 0) * 1_500,
   })
 
   const reqBody = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
+    contents: [{ parts: [...(opts.files ?? []).map((f) => ({ inlineData: { mimeType: f.mimeType, data: f.data } })), { text: prompt }] }],
     generationConfig: {
       temperature,
       maxOutputTokens,
@@ -62,7 +72,7 @@ export async function callGemini(
   let lastErr = ""
   const MAX_ATTEMPTS = 8
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+    res = await fetch(`${url}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: reqBody,
@@ -760,4 +770,145 @@ export async function runGeminiToolLoop(
   }
 
   return { text: "", usage, calls, trace, llmMs: Math.round(llmMs), toolMs: Math.round(toolMs), error: `${maxSteps}단계 안에 답을 내지 못했습니다` }
+}
+
+// ─── 지식 카드 자동 갱신 ──────────────────────────────────────────
+//
+// 업무가 끝나면 그 대화에서 "회사에 계속 남을 사실" 을 뽑아 카드 갱신을 제안한다.
+// 두 단으로 나눈 이유는 값이다 — 대부분의 업무에는 남길 지식이 없고, 그 판정은 싼 모델로 충분하다.
+// 배경: mydocs/plans/2026-09-10-ai-maintained-cards.md
+
+/** 카드에 담는 것은 "읽는 것" 이다. 행이 쌓이는 자료(연혁·지원사업·재고)는 모델이 따로 맡는다. */
+const KNOWLEDGE_SCOPE = `카드에 담는 것은 **회사에 계속 남는 서술**이다:
+- 제품·기술 설명, 실험 프로토콜, 사양
+- 표기·브랜드 규칙 (제품명을 어떻게 쓰는지, 로고 사용)
+- 사내 규정·절차 (파일을 어디 두는지, 어떤 순서로 승인하는지)
+- 거래·협업 조건 중 반복 적용되는 것
+- 어떤 방식을 왜 그렇게 정했는지 (배경과 근거)
+
+담지 않는 것:
+- 이 업무에서만 쓰는 일정·담당·진행 상황 (업무 카드가 맡는다)
+- 날짜와 건수가 쌓이는 목록 — 연혁·지원사업·수상·학회·재고·견적·상표/특허 (각자 다른 표가 맡는다)
+- 한 번 쓰고 마는 잡담, 인사, 확인 메시지
+
+**절대 담지 않는 것 — 비밀정보.**
+계정 ID·비밀번호·인증번호·API 키·카드번호·계좌번호·주민등록번호·개인 연락처는
+대화에 적혀 있더라도 카드에 옮기지 않는다. "계정 정보는 담당자에게 문의" 처럼 가리키는 문장만 쓴다.
+(사내 채팅에 평문 비밀번호가 실린 사례가 있다 — mydocs/orders/20260907.md)`
+
+export interface KnowledgeTopic {
+  /** 카드 제목이 될 주제 */
+  title: string
+  /** 무엇이 확정됐나 (한두 문장) */
+  summary: string
+}
+
+/**
+ * 1단 — 이 대화에 카드로 남길 지식이 있나. 없으면 빈 배열.
+ * 싼 모델로 돌린다. 대부분 여기서 끝난다.
+ */
+export async function detectKnowledge(
+  taskName: string,
+  messages: { author: string; content: string }[],
+  userId?: string
+): Promise<KnowledgeTopic[]> {
+  if (messages.length === 0) return []
+  const text = messages.map((m) => `${m.author}: ${m.content}`).join("\n").slice(0, 20_000)
+
+  const prompt = `아래는 방금 완료된 업무의 대화 기록입니다.
+이 대화에서 **회사 지식 카드에 남길 만한 것**이 있는지 판단하세요.
+
+${KNOWLEDGE_SCOPE}
+
+## 업무명
+${taskName}
+
+## 대화
+${text}
+
+남길 것이 없으면 빈 배열을 반환하세요. 대부분의 업무에는 없습니다 — 없는데 억지로 만들지 마세요.
+있으면 주제마다 카드 제목과 확정된 내용을 적으세요. 최대 2개.
+
+반드시 JSON만: {"topics": [{"title": "카드 제목", "summary": "무엇이 확정됐나"}]}`
+
+  try {
+    const raw = await callGemini(prompt, "cardDetect", userId, 0, { model: "gemini-2.5-flash-lite" })
+    const m = raw.match(/\{[\s\S]*\}/)
+    if (!m) return []
+    const parsed = JSON.parse(m[0]) as { topics?: KnowledgeTopic[] }
+    return (parsed.topics ?? []).filter((t) => t?.title && t?.summary).slice(0, 2)
+  } catch (err) {
+    console.error("[ai/detectKnowledge] 판정 실패", { taskName, err })
+    return []
+  }
+}
+
+export interface CardDraft {
+  title: string
+  /** CardContent 의 sections (text 만 쓴다) */
+  sections: { type: "text"; title: string; body: string }[]
+  /** 왜 이렇게 바꾸는지 한 줄 */
+  reason: string
+}
+
+/**
+ * 2단 — 카드 본문을 통째로 다시 쓴다 (증분이 아니다. rebuildTask 와 같은 방식).
+ * 기존 카드가 있으면 그 본문을 주고 고쳐 쓰게 하고, 없으면 새로 만든다.
+ *
+ * 사람이 고친 섹션은 건드리지 않게 프롬프트로 막는다 — 저자 구분은 OmnisCardVersion.authorKind 가 맡는다.
+ */
+export async function draftCardUpdate(
+  topic: KnowledgeTopic,
+  existing: { title: string; body: string; humanEdited: boolean } | null,
+  evidence: string,
+  userId?: string
+): Promise<CardDraft | null> {
+  const existingBlock = existing
+    ? `## 지금 카드
+제목: ${existing.title}
+${existing.body}
+${existing.humanEdited ? "\n**이 카드는 사람이 직접 고친 적이 있다. 기존 문장을 지우지 말고, 새로 확정된 것만 보태거나 그 부분만 고쳐라.**" : ""}`
+    : "## 지금 카드\n(없다. 새로 만든다)"
+
+  const prompt = `당신은 HADD Science 사내 지식 카드를 관리합니다.
+아래 근거를 바탕으로 카드 본문을 **통째로 다시** 써 주세요.
+
+${KNOWLEDGE_SCOPE}
+
+${existingBlock}
+
+## 이번에 확정된 것
+${topic.title} — ${topic.summary}
+
+## 근거 (실제 대화)
+${evidence.slice(0, 12_000)}
+
+규칙:
+- 근거에 있는 내용만 쓰세요. 짐작해서 채우지 마세요.
+- 날짜·담당자·진행 상황은 넣지 마세요. 지금도 내년에도 맞는 문장만 남깁니다.
+- 섹션은 2~4개, 각 섹션은 문단이나 짧은 목록으로. 표는 쓰지 마세요.
+- 한국어로, 회사 안에서 읽을 문장으로 씁니다.
+
+반드시 JSON만:
+{"title": "카드 제목", "sections": [{"type":"text","title":"섹션 제목","body":"본문"}], "reason": "무엇을 왜 바꿨는지 한 줄"}`
+
+  try {
+    const raw = await callGemini(prompt, "cardDraft", userId, 0.2, {
+      model: process.env.OMNIS_CARD_MODEL ?? "gemini-3.8-flash",
+    })
+    const m = raw.match(/\{[\s\S]*\}/)
+    if (!m) return null
+    const parsed = JSON.parse(m[0]) as CardDraft
+    if (!parsed?.title || !Array.isArray(parsed.sections) || parsed.sections.length === 0) return null
+    return {
+      title: parsed.title,
+      reason: parsed.reason ?? "",
+      sections: parsed.sections
+        .filter((x) => x?.body?.trim())
+        .map((x) => ({ type: "text" as const, title: x.title ?? "", body: x.body })),
+    }
+  } catch (err) {
+    console.error("[ai/draftCardUpdate] 초안 실패", { topic: topic.title, err })
+    return null
+  }
 }

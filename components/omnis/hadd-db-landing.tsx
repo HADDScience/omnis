@@ -8,11 +8,12 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   BookOpen01Icon,
   Search01Icon,
-  PlusSignIcon,
   BubbleChatSparkIcon,
   ArrowRight02Icon,
   FolderLibraryIcon,
   StarIcon,
+  SparklesIcon,
+  HierarchyIcon,
 } from "@hugeicons/core-free-icons"
 import { Kbd } from "@/components/ui/kbd"
 import { useCommandPalette } from "@/components/layout/command-palette-context"
@@ -31,7 +32,16 @@ interface CardSummary {
   meta?: string
 }
 
+/** 회사 Context 입구 — 회사 정보 · 연혁 · 시장기업 · 인력(관리자) */
+export interface ContextTile {
+  href: string
+  title: string
+  value: string
+  meta: string
+}
+
 interface HaddDbLandingProps {
+  contextTiles: ContextTile[]
   totalCards: number
   categoryCount: number
   categories: { name: string; count: number }[]
@@ -117,6 +127,7 @@ function CardEntry({ c, emphasized = false }: { c: CardSummary; emphasized?: boo
 }
 
 export function HaddDbLanding({
+  contextTiles,
   totalCards,
   categoryCount,
   categories,
@@ -146,6 +157,8 @@ export function HaddDbLanding({
           </p>
         </div>
 
+        {/* 사람이 문서를 한 땀씩 쓰는 곳이 아니라 Context 를 살펴보는 곳이다(2026-09-14 결정) —
+            「새 카드」 버튼을 앞에서 뺐다. 카드는 AI 가 업무에서 뽑아 제안한다. */}
         <div className="flex items-stretch gap-2">
           <button
             type="button"
@@ -157,14 +170,6 @@ export function HaddDbLanding({
             {/* 물리 키보드가 없는 기기에선 단축키 힌트를 숨긴다 */}
             <Kbd className="hidden md:inline-flex">⌘K</Kbd>
           </button>
-          <Link
-            href="/omnis?create=1"
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg border bg-primary px-4 py-4 text-[13.5px] font-semibold text-primary-foreground shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-opacity hover:opacity-90"
-            aria-label="새 지식카드 만들기"
-          >
-            <HugeiconsIcon icon={PlusSignIcon} size={15} />
-            새 카드
-          </Link>
         </div>
 
         {/*
@@ -199,6 +204,38 @@ export function HaddDbLanding({
           ))}
         </div>
 
+        {/* 회사 Context — 이식 · 업무에서 쌓이는 회사 자료. 카드처럼 사람이 쓰지 않는다 */}
+        <nav aria-label="회사 Context" className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+          {contextTiles.map((t) => (
+            <Link
+              key={t.href}
+              href={t.href}
+              className="touch-target min-w-0 rounded-lg border bg-card px-3.5 py-3 transition-colors hover:border-border-strong hover:bg-muted/40"
+            >
+              <div className="text-[11.5px] text-muted-foreground">{t.title}</div>
+              <div className="mt-0.5 truncate text-[14.5px] font-semibold tabular-nums">{t.value}</div>
+              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{t.meta}</div>
+            </Link>
+          ))}
+        </nav>
+
+        {/* Context 그래프 — 대상 하나를 가운데 두고 DB 연결(실선)과 의미상 이웃(점선)을 펼친다 */}
+        <Link
+          href="/omnis/context"
+          className="mt-3.5 flex items-center gap-3 rounded-lg border bg-card px-5 py-3.5 transition-colors hover:border-border-strong hover:bg-muted/40"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <HugeiconsIcon icon={HierarchyIcon} size={19} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold">Context 살펴보기</div>
+            <div className="text-[11.5px] leading-snug text-muted-foreground">
+              업무 · 사람 · 기관 · 특허가 어떻게 이어져 있는지, AI 가 무엇을 읽는지 그래프로
+            </div>
+          </div>
+          <HugeiconsIcon icon={ArrowRight02Icon} size={16} className="shrink-0 text-muted-foreground" aria-hidden />
+        </Link>
+
         {/* 사내 자료(NAS) 진입.
             사이드바에 「사내 자료」로 따로 서 있었는데 HADD DB 와 무엇이 다른지
             헷갈렸다. 둘 다 사내 자료를 보는 곳이니 당연하다. 카드로 정리된 지식이
@@ -222,6 +259,23 @@ export function HaddDbLanding({
             className="shrink-0 text-muted-foreground"
             aria-hidden
           />
+        </Link>
+
+        {/* AI 카드 제안 진입 — 업무에서 뽑은 지식을 사람이 확인한다 */}
+        <Link
+          href="/omnis/proposals"
+          className="mt-3.5 flex items-center gap-3 rounded-lg border bg-card px-5 py-3.5 transition-colors hover:border-border-strong hover:bg-muted/40"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <HugeiconsIcon icon={SparklesIcon} size={19} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold">AI 카드 제안</div>
+            <div className="truncate text-[11.5px] text-muted-foreground">
+              업무가 끝나면 AI 가 찾아낸 회사 지식을 확인하고 카드에 반영해요
+            </div>
+          </div>
+          <HugeiconsIcon icon={ArrowRight02Icon} size={16} className="shrink-0 text-muted-foreground" aria-hidden />
         </Link>
 
         {/* 옴니스 RAG 질문 진입 — 자연어 질문 → 사내 지식 기반 답변 */}

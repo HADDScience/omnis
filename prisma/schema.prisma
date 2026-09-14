@@ -32,6 +32,7 @@ model User {
   weeklyReports    WeeklyReport[]
   omnisUpdates     OmnisCard[]
   omnisVersions    OmnisCardVersion[]
+  cardDecisions    CardProposal[]
   omnisQueries     OmnisQuery[]
   notifications    Notification[]
   omnisViewLogs    OmnisViewLog[]
@@ -40,6 +41,7 @@ model User {
   geminiUsages     GeminiUsage[]
   identities       UserIdentity[]
   aiDraftRevisions AiDraftRevision[]
+  staffProfile     StaffProfile?
 }
 
 enum Role {
@@ -167,11 +169,12 @@ model Task {
   notionId       String?
   sourceMessages Json?
 
-  checklists Checklist[]
-  messages   ChatMessage[]
-  files      File[]
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  checklists    Checklist[]
+  messages      ChatMessage[]
+  files         File[]
+  cardProposals CardProposal[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@index([status])
   @@index([projectId])
@@ -266,8 +269,9 @@ model Project {
   product   Product?  @relation(fields: [productId], references: [id])
 
   tasks     Task[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  records   CompanyRecord[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
   @@index([productId])
 }
@@ -295,11 +299,12 @@ model WeeklyReport {
 // ─── 옴니스 지식 베이스 ──────────────────────────────────
 
 model OmnisCategory {
-  id        String      @id @default(uuid())
-  name      String      @unique
+  id        String         @id @default(uuid())
+  name      String         @unique
   icon      String?
-  sortOrder Int         @default(0)
+  sortOrder Int            @default(0)
   cards     OmnisCard[]
+  proposals CardProposal[]
 }
 
 model OmnisCard {
@@ -312,9 +317,14 @@ model OmnisCard {
   version     Int                @default(1)
   updatedById String?
   updatedBy   User?              @relation(fields: [updatedById], references: [id])
+  /// 이 카드의 근거. [{ kind: "task"|"message", id, label }] — AI 가 쓴 내용은 근거 없이 남기지 않는다.
+  sourceRefs  Json?
+  /// AI 가 마지막으로 반영한 시각. 사람이 고치면 그대로 두고 updatedAt 만 움직인다.
+  aiUpdatedAt DateTime?
   versions    OmnisCardVersion[]
   viewLogs    OmnisViewLog[]
   bookmarks   Bookmark[]
+  proposals   CardProposal[]
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -322,18 +332,83 @@ model OmnisCard {
 }
 
 model OmnisCardVersion {
-  id               String    @id @default(uuid())
+  id               String         @id @default(uuid())
   cardId           String
-  card             OmnisCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  card             OmnisCard      @relation(fields: [cardId], references: [id], onDelete: Cascade)
   content          Json
   version          Int
   restoredFromHash String?
   createdById      String?
-  createdBy        User?     @relation(fields: [createdById], references: [id])
-  createdAt        DateTime  @default(now())
+  createdBy        User?          @relation(fields: [createdById], references: [id])
+  /// 이 판을 누가 썼나. AI 가 쓴 문장을 사람이 쓴 문장과 구분한다 (충돌 시 사람이 이긴다).
+  authorKind       CardAuthorKind @default(HUMAN)
+  createdAt        DateTime       @default(now())
 
   @@index([cardId, version])
   @@index([createdById])
+}
+
+enum CardAuthorKind {
+  HUMAN
+  AI
+}
+
+enum CardProposalStatus {
+  /// 사람의 판단을 기다린다
+  PENDING
+  /// 사람이 수락해 카드에 반영됐다
+  ACCEPTED
+  /// 사람이 거절했다
+  REJECTED
+  /// 수락률이 임계치를 넘어 사람 확인 없이 반영됐다
+  AUTO_APPLIED
+  /// 같은 카드에 더 새로운 제안이 와서 밀렸다
+  SUPERSEDED
+}
+
+/// AI 가 만든 지식 카드 갱신 제안.
+///
+/// 사람이 카드를 직접 쓰는 구조로는 한 번도 채워지지 않았다(카드 0장·조회 0).
+/// 그래서 AI 가 업무 중 생긴 변화를 제안으로 올리고, 사람이 수락·거절한다.
+/// 수락이 꾸준히 많으면 `shouldAutoApply()` 가 자동 적용으로 넘긴다 — lib/card-proposals.ts.
+///
+/// 배경: mydocs/plans/2026-09-10-ai-maintained-cards.md
+model CardProposal {
+  id     String             @id @default(uuid())
+  status CardProposalStatus @default(PENDING)
+
+  /// 기존 카드를 고치는 제안이면 그 카드. 새 카드 제안이면 null
+  cardId     String?
+  /// 카드가 지워져도 제안은 남는다 — 이 표가 수락률의 근거라 판단 기록을 잃으면 안 된다.
+  card       OmnisCard?     @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  /// 새 카드 제안일 때 들어갈 분류
+  categoryId String?
+  category   OmnisCategory? @relation(fields: [categoryId], references: [id])
+
+  title      String
+  /// 제안하는 카드 본문 전체 (CardContent 형태 — 통째로 다시 쓴다, 증분이 아니다)
+  content    Json
+  /// 왜 이렇게 바꾸는지 한 줄
+  reason     String
+  /// 근거 [{ kind, id, label }]. 비어 있으면 만들지 않는다
+  sourceRefs Json
+
+  /// 무엇이 이 제안을 불렀나 — task_done · weekly · manual · seed
+  trigger       String
+  triggerTaskId String?
+  triggerTask   Task?   @relation(fields: [triggerTaskId], references: [id], onDelete: SetNull)
+
+  decidedById String?
+  decidedBy   User?     @relation(fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+  /// 되돌린 시각. 자동 적용된 것을 사람이 되돌리면 수락률에 거절로 반영된다
+  revertedAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+  @@index([cardId])
+  @@index([triggerTaskId])
 }
 
 // 옴니스 RAG 질문·답변 내역 (사용자별)
@@ -552,6 +627,8 @@ model CrmOrg {
   code      String     @unique // ORG001 — 엑셀 기관코드를 그대로 이어받는다
   name      String     @unique
   type      CrmOrgType @default(OTHER)
+  /// 사업자등록번호 — 세금계산서의 공급받는자를 기관에 잇는 열쇠
+  bizRegNo  String?    @unique
   address   String?
   note      String?
   createdAt DateTime   @default(now())
@@ -562,6 +639,7 @@ model CrmOrg {
   quotes         CrmQuote[]
   sampleRequests CrmSampleRequest[]
   shipments      CrmShipment[]
+  taxInvoices    TaxInvoice[]
 
   @@index([name])
 }
@@ -630,6 +708,7 @@ model CrmProduct {
   stockMoves        CrmStockMove[]
   productions       CrmProduction[]    @relation("ProducedProduct")
   usedInProductions CrmProduction[]    @relation("ProductionMaterial")
+  invoiceItems      TaxInvoiceItem[]
 
   @@unique([name, spec])
 }
@@ -656,8 +735,9 @@ model CrmQuote {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  items     CrmQuoteItem[]
-  shipments CrmShipment[]
+  items       CrmQuoteItem[]
+  shipments   CrmShipment[]
+  taxInvoices TaxInvoice[]
 
   @@index([orgId])
   @@index([quotedAt])
@@ -858,4 +938,270 @@ model WebsiteMedia {
   createdAt   DateTime @default(now())
 
   @@index([postId])
+}
+
+// ─── 회사 Context (2026-09-14) ───────────────────────────────────────
+//
+// HADD DB 에서 모아 보는 회사 자료. 원본은 옴니스다 — 노션·엑셀은 한 번 옮기고 끝낸다.
+// 설계: mydocs/plans/2026-09-14-company-context.md
+// 세는 자료는 여기(모델), 읽는 서술은 지식 카드(AI 가 갱신), 파일은 NAS.
+
+/// 회사 기본정보. 지원서에 글자 그대로 들어가는 값이라 AI 가 쓰지 않는다 — 카드와 다르다.
+model CompanyProfile {
+  id             String    @id @default("hadd")
+  nameKo         String
+  nameEn         String?
+  bizRegNo       String
+  /// 개인사업자 · 법인. 사업자번호(503-52-…)와 결산서로는 개인과세사업자 — 법인 전환 여부 확인 필요
+  bizType        String?
+  corpRegNo      String?
+  industry       String?
+  industryCode   String?
+  foundedOn      DateTime?
+  homepage       String?
+  hqAddress      String?
+  labAddress     String?
+  partnerAddress String?
+  asOfDate       DateTime?
+  updatedById    String?
+  updatedAt      DateTime  @updatedAt
+}
+
+enum FigureBasis {
+  /// 확정 — 결산서(신고한 재무제표)
+  CONFIRMED
+  /// 계획 — 예상·추정. 사업계획서용이고 실적과 섞지 않는다
+  PLANNED
+}
+
+/// 연도별 재무·인원. 금액은 원, 매출은 공급가액(부가세 제외).
+/// 결산 전인 올해의 「잠정」 매출은 저장하지 않고 TaxInvoice 에서 매번 센다.
+model CompanyYear {
+  id                String      @id @default(uuid())
+  year              Int
+  basis             FigureBasis
+  revenueKrw        BigInt?
+  revenueProductKrw BigInt?
+  revenueServiceKrw BigInt?
+  costOfSalesKrw    BigInt?
+  netIncomeKrw      BigInt?
+  assetsKrw         BigInt?
+  liabilitiesKrw    BigInt?
+  equityKrw         BigInt?
+  /// 상시근로자
+  headcount         Int?
+  /// 결산서의 매출 계정 이름 (상품매출 · 서비스수입 …) — 세무사 확인용
+  accountLabel      String?
+  note              String?
+  /// 결산서 원본 (NAS 키)
+  sourceFileKey     String?
+  asOfDate          DateTime?
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([year, basis])
+}
+
+enum EmploymentStatus {
+  EMPLOYED
+  FORMER
+}
+
+/// 인력 프로필. 과제 대리 작성에 쓴다. User 가 아닌 사람(외부 연구원)도 담는다.
+/// 관리자만 연다. AI 도구에는 이름 · 소속 · 직책 · 담당업무만 싣는다.
+model StaffProfile {
+  id          String           @id @default(uuid())
+  userId      String?          @unique
+  user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name        String           @unique
+  /// 본 소속 — 하드사이언스 · 성균관대학교 · EAS
+  affiliation String
+  /// 본 소속에서의 직책
+  position    String?
+  /// 하드사이언스 겸직 직함 — CAO · CMO
+  haddRole    String?
+  employment  EmploymentStatus @default(EMPLOYED)
+  /// 4대보험 가입
+  insured     Boolean          @default(false)
+  education   String?
+  major       String?
+  duties      String?
+  /// 과학기술인번호 (NTIS)
+  ntisNo      String?
+  email       String?
+  phone       String?
+  birthDate   DateTime?
+  joinedOn    DateTime?
+  note        String?
+  updatedById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  assets StaffAsset[]
+}
+
+enum StaffAssetKind {
+  SIGNATURE
+  SEAL
+}
+
+/// 서명 · 직인 이미지. 실물은 NAS(lib/storage), 여기엔 키만.
+/// 복사 · 내려받기는 누가 · 언제 · 누구의 것을 활동 로그에 남긴다.
+model StaffAsset {
+  id        String         @id @default(uuid())
+  staffId   String
+  staff     StaffProfile   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  kind      StaffAssetKind
+  objectKey String
+  fileName  String
+  mimeType  String
+  width     Int?
+  height    Int?
+  size      Int
+  createdAt DateTime       @default(now())
+
+  @@index([staffId])
+}
+
+/// 시장 · 경쟁 기업. 거래처(CrmOrg)와 섞지 않는다 — 섞으면 「거래 기관 N곳」 이 부풀려진다.
+/// 금액 · 업력 · 규모는 표기가 제각각이라 원문 글자로 둔다.
+model MarketCompany {
+  id                String   @id @default(uuid())
+  name              String   @unique
+  /// 이름 괄호에서 뗀 국가
+  country           String?
+  /// Global · Media & Culture gel · 오가노이드 회사 · Culture chip & dish · CRO
+  segment           String?
+  homepage          String?
+  products          String?
+  industry          String?
+  ceo               String?
+  foundedRaw        String?
+  capitalRaw        String?
+  revenueRaw        String?
+  headcountRaw      String?
+  /// 동물대체시험법
+  animalAlternative Boolean?
+  address           String?
+  note              String?
+  source            String   @default("notion")
+  updatedAt         DateTime @updatedAt
+}
+
+enum RecordKind {
+  /// 지원사업 (지원금 · 과제번호 · 자부담)
+  GRANT
+  /// 수상
+  AWARD
+  /// 학회 · 부스 · 전시
+  EXHIBITION
+  /// 포럼 · 세미나 참석/발표
+  FORUM
+  /// 교육 · 멘토링
+  EDUCATION
+  /// 네트워킹 · 방문
+  NETWORKING
+  /// 내부행사 · 입주 · 워크샵
+  INTERNAL
+  /// 그 밖의 주요 사건 (설립 · 인증 취득 …)
+  MILESTONE
+}
+
+/// 회사 연혁 · 실적. 연혁 표가 상위 집합이고, 지원사업 · 수상 · 학회 시트는 상세 칸이 붙는 부분집합이다.
+/// 날짜가 다르면 상세 시트가 정본 (2026-09-10 결정). 특허 · 상표는 ip 스키마가 정본이라 담지 않는다.
+model CompanyRecord {
+  id           String     @id @default(uuid())
+  /// 이식 멱등 키 — kind · 제목 · 기관 · 시작일을 정규화해 만든다 (시작일이 비어도 겹치지 않게)
+  dedupeKey    String     @unique
+  kind         RecordKind
+  title        String
+  organizer    String?
+  startsOn     DateTime?
+  endsOn       DateTime?
+  /// 원문 기간 표기. 화면엔 이것을 보여 준다 — 형식이 20종이라 파싱값만 두면 뜻이 상한다
+  periodRaw    String?
+  /// 완료 · 진행중 · 발표완료 · 계획
+  status       String?
+  note         String?
+  subject      String?
+  role         String?
+  fundingKrw   BigInt?
+  ownCashKrw   BigInt?
+  ownInKindKrw BigInt?
+  grantNo      String?
+  prize        String?
+  venue        String?
+  /// 대리점 (EAS · 오리엔트바이오 · 준바이오텍). 비면 자사
+  partner      String?
+  /// 엑셀 원문 카테고리 (주요 · 내부행사 · 포럼 · 교육 · 네트워킹)
+  category     String?
+  /// 어느 표에서 왔나 — 연혁 · 지원사업 · 수상 · 학회 · 노션 · 옴니스
+  source       String
+  projectId    String?
+  project      Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([kind, startsOn])
+  @@index([startsOn])
+}
+
+enum TaxInvoiceDirection {
+  SALE
+  PURCHASE
+}
+
+/// 홈택스 전자세금계산서. 원본 PDF 는 NAS.
+/// 매출 잠정치는 이 표의 공급가액 합으로 센다 (확정은 CompanyYear 의 결산서 값이 이긴다).
+model TaxInvoice {
+  id                 String              @id @default(uuid())
+  approvalNo         String              @unique
+  direction          TaxInvoiceDirection
+  /// 일반 · 수정
+  kind               String              @default("일반")
+  originalApprovalNo String?
+  issuedOn           DateTime
+  supplierBizNo      String
+  supplierName       String
+  buyerBizNo         String
+  buyerName          String
+  supplyKrw          BigInt
+  taxKrw             BigInt
+  totalKrw           BigInt
+  orgId              String?
+  org                CrmOrg?             @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  quoteId            String?
+  quote              CrmQuote?           @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  objectKey          String
+  fileName           String
+  /// text(PDF 글자) · vision(AI 판독 — 사람이 확인해야 저장)
+  readBy             String
+  /// 검산 결과 { itemsSumMatches, totalMatches, problems[] }
+  checks             Json
+  uploadedById       String?
+  createdAt          DateTime            @default(now())
+
+  items TaxInvoiceItem[]
+
+  @@index([issuedOn])
+  @@index([orgId])
+  @@index([direction, issuedOn])
+}
+
+model TaxInvoiceItem {
+  id        String      @id @default(uuid())
+  invoiceId String
+  invoice   TaxInvoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  lineNo    Int
+  name      String
+  spec      String?
+  quantity  Int?
+  unitKrw   BigInt?
+  supplyKrw BigInt
+  taxKrw    BigInt
+  /// 제품 · 용역
+  category  String
+  productId String?
+  product   CrmProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
 }

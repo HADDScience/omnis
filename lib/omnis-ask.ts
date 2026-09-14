@@ -277,6 +277,7 @@ function routeSystemPrompt(today: string, userName: string): string {
 - 대화 내용·진행 상황·"누가 뭐라고 했나" 는 search_knowledge 로 찾으세요. 사람 이름·기관명·제품명처럼 고유명사가 있으면 그것을 query 에 넣으세요.
 - 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true), 한 업무의 체크리스트·최근 대화는 get_task.
 - 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org, 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
+- 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
 - 첫 도구 결과로 충분하면 바로 답하세요. 부족할 때만 더 부르세요.
 
 답변 규칙:
@@ -284,6 +285,8 @@ function routeSystemPrompt(today: string, userName: string): string {
 - search_knowledge 결과를 근거로 쓰면 그 결과의 번호를 [1] 또는 [1, 3] 처럼 표기하세요. 다른 도구 결과는 번호 없이 씁니다.
 - 번호는 문단이나 항목 끝에 한 번만 붙이세요. 같은 번호를 줄마다 되풀이하지 마세요. 표 칸 안에는 넣지 말고 표 바로 아래에 "근거 [1, 3]" 으로 모으세요.
 - 건수·금액·재고는 도구 결과의 값을 그대로 쓰세요. "전부" 를 물으면 하나도 빠뜨리지 말고 나열하세요.
+- 매출은 확정(결산서)·잠정(세금계산서 합)·계획 중 어느 것인지 밝히고, 단계가 다른 숫자를 더하지 마세요.
+- 직원 연락처·생년월일·서명은 도구가 주지 않습니다. 물으면 HADD DB 인력 화면(관리자)에서 확인하라고 안내하세요.
 - 한국어로 간결하게. 첫 줄에 질문에 대한 답을 한 문장으로 먼저 쓰세요.
 - 같은 칸(이름·상태·번호·날짜 등)을 가진 항목이 3개 이상이면 마크다운 표로 정리하세요.
 - 묶음이 여럿이면 "### 소제목" 으로 나누고, 한 항목의 세부는 들여쓴 하위 목록("  - 상태: …")으로 쓰세요. 번호 제목 아래에 굵은 라벨 줄을 늘어놓지 마세요.

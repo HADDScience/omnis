@@ -82,6 +82,9 @@ export async function respondToAction(
       `${userName}님이 #${task.slug} 업무를 완료했습니다.`,
       task.id
     )
+    // 업무가 끝나면 그 대화에서 회사 지식을 뽑아 카드 갱신을 제안한다 (실패해도 완료는 그대로).
+    // 화면과 MCP(respond_notification)가 모두 여기를 지난다. 순환 import 를 피하려고 필요할 때 불러온다.
+    void import("@/lib/card-proposals").then((m) => m.proposeFromTaskSafe(task.id, { trigger: "task_done", userId }))
     return { ok: true, status: "DONE" }
   }
 
