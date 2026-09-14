@@ -24,7 +24,7 @@ import * as XLSXModule from "xlsx"
 import type { WorkBook } from "xlsx"
 import { prisma } from "@/lib/db"
 import type { Prisma, RecordKind } from "@/generated/prisma/client"
-import { putObject } from "@/lib/storage"
+import { putStaffAsset, sniffImage, staffAssetKey } from "@/lib/staff-assets"
 import { readInvoice, type ParsedInvoice } from "@/lib/tax-invoice"
 import { matchOrg, matchQuote, quotesElsewhere } from "@/lib/crm-invoice-match"
 import { planInvoice, saveInvoice } from "@/lib/tax-invoice-save"
@@ -328,11 +328,6 @@ interface Corrections {
   sealNotSignature: string[]
 }
 
-function pngSize(buf: Buffer): { width: number; height: number } | null {
-  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) return null
-  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
-}
-
 async function importStaff() {
   const cds = JSON.parse(readFileSync(join(NOTION, "child_databases.json"), "utf8")) as Record<string, { rows: Record<string, unknown>[] }>
   const staffRows = Object.entries(cds).find(([k]) => k.includes("직원"))?.[1].rows ?? []
@@ -382,14 +377,15 @@ async function importStaff() {
     const staff = await prisma.staffProfile.upsert({ where: { name: p.data.name }, create: p.data, update: p.data })
     if (!p.sig) continue
     const buf = readFileSync(join(sigDir, p.sig.file))
-    const hash = createHash("md5").update(buf).digest("hex").slice(0, 12)
-    const objectKey = `staff/${staff.id}/${p.sig.kind.toLowerCase()}-${hash}.png`
-    const exists = await prisma.staffAsset.findFirst({ where: { staffId: staff.id, objectKey } })
+    const image = sniffImage(buf)
+    if (!image) { console.log(`   ✗ ${p.data.name} 서명 파일이 PNG · JPG 가 아니다 — 건너뜀`); continue }
+    // 서명·직인은 권한이 좁은 폴더(lib/staff-assets)에 둔다 — 첨부파일 폴더에 두지 않는다
+    const objectKey = staffAssetKey(staff.id, p.sig.kind, buf, image.ext)
+    const exists = await prisma.staffAsset.findFirst({ where: { staffId: staff.id, kind: p.sig.kind } })
     if (exists) continue
-    await putObject(objectKey, buf, "image/png")
-    const size = pngSize(buf)
+    await putStaffAsset(objectKey, buf, image.mimeType)
     await prisma.staffAsset.create({
-      data: { staffId: staff.id, kind: p.sig.kind, objectKey, fileName: p.sig.file.split("__")[1] ?? "signature.png", mimeType: "image/png", size: buf.length, width: size?.width, height: size?.height },
+      data: { staffId: staff.id, kind: p.sig.kind, objectKey, fileName: p.sig.file.split("__")[1] ?? "signature.png", mimeType: image.mimeType, size: buf.length, width: image.width, height: image.height },
     })
   }
   console.log(`  ✓ 인력 ${await prisma.staffProfile.count()}명 · 서명·직인 ${await prisma.staffAsset.count()}장`)
