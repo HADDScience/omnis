@@ -7,7 +7,7 @@ last_verified: 2026-09-14
 
 # Omnis 온보딩 구현·검증
 
-사용자 승인 뒤 `feat/omnis-onboarding`에서 구현했다. 사용자 화면 검토 대기이며 main 머지·push·운영 DB 적용·배포는 수행하지 않았다.
+사용자 승인 뒤 `feat/omnis-onboarding`에서 구현했다. 초기 구현 시점에는 main 머지·push·운영 DB 적용·배포를 수행하지 않았다. 이후 사용자 배포 요청과 전체 E2E 복구 결과는 마지막 절을 따른다.
 
 ## 구현 결과
 
@@ -243,3 +243,36 @@ All migrations have been successfully applied.
 ```
 
 앱 운영 배포는 아직 수행하지 않았다. nullable 컬럼만 추가된 상태라 기존 앱과 호환된다.
+
+## 전체 E2E 환경 복구 완료
+
+사용자는 예외 승인을 선택하지 않고 전체 환경 복구를 요청했다. `npm run test:e2e:local`은 로컬 랜덤 DB·임시 앱 복사본·3002 포트를 만들어 기존 DB/3000 서버와 분리한다. 마이그레이션 29개와 데모 시드를 적용하고 일반 기능용 데모 계정은 온보딩 완료 상태로 준비한다. 온보딩 테스트는 별도 신규 계정으로 실제 최초 접속을 검사한다.
+
+복구한 오래된 전제: 채팅 입력 접근 경로·업무 등록 창 제목/필드·업무 메뉴명·배너 문구·카테고리 링크의 정확한 이름·HADD 카테고리 API(`/api/omnis`)·보고서 메뉴 정확한 이름. 캔버스 검증은 대상 부재 시 조용히 통과하던 조건을 없애고 활성화→실제 노드 선택→더블클릭→UUID 상세 URL을 확인한다. AI 테스트는 실제 HTTP 응답과 체크리스트를 검사하고 fallback은 거부한다.
+
+첫 개발 컴파일이 상세 페이지에서 50초 걸리는 사례가 있어 인증된 주요 경로를 먼저 준비한 뒤 브라우저 조작을 측정한다. 격리 모드에서 실패 스크린샷은 유지하고 영상·trace는 끈다. 실행 종료 시 자신이 만든 DB와 서버만 정리한다. 원격 DB 거부도 실제 실행했다. 사용법: `mydocs/manual/e2e-local.md`.
+
+```text
+복구 도중 전체 실행: 41 passed, 4 failed → 43 passed, 2 failed
+$ npm run test:e2e:local -- --grep 'REGRESSION|API로 첫'
+2 passed (10.7s)
+
+최종 전체 실행:
+$ npm run test:e2e:local
+45 passed (1.8m)
+Temporary E2E database removed
+(내부 명령: npm run test:e2e -- --retries=0)
+
+$ DATABASE_URL=postgresql://unused:unused@example.invalid/blocked node scripts/e2e-local.mjs
+E2E requires a local PostgreSQL host; remote databases are rejected.
+exit 1 — DB 생성 전 거부
+
+$ npm run verify
+0 errors, 41 warnings (exit 0)
+$ npm run build
+Compiled successfully in 11.2s
+Generating static pages (46/46) in 137.4ms
+exit 0
+```
+
+이제 전체 feature 게이트의 기존 계정 부재 제한은 해소됐다. 사용자 승인 범위에 따라 PR·머지·운영 배포를 진행한다. 배포 식별자와 운영 HTTP/브라우저 최종 결과는 PR 설명에 기록한다.

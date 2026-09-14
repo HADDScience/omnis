@@ -6,17 +6,23 @@ test.describe("tasks (칸반·상세)", () => {
     await login(page, "팀장")
   })
 
-  test("내 업무 페이지로 이동하면 칸반/리스트 토글이 보인다", async ({ page }) => {
-    await page.getByRole("link", { name: "내 업무" }).click()
+  test("업무 페이지로 이동하면 칸반/리스트 토글이 보인다", async ({ page }) => {
+    await page.getByRole("link", { name: "업무", exact: true }).click()
     await expect(page).toHaveURL(/\/tasks/)
-    await expect(page.getByRole("button", { name: /보드/ }).first()).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: /보드/ }).first()
+    ).toBeVisible()
   })
 
-  test("칸반 보드에 4단(할 일·진행 중·리뷰·완료) 컬럼이 모두 있다", async ({ page }) => {
-    await page.getByRole("link", { name: "내 업무" }).click()
+  test("칸반 보드에 4단(할 일·진행 중·리뷰·완료) 컬럼이 모두 있다", async ({
+    page,
+  }) => {
+    await page.getByRole("link", { name: "업무", exact: true }).click()
     await page.getByRole("button", { name: /보드/ }).first().click()
     for (const column of ["할 일", "진행 중", "리뷰", "완료"]) {
-      await expect(page.getByText(column, { exact: true }).first()).toBeVisible()
+      await expect(
+        page.getByText(column, { exact: true }).first()
+      ).toBeVisible()
     }
   })
 
@@ -36,14 +42,21 @@ test.describe("tasks (칸반·상세)", () => {
       return tasks[0]?.id ?? null
     })
     expect(taskId).toBeTruthy()
-    await page.goto(`/tasks/${taskId}`)
-    await expect(page.locator("body")).not.toContainText("This page could not be found")
+    const response = await page.goto(`/tasks/${taskId}`, {
+      waitUntil: "domcontentloaded",
+    })
+    expect(response?.status()).toBe(200)
+    await expect(page.locator("body")).not.toContainText(
+      "This page could not be found"
+    )
   })
 
   test("업무 카드에는 제목·D-day 정보가 함께 표시된다", async ({ page }) => {
-    await page.getByRole("link", { name: "내 업무" }).click()
+    await page.getByRole("link", { name: "업무", exact: true }).click()
     await page.getByRole("button", { name: /보드/ }).first().click()
-    const dayBadge = page.getByText(/^D[+-]?\d+$|^오늘$|^내일$|^어제$|지연/).first()
+    const dayBadge = page
+      .getByText(/^D[+-]?\d+$|^오늘$|^내일$|^어제$|지연/)
+      .first()
     await expect(dayBadge).toBeVisible({ timeout: 8_000 })
   })
 })
