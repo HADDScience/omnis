@@ -25,15 +25,23 @@ import { createNotification } from "@/lib/notifications"
 import { getMembership, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
+import { respondToAction } from "@/lib/notifications"
+import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
+import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
+import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { getObject } from "@/lib/storage"
+import * as XLSX from "xlsx"
 import {
   TOOLS as IP_TOOLS,
   INSTRUCTIONS as IP_INSTRUCTIONS,
   runTool as runIpTool,
   sha256,
-  type ToolResult,
+  type ToolResult as IpToolResult,
 } from "@/lib/ip-mcp"
 
-export { PROTOCOL_VERSION, randomToken, sha256, type ToolResult } from "@/lib/ip-mcp"
+export { PROTOCOL_VERSION, randomToken, sha256 } from "@/lib/ip-mcp"
+/** 옴니스 도구는 이미지를 함께 돌려줄 수 있다(read_file). 라우트가 MCP image content 로 옮긴다. */
+export type ToolResult = IpToolResult | { text: string; image: { data: string; mimeType: string } }
 export const SERVER_INFO = { name: "hadd-omnis", version: "2.1.0" }
 export { MAX_UPLOAD_BYTES }
 
@@ -85,7 +93,9 @@ export const INSTRUCTIONS = [
   "「어떻게 돼가?」 같은 질문은 ask_omnis 가 가장 낫습니다 — 전체 현황과 검색을 합쳐 답합니다. 특정 업무의 원문이 필요하면 get_task.",
   "업무에 지시·보고를 남길 때는 post_message 에 task 를 함께 줍니다. 그러면 화면에서 #슬러그 로 쓴 것과 똑같이 업무 카드가 AI 로 재구성되고 담당자에게 알림이 갑니다.",
   "사람 이름은 list_members 의 정식 이름을 씁니다. 업무는 슬러그·ID·이름 일부 어느 것으로든 찾습니다 — 사용자에게 ID 를 되묻지 않습니다.",
-  "파일은 upload_file(텍스트·작은 파일) 또는 create_upload_link(셸에서 curl 로 올리는 링크)로 올리고, 받은 파일 ID 를 post_message 의 files 에 넣어 채팅·업무 스레드에 붙입니다.",
+  "파일은 upload_file(텍스트·작은 파일) 또는 create_upload_link(셸에서 curl 로 올리는 링크)로 올리고, 받은 파일 ID 를 post_message 의 files 에 넣어 채팅·업무 스레드에 붙입니다. 첨부를 읽을 때는 get_task 에 보이는 파일 ID 로 read_file.",
+  "「나한테 온 거」는 list_notifications. 업무 수락·완료 확인은 respond_notification 으로 — 사용자 본인에게 온 알림에만 응답할 수 있습니다.",
+  "업무 카드의 상태·마감·우선순위는 update_task, 체크리스트는 update_checklist. 진행 보고라면 post_message 가 먼저입니다(담당자 확인과 AI 재구성이 따라옵니다).",
   "",
   IP_INSTRUCTIONS.replace("HADD SCIENCE 지식재산권 기록 서버입니다.", "지식재산권 도구(list_ip·get_ip·add_progress …)는 구성원에게만 열립니다."),
 ].join("\n")
@@ -200,6 +210,92 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: { task: { type: "string", description: "업무 슬러그·ID·이름 일부. 주면 올린 파일이 그 업무 첨부로 들어간다." } },
+    },
+  },
+  {
+    name: "read_file",
+    description: [
+      "첨부 파일을 읽는다. 텍스트(md·csv·txt·json …)는 본문, 엑셀(xlsx·xls)은 시트별 CSV, 이미지는 이미지로 돌려준다.",
+      "PDF·워드·한글처럼 여기서 풀지 못하는 형식은 10분짜리 내려받기 링크를 준다 — 셸이 있으면 curl 로 받아 연다.",
+      "file 은 get_task 의 첨부 목록에 나오는 파일 ID. ID 를 모르면 task 와 name(일부)으로 찾는다.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "파일 ID" },
+        task: { type: "string", description: "업무 슬러그·ID·이름 일부 (file 이 없을 때)" },
+        name: { type: "string", description: "파일 이름 일부 (file 이 없을 때)" },
+      },
+    },
+  },
+  {
+    name: "list_notifications",
+    description: [
+      "사용자 본인의 알림. 응답을 기다리는 것(업무 수락 · 완료 확인)을 먼저, 그다음 최근 알림을 보여준다.",
+      "「나한테 온 거 뭐 있어」「확인할 것 있어?」에 쓴다. 응답은 respond_notification.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: { limit: { type: "integer", description: "최근 알림 수. 기본 10, 최대 50" } },
+    },
+  },
+  {
+    name: "respond_notification",
+    description: [
+      "사용자 본인에게 온 액션 알림에 응답한다 — 화면의 알림 버튼과 같은 것.",
+      "업무 수락은 accept, 완료 확인은 confirm_done(업무를 완료로 표시하고 체크리스트를 모두 체크, 지시자에게 알림) 또는 defer(아직).",
+      "confirm_done 은 되돌리기 번거로우니 사용자가 완료라고 분명히 말했을 때만. notification 대신 task 를 주면 그 업무에 떠 있는 알림을 찾는다.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        notification: { type: "string", description: "알림 ID (list_notifications)" },
+        task: { type: "string", description: "업무 슬러그·ID·이름 일부 (notification 이 없을 때)" },
+        response: { type: "string", enum: ["accept", "confirm_done", "defer"] },
+      },
+      required: ["response"],
+    },
+  },
+  {
+    name: "update_task",
+    description: [
+      "업무 카드를 고친다 — 화면의 업무 상세에서 고치는 것과 같은 길. 준 필드만 바뀐다.",
+      "상태를 DONE 으로 바꾸면 떠 있는 완료 확인 알림이 거둬진다. 담당자 확인을 거치려면 post_message 로 보고하는 편이 낫다.",
+      "마감은 사용자가 말한 날짜만. 빈 문자열이면 마감을 지운다. project 는 기존 프로젝트 이름(list_projects), 빈 문자열이면 프로젝트에서 뺀다.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        task: { type: "string", description: "업무 슬러그·ID·이름 일부" },
+        status: { type: "string", enum: [...TASK_STATUS], description: "TODO 할 일 · IN_PROGRESS 진행 중 · REVIEW 검토 · DONE 완료" },
+        name: { type: "string" },
+        priority: { type: "string", enum: ["LOW", "NORMAL", "HIGH"] },
+        deadline: { type: "string", description: "YYYY-MM-DD (KST). 빈 문자열이면 지운다" },
+        background: { type: "string" },
+        expected_result: { type: "string" },
+        project: { type: "string", description: "기존 프로젝트 이름 (일부도 됨). 빈 문자열이면 뺀다" },
+        archived: { type: "boolean", description: "true 면 보관(목록에서 사라진다)" },
+      },
+      required: ["task"],
+    },
+  },
+  {
+    name: "update_checklist",
+    description: [
+      "업무 체크리스트를 고친다. 항목은 번호(get_task 에 보이는 1부터) 또는 이름(일부)으로 가리킨다.",
+      "순서: remove → add → check → uncheck. 번호는 고치기 전 목록 기준이다.",
+      "모두 체크해도 업무 상태는 바뀌지 않는다 — 완료는 담당자 확인(respond_notification)이나 update_task 로.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        task: { type: "string", description: "업무 슬러그·ID·이름 일부" },
+        add: { type: "array", items: { type: "string" }, description: "새 항목 이름" },
+        check: { type: "array", items: { type: "string" }, description: "체크할 항목 (번호 또는 이름)" },
+        uncheck: { type: "array", items: { type: "string" }, description: "체크를 풀 항목" },
+        remove: { type: "array", items: { type: "string" }, description: "지울 항목" },
+      },
+      required: ["task"],
     },
   },
   {
@@ -383,31 +479,31 @@ export async function saveUpload(input: {
 }
 
 /**
- * 업로드 링크 — `{payload}.{hmac}`. 표를 새로 만들지 않으려고 상태 없는 서명으로 한다.
- * claude.ai 커넥터는 OAuth 토큰을 모델에게 보여주지 않으므로, 셸에서 curl 로 올리려면 링크 자체가 자격이어야 한다.
+ * 업로드·내려받기 링크 — `{payload}.{hmac}`. 표를 새로 만들지 않으려고 상태 없는 서명으로 한다.
+ * claude.ai 커넥터는 OAuth 토큰을 모델에게 보여주지 않으므로, 셸에서 curl 로 오가려면 링크 자체가 자격이어야 한다.
+ * 용도를 서명에 섞어 업로드 링크로 내려받거나 그 반대가 되지 않게 한다.
  */
-const UPLOAD_LINK_TTL_SEC = 10 * 60
+const LINK_TTL_SEC = 10 * 60
+type LinkPurpose = "upload" | "download"
 
-function uploadSignature(payload: string): string {
+function linkSignature(purpose: LinkPurpose, payload: string): string {
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
   if (!secret) throw new Error("AUTH_SECRET 이 설정되지 않았습니다")
-  return createHmac("sha256", secret).update(`mcp-upload.${payload}`).digest("base64url")
+  return createHmac("sha256", secret).update(`mcp-${purpose}.${payload}`).digest("base64url")
 }
 
-export function signUploadLink(userId: string, taskId: string | null): string {
-  const payload = Buffer.from(
-    JSON.stringify({ u: userId, t: taskId, e: Math.floor(Date.now() / 1000) + UPLOAD_LINK_TTL_SEC })
-  ).toString("base64url")
-  return `${payload}.${uploadSignature(payload)}`
+function signLink(purpose: LinkPurpose, data: Record<string, string | null>): string {
+  const payload = Buffer.from(JSON.stringify({ ...data, e: Math.floor(Date.now() / 1000) + LINK_TTL_SEC })).toString("base64url")
+  return `${payload}.${linkSignature(purpose, payload)}`
 }
 
-export async function verifyUploadLink(token: string): Promise<{ taskId: string | null } | null> {
+async function verifyLink(purpose: LinkPurpose, token: string): Promise<Record<string, unknown> | null> {
   const [payload, sig, extra] = token.split(".")
   if (!payload || !sig || extra !== undefined) return null
   const a = Buffer.from(sig)
-  const b = Buffer.from(uploadSignature(payload))
+  const b = Buffer.from(linkSignature(purpose, payload))
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null
-  let p: { u?: unknown; t?: unknown; e?: unknown }
+  let p: Record<string, unknown>
   try {
     p = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"))
   } catch {
@@ -417,8 +513,69 @@ export async function verifyUploadLink(token: string): Promise<{ taskId: string 
   // 링크를 만든 뒤 계정이 닫혔으면 막는다 — resolveCaller 와 같은 기준.
   const user = await prisma.user.findUnique({ where: { id: p.u }, select: { isActive: true } })
   if (!user?.isActive) return null
-  return { taskId: typeof p.t === "string" ? p.t : null }
+  return p
 }
+
+export const signUploadLink = (userId: string, taskId: string | null) => signLink("upload", { u: userId, t: taskId })
+
+export async function verifyUploadLink(token: string): Promise<{ taskId: string | null } | null> {
+  const p = await verifyLink("upload", token)
+  return p ? { taskId: typeof p.t === "string" ? p.t : null } : null
+}
+
+export const signDownloadLink = (userId: string, fileId: string) => signLink("download", { u: userId, f: fileId })
+
+export async function verifyDownloadLink(token: string): Promise<{ fileId: string } | null> {
+  const p = await verifyLink("download", token)
+  return p && typeof p.f === "string" ? { fileId: p.f } : null
+}
+
+type FileRow = { id: string; name: string; mimeType: string; size: number; task: { slug: string } | null }
+
+/** 파일 찾기 — ID, 없으면 업무 첨부(업무에 직접 붙었거나 그 스레드 메시지에 붙은 것) 중 이름 일부. 여럿이면 고르지 않는다. */
+async function findFile(args: Record<string, unknown>): Promise<FileRow | { error: string }> {
+  const select = { id: true, name: true, mimeType: true, size: true, task: { select: { slug: true } } } as const
+  const id = str(args.file)
+  if (id) {
+    const f = await prisma.file.findUnique({ where: { id }, select })
+    return f ?? { error: `'${id}' 파일이 없습니다. get_task 의 첨부 목록에서 파일 ID 를 확인하세요.` }
+  }
+  if (!str(args.task)) return { error: "file(파일 ID) 또는 task 를 주세요." }
+  const found = await findTask(str(args.task))
+  if ("error" in found) return found
+  const q = str(args.name)
+  const hits = await prisma.file.findMany({
+    where: {
+      OR: [{ taskId: found.id }, { message: { taskId: found.id } }],
+      ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
+    },
+    select, orderBy: { createdAt: "desc" }, take: 20,
+  })
+  if (hits.length === 0) return { error: `업무에 ${q ? `'${q}' 에 맞는 ` : ""}첨부가 없습니다.` }
+  if (hits.length === 1) return hits[0]
+  return { error: [`첨부가 ${hits.length}개 걸립니다. file 에 파일 ID 를 주세요.`, ...hits.map((h) => `- ${h.name} · ${h.id}`)].join("\n") }
+}
+
+function fileKind(name: string, mimeType: string): "text" | "sheet" | "image" | "other" {
+  const ext = name.split(".").pop()?.toLowerCase() ?? ""
+  const m = mimeType.split(";")[0].trim()
+  if (ext === "xlsx" || ext === "xls") return "sheet"
+  if (/^image\/(png|jpeg|gif|webp)$/.test(m)) return "image"
+  if (m.startsWith("text/") || m === "application/json" || ["md", "txt", "csv", "tsv", "json", "log", "xml", "yaml", "yml"].includes(ext)) return "text"
+  return "other"
+}
+
+async function readObject(id: string, name: string): Promise<Buffer> {
+  const res = await getObject(objectKeyFor(id, name))
+  const chunks: Buffer[] = []
+  for await (const chunk of res.body) chunks.push(Buffer.from(chunk))
+  return Buffer.concat(chunks)
+}
+
+/** 모델 컨텍스트를 한 파일이 다 먹지 않게 자른다. */
+const TEXT_LIMIT = 100_000
+const clip = (s: string) =>
+  s.length > TEXT_LIMIT ? `${s.slice(0, TEXT_LIMIT)}\n\n… (${s.length.toLocaleString()}자 중 앞 ${TEXT_LIMIT.toLocaleString()}자)` : s
 
 // ─── 실행 ───────────────────────────────────────────────────────────
 
@@ -490,16 +647,18 @@ export async function runTool(
         select: {
           ...TASK_SELECT, background: true, expectedResult: true, workStart: true, workEnd: true,
           checklists: { select: { name: true, done: true }, orderBy: { createdAt: "asc" } },
-          files: { select: { name: true, size: true } },
+          files: { select: { id: true, name: true, size: true } },
         },
       })
       if (!t) return { error: "업무가 없습니다." }
       const n = clampInt(args.messages, 20, 100)
       const msgs = await prisma.chatMessage.findMany({
         where: { taskId: t.id, kind: "NORMAL" },
-        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { select: { name: true } } },
+        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { select: { id: true, name: true } } },
         orderBy: { createdAt: "desc" }, take: n,
       })
+      // 파일 ID 를 함께 보여준다 — read_file 이 ID 로 읽는다.
+      const fileRef = (f: { id: string; name: string }) => `${f.name} (${f.id})`
       const lines = [
         `# ${t.name}  (#${t.slug})`,
         `상태 ${TASK_STATUS_LABELS[t.status] ?? t.status} · 우선순위 ${PRIORITY_LABELS[t.priority] ?? t.priority}` +
@@ -510,12 +669,12 @@ export async function runTool(
       ]
       if (t.background) lines.push("", `배경: ${t.background}`)
       if (t.expectedResult) lines.push(`기대결과: ${t.expectedResult}`)
-      if (t.checklists.length) lines.push("", "체크리스트:", ...t.checklists.map((c) => `- [${c.done ? "x" : " "}] ${c.name}`))
-      if (t.files.length) lines.push("", `첨부 ${t.files.length}: ${t.files.map((f) => f.name).join(", ")}`)
+      if (t.checklists.length) lines.push("", "체크리스트:", ...t.checklists.map((c, i) => `${i + 1}. [${c.done ? "x" : " "}] ${c.name}`))
+      if (t.files.length) lines.push("", `첨부 ${t.files.length}: ${t.files.map(fileRef).join(", ")}`)
       if (msgs.length) {
         lines.push("", `대화 (최근 ${msgs.length}건, 시간순):`)
         for (const m of msgs.reverse()) {
-          lines.push(`[${kst(m.createdAt, true)}] ${m.author.name}: ${m.content}${m.files.length ? ` [첨부: ${m.files.map((f) => f.name).join(", ")}]` : ""}`)
+          lines.push(`[${kst(m.createdAt, true)}] ${m.author.name}: ${m.content}${m.files.length ? ` [첨부: ${m.files.map(fileRef).join(", ")}]` : ""}`)
         }
       }
       return { text: lines.join("\n") }
@@ -610,6 +769,190 @@ export async function runTool(
       }
     }
 
+    case "read_file": {
+      const f = await findFile(args)
+      if ("error" in f) return f
+      const head = `# ${f.name}  (${(f.size / 1024).toFixed(1)}KB · ${f.mimeType}${f.task ? ` · 업무 #${f.task.slug}` : ""} · 파일 ID ${f.id})`
+      const kind = fileKind(f.name, f.mimeType)
+      if (kind === "other" || f.size > MAX_UPLOAD_BYTES) {
+        if (!ctx.base) return { error: "이 서버 주소를 알 수 없어 내려받기 링크를 만들 수 없습니다." }
+        const why = kind === "other"
+          ? "이 형식은 여기서 본문을 풀지 못합니다."
+          : `${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 가 넘어 본문 대신 링크를 줍니다.`
+        const url = `${ctx.base}/download?t=${signDownloadLink(caller.userId, f.id)}`
+        return { text: [head, "", `${why} 셸이 있으면 내려받아 여세요 (10분):`, url, "", `curl -sS -o '${f.name.replace(/'/g, "")}' '${url}'`].join("\n") }
+      }
+      const buf = await readObject(f.id, f.name)
+      if (kind === "image") return { text: head, image: { data: buf.toString("base64"), mimeType: f.mimeType.split(";")[0].trim() } }
+      if (kind === "sheet") {
+        const wb = XLSX.read(buf, { type: "buffer" })
+        const body = wb.SheetNames.map((s) => `## ${s}\n${XLSX.utils.sheet_to_csv(wb.Sheets[s])}`).join("\n\n")
+        return { text: `${head}\n\n${clip(body)}` }
+      }
+      return { text: `${head}\n\n${clip(buf.toString("utf8"))}` }
+    }
+
+    case "list_notifications": {
+      const limit = clampInt(args.limit, 10, 50)
+      const [pending, recent] = await Promise.all([
+        prisma.notification.findMany({
+          where: { userId: caller.userId, actionType: { not: null }, resolvedAt: null },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.notification.findMany({
+          where: { userId: caller.userId, OR: [{ actionType: null }, { resolvedAt: { not: null } }] },
+          orderBy: { createdAt: "desc" }, take: limit,
+        }),
+      ])
+      const taskIds = [...new Set([...pending, ...recent].map((n) => n.entityId).filter((x): x is string => !!x))]
+      const slugs = new Map((await prisma.task.findMany({ where: { id: { in: taskIds } }, select: { id: true, slug: true } })).map((t) => [t.id, t.slug]))
+      const ACTION_HINT: Record<string, string> = {
+        accept_task: "업무 수락 대기 → respond_notification response=accept",
+        confirm_done: "완료 확인 대기 → respond_notification response=confirm_done 또는 defer",
+      }
+      const line = (n: (typeof pending)[number]) => {
+        const slug = n.entityId ? slugs.get(n.entityId) : undefined
+        return `- [${kst(n.createdAt, true)}] ${n.title}${slug ? ` · #${slug}` : ""} — ${n.content}${n.read ? "" : " (안 읽음)"} · ID ${n.id}`
+      }
+      const out = [`응답 대기 ${pending.length}건`]
+      for (const n of pending) out.push(line(n), `  ${ACTION_HINT[n.actionType ?? ""] ?? n.actionType}`)
+      out.push("", `최근 알림 ${recent.length}건`, ...recent.map(line))
+      return { text: out.join("\n") }
+    }
+
+    case "respond_notification": {
+      const response = str(args.response)
+      if (!["accept", "confirm_done", "defer"].includes(response)) {
+        return { error: "response 는 accept · confirm_done · defer 중 하나입니다." }
+      }
+      let notificationId = str(args.notification)
+      if (!notificationId) {
+        if (!str(args.task)) return { error: "notification(알림 ID) 또는 task 를 주세요." }
+        const found = await findTask(str(args.task))
+        if ("error" in found) return found
+        const n = await prisma.notification.findFirst({
+          where: { userId: caller.userId, entityId: found.id, resolvedAt: null, actionType: response === "accept" ? "accept_task" : "confirm_done" },
+          orderBy: { createdAt: "desc" }, select: { id: true },
+        })
+        if (!n) return { error: "이 업무에 사용자 본인이 응답할 알림이 없습니다. list_notifications 로 확인하세요." }
+        notificationId = n.id
+      }
+      // 화면의 알림 버튼과 같은 함수 — 선점·업무 완료·지시자 알림이 여기서 한 번만 일어난다.
+      const r = await respondToAction(caller.userId, caller.name, notificationId, response as "accept" | "confirm_done" | "defer")
+      if ("error" in r) return { error: `${r.error}. list_notifications 로 사용자 본인의 알림 ID 를 확인하세요.` }
+      if (r.alreadyResolved) return { text: "이미 응답한 알림입니다. 아무것도 바꾸지 않았습니다." }
+      return {
+        text: response === "confirm_done"
+          ? "완료로 표시했습니다. 체크리스트를 모두 체크했습니다."
+          : response === "accept" ? "업무를 수락했습니다." : "나중으로 미뤘습니다. 알림은 응답한 것으로 닫힙니다.",
+      }
+    }
+
+    case "update_task": {
+      const found = await findTask(str(args.task))
+      if ("error" in found) return found
+      const input: UpdateTaskInput = {}
+      if (args.status !== undefined) {
+        if (!(TASK_STATUS as readonly string[]).includes(str(args.status))) return { error: `status 는 ${TASK_STATUS.join(" · ")} 중 하나입니다.` }
+        input.status = str(args.status) as UpdateTaskInput["status"]
+      }
+      if (args.name !== undefined) {
+        if (!str(args.name)) return { error: "name 을 비울 수는 없습니다." }
+        input.name = str(args.name).slice(0, 120)
+      }
+      if (args.priority !== undefined) {
+        if (!["LOW", "NORMAL", "HIGH"].includes(str(args.priority))) return { error: "priority 는 LOW · NORMAL · HIGH 중 하나입니다." }
+        input.priority = str(args.priority) as UpdateTaskInput["priority"]
+      }
+      if (args.deadline !== undefined) {
+        const d = str(args.deadline)
+        if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: "deadline 은 YYYY-MM-DD 이거나 빈 문자열(지우기)입니다." }
+        input.deadline = d ? `${d}T23:59:59+09:00` : null
+      }
+      if (args.background !== undefined) input.background = str(args.background) || null
+      if (args.expected_result !== undefined) input.expectedResult = str(args.expected_result) || null
+      if (args.archived !== undefined) input.archived = args.archived === true
+      if (args.project !== undefined) {
+        const q = str(args.project)
+        if (!q) input.projectId = null
+        else {
+          const ps = await prisma.project.findMany({
+            where: { archived: false, name: { contains: q, mode: "insensitive" } }, select: { id: true, name: true }, take: 10,
+          })
+          if (ps.length === 0) return { error: `'${q}' 프로젝트가 없습니다. list_projects 로 확인하세요.` }
+          const exact = ps.find((p) => p.name === q)
+          if (ps.length > 1 && !exact) return { error: `프로젝트가 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}` }
+          input.projectId = (exact ?? ps[0]).id
+        }
+      }
+      if (Object.keys(input).length === 0) return { error: "바꿀 필드를 하나 이상 주세요." }
+
+      const r = await updateTask(found.id, caller.userId, input)
+      if ("error" in r) return r
+      const t = r.task
+      return {
+        text: [
+          `고쳤습니다: #${t.slug} ${t.name}`,
+          `상태 ${TASK_STATUS_LABELS[t.status] ?? t.status} · 우선순위 ${PRIORITY_LABELS[t.priority] ?? t.priority}` +
+            (t.deadline ? ` · 마감 ${kst(t.deadline)}` : " · 마감 없음") + (t.archived ? " · 보관됨" : ""),
+          `바뀐 필드: ${Object.keys(input).join(", ")}`,
+        ].join("\n"),
+      }
+    }
+
+    case "update_checklist": {
+      const found = await findTask(str(args.task))
+      if ("error" in found) return found
+      const listArg = (k: string) => (Array.isArray(args[k]) ? (args[k] as unknown[]).map(String).map((s) => s.trim()).filter(Boolean) : [])
+      const [add, check, uncheck, remove] = ["add", "check", "uncheck", "remove"].map(listArg)
+      if (add.length + check.length + uncheck.length + remove.length === 0) {
+        return { error: "add · check · uncheck · remove 중 하나 이상 주세요." }
+      }
+
+      type Item = { id: string; name: string; done: boolean }
+      const items: Item[] = await prisma.checklist.findMany({
+        where: { taskId: found.id }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, done: true },
+      })
+      // 번호는 고치기 전 목록 기준, 이름은 지금 살아 있는 항목(추가될 것 포함)에서 찾는다.
+      const resolveRef = (ref: string, pool: Item[]): Item | string => {
+        if (/^\d+$/.test(ref)) return items[Number(ref) - 1] ?? `${ref}번(항목은 ${items.length}개)`
+        const exact = pool.filter((c) => c.name === ref)
+        const hits = exact.length ? exact : pool.filter((c) => c.name.includes(ref))
+        if (hits.length === 1) return hits[0]
+        return hits.length === 0 ? `'${ref}'(없음)` : `'${ref}'(${hits.length}개: ${hits.map((h) => h.name).join(" / ")})`
+      }
+
+      // 먼저 전부 해석한다 — 하나라도 못 찾으면 아무것도 바꾸지 않는다.
+      const removeItems = remove.map((r) => resolveRef(r, items))
+      const removedIds = new Set(removeItems.flatMap((x) => (typeof x === "string" ? [] : [x.id])))
+      const planned = [...items, ...add.map((name, i) => ({ id: `new:${i}`, name, done: false }))].filter((c) => !removedIds.has(c.id))
+      const toggles = [...check, ...uncheck].map((r) => {
+        const x = resolveRef(r, planned)
+        return typeof x !== "string" && removedIds.has(x.id) ? `'${r}'(지울 항목)` : x
+      })
+      const bad = [...removeItems, ...toggles].filter((x): x is string => typeof x === "string")
+      if (bad.length) return { error: `항목을 못 찾았습니다: ${bad.join(", ")}. get_task 로 체크리스트를 확인하세요. 아무것도 바꾸지 않았습니다.` }
+
+      // 화면과 같은 함수로 하나씩 — 색인·활동 기록이 같이 남는다.
+      for (const it of removeItems as Item[]) await deleteChecklistItem(it.id, caller.userId)
+      const created: Item[] = []
+      for (const name of add) created.push(await addChecklistItem(found.id, name, caller.userId))
+      const pool = [...items.filter((c) => !removedIds.has(c.id)), ...created]
+      for (const [refs, done] of [[check, true], [uncheck, false]] as const) {
+        for (const ref of refs) await updateChecklistItem((resolveRef(ref, pool) as Item).id, { done }, caller.userId)
+      }
+
+      const after = await prisma.checklist.findMany({
+        where: { taskId: found.id }, orderBy: { createdAt: "asc" }, select: { name: true, done: true },
+      })
+      return {
+        text: [
+          `체크리스트 ${after.filter((c) => c.done).length}/${after.length}`,
+          ...after.map((c, i) => `${i + 1}. [${c.done ? "x" : " "}] ${c.name}`),
+        ].join("\n"),
+      }
+    }
+
     case "create_task": {
       const taskName = str(args.name)
       const names = Array.isArray(args.assignees) ? args.assignees.map(String) : []
@@ -699,7 +1042,8 @@ export async function runTool(
 
     case "list_members": {
       const rows = await prisma.user.findMany({
-        where: args.includeInactive === true ? {} : { isActive: true },
+        // 시스템 계정(🤖 메시지 작성자)은 구성원이 아니다 — 과거 구성원을 포함해도 뺀다.
+        where: { id: { not: SYSTEM_USER_ID }, ...(args.includeInactive === true ? {} : { isActive: true }) },
         select: { name: true, position: true, department: true, role: true, isActive: true },
         orderBy: { name: "asc" },
       })

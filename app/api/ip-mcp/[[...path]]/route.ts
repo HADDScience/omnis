@@ -14,9 +14,12 @@ import {
   runTool,
   saveUpload,
   sha256,
+  verifyDownloadLink,
   verifyUploadLink,
   MAX_UPLOAD_BYTES,
 } from "@/lib/omnis-mcp"
+import { getObject, objectKeyFor } from "@/lib/storage"
+import { Readable } from "node:stream"
 
 /**
  * hadd-omnis — 원격 MCP 서버 (Streamable HTTP) + OAuth 2.1 인가 서버.
@@ -365,6 +368,32 @@ async function uploadViaLink(req: NextRequest) {
   return json({ ...saved, next: `post_message 의 files 에 "${saved.id}" 를 넣으면 첨부로 붙습니다.` }, 201)
 }
 
+/**
+ * read_file 이 준 내려받기 링크. 화면의 /api/files/[id]/raw 처럼 NAS 에서 흘려보낸다 —
+ * 그 라우트는 세션이 필요해 셸(curl)에서 쓸 수 없다.
+ */
+async function downloadViaLink(req: NextRequest) {
+  const grant = await verifyDownloadLink(new URL(req.url).searchParams.get("t") ?? "")
+  if (!grant) {
+    return json({ error: "링크가 만료되었거나 올바르지 않습니다. read_file 로 다시 받으세요." }, 401)
+  }
+  const file = await prisma.file.findUnique({
+    where: { id: grant.fileId },
+    select: { id: true, name: true, mimeType: true },
+  })
+  if (!file) return json({ error: "파일 없음" }, 404)
+
+  const object = await getObject(objectKeyFor(file.id, file.name))
+  return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
+    headers: {
+      ...CORS,
+      "Content-Type": file.mimeType,
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      "cache-control": "no-store",
+    },
+  })
+}
+
 // ─── 라우팅 ─────────────────────────────────────────────────────────
 
 export async function OPTIONS() {
@@ -385,6 +414,7 @@ export async function GET(req: NextRequest) {
     return authorizationServerMetadata(base)
   }
   if (tail === "/authorize") return authorize(req)
+  if (tail === "/download") return downloadViaLink(req)
 
   // 커넥터가 살아 있는지 볼 때 GET 을 던지는 클라이언트가 있다.
   return json({ ...SERVER_INFO, transport: "streamable-http" })
@@ -463,7 +493,9 @@ export async function POST(req: NextRequest) {
         isError: true,
       })
     }
-    return reply(id, { content: [{ type: "text", text: result.text }] })
+    const content: Record<string, string>[] = [{ type: "text", text: result.text }]
+    if ("image" in result) content.push({ type: "image", data: result.image.data, mimeType: result.image.mimeType })
+    return reply(id, { content })
   }
 
   return fail(id, -32601, `지원하지 않는 메서드입니다: ${method}`)
