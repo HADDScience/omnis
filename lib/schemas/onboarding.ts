@@ -1,8 +1,10 @@
 import { z } from "zod"
 
-export const onboardingActionSchema = z.object({
-  phase: z.enum(["video", "complete"]),
-}).strict()
+export const onboardingActionSchema = z
+  .object({
+    phase: z.enum(["video", "complete"]),
+  })
+  .strict()
 
 export const onboardingStateSchema = z.object({
   onboardingVideoSeenAt: z.string().datetime().nullable(),

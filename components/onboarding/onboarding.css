@@ -1,6 +1,6 @@
 /* Hub's quiet, cinematic introduction in the Omnis theme. */
 .omnis-tour-surface { position: fixed; inset: 0; width: var(--app-vw); height: var(--app-vh); z-index: var(--z-dialog); color: var(--foreground); font-size: 14px; }
-.omnis-tour-surface button { min-height: 44px; cursor: pointer; }
+.omnis-tour-surface button:not(:disabled) { min-height: 44px; cursor: pointer; }
 .omnis-tour-surface button:focus-visible { outline: 2px solid var(--primary); outline-offset: 5px; }
 .intro-surface { background: var(--background); overflow: auto; overscroll-behavior: contain; }
 .intro-stage { min-height: 100%; position: relative; isolation: isolate; display: flex; flex-direction: column; overflow: hidden; }
@@ -94,7 +94,7 @@
 @media (prefers-reduced-motion: reduce) { .omnis-tour-surface *, .omnis-tour-surface *::before { animation: none !important; transition: none !important; } }
 .spotlight-surface { overflow: hidden; }
 .spotlight-shade { position: absolute; inset: 0; }
-.spotlight-card { position: absolute; left: 50%; top: 20%; width: min(330px, calc(100% - 32px)); padding: 24px; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 18px 60px #00000030; animation: intro-arrive .4s both; max-height: calc(100% - 32px); overflow: auto; }
+.spotlight-card { position: absolute; left: 16px; top: 16px; width: min(330px, calc(100% - 32px)); padding: 24px; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 18px 60px #00000030; animation: intro-arrive .4s both; max-height: calc(100% - 32px); overflow: auto; }
 .spotlight-card h2 { font-size: 20px; font-weight: 600; letter-spacing: -.04em; line-height: 1.4; }
 .spotlight-card p { font-size: 13px; line-height: 1.85; margin: 13px 0 20px; color: var(--muted-foreground); word-break: keep-all; }
 .spotlight-card .spotlight-fallback { font-size: 11px; margin-top: -10px; }

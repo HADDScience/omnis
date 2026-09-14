@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react"
 
 /** One clock drives both scene content and progress; hidden tabs do not consume reading time. */
-export function useTourClock(duration: number, onEnd: () => void, ready = true) {
+export function useTourClock(
+  duration: number,
+  onEnd: () => void,
+  ready = true
+) {
   const [elapsed, setElapsed] = useState(0)
   const [paused, setPaused] = useState(false)
   const [hidden, setHidden] = useState(false)
@@ -18,13 +22,19 @@ export function useTourClock(duration: number, onEnd: () => void, ready = true) 
     let previous = performance.now()
     const timer = window.setInterval(() => {
       const now = performance.now()
-      setElapsed(value => Math.min(duration, value + now - previous))
+      const delta = now - previous
       previous = now
+      setElapsed((value) => Math.min(duration, value + delta))
     }, 100)
     return () => clearInterval(timer)
   }, [duration, hidden, paused, ready])
   useEffect(() => {
     if (duration && elapsed >= duration) onEnd()
   }, [duration, elapsed, onEnd])
-  return { elapsed, paused, stopped: paused || hidden || !ready, toggle: () => setPaused(value => !value) }
+  return {
+    elapsed,
+    paused,
+    stopped: paused || hidden || !ready,
+    toggle: () => setPaused((value) => !value),
+  }
 }
