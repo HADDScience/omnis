@@ -131,3 +131,23 @@
  .intro-chat-body { min-height: 0; padding: 12px; }
  .intro-task-preview { padding: 12px; }.intro-check { margin-top: 8px; }
 }
+
+/* Zoom only the reading target; keep the scene and playback controls in place. */
+.intro-chat-preview { overflow: visible; }
+.intro-composer, .intro-message-focus { position: relative; transition: transform .65s cubic-bezier(.22,1,.36,1), box-shadow .65s; transform-origin: center; border-radius: 9px; background: var(--background); }
+.intro-workflow[data-focus="composer"] .intro-composer,
+.intro-workflow[data-focus="message"] .intro-message-focus { transform: scale(1.12); box-shadow: 0 12px 40px color-mix(in oklch, var(--primary) 18%, transparent); z-index: 1; }
+.intro-story-navigation { position: absolute; inset: 0; display: flex; }
+.intro-story-navigation button { width: 35%; border-radius: 12px; display: flex; align-items: center; padding: 0 20px; }
+.intro-story-navigation .intro-story-next { width: 65%; justify-content: flex-end; }
+.intro-story-navigation button > span { font-size: 32px; color: var(--muted-foreground); opacity: 0; transition: opacity .2s; }
+.intro-story-navigation button:hover:not(:disabled) > span, .intro-story-navigation button:focus-visible > span { opacity: .7; }
+.intro-story-navigation button:disabled { cursor: default; }
+.intro-story-hint { font-size: 10px; text-align: center; color: var(--muted-foreground); margin-bottom: 10px; }
+@media (max-width: 767px) {
+ .intro-workflow[data-focus="composer"] .intro-composer,
+ .intro-workflow[data-focus="message"] .intro-message-focus { transform: scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) {
+ .intro-workflow[data-focus] .intro-composer, .intro-workflow[data-focus] .intro-message-focus { transform: none; transition: none; }
+}

@@ -218,6 +218,13 @@ function Workflow({ step, elapsed }: { step: number; elapsed: number }) {
   return (
     <div
       className="intro-workflow"
+      data-focus={
+        elapsed < 2400
+          ? "composer"
+          : elapsed >= 3200 && elapsed < 5000
+            ? "message"
+            : "overview"
+      }
       role="img"
       aria-label={
         creating
@@ -244,29 +251,31 @@ function Workflow({ step, elapsed }: { step: number; elapsed: number }) {
                 : "추가 지시"}
           </span>
           {sent ? (
-            <div
-              className="intro-bubble intro-message-sent"
-              key={`${step}-message`}
-            >
-              {creating ? (
-                <>
-                  <code>/업무</code> 신규 고객 제안서를 준비해 주세요.
-                  <br />
-                  담당자는 김하드, 금요일까지 부탁해요.
-                </>
-              ) : completing ? (
-                <>
-                  <code>#신규 고객 제안서 준비</code>
-                  <br />
-                  제안서 작성을 마쳤습니다. 확인 부탁드려요.
-                </>
-              ) : (
-                <>
-                  <code>#신규 고객 제안서 준비</code>
-                  <br />
-                  샘플 일정도 추가해서 다시 진행해 주세요.
-                </>
-              )}
+            <div className="intro-message-focus">
+              <div
+                className="intro-bubble intro-message-sent"
+                key={`${step}-message`}
+              >
+                {creating ? (
+                  <>
+                    <code>/업무</code> 신규 고객 제안서를 준비해 주세요.
+                    <br />
+                    담당자는 김하드, 금요일까지 부탁해요.
+                  </>
+                ) : completing ? (
+                  <>
+                    <code>#신규 고객 제안서 준비</code>
+                    <br />
+                    제안서 작성을 마쳤습니다. 확인 부탁드려요.
+                  </>
+                ) : (
+                  <>
+                    <code>#신규 고객 제안서 준비</code>
+                    <br />
+                    샘플 일정도 추가해서 다시 진행해 주세요.
+                  </>
+                )}
+              </div>
             </div>
           ) : (
             <div className="intro-typing-hint">
@@ -352,10 +361,12 @@ function Workflow({ step, elapsed }: { step: number; elapsed: number }) {
 function Chapter({
   step,
   onAdvance,
+  onPrevious,
   onFinish,
 }: {
   step: number
   onAdvance: () => void
+  onPrevious: () => void
   onFinish: () => void
 }) {
   const chapter = chapters[step]
@@ -486,8 +497,27 @@ function Chapter({
             )}
           </section>
         </div>
+        <div className="intro-story-navigation">
+          <button
+            className="intro-story-previous"
+            aria-label="이전 장면"
+            disabled={step === 0}
+            onClick={onPrevious}
+          >
+            <span aria-hidden="true">‹</span>
+          </button>
+          <button
+            className="intro-story-next"
+            aria-label="다음 장면"
+            disabled={step === 7}
+            onClick={onAdvance}
+          >
+            <span aria-hidden="true">›</span>
+          </button>
+        </div>
       </div>
       <footer className="intro-footer">
+        <p className="intro-story-hint">왼쪽 탭은 이전 · 오른쪽 탭은 다음</p>
         {step === 7 && (
           <button className="intro-start" onClick={onFinish}>
             업무 시작하기 <span aria-hidden="true">→</span>
@@ -538,7 +568,8 @@ export default function WelcomeTour({ onFinish }: { onFinish: () => void }) {
       <Chapter
         key={step}
         step={step}
-        onAdvance={() => setStep((value) => Math.min(value + 1, 7))}
+        onAdvance={() => setStep(Math.min(step + 1, 7))}
+        onPrevious={() => setStep(Math.max(step - 1, 0))}
         onFinish={onFinish}
       />
     </TourSurface>

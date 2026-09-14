@@ -162,6 +162,91 @@ test.describe("onboarding", () => {
     expect(writes).toEqual([])
   })
 
+  test("스토리 탭 이동은 장면을 재시작하고 마지막 CTA를 기다린다", async ({
+    page,
+  }) => {
+    await page.clock.install()
+    await login(page)
+    const stage = page.locator(".intro-stage")
+    const next = page.getByRole("button", { name: "다음 장면", exact: true })
+    const previous = page.getByRole("button", {
+      name: "이전 장면",
+      exact: true,
+    })
+    await expect(previous).toBeDisabled()
+    await next.click()
+    await expect(stage).toHaveAttribute("data-step", "2")
+    await next.click()
+    await page.clock.fastForward(3500)
+    await expect(page.locator(".intro-message-sent")).toBeVisible()
+    await previous.click()
+    await next.click()
+    await expect(page.locator(".intro-message-sent")).toHaveCount(0)
+    await page.clock.fastForward(900)
+    await expect(stage).toHaveAttribute("data-step", "3")
+    await page.clock.fastForward(11200)
+    await expect(stage).toHaveAttribute("data-step", "4")
+    for (let i = 0; i < 4; i++) await next.click()
+    await expect(stage).toHaveAttribute("data-step", "8")
+    await expect(next).toBeDisabled()
+    await page.clock.fastForward(30000)
+    await expect(stage).toHaveAttribute("data-step", "8")
+    await expect(
+      page.getByRole("button", { name: "업무 시작하기" })
+    ).toBeVisible()
+    await previous.click()
+    await expect(stage).toHaveAttribute("data-step", "7")
+  })
+
+  test("입력 확대·전송 복귀·메시지 확대가 모바일 경계와 모션 감소를 지킨다", async ({
+    page,
+  }) => {
+    await page.clock.install()
+    await login(page)
+    await page.getByRole("button", { name: "다음 장면", exact: true }).click()
+    await page.getByRole("button", { name: "다음 장면", exact: true }).click()
+    const workflow = page.locator(".intro-workflow")
+    await page.clock.fastForward(1200)
+    await expect(workflow).toHaveAttribute("data-focus", "composer")
+    await expect(page.locator(".intro-composer")).not.toHaveCSS(
+      "transform",
+      "none"
+    )
+    await page.clock.fastForward(1400)
+    await expect(workflow).toHaveAttribute("data-focus", "overview")
+    await page.clock.fastForward(1600)
+    await expect(workflow).toHaveAttribute("data-focus", "message")
+    await page.getByRole("button", { name: "일시정지", exact: true }).click()
+    await page.clock.fastForward(8000)
+    await expect(workflow).toHaveAttribute("data-focus", "message")
+    for (const [width, height] of [
+      [1440, 800],
+      [390, 844],
+      [320, 568],
+    ]) {
+      await page.setViewportSize({ width, height })
+      await expect
+        .poll(() =>
+          page.locator(".intro-message-focus").evaluate((node) => {
+            const box = node.getBoundingClientRect()
+            return (
+              box.left >= 0 &&
+              box.right <= innerWidth &&
+              box.top >= 0 &&
+              box.bottom <= innerHeight
+            )
+          })
+        )
+        .toBe(true)
+    }
+    await page.screenshot({ path: "/tmp/omnis-onboarding-message-zoom.png" })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await expect(page.locator(".intro-message-focus")).toHaveCSS(
+      "transform",
+      "none"
+    )
+  })
+
   test("스포트라이트는 실제 대상에 밀착하고 설명창이 겹치지 않으며 앞뒤로 이동한다", async ({
     page,
   }) => {
@@ -257,7 +342,6 @@ test.describe("onboarding", () => {
     await login(page)
     const stage = page.locator(".intro-stage")
     await expect(stage).toHaveAttribute("data-step", "1")
-    await page.getByRole("heading").filter({ hasText: "안녕하세요" }).click()
     await expect(stage).toHaveAttribute("data-step", "1")
     await page.getByRole("button", { name: "일시정지", exact: true }).click()
     await page.clock.fastForward(5000)
