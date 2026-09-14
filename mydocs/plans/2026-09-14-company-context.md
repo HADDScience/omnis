@@ -297,10 +297,10 @@ model TaxInvoiceItem {
 |---|---|---|
 | 1 | 스키마 — `CompanyProfile` · `CompanyYear` · `StaffProfile` · `MarketCompany` · `CompanyRecord` · `TaxInvoice(+Item)` · `CrmOrg.bizRegNo` | 완료 · `omnis_context` 에만 적용 |
 | 2 | 이식 스크립트 dry-run — 노션(회사 · 인력+서명 · 시장기업 41) · 결산서 2개년 · 연혁·지원사업 엑셀 · 세금계산서 13장. 들어갈 행과 대조표를 먼저 보여 준다 | 완료 · `omnis_context` 에 apply |
-| 3 | HADD DB 「회사 Context」 — 타일 · 목록 · 상세 · 편집 · 서명 복사(관리자 · 활동 로그) | 타일 · 목록 · 서명 복사 완료. **편집 화면은 아직** |
+| 3 | HADD DB 「회사 Context」 — 타일 · 목록 · 상세 · 편집 · 서명 복사(관리자 · 활동 로그) | 타일 · 목록 · 서명 복사 · 회사 정보 · 연도별 재무 편집(관리자, 바뀐 칸 활동 기록) 완료. 연혁 · 인력 · 시장기업 편집은 아직 |
 | 4 | CRM 세금계산서 업로드 — 글자 파서 + 비전 대체 + 검산 + 기관·견적 연결 | 완료 · 저장 경로 `lib/tax-invoice-save.ts` 를 이식 스크립트와 공유 |
 | 5 | Context 그래프 — 외래키 실선 + 벡터 점선 · 중심 탐색 · 청크 패널 | 완료 · `lib/context-graph.ts` · `/omnis/context`. 채팅 조각은 이웃 후보에서 뺌(이웃을 독차지) |
-| 6 | 도구 — 옴니스 질문·MCP 에 회사 정보 · 재무(확정/잠정) · 연혁 · `get_context`. 민감 칸 제외 | 구현 · 직접 호출 확인. LLM 평가는 Gemini 월 한도 초과로 미실행 |
+| 6 | 도구 — 옴니스 질문·MCP 에 회사 정보 · 재무(확정/잠정) · 연혁 · `get_context`. 민감 칸 제외 | 완료 · 회사 질문 7건 근거 15/15 · 도구 선택 7/7 · 개인정보 요청 거절 · 약 46원 (한도 조정 뒤) |
 
 ## 확인할 것
 

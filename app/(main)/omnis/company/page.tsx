@@ -2,15 +2,60 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { Badge } from "@/components/ui/badge"
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { CompanyProfileDialog, CompanyYearDialog } from "@/components/company/company-editors"
+import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { won } from "@/lib/crm"
 import { BASIS_LABEL, invoiceRevenue, ymd } from "@/lib/company-context"
+import { isAdminSession } from "@/lib/company-edit"
+import type { ProfileForm, YearForm } from "@/lib/schemas/company"
+import type { CompanyProfile, CompanyYear } from "@/generated/prisma/client"
 
 export const metadata: Metadata = { title: "회사 정보 · HADD DB" }
 export const dynamic = "force-dynamic"
 
 const money = (v: bigint | number | null | undefined) => (v === null || v === undefined ? "—" : won(Number(v)))
+const moneyText = (v: bigint | null) => (v === null ? "" : Number(v).toLocaleString("ko-KR"))
+
+/** 편집 창에 넘길 글자 모양 — BigInt · Date 는 클라이언트로 그대로 못 넘긴다 */
+function profileForm(p: CompanyProfile | null): ProfileForm {
+  return {
+    nameKo: p?.nameKo ?? "",
+    nameEn: p?.nameEn ?? "",
+    bizRegNo: p?.bizRegNo ?? "",
+    bizType: p?.bizType ?? "",
+    corpRegNo: p?.corpRegNo ?? "",
+    industry: p?.industry ?? "",
+    industryCode: p?.industryCode ?? "",
+    foundedOn: ymd(p?.foundedOn) ?? "",
+    homepage: p?.homepage ?? "",
+    hqAddress: p?.hqAddress ?? "",
+    labAddress: p?.labAddress ?? "",
+    partnerAddress: p?.partnerAddress ?? "",
+    asOfDate: ymd(p?.asOfDate) ?? "",
+  }
+}
+
+function yearForm(y: CompanyYear): YearForm {
+  return {
+    id: y.id,
+    year: String(y.year),
+    basis: y.basis,
+    revenueKrw: moneyText(y.revenueKrw),
+    revenueProductKrw: moneyText(y.revenueProductKrw),
+    revenueServiceKrw: moneyText(y.revenueServiceKrw),
+    costOfSalesKrw: moneyText(y.costOfSalesKrw),
+    netIncomeKrw: moneyText(y.netIncomeKrw),
+    assetsKrw: moneyText(y.assetsKrw),
+    liabilitiesKrw: moneyText(y.liabilitiesKrw),
+    equityKrw: moneyText(y.equityKrw),
+    headcount: y.headcount === null ? "" : String(y.headcount),
+    accountLabel: y.accountLabel ?? "",
+    note: y.note ?? "",
+    asOfDate: ymd(y.asOfDate) ?? "",
+  }
+}
 
 /**
  * 회사 기본정보 + 연도별 재무.
@@ -18,8 +63,10 @@ const money = (v: bigint | number | null | undefined) => (v === null || v === un
  * 매출은 공급가액(부가세 제외). 단계를 섞지 않는다 —
  *   확정: 결산서 · 잠정: 결산 전인 해의 세금계산서 합(매번 센다) · 계획: 예상·추정.
  * 결산이 끝난 해에는 세금계산서 합과의 차이를 옆에 적어 대조한다.
+ * 관리자는 기본정보와 저장된 연도(확정 · 계획)를 여기서 고친다. 고친 칸은 활동 기록에 남는다.
  */
 export default async function CompanyPage() {
+  const isAdmin = isAdminSession(await auth())
   const [profile, years] = await Promise.all([
     prisma.companyProfile.findUnique({ where: { id: "hadd" } }),
     prisma.companyYear.findMany({ orderBy: [{ year: "desc" }, { basis: "asc" }] }),
@@ -46,6 +93,8 @@ export default async function CompanyPage() {
     netIncome: bigint | null
     headcount: number | null
     remark: string | null
+    /** 저장된 줄만 고칠 수 있다. 잠정은 세금계산서에서 세므로 없음 */
+    editable: YearForm | null
   }
   const rows: Row[] = [
     ...years.map((y) => {
@@ -70,6 +119,7 @@ export default async function CompanyPage() {
         ]
           .filter(Boolean)
           .join(" · ") || null,
+        editable: yearForm(y),
       }
     }),
     ...provisional
@@ -87,6 +137,7 @@ export default async function CompanyPage() {
         netIncome: null,
         headcount: null,
         remark: `세금계산서 ${p.invoices}장 · ${ymd(p.lastIssuedOn)} 발행분까지 · 결산 전 잠정치`,
+        editable: null,
       })),
   ].sort((a, b) => b.year - a.year || ["CONFIRMED", "PROVISIONAL", "PLANNED"].indexOf(a.basis) - ["CONFIRMED", "PROVISIONAL", "PLANNED"].indexOf(b.basis))
 
@@ -95,6 +146,7 @@ export default async function CompanyPage() {
         ["상호", `${profile.nameKo}${profile.nameEn ? ` (${profile.nameEn})` : ""}`],
         ["사업자등록번호", profile.bizRegNo],
         ["사업자 형태", profile.bizType ?? "확인 필요 — 번호 체계와 결산서로는 개인과세사업자"],
+        ...(profile.corpRegNo ? ([["법인등록번호", profile.corpRegNo]] as [string, string][]) : []),
         ["업종", [profile.industry, profile.industryCode && `(${profile.industryCode})`].filter(Boolean).join(" ") || null],
         ["설립일", ymd(profile.foundedOn)],
         ["홈페이지", profile.homepage],
@@ -109,9 +161,14 @@ export default async function CompanyPage() {
     <>
       <Header crumbs={["HADD DB", "회사 정보"]} />
       <div className="mx-auto w-full max-w-[1040px] px-4 py-6 sm:px-6">
-        <div className="mb-4 flex flex-wrap items-baseline gap-3">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <h1 className="text-[18px] font-bold tracking-[-0.02em]">회사 정보</h1>
           <span className="text-[13px] text-muted-foreground">지원서에 그대로 들어가는 값 · AI 가 고쳐 쓰지 않는다</span>
+          {isAdmin && profile && (
+            <span className="ml-auto">
+              <CompanyProfileDialog initial={profileForm(profile)} exists />
+            </span>
+          )}
         </div>
 
         {profile ? (
@@ -136,23 +193,32 @@ export default async function CompanyPage() {
             <EmptyHeader>
               <EmptyTitle>회사 기본정보가 아직 없습니다</EmptyTitle>
               <EmptyDescription>
+                {isAdmin ? "아래 버튼으로 직접 입력하거나 " : ""}
                 <code>scripts/import-company-context.ts --only company</code> 로 옮기면 여기에 보입니다.
               </EmptyDescription>
             </EmptyHeader>
+            {isAdmin && (
+              <EmptyContent>
+                <CompanyProfileDialog initial={profileForm(null)} exists={false} />
+              </EmptyContent>
+            )}
           </Empty>
         )}
 
         <section id="years" aria-labelledby="years-heading" className="mt-8">
-          <div className="mb-2.5 flex flex-wrap items-baseline gap-2">
+          <div className="mb-2.5 flex flex-wrap items-center gap-2">
             <h2 id="years-heading" className="text-[15px] font-semibold">
               연도별 재무
             </h2>
             <span className="text-[12px] text-muted-foreground">
               매출은 공급가액(부가세 제외) · 확정 = 결산서 · 잠정 = 결산 전 세금계산서 합 · 계획 = 예상·추정
             </span>
-            <Link href="/crm/invoices" className="ml-auto text-[12px] text-muted-foreground hover:underline">
-              세금계산서 보기
-            </Link>
+            <span className="ml-auto flex items-center gap-2">
+              <Link href="/crm/invoices" className="text-[12px] text-muted-foreground hover:underline">
+                세금계산서 보기
+              </Link>
+              {isAdmin && <CompanyYearDialog />}
+            </span>
           </div>
 
           {rows.length === 0 ? (
@@ -193,7 +259,10 @@ export default async function CompanyPage() {
         <tr className={r.remark ? "" : "border-b last:border-b-0"}>
           <td className="px-3 pt-2 font-semibold tabular-nums">{r.year}</td>
           <td className="px-3 pt-2">
-            <Badge variant={r.basis === "CONFIRMED" ? "default" : "outline"}>{BASIS_LABEL[r.basis]}</Badge>
+            <span className="flex items-center gap-1">
+              <Badge variant={r.basis === "CONFIRMED" ? "default" : "outline"}>{BASIS_LABEL[r.basis]}</Badge>
+              {isAdmin && r.editable && <CompanyYearDialog initial={r.editable} />}
+            </span>
           </td>
           <td className="px-3 pt-2 text-right font-semibold tabular-nums">{money(r.revenue)}</td>
           <td className="px-3 pt-2 text-right tabular-nums">{money(r.product)}</td>
