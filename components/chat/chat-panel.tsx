@@ -210,7 +210,8 @@ export function ChatPanel({
 
       if (res.ok) {
         const newMsg = await res.json()
-        setMessages((prev) => prev.map((m) => (m.id === tempId ? newMsg : m)))
+        // 보내는 중 말풍선을 그 자리에서 확정한다 — 다시 떠오르지 않게 표시
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...newMsg, _settled: true } : m)))
 
         if (newMsg._taskUpdate) {
           fetchMessages()

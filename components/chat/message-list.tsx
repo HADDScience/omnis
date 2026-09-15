@@ -1,15 +1,24 @@
 "use client"
 
-import { useLayoutEffect, useRef } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
 import { format } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Task01Icon } from "@hugeicons/core-free-icons"
+import {
+  Doc01Icon,
+  File01Icon,
+  Pdf01Icon,
+  Ppt01Icon,
+  Task01Icon,
+  Xls01Icon,
+  ZipIcon,
+} from "@hugeicons/core-free-icons"
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS } from "@/lib/constants"
+import { layoutMessages, tidyBody } from "@/lib/chat-layout"
+import { AuthorAvatar, DayDivider, MessageTime } from "@/components/chat/message-parts"
 
 import { apiUrl } from "@/lib/base-path"
 export interface FileInfo {
@@ -27,6 +36,8 @@ interface Message {
   createdAt: string
   isTaskInstruction: boolean
   _isSystem?: boolean
+  /** 보내는 중 말풍선을 서버 응답으로 바꾼 것 — 이미 한 번 떠올랐으니 다시 움직이지 않는다 */
+  _settled?: boolean
   author: { id: string; name: string }
   task?: {
     id: string
@@ -40,6 +51,9 @@ interface Message {
   } | null
   files?: FileInfo[]
 }
+
+/** 새 메시지가 아래에서 살짝 떠오른다. 움직임 줄이기 설정이면 멈춘다 */
+export const MESSAGE_ENTER = "animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ease-out motion-reduce:animate-none"
 
 interface TaskRef {
   id: string
@@ -76,6 +90,8 @@ export function MessageList({
   loadingOlder = false,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 이 시각 뒤에 생긴 메시지만 떠오르게 한다 — 처음 불러온 목록 · 이전 메시지는 가만히 둔다
+  const [mountedAt] = useState(() => Date.now())
   const prevFirstIdRef = useRef<string | null>(null)
   const anchorRef = useRef<{ height: number; top: number } | null>(null)
 
@@ -95,6 +111,9 @@ export function MessageList({
       el.scrollTop =
         el.scrollHeight - anchorRef.current.height + anchorRef.current.top
       anchorRef.current = null
+    } else if (prevFirstId != null) {
+      // 새 메시지 — 부드럽게 따라 내려간다
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
     } else {
       el.scrollTop = el.scrollHeight
     }
@@ -125,19 +144,32 @@ export function MessageList({
       onScroll={handleScroll}
       className="min-h-0 flex-1 overflow-y-auto px-4"
     >
-      <div className="flex flex-col gap-3 py-4">
+      <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3">
         {loadingOlder && (
           <div className="flex justify-center py-1">
             <Spinner className="h-4 w-4" />
           </div>
         )}
         {!hasMoreOlder && !loadingOlder && (
-          <div className="py-1 text-center text-[10px] text-muted-foreground">
-            — 대화의 시작 —
+          <div className="py-1 text-center text-[11px] text-muted-foreground">
+            대화의 시작
           </div>
         )}
-        {messages.map((msg) => {
-          const isMe = msg.author.id === currentUserId
+        {layoutMessages(
+          messages.map((m, i) => ({
+            ...m,
+            isEvent:
+              m.content.startsWith("__TASK_CREATED__:") ||
+              !!m._isSystem ||
+              m.author.id === "system" ||
+              m.content.startsWith("🤖"),
+            // 같은 업무 태그가 묶음 안 말풍선마다 반복되지 않게 — 다음 메시지가 다른 업무일 때만 붙인다
+            nextTaskId: messages[i + 1]?.task?.id ?? null,
+          })),
+        ).map((row) => {
+          if (row.type === "day") return <DayDivider key={row.key} label={row.label} />
+          const msg = row.message
+          const isMe = msg.author.id === currentUserId || msg.author.id === "me"
           const isSelected = selectedIds?.has(msg.id) ?? false
 
           // 업무 생성 카드 — content가 `__TASK_CREATED__:<taskId>` 형태
@@ -165,12 +197,15 @@ export function MessageList({
             )
           }
 
+          const mine = isMe && !selectionMode
+          const pending = msg.id.startsWith("temp-")
+          const fresh = !msg._settled && new Date(msg.createdAt).getTime() > mountedAt
           return (
             <div
               key={msg.id}
-              className={`flex gap-3 ${isMe ? "flex-row-reverse" : ""} ${
-                selectionMode ? "cursor-pointer" : ""
-              } ${isSelected ? "rounded-lg bg-primary/5 ring-1 ring-primary/20 p-1" : ""}`}
+              className={`group/msg flex gap-2.5 ${mine ? "flex-row-reverse" : ""} ${
+                row.groupStart ? "mt-3" : "mt-0.5"
+              } ${fresh ? MESSAGE_ENTER : ""} ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "rounded-lg bg-primary/5 ring-1 ring-primary/20 p-1" : ""}`}
               onClick={selectionMode ? () => onToggleSelect?.(msg.id) : undefined}
             >
               {selectionMode && (
@@ -178,45 +213,50 @@ export function MessageList({
                   <Checkbox checked={isSelected} />
                 </div>
               )}
-              {!isMe && !selectionMode && (
-                <Avatar className="h-8 w-8 shrink-0">
-                  <AvatarFallback className="text-xs">
-                    {msg.author.name.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
+              {!mine && !selectionMode && (
+                // 묶음 안 줄은 아바타 자리를 비워 본문 줄을 맞춘다
+                row.groupStart ? <AuthorAvatar name={msg.author.name} size={30} className="mt-5" /> : <span className="w-[30px] shrink-0" />
               )}
               <div
-                className={`flex min-w-0 max-w-[70%] flex-col gap-1 ${isMe && !selectionMode ? "items-end" : ""}`}
+                className={`flex min-w-0 max-w-[78%] flex-col gap-1 ${mine ? "items-end" : ""}`}
               >
-                {!isMe && (
-                  <span className="text-xs text-muted-foreground">
+                {!isMe && row.groupStart && (
+                  <span className="px-0.5 text-[12px] font-semibold text-foreground/80">
                     {msg.author.name}
                   </span>
                 )}
                 <div
-                  className={`rounded-lg px-3 py-2 text-sm break-words ${
-                    isMe && !selectionMode
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  } ${msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""}`}
+                  className={`rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] ${
+                    mine ? "bg-primary text-primary-foreground" : "bg-muted"
+                  } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md" : ""} ${
+                    msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
+                  } ${pending ? "opacity-70" : ""} transition-opacity duration-300`}
                 >
-                  <p className="whitespace-pre-wrap break-words">
-                    <MessageContent content={msg.content} tasks={tasks} isMe={isMe && !selectionMode} />
+                  <p className="whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">
+                    <MessageContent content={tidyBody(msg.content)} tasks={tasks} isMe={mine} />
                   </p>
-                  {msg.files && msg.files.length > 0 && <MessageFiles files={msg.files} />}
+                  {msg.files && msg.files.length > 0 && <MessageFiles files={msg.files} onPrimary={mine} />}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground">
-                    {format(new Date(msg.createdAt), "HH:mm")}
-                  </span>
-                  {msg.task && (
-                    <Link href={`/tasks/${msg.task.id}`} onClick={(e) => e.stopPropagation()}>
-                      <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-primary/10 transition-colors">
-                        #{msg.task.slug}
-                      </Badge>
-                    </Link>
-                  )}
-                </div>
+                {(row.groupEnd || (msg.task && msg.nextTaskId !== msg.task.id)) && (
+                  <div className="flex items-center gap-2 px-0.5">
+                    {row.groupEnd &&
+                      (pending ? (
+                        <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground" aria-live="polite">
+                          <Spinner className="h-2.5 w-2.5" />
+                          보내는 중…
+                        </span>
+                      ) : (
+                        <MessageTime iso={msg.createdAt} className="text-[10.5px]" />
+                      ))}
+                    {msg.task && (row.groupEnd || msg.nextTaskId !== msg.task.id) && (
+                      <Link href={`/tasks/${msg.task.id}`} onClick={(e) => e.stopPropagation()} title={msg.task.name}>
+                        <Badge variant="outline" className="max-w-[180px] cursor-pointer truncate text-[10px] transition-colors hover:bg-primary/10">
+                          #{msg.task.slug}
+                        </Badge>
+                      </Link>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )
@@ -275,10 +315,24 @@ function cutPathTail(raw: string): string {
   return m ? p.slice(0, sep + 1 + m.index!) : p
 }
 
-/** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 이름 · 크기. 채팅과 업무 스레드가 같이 쓴다. */
-export function MessageFiles({ files }: { files: FileInfo[] }) {
+const fileSizeLabel = (size: number) =>
+  size < 1024 ? `${size}B` : size < 1048576 ? `${Math.round(size / 1024)}KB` : `${(size / 1048576).toFixed(1)}MB`
+
+/** 확장자로 아이콘과 짧은 형식 이름 — 파일 카드에서 무엇인지 먼저 보이게 */
+function fileKind(name: string): { icon: typeof File01Icon; label: string; tone: string } {
+  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : ""
+  if (ext === "pdf") return { icon: Pdf01Icon, label: "PDF", tone: "text-red-600 bg-red-50 dark:bg-red-950/40 dark:text-red-300" }
+  if (["ppt", "pptx", "key"].includes(ext)) return { icon: Ppt01Icon, label: "PPT", tone: "text-orange-600 bg-orange-50 dark:bg-orange-950/40 dark:text-orange-300" }
+  if (["xls", "xlsx", "csv"].includes(ext)) return { icon: Xls01Icon, label: ext.toUpperCase(), tone: "text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300" }
+  if (["doc", "docx", "hwp", "hwpx", "txt", "md"].includes(ext)) return { icon: Doc01Icon, label: ext.toUpperCase(), tone: "text-sky-700 bg-sky-50 dark:bg-sky-950/40 dark:text-sky-300" }
+  if (["zip", "7z", "rar"].includes(ext)) return { icon: ZipIcon, label: ext.toUpperCase(), tone: "text-violet-700 bg-violet-50 dark:bg-violet-950/40 dark:text-violet-300" }
+  return { icon: File01Icon, label: ext ? ext.toUpperCase() : "파일", tone: "text-muted-foreground bg-muted" }
+}
+
+/** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
+export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; onPrimary?: boolean }) {
   return (
-    <div className="flex flex-col gap-1.5 mt-1.5">
+    <div className="mt-1.5 flex flex-col gap-1.5">
       {files.map((f) => {
         const isImage = f.mimeType?.startsWith("image/")
         const uploading = f._uploading
@@ -303,21 +357,30 @@ export function MessageFiles({ files }: { files: FileInfo[] }) {
             </a>
           )
         }
+        const kind = fileKind(f.name)
         return (
           <a
             key={f.id}
             href={uploading ? undefined : apiUrl(f.path)}
             target="_blank"
             rel="noopener noreferrer"
-            className={`flex items-center gap-1.5 rounded bg-background/50 px-2 py-1 text-[11px] ${uploading ? "opacity-70" : "hover:underline"} relative overflow-hidden`}
+            title={f.name}
+            className={`relative flex max-w-[280px] items-center gap-2.5 overflow-hidden rounded-lg border px-2.5 py-2 transition-colors ${
+              onPrimary ? "border-white/25 bg-white/10 hover:bg-white/15" : "bg-background hover:bg-muted/60"
+            } ${uploading ? "opacity-70" : ""}`}
             onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
           >
             {uploading && (
               <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />
             )}
-            <span className="truncate relative">{f.name}</span>
-            <span className="shrink-0 text-muted-foreground relative">
-              {uploading ? "업로드 중..." : f.size < 1024 ? `${f.size}B` : f.size < 1048576 ? `${Math.round(f.size / 1024)}KB` : `${(f.size / 1048576).toFixed(1)}MB`}
+            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${onPrimary ? "bg-white/20 text-white" : kind.tone}`}>
+              <HugeiconsIcon icon={kind.icon} size={17} aria-hidden />
+            </span>
+            <span className="relative min-w-0 flex-1">
+              <span className={`block truncate text-[12.5px] font-medium ${onPrimary ? "text-white" : "text-foreground"}`}>{f.name}</span>
+              <span className={`block text-[11px] ${onPrimary ? "text-white/70" : "text-muted-foreground"}`}>
+                {uploading ? "업로드 중..." : `${kind.label} · ${fileSizeLabel(f.size)}`}
+              </span>
             </span>
           </a>
         )
@@ -327,9 +390,13 @@ export function MessageFiles({ files }: { files: FileInfo[] }) {
 }
 
 export function MessageContent({ content, tasks, isMe = false }: { content: string; tasks: TaskRef[]; isMe?: boolean }) {
+  // 링크 · 경로는 밑줄 글자, @사람 · #업무는 옅은 칩 — 본문과 한눈에 구분된다
   const mentionClass = isMe
     ? "font-medium text-white/90 underline decoration-white/40 hover:decoration-white"
     : "font-medium text-blue-700 dark:text-blue-300 hover:underline"
+  const chipClass = isMe
+    ? "rounded bg-white/20 px-1 py-px font-medium text-white hover:bg-white/30"
+    : "rounded bg-blue-50 px-1 py-px font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-900/60"
 
   const parts: React.ReactNode[] = []
   const regex = TOKEN_RE
@@ -390,17 +457,18 @@ export function MessageContent({ content, tasks, isMe = false }: { content: stri
           <Link
             key={match.index}
             href={`/tasks/${task.id}`}
-            className={mentionClass}
+            className={chipClass}
+            title={task.name}
             onClick={(e) => e.stopPropagation()}
           >
             {token}
           </Link>
         )
       } else {
-        parts.push(<span key={match.index} className={mentionClass}>{token}</span>)
+        parts.push(<span key={match.index} className={chipClass}>{token}</span>)
       }
     } else {
-      parts.push(<span key={match.index} className={mentionClass}>{token}</span>)
+      parts.push(<span key={match.index} className={chipClass}>{token}</span>)
     }
     lastIndex = match.index + match[0].length
   }
