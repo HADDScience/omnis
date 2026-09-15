@@ -4,7 +4,7 @@
 // 배치 규칙(묶기 · 날짜 · 시간 문구)은 lib/chat-layout.
 
 import { HugeiconsIcon } from "@hugeicons/react"
-import { CheckmarkCircle02Icon, Clock01Icon, Task01Icon } from "@hugeicons/core-free-icons"
+import { AiMagicIcon, CheckmarkCircle02Icon, Clock01Icon, Task01Icon } from "@hugeicons/core-free-icons"
 import { avatarText, avatarTone, fullTimeLabel, timeLabel } from "@/lib/chat-layout"
 import { cn } from "@/lib/utils"
 
@@ -52,9 +52,20 @@ export function MessageTime({ iso, className, compact = false }: { iso: string; 
 
 const EVENT_ICON = {
   TASK_CREATED: Task01Icon,
+  TASK_REBUILT: AiMagicIcon,
   TASK_DONE: CheckmarkCircle02Icon,
   TASK_DONE_PENDING: Clock01Icon,
 } as const
+
+/**
+ * 시스템 메시지 본문을 사건 줄 문구로 — "🤖 #slug 재구성 · 체크리스트 2/3 완료" → "업무를 갱신했습니다 · 체크리스트 2/3 완료".
+ * 스레드는 이미 그 업무 안이라 #slug 는 군더더기다.
+ */
+export function eventSummary(kind: ChatEventKind, content: string): string {
+  const rest = content.replace(/^🤖\s*/, "").replace(/^#[^\s]+\s*/, "")
+  if (kind === "TASK_REBUILT") return `업무를 갱신했습니다 · ${rest.replace(/^재구성\s*·\s*/, "")}`
+  return rest
+}
 
 export type ChatEventKind = keyof typeof EVENT_ICON
 

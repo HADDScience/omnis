@@ -10,6 +10,7 @@ import {
   AiMagicIcon,
   Task01Icon,
   Cancel01Icon,
+  CheckmarkCircle02Icon,
   PlusSignIcon,
 } from "@hugeicons/core-free-icons"
 import {
@@ -501,7 +502,12 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2">
+          {aiLoading && <AiDraftProgress />}
+
+          <div
+            aria-busy={aiLoading}
+            className={`grid grid-cols-1 gap-4 px-5 py-4 transition-opacity sm:grid-cols-2 ${aiLoading ? AI_FILLING : ""}`}
+          >
             {/*
               담당자가 첫 자리다(인수인계 §4-2 순서).
               실측상 지시의 68%가 담당자 미정으로 흘렀다 — 제목부터 쓰게 하면 담당자는 마지막에 밀리고,
@@ -789,7 +795,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
             </div>
           </div>
 
-          <div className="px-5 pb-4">
+          <div aria-busy={aiLoading} className={`px-5 pb-4 transition-opacity ${aiLoading ? AI_FILLING : ""}`}>
             <label htmlFor="task-background" className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
               배경 / 지시사항
             </label>
@@ -801,7 +807,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
             />
           </div>
 
-          <div className="px-5 pb-4">
+          <div aria-busy={aiLoading} className={`px-5 pb-4 transition-opacity ${aiLoading ? AI_FILLING : ""}`}>
             <div className="mb-1.5 flex items-baseline justify-between">
               <label className="text-[11px] font-semibold text-muted-foreground">
                 체크리스트 ({(checklist ?? []).filter((c) => c.trim() !== "").length}개)
@@ -914,5 +920,69 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** AI 가 채우는 동안 칸을 옅게 두고 손대지 못하게 한다 — 채워지면 ai-fill-glow 로 어디가 바뀌었는지 보인다 */
+const AI_FILLING = "pointer-events-none select-none opacity-50"
+
+/**
+ * AI 자동완성 진행 표시 — 스피너 하나 대신 지금 무엇을 하는지 단계로 보여 준다.
+ * 구조화는 한 번의 호출이라 실제 단계 신호가 없다. 실측 2~4초에 맞춰 문구만 넘기고,
+ * 마지막 단계는 응답이 올 때까지 머문다(끝났다고 먼저 말하지 않는다).
+ */
+const AI_DRAFT_STEPS = ["지시 문장을 읽고 있어요", "담당자 · 마감 · 프로젝트를 찾고 있어요", "체크리스트를 정리하고 있어요"]
+
+function AiDraftProgress() {
+  const [step, setStep] = useState(0)
+  useEffect(() => {
+    const timers = [setTimeout(() => setStep(1), 1200), setTimeout(() => setStep(2), 2600)]
+    return () => timers.forEach(clearTimeout)
+  }, [])
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="mx-5 mt-3 overflow-hidden rounded-lg border border-primary/25 bg-primary/[0.04] px-3.5 py-3 animate-in fade-in-0 slide-in-from-top-1 duration-200 motion-reduce:animate-none"
+    >
+      <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-primary">
+        <HugeiconsIcon icon={AiMagicIcon} size={13} aria-hidden />
+        AI 가 업무 초안을 만들고 있어요
+      </div>
+      <ol className="flex flex-col gap-1.5">
+        {AI_DRAFT_STEPS.map((label, i) => {
+          const state = i < step ? "done" : i === step ? "now" : "next"
+          return (
+            <li
+              key={label}
+              className={`flex items-center gap-2 text-[12px] transition-colors ${
+                state === "next" ? "text-muted-foreground/60" : state === "now" ? "text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              {state === "done" ? (
+                <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} className="text-primary" aria-hidden />
+              ) : state === "now" ? (
+                <Spinner className="h-3.5 w-3.5 text-primary" />
+              ) : (
+                <span aria-hidden className="mx-[3px] h-2 w-2 rounded-full border border-muted-foreground/40" />
+              )}
+              {label}
+            </li>
+          )
+        })}
+      </ol>
+      {/* 채워질 자리를 미리 그린다 — 칸 모양의 옅은 막대 */}
+      <div aria-hidden className="mt-3 grid grid-cols-3 gap-2">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-1.5 overflow-hidden rounded-full bg-primary/10">
+            <div
+              className="h-full w-full origin-left rounded-full bg-primary/40 transition-transform duration-700 ease-out"
+              style={{ transform: `scaleX(${i < step ? 1 : i === step ? 0.55 : 0})` }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

@@ -1,8 +1,11 @@
-import { NextRequest, NextResponse } from "next/server"
+import { after, NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { postChatMessage } from "@/lib/chat-post"
+import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
+
+// 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
+export const maxDuration = 60
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -67,13 +70,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "roomId, content 필수" }, { status: 400 })
   }
 
-  const { message, taskUpdate } = await postChatMessage({
-    user: { id: session.user.id, name: session.user.name ?? "" },
-    roomId,
-    content,
-    taskId,
-    fileIds,
-  })
+  const { message, taskUpdate, rebuild } = await postChatMessage(
+    {
+      user: { id: session.user.id, name: session.user.name ?? "" },
+      roomId,
+      content,
+      taskId,
+      fileIds,
+    },
+    // 글은 바로 돌려주고 AI 재구성은 응답 뒤에 — 화면은 GET /api/tasks/[taskId]/rebuild-status 로 끝을 안다
+    { deferRebuild: true },
+  )
+  if (rebuild) {
+    after(async () => {
+      await runTaskRebuild(rebuild)
+    })
+  }
 
-  return NextResponse.json({ ...message, _taskUpdate: taskUpdate }, { status: 201 })
+  return NextResponse.json(
+    { ...message, _taskUpdate: taskUpdate, _rebuild: rebuild ? "queued" : null },
+    { status: 201 },
+  )
 }

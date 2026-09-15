@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -8,7 +9,15 @@ import { AiMagicIcon } from "@hugeicons/core-free-icons"
 import { ThreadComposer, type ThreadRefs } from "@/components/chat/thread-composer"
 import { MESSAGE_ENTER, MessageContent, MessageFiles, type FileInfo } from "@/components/chat/message-list"
 import { Spinner } from "@/components/ui/spinner"
-import { AuthorAvatar, DayDivider, EventRow, MessageTime, isChatEventKind } from "@/components/chat/message-parts"
+import {
+  AuthorAvatar,
+  DayDivider,
+  EventRow,
+  MessageTime,
+  eventSummary,
+  isChatEventKind,
+  type ChatEventKind,
+} from "@/components/chat/message-parts"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
 
@@ -40,6 +49,14 @@ function isCreatedSentinel(m: Message): boolean {
 
 function displayContent(m: Message): string {
   return isCreatedSentinel(m) ? "업무가 생성되었습니다" : m.content
+}
+
+/** 스레드에 사건 줄로 그릴 메시지의 종류. 사람 메시지면 null — 🤖 로 시작하는 시스템 글(보류 · 재개 · 실패)도 사건이다 */
+function eventKindOf(m: Message): ChatEventKind | null {
+  if (isChatEventKind(m.kind)) return m.kind
+  if (isCreatedSentinel(m)) return "TASK_CREATED"
+  if (m.content.startsWith("🤖")) return "TASK_REBUILT"
+  return null
 }
 
 /**
@@ -81,10 +98,36 @@ export function TaskThread({ taskId, messages }: TaskSidebarProps) {
       m.kind === "TASK_DONE_PENDING" ||
       m.kind === "TASK_CREATED"
   )
-  const threadMessages = messages.filter((m) => m.kind !== "TASK_REBUILT")
-  const rows = layoutMessages(
-    threadMessages.map((m) => ({ ...m, isEvent: isChatEventKind(m.kind) || isCreatedSentinel(m) })),
-  )
+  // 재구성 결과도 스레드에 사건 줄로 남긴다 — 응답 뒤에 끝나므로 끝났다는 표시가 스레드에 있어야 한다
+  const threadMessages = messages
+  const rows = layoutMessages(threadMessages.map((m) => ({ ...m, isEvent: eventKindOf(m) !== null })))
+  const router = useRouter()
+
+  // AI 재구성은 응답 뒤에 돈다. 끝날 때까지 「갱신 중」 한 줄을 두고 2초마다 묻는다 — 입력창은 막지 않는다
+  const [rebuildWait, setRebuildWait] = useState<string | null>(null)
+  useEffect(() => {
+    if (!rebuildWait) return
+    let alive = true
+    const startedAt = Date.now()
+    let timer: ReturnType<typeof setTimeout>
+    const tick = async () => {
+      const res = await fetch(apiUrl(`/api/tasks/${taskId}/rebuild-status?messageId=${rebuildWait}`)).catch(() => null)
+      const data = res?.ok ? ((await res.json().catch(() => null)) as { done?: boolean } | null) : null
+      if (!alive) return
+      // 90초가 지나도 끝을 못 들으면 거둔다 — 결과는 새로고침으로 들어온다
+      if (data?.done || Date.now() - startedAt > 90_000) {
+        setRebuildWait(null)
+        router.refresh()
+        return
+      }
+      timer = setTimeout(tick, 2000)
+    }
+    timer = setTimeout(tick, 1500)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [rebuildWait, taskId, router])
 
   // 보내기 누른 글을 서버 응답(AI 재구성까지 8~13초) 전에 바로 보여 준다.
   // 목록 길이를 같이 적어 두고, 새 메시지가 붙어 길이가 바뀌면 저절로 사라진다.
@@ -98,7 +141,7 @@ export function TaskThread({ taskId, messages }: TaskSidebarProps) {
   useEffect(() => {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [threadMessages.length, showPending])
+  }, [threadMessages.length, showPending, rebuildWait])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -130,13 +173,23 @@ export function TaskThread({ taskId, messages }: TaskSidebarProps) {
               {rows.map((row) => {
                 if (row.type === "day") return <DayDivider key={row.key} label={row.label} />
                 const m = row.message
-                if (isChatEventKind(m.kind) || isCreatedSentinel(m)) {
-                  const kind = isChatEventKind(m.kind) ? m.kind : "TASK_CREATED"
+                const kind = eventKindOf(m)
+                if (kind) {
+                  const fresh = new Date(m.createdAt).getTime() > mountedAt
                   return (
-                    <EventRow key={row.key} kind={kind} iso={m.createdAt}>
-                      <span className="font-medium text-foreground/80">{m.author.name}</span>
-                      {kind === "TASK_CREATED" ? " 님이 업무를 만들었습니다" : ` · ${m.content}`}
-                    </EventRow>
+                    <div key={row.key} className={fresh ? MESSAGE_ENTER : undefined}>
+                      <EventRow kind={kind} iso={m.createdAt}>
+                        {kind === "TASK_CREATED" ? (
+                          <>
+                            <span className="font-medium text-foreground/80">{m.author.name}</span> 님이 업무를 만들었습니다
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-medium text-foreground/80">옴니스</span> {eventSummary(kind, m.content)}
+                          </>
+                        )}
+                      </EventRow>
+                    </div>
                   )
                 }
                 return (
@@ -182,9 +235,22 @@ export function TaskThread({ taskId, messages }: TaskSidebarProps) {
                     </div>
                     <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <Spinner className="h-3 w-3" />
-                      보내는 중 · 옴니스가 업무를 갱신하고 있어요
+                      보내는 중…
                     </div>
                   </div>
+                </div>
+              )}
+              {rebuildWait && !showPending && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className={`flex items-center gap-2 py-1.5 pl-9 text-[12px] text-muted-foreground ${MESSAGE_ENTER}`}
+                >
+                  <Spinner className="h-3.5 w-3.5 text-primary" />
+                  <span className="break-keep">
+                    <span className="font-medium text-foreground/80">옴니스</span>가 업무를 갱신하고 있어요
+                    <span className="text-muted-foreground/80"> · 계속 입력하셔도 됩니다</span>
+                  </span>
                 </div>
               )}
             </div>
@@ -197,6 +263,7 @@ export function TaskThread({ taskId, messages }: TaskSidebarProps) {
             users={refs.users}
             files={refs.files}
             onPending={(content) => setPending(content ? { content, count: threadMessages.length } : null)}
+            onQueued={setRebuildWait}
           />
         </TabsContent>
 
