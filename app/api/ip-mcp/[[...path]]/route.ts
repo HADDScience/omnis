@@ -416,6 +416,16 @@ export async function GET(req: NextRequest) {
   if (tail === "/authorize") return authorize(req)
   if (tail === "/download") return downloadViaLink(req)
 
+  // Streamable HTTP 클라이언트는 서버가 먼저 보낼 메시지를 받으려고 GET(Accept: text/event-stream)을 연다.
+  // 이 서버는 먼저 보낼 것이 없다 — 규약대로 405 로 답해야 클라이언트가 그 스트림을 포기한다.
+  // 200 JSON 으로 답하고 끊었더니 클라이언트가 곧바로 다시 열어 초당 12건, 운영 요청의 66% 가 됐다(2026-09-15 로그).
+  if ((req.headers.get("accept") ?? "").includes("text/event-stream")) {
+    return new NextResponse(null, {
+      status: 405,
+      headers: { ...CORS, Allow: "POST, OPTIONS", "cache-control": "no-store" },
+    })
+  }
+
   // 커넥터가 살아 있는지 볼 때 GET 을 던지는 클라이언트가 있다.
   return json({ ...SERVER_INFO, transport: "streamable-http" })
 }
