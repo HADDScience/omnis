@@ -16,7 +16,7 @@ PR #1 ~ #6 의 함정은 [narrow-viewport-traps.md](narrow-viewport-traps.md) ·
 | [#7](#pr-7--온보딩) | 온보딩 | 배포 게이트 e2e 가 개발 DB 를 쓰다 깨짐 |
 | [#8](#pr-8--옴니스-답변-렌더) | 옴니스 답변 렌더 | `prose` 클래스가 플러그인 없이 무효 |
 | [#9](#pr-9--스레드-첨부멘션) | 스레드 첨부·멘션 | 완료 업무 #멘션이 완료를 되돌림 |
-| [#10](#pr-10--mcp-이름시스템-계정) | MCP 이름·시스템 계정 | 🤖 메시지가 엉뚱한 관리자 이름으로 |
+| [#10](#pr-10--mcp-이름시스템-계정) | MCP 이름·시스템 계정 | 🤖 메시지가 엉뚱한 관리자 이름으로 · 추론된 유니온 타입 · Gemini 가 죽어야 통과하던 검증 · 짧은 SHA 머지 거부 |
 | [#11](#pr-11--회사-context) | 회사 Context | 마이그레이션 순서 · pdf.js 버퍼 · Gemini 월 한도 |
 | [#12](#pr-12--화면-배율과-떠-있는-창) | 화면 배율과 떠 있는 창 | `zoom` 좌표계와 floating-ui |
 | [#13](#pr-13--서명직인-보관) | 서명·직인 보관 | `next start` 가 운영 DB 에 씀 (사고) |
@@ -74,10 +74,47 @@ PR #1 ~ #6 의 함정은 [narrow-viewport-traps.md](narrow-viewport-traps.md) ·
 **원인.** 🤖 메시지 작성자를 `HADD MCP` 계정 → 없으면 **정렬 없는 첫 ADMIN** 으로 골랐다. 그 계정은 어느 DB 에도 없었고, 정렬이 없으니 같은 코드가 09-08 에는 허채정, 09-10 에는 김아리를 골랐다.
 
 **해결.** 시스템 계정 `system`/`Omnis` 를 코드가 upsert(비활성 · 로그인 불가). 기존 메시지는 `scripts/backfill-system-author.ts`.
-
-**함정 하나 더.** MCP 서버 이름은 바꿨지만 **주소(`/api/ip-mcp`)는 그대로** 뒀다 — OAuth issuer 와 resource 식별자가 주소라 바꾸면 붙어 있는 커넥터가 전부 끊긴다.
+비활성으로 두면 어디서나 숨는다고 봤지만 `isActive` 를 거르지 않는 조회가 두 곳 있었다 — AI 담당자 후보(`app/api/ai/structure-task`)와
+`list_members(includeInactive)`. 둘 다 `id: { not: SYSTEM_USER_ID }` 로 뺐다.
 
 **다음에.** "없으면 아무거나" 로 고르는 `findFirst` 에는 정렬이 있어야 하고, 대개는 고르지 말고 전용 계정을 둔다.
+숨기려는 계정을 추가하면 `user.findMany` 를 전부 grep 해 거르는 조건을 확인한다.
+
+### 같은 PR 에서 밟은 것
+
+**1. 주소는 그대로 둔다.** MCP 서버 이름은 바꿨지만 주소(`/api/ip-mcp`)는 뒀다 — OAuth issuer 와 resource 식별자가 주소라 바꾸면 붙어 있는 커넥터가 전부 끊긴다.
+
+**2. 커넥터 이름은 서버가 아니라 사람이 적은 값이다.** claude.ai 에 「HADD IP」 로 보인 것은 커넥터를 추가할 때 적은 이름이었고, 그 커넥터는
+옛 Supabase 함수 주소를 가리켜 410 을 받고 있었다. 410 안내 문구도 한 도메인 이전 **전** 주소(`omnis-hadd.vercel.app/api/ip-mcp`)를
+알려줘, 따라가도 붙지 않는다.
+→ 서버 이름을 바꿔도 사용자가 커넥터를 지우고 다시 추가해야 보인다. 안내 문구에 주소를 박아 두면 주소를 옮길 때 같이 고친다.
+
+**3. 추론된 유니온 반환 타입은 `"error" in r` 로 좁혀지지 않는다.** 업무 수정 알맹이를 `lib/task-update.updateTask` 로 옮겨
+`{ error }` 또는 `{ task }` 를 돌려주게 하자, 라우트의 `apiError(400, result.error)` 에서 TS2345(`string | undefined`).
+반환 타입을 적지 않으면 TypeScript 가 `{ error: string; task?: undefined } | { task: …; error?: undefined }` 로 정규화해
+`in` 검사가 양쪽을 다 통과시킨다. MCP 쪽 `if ("error" in r) return r` 도 같은 이유로 `ToolResult` 에 맞지 않았다.
+→ lib 함수가 성공 · 실패 유니온을 돌려주면 반환 타입을 적는다(`Promise<{ error: string } | { task: UpdatedTask }>`).
+
+**4. Gemini 가 죽어 있을 때만 통과하는 검증이 있었다.** 첫 검증에서 `verify-omnis-mcp` 3건이 Gemini 월 지출 한도 429(PR #11 의 3번과 같은 원인)로
+실패해 환경 탓으로 넘겼다. 한도가 풀리자 앞 단계 `post_message` 가 **실제 AI 재구성**으로 검증용 업무의 체크리스트를 바꿔 놓았고,
+뒤의 체크리스트 검증 2건이 가정한 초기 목록과 달라져 실패했다(도구는 「아무것도 바꾸지 않았습니다」로 맞게 응답했다).
+→ AI 가 상태를 바꿀 수 있는 단계 뒤의 검증은 상태를 직접 되돌리고 시작한다. 외부 API 가 죽은 채로 나온 결과는 통과로 치지 않고, 살아 있을 때 한 번 더 돌린다.
+
+**5. 작업 중에 main 이 같은 파일을 바꿨다.** 다른 세션의 PR #9 가 `lib/chat-post.ts` 를 고쳐 먼저 머지됐다. 충돌은 없었지만
+rebase 뒤 다시 돌린 검증에서 4번이 드러났다.
+→ push 직전에 `git fetch` 로 main 을 보고, 움직였으면 rebase 뒤 verify · build · 검증 스크립트를 **전부** 다시 돌린다.
+
+**6. 다른 세션이 쓰는 폴더에서는 브랜치를 바꾸지 않는다.** omnis-local 이 다른 세션의 브랜치에 있어 `git worktree add -b feat/mcp-hadd-omnis ../omnis-mcp origin/main`
+으로 따로 열었다. `npm ci`(PR #14 의 심볼릭 링크 함정), DB 는 컨테이너 안에서 `pg_dump omnis | psql omnis_mcp` 로 복제,
+`.env` 만 복사해 DB 이름과 `NEXTAUTH_URL` 포트(3100)를 바꿨다. `.env.production.local` 은 복사하지 않는다(PR #13).
+
+**7. `gh pr merge --match-head-commit` 은 40자 SHA 만 받는다.** 짧은 SHA 는
+`Could not coerce value "2cad6e2cad" to GitObjectID` 로 거부되고 PR 은 열린 채 남는다.
+→ `--match-head-commit "$(git rev-parse HEAD)"`. 머지 뒤 `gh pr view --json state,mergeCommit` 으로 실제로 머지됐는지 본다.
+
+**8. zsh 에는 `PIPESTATUS` 가 없다.** 이 맥의 셸은 zsh 다. `npx tsc | tail; echo ${PIPESTATUS[0]}` 가 빈 값을 찍어 종료 코드를 잃었다
+(bash 전용 변수, zsh 는 소문자 `pipestatus`).
+→ 출력을 파일로 보내고 `$?` 를 본 뒤 파일을 읽는다.
 
 ---
 
