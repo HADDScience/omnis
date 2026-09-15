@@ -346,7 +346,7 @@ test.describe("onboarding", () => {
     await page.clock.fastForward(5000)
     await expect(stage).toHaveAttribute("data-step", "1")
     await page.getByRole("button", { name: "재생", exact: true }).click()
-    const durations = [4100, 5100, 6100, 12100, 10100, 9100, 7100]
+    const durations = [4100, 5100, 6100, 12100, 10100, 12100, 7100]
     for (let index = 0; index < durations.length; index++) {
       await page.clock.fastForward(durations[index])
       await expect(stage).toHaveAttribute("data-step", String(index + 2))
@@ -401,6 +401,47 @@ test.describe("onboarding", () => {
             .onboardingCompletedAt !== null
       )
       .toBe(true)
+    expect(errors).toEqual([])
+  })
+
+  test("AI 연결 장면의 카운트다운 버튼은 안내를 멈추고 MCP 등록으로 갔다가 같은 장면으로 돌아온다", async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on("pageerror", (error) => errors.push(error.message))
+    await page.clock.install()
+    await login(page)
+    const stage = page.locator(".intro-stage")
+    await expect(stage).toHaveAttribute("data-step", "1")
+    for (let i = 0; i < 5; i++)
+      await page.getByRole("button", { name: "다음 장면" }).click()
+    await expect(stage).toHaveAttribute("data-step", "6")
+    const connect = page.getByRole("button", { name: /지금 연결하기/ })
+    await expect(connect).toContainText(/\d+초/)
+    await page.clock.fastForward(3000)
+    // 실제 시간도 조금 흐르므로 초 단위 글자를 통째로 비교하지 않고 숫자로 잰다.
+    const seconds = async () => Number((await connect.textContent())?.match(/(\d+)초/)?.[1])
+    const before = await seconds()
+    expect(before).toBeLessThanOrEqual(10)
+    await connect.click()
+    const input = page.getByRole("textbox", { name: "MCP 서버 주소" })
+    await expect(input).toBeVisible()
+    await expect(page.locator(".omnis-tour-surface")).toBeHidden()
+    await page.getByRole("tab", { name: "Codex" }).click()
+    await expect(page.getByText("codex mcp login hadd-omnis")).toBeVisible()
+    // 설정하는 동안에는 안내가 넘어가지 않는다.
+    await page.clock.fastForward(30000)
+    await page.getByRole("button", { name: "온보딩으로 돌아가기" }).click()
+    await expect(input).toHaveCount(0)
+    await expect(stage).toBeVisible()
+    await expect(stage).toHaveAttribute("data-step", "6")
+    // 등록 창이 떠 있던 30초(가짜 시계)는 쓰이지 않았다 — 남은 초가 그대로이거나 실제 흐른 만큼만 줄었다.
+    const after = await seconds()
+    expect(after).toBeLessThanOrEqual(before)
+    expect(after).toBeGreaterThanOrEqual(before - 2)
+    // 돌아오면 남은 시간부터 다시 흐른다.
+    await page.clock.fastForward(10000)
+    await expect(stage).toHaveAttribute("data-step", "7")
     expect(errors).toEqual([])
   })
 

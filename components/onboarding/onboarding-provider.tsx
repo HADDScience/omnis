@@ -33,9 +33,14 @@ const SpotlightTour = dynamic(() => import("./spotlight-tour"), {
 const McpDialog = dynamic(() => import("./mcp-dialog"), { ssr: false })
 
 type Phase = "video" | "spotlight" | "app"
+/** 온보딩 안에서 열 때 — 닫기 버튼 이름과 닫힌 뒤 안내로 돌아가는 일 */
+export interface McpOpenOptions {
+  closeLabel?: string
+  onClose?: () => void
+}
 interface OnboardingContextValue {
   replay: () => void
-  openMcp: () => void
+  openMcp: (options?: McpOpenOptions) => void
   spotlightTarget: string | null
   setSpotlightTarget: (target: string | null) => void
   active: boolean
@@ -57,7 +62,7 @@ export function OnboardingProvider({
         : "video"
   )
   const [spotlightTarget, setSpotlightTarget] = useState<string | null>(null)
-  const [mcpOpen, setMcpOpen] = useState(false)
+  const [mcpOpen, setMcpOpen] = useState<McpOpenOptions | null>(null)
   // Serialize writes so an earlier, slow request cannot race the final completion.
   const saves = useRef(Promise.resolve())
   const persist = useCallback((next: "video" | "complete") => {
@@ -98,10 +103,12 @@ export function OnboardingProvider({
     <Context.Provider
       value={{
         replay: () => {
-          setMcpOpen(false)
+          setMcpOpen(null)
           setPhase("video")
         },
-        openMcp: () => setMcpOpen(true),
+        // 메뉴의 onClick 이 이벤트를 넘겨도 옵션으로 읽히지 않게 필요한 칸만 꺼낸다.
+        openMcp: (options) =>
+          setMcpOpen({ closeLabel: options?.closeLabel, onClose: options?.onClose }),
         spotlightTarget,
         setSpotlightTarget,
         active: phase !== "app",
@@ -110,7 +117,16 @@ export function OnboardingProvider({
       {children}
       {phase === "video" && <WelcomeTour onFinish={finishVideo} />}
       {phase === "spotlight" && <SpotlightTour onFinish={finishTour} />}
-      {mcpOpen && <McpDialog onClose={() => setMcpOpen(false)} />}
+      {mcpOpen && (
+        <McpDialog
+          closeLabel={mcpOpen.closeLabel}
+          onClose={() => {
+            const back = mcpOpen.onClose
+            setMcpOpen(null)
+            back?.()
+          }}
+        />
+      )}
     </Context.Provider>
   )
 }
