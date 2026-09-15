@@ -15,11 +15,10 @@ import { apiUrl } from "@/lib/base-path"
 import { TaskCard } from "@/components/tasks/task-card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Textarea } from "@/components/ui/textarea"
-import { ShineBorder } from "@/components/magicui/shine-border"
 import { TourSurface } from "./tour-surface"
 import { useTourClock } from "./use-tour-clock"
+import { useOnboarding } from "./onboarding-provider"
 import "./onboarding.css"
 
 const chapters = [
@@ -92,8 +91,8 @@ const chapters = [
         <em>Omnis의 지식을 연결하세요.</em>
       </>
     ),
-    caption: "프로필 메뉴에서 Omnis MCP를 등록하여 AI를 활용해 보세요.",
-    duration: 9000,
+    caption: "쓰는 AI 도구에 Omnis MCP 를 붙이면, AI 가 업무를 확인하고 보고까지 대신합니다.",
+    duration: 12000,
     name: "AI 연결",
   },
   {
@@ -119,14 +118,15 @@ const chapters = [
     name: "시작하기",
   },
 ]
-const rainbow = [
-  "#ff3d81",
-  "#ff8a00",
-  "#ffd60a",
-  "#34d399",
-  "#38bdf8",
-  "#a855f7",
-]
+/** 6장에서 소개하는 MCP 도구 — 사람이 하던 일과 그 일을 대신하는 도구 이름 */
+const mcpTools = [
+  [Task01Icon, "업무 확인·수정", "list_tasks · update_task"],
+  [BubbleChatIcon, "채팅에 보고", "post_message"],
+  [FileAttachmentIcon, "첨부 올리기·읽기", "upload_file · read_file"],
+  [AiMagicIcon, "알림에 응답", "respond_notification"],
+  [BookOpen01Icon, "사내 지식 묻기", "ask_omnis"],
+  [UserGroupIcon, "CRM·회사 정보", "find_org"],
+] as const
 
 function Mark() {
   return (
@@ -363,14 +363,21 @@ function Chapter({
   onAdvance,
   onPrevious,
   onFinish,
+  onConnect,
+  connecting,
 }: {
   step: number
   onAdvance: () => void
   onPrevious: () => void
   onFinish: () => void
+  /** 6장 「지금 연결하기」 — 안내를 멈추고 MCP 등록을 연다 */
+  onConnect: () => void
+  /** MCP 등록 창이 떠 있는 동안. 시계를 멈춰 돌아왔을 때 같은 자리에서 이어진다. */
+  connecting: boolean
 }) {
   const chapter = chapters[step]
-  const clock = useTourClock(chapter.duration, onAdvance)
+  const clock = useTourClock(chapter.duration, onAdvance, !connecting)
+  const secondsLeft = Math.max(0, Math.ceil((chapter.duration - clock.elapsed) / 1000))
   const viewport = useRef<HTMLDivElement>(null)
   const frame = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLElement>(null)
@@ -444,31 +451,61 @@ function Chapter({
               <Workflow step={step} elapsed={clock.elapsed} />
             )}
             {step === 5 && (
-              <div className="intro-mcp-map">
-                <div className="intro-profile-preview">
-                  <span className="intro-chat-label">내 프로필</span>
-                  <div className="intro-profile-person">
-                    <Avatar className="h-7 w-7">
-                      <AvatarFallback>김</AvatarFallback>
-                    </Avatar>
-                    <strong>김하드</strong>
-                    <span>MEMBER</span>
+              <div className="intro-mcp-connect">
+                <div className="intro-mcp-panel">
+                  <span className="intro-chat-label">AI 가 대신하는 일</span>
+                  <div className="intro-mcp-tools">
+                    {mcpTools.map(([icon, title, tool], i) => (
+                      <div key={title} style={{ animationDelay: `${i * 120}ms` }}>
+                        <HugeiconsIcon icon={icon} size={18} />
+                        <span>{title}</span>
+                        <code>{tool}</code>
+                      </div>
+                    ))}
                   </div>
-                  <div className="intro-mcp-highlight">
-                    <ShineBorder shineColor={rainbow} borderWidth={1.5} />
-                    <HugeiconsIcon icon={AiMagicIcon} size={21} />
-                    Omnis MCP 등록 <span>↗</span>
-                  </div>
-                  <div className="intro-profile-muted">온보딩 튜토리얼</div>
                 </div>
-                <div className="intro-link-line" aria-hidden="true">
-                  <i />
-                  <span>OAuth 연결</span>
-                </div>
-                <div className="intro-ai-orb">
-                  <HugeiconsIcon icon={AiMagicIcon} size={36} />
-                  <strong>나의 AI</strong>
-                  <span>업무 · 지식 · 회사 자원</span>
+                <div className="intro-mcp-panel">
+                  <span className="intro-chat-label">연결하는 법</span>
+                  <ol className="intro-mcp-steps">
+                    <li>
+                      <div>
+                        <b>프로필 메뉴 → Omnis MCP 등록</b>
+                        <br />
+                        <span>언제든 다시 열 수 있어요.</span>
+                      </div>
+                    </li>
+                    <li>
+                      <div>
+                        <b>쓰는 AI 도구 탭 고르기</b>
+                        <br />
+                        <span>Claude Code · claude.ai · ChatGPT · Codex · Cursor …</span>
+                      </div>
+                    </li>
+                    <li>
+                      <div>
+                        <b>커맨드나 주소를 붙이고 승인</b>
+                        <br />
+                        <span>이름은 hadd-omnis, Omnis 계정으로 승인하면 끝</span>
+                      </div>
+                    </li>
+                  </ol>
+                  {/* 남은 시간이 보여야 누를지 말지 고른다. 누르면 넘어가지 않고 등록 창으로 간다. */}
+                  <button type="button" className="intro-mcp-cta" onClick={onConnect}>
+                    지금 연결하기
+                    <span className="intro-mcp-cta-count" aria-hidden="true">
+                      {secondsLeft}초
+                    </span>
+                    <span
+                      className="intro-mcp-cta-bar"
+                      aria-hidden="true"
+                      style={{
+                        transform: `scaleX(${chapter.duration ? 1 - clock.elapsed / chapter.duration : 0})`,
+                      }}
+                    />
+                  </button>
+                  <p className="intro-mcp-cta-note">
+                    누르면 안내가 멈추고, 설정을 마치면 이 장면으로 돌아와요.
+                  </p>
                 </div>
               </div>
             )}
@@ -559,11 +596,15 @@ function Chapter({
 
 export default function WelcomeTour({ onFinish }: { onFinish: () => void }) {
   const [step, setStep] = useState(0)
+  // MCP 등록 창이 떠 있는 동안 — 안내를 숨기고(가두기 해제) 장면 시계를 멈춘다.
+  const [connecting, setConnecting] = useState(false)
+  const { openMcp } = useOnboarding()
   return (
     <TourSurface
       label="Omnis 온보딩 튜토리얼"
       onEscape={onFinish}
       className="intro-surface"
+      suspended={connecting}
     >
       <Chapter
         key={step}
@@ -571,6 +612,11 @@ export default function WelcomeTour({ onFinish }: { onFinish: () => void }) {
         onAdvance={() => setStep(Math.min(step + 1, 7))}
         onPrevious={() => setStep(Math.max(step - 1, 0))}
         onFinish={onFinish}
+        connecting={connecting}
+        onConnect={() => {
+          setConnecting(true)
+          openMcp({ closeLabel: "온보딩으로 돌아가기", onClose: () => setConnecting(false) })
+        }}
       />
     </TourSurface>
   )

@@ -48,7 +48,7 @@ const stops = [
   {
     target: "mcp",
     title: "나의 AI에 Omnis 연결",
-    copy: "Omnis MCP 등록을 열고 서버 주소를 복사하세요. 사용하는 AI 앱의 커넥터 설정에서 연결을 마무리해 주세요.",
+    copy: "Omnis MCP 등록을 열고 쓰는 AI 도구 탭을 고르세요. 커맨드나 주소를 복사해 붙이고, Omnis 계정으로 승인하면 연결돼요.",
     sidebar: true,
   },
   {

@@ -27,12 +27,27 @@ claude.ai 커넥터 목록에 보이는 이름은 서버가 아니라 **커넥�
 
 ## 붙이는 법
 
-claude.ai → 설정 → 커넥터 → 커스텀 커넥터 추가 → 이름 `hadd-omnis` · 주소 `https://haddscience.vercel.app/omnis/api/ip-mcp`.
-OAuth 로 Omnis 로그인 → 승인 화면 → 끝. 8시간마다 자동 갱신. 이미 붙여 둔 커넥터는
-**다시 연결하지 않아도** 도구 목록만 넓어진다(`tools/list` 는 매번 서버에서 온다).
+화면: 프로필 메뉴 → **Omnis MCP 등록** (`components/onboarding/mcp-dialog.tsx` · 도구별 안내 `mcp-clients.tsx`).
+온보딩 6장 「AI 연결」에서도 연다 — 도구 소개 + 연결 3단계 + 남은 초가 보이는 「지금 연결하기」. 누르면 안내 시계가 멈추고
+(`TourSurface suspended` 로 포커스·키 가두기를 풀고 숨긴다) 등록 창이 뜬다. 「온보딩으로 돌아가기」를 누르면 같은 장면 같은 남은 초에서 이어진다.
+도구별 탭 — Claude Code · claude.ai · ChatGPT · Codex · Gemini CLI · Cursor · VS Code. 전부 **OAuth** 로 붙는다(토큰 없음).
+Omnis 로그인 → 승인 화면 → 끝. 8시간마다 자동 갱신. 이미 붙여 둔 커넥터는 다시 연결하지 않아도 도구 목록만 넓어진다(`tools/list` 는 매번 서버에서 온다).
 
-CLI(`claude mcp add`)는 개인 토큰(`hadd_…`)을 헤더로 보낸다. 개인 토큰 발급은 아직
-IP 플랫폼의 「AI 도구 설치하기」(`/api/ip/mcp-token`) 에만 있고 지식재산권 구성원만 받는다 — 옮겨야 할 일.
+| 도구 | 붙이는 법 |
+|---|---|
+| Claude Code | `claude mcp add --transport http --scope user hadd-omnis <주소>` → `/mcp` → Authenticate |
+| claude.ai · Claude Desktop | 설정 → 커넥터 → 커스텀 커넥터 추가 → 이름 `hadd-omnis` · 주소 |
+| Codex | `codex mcp add hadd-omnis --url <주소>` → `codex mcp login hadd-omnis` |
+| Gemini CLI | `gemini mcp add --transport http --scope user hadd-omnis <주소>` |
+| Cursor · VS Code | 딥링크 버튼 (주소만 담는다) |
+| ChatGPT | 개발자 모드 → 플러그인 + → 서버 URL · OAuth |
+
+**이름은 `hadd-omnis` 하나, Claude Code 는 `--scope user`.** 2026-09-15 에 폴더마다 `hadd-ip` 를 따로 붙여
+주소가 셋으로 갈린 것을 찾았다 — 옛 Supabase(410) · 옛 도메인 `omnis-hadd.vercel.app`(307, MCP 클라이언트는 따라가지 않는다) · 현재.
+이름도 지식재산권 전용처럼 읽혀 AI 가 업무 질문에 이 서버를 쓰지 않았다. 안내는 옛 `hadd-ip` 를 지우라고 함께 말한다.
+
+개인 토큰(`hadd_…`)을 헤더로 보내는 방식도 서버는 받는다. 발급은 IP 플랫폼의 「AI 도구 설치하기」(`/api/ip/mcp-token`) 에만 있고
+지식재산권 구성원만 받는다. OAuth 로 모든 도구가 붙으므로 Omnis 안내에는 넣지 않았다.
 
 ## 권한 — 무엇이 바뀌었나
 

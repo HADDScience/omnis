@@ -24,6 +24,7 @@ PR #1 ~ #6 의 함정은 [narrow-viewport-traps.md](narrow-viewport-traps.md) ·
 | [#15](#pr-15--채팅-가독성) | 채팅 가독성 | rem/px 섞임 · 해시 쏠림 · 부호 있는 나머지 |
 | [#16](#pr-16--ai-대기-ux) | AI 대기 UX | 동기 재구성 · 늦게 끝난 결과 · 모달 경합 |
 | [#17](#pr-17--요청-한도) | 요청 한도 | MCP GET 재연결 루프 · 안 보이는 탭 폴링 |
+| [핫픽스](#핫픽스--mcp-등록-안내--온보딩-연결-hotfixmcp-setup-guide) | MCP 등록 안내 · 온보딩 연결 | 격리 e2e 는 새 파일 모름 · grid `min-w-0` · 탭 `h-[calc]` · 좌우 탭 영역이 클릭 가로챔 · 포커스 가두기 |
 
 ---
 
@@ -249,6 +250,45 @@ rebase 뒤 다시 돌린 검증에서 4번이 드러났다.
 - 새 폴링은 처음부터 `useVisibleInterval` 로. 간격은 "사람이 몇 초 늦게 알아도 되는가" 로 정한다.
 - MCP · SSE 엔드포인트는 스트림 GET 을 따로 처리한다. 200 으로 답하고 끊으면 재연결 루프가 된다.
 - 무료 플랜 한도 메일(75%)이 오면 그날 로그를 5,000건 떠서 경로별로 센다.
+
+---
+
+## 핫픽스 — MCP 등록 안내 · 온보딩 연결 (`hotfix/mcp-setup-guide`)
+
+**계기.** 다른 세션에서 「HADD 디자인 폴더 정리 업무 확인해줘」에 hadd-ip 도구 33개가 보이는데도 쓰지 않고 옛 Notion To Do DB 를 뒤졌다.
+원인은 셋이었다 — 프로젝트 `.claude/CLAUDE.md`(hadd-notion 플러그인이 만든 것, 11곳)가 Notion DB ID 만 알려줬고, 서버 이름 `hadd-ip` 가
+지식재산권 전용으로 읽혔고, 같은 세션의 claude.ai 「HADD IP」 커넥터 410 을 같은 서버로 착각했다. 폴더마다 붙인 `hadd-ip` 주소도
+옛 Supabase(410) · 옛 도메인(307) · 현재로 갈려 있었다. → 등록 안내를 도구별 탭 + 이름 `hadd-omnis` + Claude Code `--scope user` 로 바꿨다.
+
+**1. 격리 e2e(`test:e2e:local`)는 git 이 모르는 새 파일을 복사하지 않는다.** 새 `mcp-clients.tsx` 를 만들고 돌리자 `/dashboard` 워밍업이 500 —
+임시 앱 복사본의 `server.log` 에 `Module not found: Can't resolve './mcp-clients'`.
+→ 새 파일은 `git add` 한 뒤 돌린다. 워밍업 500 이면 출력된 임시 폴더의 `server.log` 부터 본다.
+
+**2. 오래 쓴 워크트리는 `node_modules` · Prisma Client 가 main 보다 뒤처진다.** 브랜치만 새로 따서 `npm run verify` 를 돌리자
+`staffAsset`·`cardProposal` 이 없다(TS2339), 그다음 `unpdf` 모듈이 없다(TS2307). 격리 e2e 시드도 `reading 'count'` 로 죽었다.
+→ 워크트리에서 main 을 새로 받으면 `npm ci` 부터. (`prisma generate` 만으로는 새 의존성이 안 들어온다)
+
+**3. 대화상자(grid) 안에서는 `min-w-0` 이 없으면 내용이 창을 민다.** 390px 에서 창 폭 390 인데 내용 564px — 탭 줄이 `flex-wrap` 인데도
+줄바꿈하지 않았고 긴 커맨드의 `overflow-x-auto` 도 먹지 않았다. grid 자식의 최소 폭이 내용 폭이기 때문이다.
+→ 대화상자 안에서 줄바꿈 · 가로 스크롤을 기대하는 묶음에 `min-w-0`. ([narrow-viewport-traps.md](narrow-viewport-traps.md) 의 같은 계열)
+
+**4. shadcn 탭 버튼의 `h-[calc(100%-1px)]` 는 줄바꿈과 맞지 않는다.** 줄이 바뀌자 목록은 한 줄 높이(67.75px)인데 탭마다 그 높이(60.75px)로
+늘어나 둘째 줄이 본문을 덮었다. 가로 넘침 측정은 통과해서 **스크린샷을 봐야** 보였다.
+→ 줄바꿈하는 탭 목록에서는 탭에 `h-auto`. 넘침 수치만 믿지 말고 좁은 폭 스크린샷을 본다.
+
+**5. 온보딩 좌우 탭 영역이 장면 안 버튼의 클릭을 가로챘다.** `.intro-story-navigation` 이 `inset: 0` 으로 장면 위에 깔려,
+「지금 연결하기」 가 그려지는데 눌리지 않았다(Playwright `click` 이 요소를 찾고도 30초 대기).
+→ 장면(`.intro-fit`)을 위로 올리고 `pointer-events: none`, 누를 요소만 `auto`. 장면에 버튼을 넣으면 **실제로 눌러 보는** 점검을 넣는다.
+
+**6. `TourSurface` 는 포커스와 키를 가둔다.** 안내 위에 다른 대화상자를 띄우면 입력칸으로 포커스가 가지 않고 Escape 가 안내를 끝낸다.
+→ `suspended` 로 가두기를 풀고 숨긴 채 장면 상태를 유지한다. 시계는 `useTourClock` 의 `ready=false` 로 멈춘다.
+
+**7. `.map((x) => ( … ))` 괄호 안 맨 앞에 JSX 주석을 넣으면 문법 오류다.** 괄호 안이 식 두 개가 되어 dev 서버가
+`Expected '</', got 'ident'` 로 모든 화면에 500 을 줬다. → 주석은 `map` 바깥에.
+
+**8. `innerText` 로 잡은 글을 `toHaveText` 로 비교하면 줄바꿈 때문에 끝내 안 맞는다.** 「지금 연결하기\n9초」 를 기다리는 10초 동안
+실제 시간이 흘러 장면이 넘어가 「element not found」 로 끝났다. `page.clock.install()` 만으로는 실제 시간도 흐른다.
+→ 시간에 따라 바뀌는 글은 숫자를 꺼내 범위로 비교한다.
 
 ---
 
