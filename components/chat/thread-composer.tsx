@@ -21,6 +21,8 @@ interface ThreadComposerProps extends Partial<ThreadRefs> {
   roomId?: string
   /** 메시지 작성 후 호출. 없으면 router.refresh()만 호출 */
   onSent?: () => void
+  /** 보내기 누른 즉시 글을 알린다(목록에 「보내는 중」 줄). 실패하면 null */
+  onPending?: (content: string | null) => void
 }
 
 class SessionExpired extends Error {}
@@ -37,6 +39,7 @@ export function ThreadComposer({
   taskId,
   roomId = "default-room",
   onSent,
+  onPending,
   tasks = [],
   users = [],
   files = [],
@@ -46,6 +49,7 @@ export function ThreadComposer({
 
   async function send(content: string, attached?: File[]) {
     setSending(true)
+    onPending?.(content)
     try {
       // NAS 에 먼저 올리고 받은 id 를 메시지에 붙인다 — 채팅 패널과 같은 순서
       const fileIds: string[] = []
@@ -74,6 +78,7 @@ export function ThreadComposer({
       onSent?.()
       router.refresh()
     } catch (e) {
+      onPending?.(null)
       if (e instanceof SessionExpired) {
         toast.error("세션이 만료되었습니다. 다시 로그인해주세요.", {
           action: { label: "로그인", onClick: () => { window.location.href = apiUrl("/login") } },

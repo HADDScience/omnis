@@ -1,6 +1,6 @@
 "use client"
 
-import { useLayoutEffect, useRef } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -36,6 +36,8 @@ interface Message {
   createdAt: string
   isTaskInstruction: boolean
   _isSystem?: boolean
+  /** 보내는 중 말풍선을 서버 응답으로 바꾼 것 — 이미 한 번 떠올랐으니 다시 움직이지 않는다 */
+  _settled?: boolean
   author: { id: string; name: string }
   task?: {
     id: string
@@ -49,6 +51,9 @@ interface Message {
   } | null
   files?: FileInfo[]
 }
+
+/** 새 메시지가 아래에서 살짝 떠오른다. 움직임 줄이기 설정이면 멈춘다 */
+export const MESSAGE_ENTER = "animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ease-out motion-reduce:animate-none"
 
 interface TaskRef {
   id: string
@@ -85,6 +90,8 @@ export function MessageList({
   loadingOlder = false,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 이 시각 뒤에 생긴 메시지만 떠오르게 한다 — 처음 불러온 목록 · 이전 메시지는 가만히 둔다
+  const [mountedAt] = useState(() => Date.now())
   const prevFirstIdRef = useRef<string | null>(null)
   const anchorRef = useRef<{ height: number; top: number } | null>(null)
 
@@ -104,6 +111,9 @@ export function MessageList({
       el.scrollTop =
         el.scrollHeight - anchorRef.current.height + anchorRef.current.top
       anchorRef.current = null
+    } else if (prevFirstId != null) {
+      // 새 메시지 — 부드럽게 따라 내려간다
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
     } else {
       el.scrollTop = el.scrollHeight
     }
@@ -188,12 +198,14 @@ export function MessageList({
           }
 
           const mine = isMe && !selectionMode
+          const pending = msg.id.startsWith("temp-")
+          const fresh = !msg._settled && new Date(msg.createdAt).getTime() > mountedAt
           return (
             <div
               key={msg.id}
               className={`group/msg flex gap-2.5 ${mine ? "flex-row-reverse" : ""} ${
                 row.groupStart ? "mt-3" : "mt-0.5"
-              } ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "rounded-lg bg-primary/5 ring-1 ring-primary/20 p-1" : ""}`}
+              } ${fresh ? MESSAGE_ENTER : ""} ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "rounded-lg bg-primary/5 ring-1 ring-primary/20 p-1" : ""}`}
               onClick={selectionMode ? () => onToggleSelect?.(msg.id) : undefined}
             >
               {selectionMode && (
@@ -218,7 +230,7 @@ export function MessageList({
                     mine ? "bg-primary text-primary-foreground" : "bg-muted"
                   } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md" : ""} ${
                     msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
-                  }`}
+                  } ${pending ? "opacity-70" : ""} transition-opacity duration-300`}
                 >
                   <p className="whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">
                     <MessageContent content={tidyBody(msg.content)} tasks={tasks} isMe={mine} />
@@ -227,7 +239,15 @@ export function MessageList({
                 </div>
                 {(row.groupEnd || (msg.task && msg.nextTaskId !== msg.task.id)) && (
                   <div className="flex items-center gap-2 px-0.5">
-                    {row.groupEnd && <MessageTime iso={msg.createdAt} className="text-[10.5px]" />}
+                    {row.groupEnd &&
+                      (pending ? (
+                        <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground" aria-live="polite">
+                          <Spinner className="h-2.5 w-2.5" />
+                          보내는 중…
+                        </span>
+                      ) : (
+                        <MessageTime iso={msg.createdAt} className="text-[10.5px]" />
+                      ))}
                     {msg.task && (row.groupEnd || msg.nextTaskId !== msg.task.id) && (
                       <Link href={`/tasks/${msg.task.id}`} onClick={(e) => e.stopPropagation()} title={msg.task.name}>
                         <Badge variant="outline" className="max-w-[180px] cursor-pointer truncate text-[10px] transition-colors hover:bg-primary/10">
