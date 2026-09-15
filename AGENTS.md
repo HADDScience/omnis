@@ -161,8 +161,11 @@ feat/{주제} ──커밋──푸시──┐                    ┌─→ 프
 - **자동 배포에 게이트가 없다.** Vercel 은 `npm run build` 만 돌린다 — lint 와 e2e 는
   돌지 않고, `main` 은 브랜치 보호가 없어 곧장 푸시할 수 있다. 그래서 푸시 전에
   품질 게이트를 사람이 돌린다(위 "품질 게이트")
-- **마이그레이션은 배포에 딸려 오지 않는다.** `build` 는 `prisma generate && next build` 다.
-  스키마를 바꿨으면 `npm run db:deploy` 를 따로 돌린다
+- **마이그레이션은 운영 배포에 딸려 오지 않는다.** 운영(`omnis-hadd`) 빌드는 `prisma generate && next build` 다.
+  스키마를 바꿨으면 **운영 DB 에 `prisma migrate deploy`(`npm run db:deploy`) 를 먼저 적용하고, 그 다음 머지한다** —
+  새 표를 읽는 코드가 먼저 나가면 화면이 없는 표를 읽다 오류가 난다
+- **`main` 푸시는 운영과 데모를 둘 다 배포한다.** 데모 프로젝트 `omnis` 는 2026-09-14 부터 같은 main 에 연결돼 있고,
+  빌드 명령이 `prisma migrate deploy && npm run build` 라 데모 DB 에는 빌드가 마이그레이션을 적용한다
 - 커밋 메시지는 기존 스타일을 따른다: `feat(scope): 한국어 요약` / `fix(scope):` / `docs(scope):`
 - 커밋 메시지에는 **무엇을 했는지가 아니라 왜 그랬는지**를 적는다. 무엇을 했는지는 diff 가 말한다
 - 작업 단계가 바뀌면 현재 단계를 커밋한 뒤 다음 단계를 시작한다

@@ -75,7 +75,10 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 |---|---|---|
 | [tech/auth-architecture.md](tech/auth-architecture.md) | canonical | 사내 도구 인증 구조 — Omnis 가 발급자 |
 | [tech/ip-schema.md](tech/ip-schema.md) | canonical | 지식재산권 스키마와 그 안의 도메인 규칙 |
-| [tech/omnis-mcp.md](tech/omnis-mcp.md) | canonical | omnis-hadd MCP — 도구 20개 · 권한 · 화면과 같은 쓰기 경로 |
+| [tech/omnis-mcp.md](tech/omnis-mcp.md) | canonical | hadd-omnis MCP — 도구 33개 · 권한 · 화면과 같은 쓰기 경로 |
+| [tech/chat-post.md](tech/chat-post.md) | canonical | 채팅 쓰기 경로 — 저장과 AI 재구성 분리 · `task.rebuild.finished` · superseded · 참조만 규칙 |
+| [tech/request-budget.md](tech/request-budget.md) | canonical | Vercel 요청 한도 · 폴링 규칙(`useVisibleInterval`) · MCP 스트림 GET 405 · 조사하는 법 |
+| [tech/company-context.md](tech/company-context.md) | canonical | 회사 Context — 모델 · 확정/잠정/계획 · 세금계산서 올리기 · 회사 도구 · 서명·직인 보관 · 이식 |
 | [troubleshootings/supabase-limits.md](troubleshootings/supabase-limits.md) | canonical | Supabase 에서 무엇이 막혔고 어떻게 풀었나 |
 | [troubleshootings/migration-traps.md](troubleshootings/migration-traps.md) | reference | 이 작업에서 실제로 밟은 함정들 |
 | [troubleshootings/client-error-visibility.md](troubleshootings/client-error-visibility.md) | canonical | 화면이 흰 채로 죽는데 아무도 모르던 문제와 그 배관 |
