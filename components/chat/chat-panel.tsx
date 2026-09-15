@@ -5,6 +5,7 @@ import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
 import { apiUrl } from "@/lib/base-path"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 
 interface Message {
   id: string
@@ -112,10 +113,8 @@ export function ChatPanel({
     }
   }, [loadingOlder, hasMoreOlder, messages, roomId, filterTaskId])
 
-  useEffect(() => {
-    const id = setInterval(fetchMessages, 3000)
-    return () => clearInterval(id)
-  }, [fetchMessages])
+  // 안 보이는 탭은 멈추고, 돌아오면 바로 한 번 읽는다 — 켜 둔 탭의 폴링이 요청 한도를 채웠다(2026-09-15)
+  useVisibleInterval(fetchMessages, 3000)
 
   useEffect(() => {
     lastFetchedAt.current = ""

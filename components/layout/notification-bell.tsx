@@ -19,6 +19,10 @@ import {
 } from "@/lib/schemas/notification"
 
 import { apiUrl } from "@/lib/base-path"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
+
+const NOTIFICATION_POLL_MS = 15_000
+
 interface Notification {
   id: string
   type: string
@@ -64,9 +68,10 @@ export function NotificationBell() {
 
   useEffect(() => {
     fetchNotifications()
-    const id = setInterval(fetchNotifications, 2500)
-    return () => clearInterval(id)
   }, [fetchNotifications])
+  // 2.5초 → 15초, 안 보이는 탭은 멈춘다. 알림 폴링이 운영 요청의 33% 였다(2026-09-15).
+  // 벨을 열 때는 아래 onOpenChange 에서 바로 다시 읽는다.
+  useVisibleInterval(fetchNotifications, NOTIFICATION_POLL_MS)
 
   const [responding, setResponding] = useState<string | null>(null)
 
@@ -138,7 +143,14 @@ export function NotificationBell() {
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        // 폴링이 15초라 여는 순간 바로 다시 읽는다
+        if (next) void fetchNotifications()
+      }}
+    >
       <PopoverTrigger
         render={
           <Button variant="ghost" size="icon" className="touch-target relative h-8 w-8" aria-label="알림" />
