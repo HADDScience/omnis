@@ -113,6 +113,14 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [products, setProducts] = useState<ProductOption[]>([])
   const [aiLoading, setAiLoading] = useState(false)
+  // 이번에 연 명령의 옵션 · @멘션 초기값이 폼에 들어갔는지. 모달을 다시 열면 직전 목록 · 값이 잠깐 남아 있어
+  // 그 사이 누른 담당자 칩이 곧이어 들어온 초기값에 되돌려졌다(2026-09-15 시나리오 녹화에서 재현).
+  const [readyCommand, setReadyCommand] = useState<string | null>(null)
+  const optionsReady = open && readyCommand === rawCommand
+  const close = useCallback(() => {
+    setReadyCommand(null)
+    onClose()
+  }, [onClose])
   const [revisePrompt, setRevisePrompt] = useState("")
   const [revising, setRevising] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -219,6 +227,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
         if (projectByName) preFilled.push("projectId")
         if (parsed?.deadline) preFilled.push("deadline")
         flashGlow(preFilled)
+        setReadyCommand(rawCommand)
       })
       .catch(() => {
         toast.error("옵션 로딩 실패")
@@ -226,7 +235,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
     return () => {
       cancelled = true
     }
-  }, [open, parsed, reset, flashGlow])
+  }, [open, parsed, reset, flashGlow, rawCommand])
 
   // 담당자가 비어 있으면 모달의 첫 포커스를 담당자에 둔다.
   // 안내 문구도 필수 표시도 아니고, 커서가 이미 그 자리에 있는 것뿐이다.
@@ -449,7 +458,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
       } else {
         toast.success("업무 생성 완료")
       }
-      onClose()
+      close()
       router.refresh()
     } catch {
       toast.error("업무 생성 실패")
@@ -479,7 +488,7 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
   const selectedProject = projects.find((p) => p.id === projectId)
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="grid max-h-[min(85vh,720px)] w-full max-w-[min(640px,calc(var(--app-vw)-2rem))] grid-rows-[auto_1fr_auto] gap-0 p-0 sm:max-w-[640px]">
         <DialogHeader className="border-b px-5 py-3.5">
           <DialogTitle className="flex items-center gap-2 text-[14px] font-semibold">
@@ -528,7 +537,12 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
                   errors.ownerIds ? "border-destructive" : "border-input"
                 } ${glowFields.has("ownerIds") ? "ai-fill-glow" : ""}`}
               >
-                {users.map((u) => {
+                {!optionsReady ? (
+                  // 초기값이 들어오기 전에는 누를 수 있는 칩을 두지 않는다 — 누른 값이 되돌려지지 않게
+                  [0, 1, 2, 3].map((i) => (
+                    <span key={i} aria-hidden className="h-11 w-24 animate-pulse rounded-full border border-input bg-muted/60" />
+                  ))
+                ) : users.map((u) => {
                   const on = ownerIds.includes(u.id)
                   return (
                     <button
@@ -889,14 +903,14 @@ export function TaskCmdModalV2({ open, rawCommand, onClose }: TaskCmdModalV2Prop
             variant="outline"
             size="sm"
             onClick={runAi}
-            disabled={aiLoading}
+            disabled={aiLoading || !optionsReady}
             className="gap-1.5 ai-rainbow-border"
           >
             {aiLoading ? <Spinner className="h-3 w-3" /> : <HugeiconsIcon icon={AiMagicIcon} size={12} />}
             AI 자동완성
           </Button>
           <div className="flex-1" />
-          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          <Button type="button" variant="ghost" size="sm" onClick={close}>
             취소
           </Button>
           <Button

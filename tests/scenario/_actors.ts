@@ -32,7 +32,13 @@ export interface Actor {
 }
 
 export async function createActor(browser: Browser, name: string, password: string): Promise<Actor> {
-  const context = await browser.newContext()
+  // E2E_RECORD_DIR 가 있으면 사람마다 화면을 녹화한다 — 컨텍스트를 직접 만들어 설정의 video 가 닿지 않는다
+  const recordDir = process.env.E2E_RECORD_DIR
+  const context = await browser.newContext(
+    recordDir
+      ? { viewport: { width: 1280, height: 800 }, recordVideo: { dir: path.join(recordDir, name), size: { width: 1280, height: 800 } } }
+      : undefined,
+  )
   const page = await context.newPage()
   await page.goto("/login")
   await page.getByRole("textbox", { name: "이름" }).fill(name)
@@ -259,7 +265,11 @@ export async function replyInThread(page: Page, task: TaskRef, text: string) {
   await page.keyboard.press("ControlOrMeta+Enter")
   await expect(box).toHaveValue("", { timeout: 30_000 })
   await expect(page.locator("aside").getByText(text, { exact: false }).first()).toBeVisible({ timeout: 20_000 })
-  await expect(page.locator("aside").getByText("옴니스가 업무를 갱신하고 있어요")).toHaveCount(0, { timeout: 120_000 })
+  // 갱신 중 줄은 응답 뒤에 뜬다. 뜨기 전에 「없음」 을 확인하면 AI 가 끝나기 전에 다음 글을 보낸다(2026-09-15 녹화).
+  // 뜨는 것을 먼저 본다 — 재구성이 폴링 간격보다 빨리 끝나면 못 볼 수 있으니 그때는 넘어간다.
+  const updating = page.locator("aside").getByText("옴니스가 업무를 갱신하고 있어요")
+  await updating.first().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {})
+  await expect(updating).toHaveCount(0, { timeout: 120_000 })
 }
 
 /** 업무 상세 상단의 상태 셀렉트가 `label` 이 될 때까지 (새로고침하며) 기다린다. */
