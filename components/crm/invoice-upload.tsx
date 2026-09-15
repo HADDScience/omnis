@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { apiUrl } from "@/lib/base-path"
+import { DEMO_STORAGE_MESSAGE, IS_DEMO } from "@/lib/demo"
 
 const MAX_BYTES = 4 * 1024 * 1024
 const fmt = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `${n.toLocaleString("ko-KR")}원`)
@@ -118,6 +119,16 @@ export function InvoiceUpload() {
   const plan = preview?.plan
   const vision = inv?.readBy === "vision"
   const canSave = !!preview && preview.blockers.length === 0 && (!vision || visionChecked)
+
+  if (IS_DEMO) {
+    return (
+      <section aria-label="세금계산서 올리기" className="mb-6">
+        <p className="touch-target flex items-center gap-2 rounded-xl border border-dashed bg-card px-4 py-3.5 text-[13px] text-muted-foreground">
+          {DEMO_STORAGE_MESSAGE}
+        </p>
+      </section>
+    )
+  }
 
   return (
     <section aria-label="세금계산서 올리기" className="mb-6">

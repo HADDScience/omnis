@@ -3,6 +3,7 @@ import { Readable } from "node:stream"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { getObject } from "@/lib/storage"
+import { demoStorageBlocked } from "@/lib/demo"
 
 export const runtime = "nodejs"
 
@@ -16,6 +17,8 @@ const MIME: Record<string, string> = { pdf: "application/pdf", png: "image/png",
 export async function GET(_req: Request, { params }: Props) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "인증 필요" }, { status: 401 })
+  const blocked = demoStorageBlocked()
+  if (blocked) return blocked
 
   const { invoiceId } = await params
   const inv = await prisma.taxInvoice.findUnique({ where: { id: invoiceId }, select: { objectKey: true, fileName: true } })

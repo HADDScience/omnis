@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { apiUrl } from "@/lib/base-path"
+import { IS_DEMO } from "@/lib/demo"
 
 const MAX_BYTES = 4 * 1024 * 1024
 
@@ -28,6 +29,9 @@ export function StaffAssetUpload({
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const label = kind === "SEAL" ? "직인" : "서명"
+
+  // 데모에는 NAS가 없어 올리기 버튼 자체를 두지 않는다.
+  if (IS_DEMO) return null
 
   async function upload(file: File) {
     if (file.size > MAX_BYTES) {

@@ -9,6 +9,7 @@ import {
   sniffImage,
   staffAssetKey,
 } from "@/lib/staff-assets"
+import { demoStorageBlocked } from "@/lib/demo"
 
 export const runtime = "nodejs"
 
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest, { params }: Props) {
   if ((session.user as { role?: string }).role !== "ADMIN") {
     return NextResponse.json({ error: "관리자만 서명·직인을 바꿀 수 있습니다" }, { status: 403 })
   }
+  const blocked = demoStorageBlocked()
+  if (blocked) return blocked
 
   const { staffId } = await params
   const staff = await prisma.staffProfile.findUnique({ where: { id: staffId }, select: { id: true, name: true, employment: true } })

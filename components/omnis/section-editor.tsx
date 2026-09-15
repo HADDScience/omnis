@@ -37,6 +37,7 @@ import type {
 } from "@/lib/omnis-types"
 import { KEYVALUE_TYPE_LABELS } from "@/lib/omnis-types"
 import { apiUrl } from "@/lib/base-path"
+import { IS_DEMO } from "@/lib/demo"
 
 // ─── 파일 정보 타입 ──────────────────────────────────────
 interface FileInfo {
@@ -734,12 +735,13 @@ function FilesEditor({
   return (
     <div
       className={`flex flex-col gap-2 rounded-md p-2 transition-colors ${dragging ? "ring-2 ring-primary bg-primary/5" : ""}`}
-      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragging(true) }}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!IS_DEMO) setDragging(true) }}
       onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragging(false) }}
       onDrop={(e) => {
         e.preventDefault()
         e.stopPropagation()
         setDragging(false)
+        if (IS_DEMO) return
         const dropped = Array.from(e.dataTransfer.files)
         if (dropped.length > 0) uploadFiles(dropped)
       }}
@@ -765,20 +767,22 @@ function FilesEditor({
           ))}
         </ul>
       )}
-      <div className="flex items-center gap-2">
-        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleInputChange} disabled={uploading} />
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-xs w-fit"
-          disabled={uploading}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <HugeiconsIcon icon={Attachment01Icon} size={12} className="mr-1" />
-          {uploading ? "업로드 중..." : "파일 첨부"}
-        </Button>
-        <span className="text-[10px] text-muted-foreground">또는 여기에 파일을 드래그하세요</span>
-      </div>
+      {!IS_DEMO && (
+        <div className="flex items-center gap-2">
+          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleInputChange} disabled={uploading} />
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs w-fit"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <HugeiconsIcon icon={Attachment01Icon} size={12} className="mr-1" />
+            {uploading ? "업로드 중..." : "파일 첨부"}
+          </Button>
+          <span className="text-[10px] text-muted-foreground">또는 여기에 파일을 드래그하세요</span>
+        </div>
+      )}
     </div>
   )
 }

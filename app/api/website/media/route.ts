@@ -4,6 +4,7 @@ import { PostIdSchema } from "@/lib/schemas/website"
 import { MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { requireWebsiteUser, websiteJson, websiteOptions } from "@/lib/website-auth"
 import { extensionFor, storeMedia } from "@/lib/website-media"
+import { DEMO_STORAGE_MESSAGE, IS_DEMO } from "@/lib/demo"
 
 /**
  * 사진 업로드. 본문이 곧 바이트다(multipart 아님 — 관리 화면이 이미 webp 로 줄여 보낸다).
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
   const origin = req.headers.get("origin")
   const authed = await requireWebsiteUser(req)
   if ("error" in authed) return authed.error
+  if (IS_DEMO) return websiteJson({ error: DEMO_STORAGE_MESSAGE }, 403, origin)
 
   const postId = req.headers.get("x-post-id") ?? ""
   if (!PostIdSchema.safeParse(postId).success) return websiteJson({ error: "bad_post_id" }, 400, origin)

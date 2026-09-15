@@ -202,7 +202,7 @@ npm run dev
 | `npm run format` | Prettier 포매팅 |
 | `npm run db:studio` | Prisma Studio (DB GUI) |
 | `npm run db:seed` | 시드 데이터 재적용 |
-| `npm run db:seed:demo` | 공모전 데모용 익명 시드 데이터 재적용 |
+| `npm run db:seed:demo` | 데모용 익명 시드 재적용 — **모든 테이블을 비운다**. 로컬 DB 가 아니면 `DEMO_SEED_ALLOW=1` 이 있어야 돈다 |
 | `npm run docker:up` / `down` | PostgreSQL 컨테이너 기동·정지 |
 
 ---

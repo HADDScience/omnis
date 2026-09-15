@@ -1,8 +1,14 @@
 import { startOfDay } from "date-fns"
 import { prisma } from "@/lib/db"
 
-export const DAILY_GEMINI_CALL_LIMIT = 500
-export const DAILY_GEMINI_TOKEN_LIMIT = 1_000_000
+// 공개 데모(omnis-omega)는 비밀번호가 README 에 공개돼 있어 env 로 한도를 낮춘다. 없으면 기본값.
+const envLimit = (name: string, fallback: number) => {
+  const n = Number(process.env[name])
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
+export const DAILY_GEMINI_CALL_LIMIT = envLimit("GEMINI_DAILY_CALL_LIMIT", 500)
+export const DAILY_GEMINI_TOKEN_LIMIT = envLimit("GEMINI_DAILY_TOKEN_LIMIT", 1_000_000)
 
 export interface GeminiUsageSnapshot {
   calls: number

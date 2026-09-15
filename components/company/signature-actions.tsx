@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { apiUrl } from "@/lib/base-path"
+import { IS_DEMO } from "@/lib/demo"
 
 /**
  * 서명 · 직인 복사 / 파일로 받기. 과제 대리 작성 때 한글 문서에 붙여 넣는 용도다.
@@ -23,6 +24,9 @@ export function SignatureActions({
 }) {
   const label = kind === "SEAL" ? "직인" : "서명"
   const [busy, setBusy] = useState<null | "copy" | "download">(null)
+
+  // 데모에는 NAS가 없어 서명·직인을 꺼낼 수 없다.
+  if (IS_DEMO) return null
 
   async function fetchImage(purpose: "copy" | "download"): Promise<Blob> {
     const res = await fetch(apiUrl(`/api/company/staff-assets/${assetId}?purpose=${purpose}`), { cache: "no-store" })

@@ -12,23 +12,32 @@ import { hashSync } from "bcryptjs"
 const prisma = new PrismaClient()
 const DEMO_PASSWORD = "demo1234"
 
+/**
+ * 모든 테이블을 비우므로 운영 DB 에 돌면 안 된다. 로컬(localhost)이 아니면 DEMO_SEED_ALLOW=1 을 요구하고,
+ * 서명·직인 행이 하나라도 있으면(운영에만 있다) 멈춘다.
+ */
+async function assertDemoDatabase() {
+  const url = new URL(process.env.DATABASE_URL ?? "")
+  const local = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname)
+  if (!local && process.env.DEMO_SEED_ALLOW !== "1") {
+    throw new Error(`로컬이 아닌 DB(${url.hostname}) — 데모 DB 가 맞으면 DEMO_SEED_ALLOW=1 을 붙여 다시 실행`)
+  }
+  const assets = await prisma.staffAsset.count().catch(() => 0)
+  if (assets > 0) throw new Error(`서명·직인 ${assets}장이 있는 DB — 운영 DB 로 보여 멈춘다`)
+}
+
 async function main() {
-  // ─── 0. 기존 데이터 정리 (FK 의존 순서) ────────────────────────
-  await prisma.notification.deleteMany()
-  await prisma.checklist.deleteMany()
-  await prisma.task.deleteMany()
-  await prisma.chatMessage.deleteMany()
-  await prisma.weeklyReport.deleteMany()
-  await prisma.omnisCard.deleteMany()
-  await prisma.omnisCategory.deleteMany()
-  await prisma.project.deleteMany()
-  // Product는 모델명 확인 필요 — 직접 SQL 없이 시도
-  try {
-    // @ts-ignore - 동적
-    await (prisma as any).product?.deleteMany?.()
-  } catch (_) {}
-  await prisma.chatRoom.deleteMany()
-  await prisma.user.deleteMany()
+  await assertDemoDatabase()
+
+  // ─── 0. 기존 데이터 정리 — 마이그레이션 기록만 남기고 전부 비운다 ──────
+  // 방문자가 만든 행(질의·북마크·활동 기록 등)이 FK 로 사용자를 잡고 있어 모델별 deleteMany 로는 순서가 끝이 없다.
+  const tables = await prisma.$queryRaw<{ tablename: string }[]>`
+    select tablename from pg_tables where schemaname = 'public' and tablename <> '_prisma_migrations'`
+  if (tables.length > 0) {
+    await prisma.$executeRawUnsafe(
+      `TRUNCATE ${tables.map((t) => `"public"."${t.tablename.replace(/"/g, '""')}"`).join(", ")} RESTART IDENTITY CASCADE`,
+    )
+  }
 
   // ─── 1. 사용자 — 시연용 익명 5인 ────────────────────────────
   const users = [
@@ -66,21 +75,13 @@ async function main() {
     { name: "제품 C", color: "#8B5CF6", sortOrder: 2 },
     { name: "공통 R&D", color: "#EC4899", sortOrder: 3 },
   ]
+  const productByName: Record<string, string> = {}
   for (const p of products) {
-    try {
-      // @ts-ignore - product 모델
-      await (prisma as any).product?.create?.({ data: p })
-    } catch (_) {}
+    productByName[p.name] = (await prisma.product.create({ data: p })).id
   }
 
   // ─── 5. 프로젝트 ───────────────────────────────────────────────
   // 운영 프로젝트(공통) + 지원사업 3건(제품별) — 캔버스에서 product↔project↔task 의 다중 갈래를 검증
-  const productByName: Record<string, string> = {}
-  try {
-    // @ts-ignore
-    const all = await (prisma as any).product?.findMany?.()
-    for (const p of all ?? []) productByName[p.name] = p.id
-  } catch (_) {}
 
   const projectDefs = [
     { name: "전사 자원 관리 시스템 구축", productName: null as string | null },
@@ -712,9 +713,209 @@ async function main() {
     })
   }
 
+  const context = await seedCompanyContext(projectByName["지원사업 — 바이오 소재 실증연구"].id)
+  const crm = await seedCrm(teamLead.id)
+
   console.log(
-    `✓ 익명 데모 시드 완료 — 사용자 ${users.length}, 카테고리 ${categories.length}, 프로젝트 ${projectDefs.length}, 업무 ${tasks.length}, Omnis 카드 ${cards.length}`,
+    `✓ 익명 데모 시드 완료 — 사용자 ${users.length}, 카테고리 ${categories.length}, 프로젝트 ${projectDefs.length}, 업무 ${tasks.length}, Omnis 카드 ${cards.length}, ${context}, ${crm}`,
   )
+}
+
+// ─── 8. 회사 Context (HADD DB → 회사·기록·시장·인력) — 가상 수치 ──────────
+// 사업자번호·승인번호는 형식만 맞춘 가짜다. 서명·직인(StaffAsset)은 NAS 파일이 필요해 넣지 않는다.
+const won = (n: number) => BigInt(n)
+const day = (s: string) => new Date(`${s}T00:00:00Z`)
+
+async function seedCompanyContext(grantProjectId: string) {
+  await prisma.companyProfile.create({
+    data: {
+      id: "hadd",
+      nameKo: "데모바이오 (익명)",
+      nameEn: "Demo Bio",
+      bizRegNo: "000-00-00000",
+      bizType: "개인과세사업자",
+      industry: "연구개발업 · 바이오 소재",
+      industryCode: "70113",
+      foundedOn: day("2024-11-01"),
+      homepage: "https://example.com",
+      hqAddress: "경기도 수원시 영통구 (데모 주소)",
+      labAddress: "경기도 수원시 영통구 연구동 (데모 주소)",
+      asOfDate: day("2026-09-01"),
+    },
+  })
+
+  const years = [
+    { year: 2024, basis: "CONFIRMED" as const, revenueKrw: won(38_200_000), revenueProductKrw: won(38_200_000), revenueServiceKrw: won(0), costOfSalesKrw: won(0), netIncomeKrw: won(-45_100_000), headcount: 2, accountLabel: "상품매출" },
+    { year: 2025, basis: "CONFIRMED" as const, revenueKrw: won(746_100_000), revenueProductKrw: won(210_000_000), revenueServiceKrw: won(536_100_000), costOfSalesKrw: won(0), netIncomeKrw: won(-7_800_000), headcount: 4, accountLabel: "서비스수입" },
+    { year: 2026, basis: "PLANNED" as const, revenueKrw: won(1_200_000_000), headcount: 7, note: "사업계획서 기준 목표" },
+  ]
+  for (const y of years) await prisma.companyYear.create({ data: y })
+
+  const records = [
+    { kind: "GRANT" as const, title: "바이오 소재 실증연구 지원사업", subject: "3D 오가노이드 키트 실증", organizer: "경기도 (데모 기관)", periodRaw: "2026.04 ~ 2026.12", startsOn: day("2026-04-01"), endsOn: day("2026-12-31"), fundingKrw: won(150_000_000), ownCashKrw: won(10_000_000), ownInKindKrw: won(20_000_000), role: "주관", status: "수행 중", grantNo: "DEMO-2026-001", source: "지원사업", projectId: grantProjectId },
+    { kind: "GRANT" as const, title: "공급망 안정화 R&D", subject: "원료 국산화", organizer: "중소벤처기업부 (데모)", periodRaw: "2025.06 ~ 2026.05", startsOn: day("2025-06-01"), endsOn: day("2026-05-31"), fundingKrw: won(80_000_000), role: "참여", status: "종료", grantNo: "DEMO-2025-014", source: "지원사업" },
+    { kind: "GRANT" as const, title: "초기창업 사업화 지원", organizer: "창업진흥원 (데모)", periodRaw: "2026", status: "계획", source: "노션" },
+    { kind: "AWARD" as const, title: "업무 적용 우수사례 공모전", organizer: "경기도경제과학진흥원", prize: "최우수상", startsOn: day("2026-05-12"), status: "수상", source: "수상" },
+    { kind: "EXHIBITION" as const, title: "BIO KOREA 2026", venue: "코엑스", startsOn: day("2026-06-04"), endsOn: day("2026-06-06"), status: "참가", source: "학회" },
+    { kind: "EXHIBITION" as const, title: "한국조직공학재생의학회 추계학술대회", venue: "제주 ICC", startsOn: day("2026-10-22"), status: "예정", source: "학회" },
+    { kind: "FORUM" as const, title: "바이오 스타트업 네트워킹 포럼", organizer: "경기바이오센터 (데모)", startsOn: day("2026-03-18"), source: "연혁" },
+    { kind: "EDUCATION" as const, title: "AI 활용 노코드 데이터 분석 과정", organizer: "GBSA 아카데미", startsOn: day("2026-04-08"), status: "수료", source: "연혁" },
+    { kind: "MILESTONE" as const, title: "기업부설연구소 설립", startsOn: day("2025-07-08"), category: "인증", source: "연혁" },
+    { kind: "MILESTONE" as const, title: "벤처기업 확인", startsOn: day("2025-09-14"), category: "인증", source: "연혁" },
+  ]
+  for (const [i, r] of records.entries()) {
+    await prisma.companyRecord.create({ data: { dedupeKey: `demo-${i + 1}`, ...r } })
+  }
+
+  const market = [
+    { name: "오가노이드랩 (가상)", country: "대한민국", segment: "오가노이드", products: "간 오가노이드 키트", industry: "바이오", foundedRaw: "2019", headcountRaw: "35명", animalAlternative: true },
+    { name: "셀매트릭스 (가상)", country: "대한민국", segment: "생체소재", products: "ECM 코팅 플레이트", industry: "바이오 소재", foundedRaw: "2016", revenueRaw: "약 40억", animalAlternative: true },
+    { name: "Organo Systems (fictional)", country: "미국", segment: "오가노이드", products: "Organoid-on-chip", industry: "Biotech", foundedRaw: "2014", animalAlternative: true },
+    { name: "RamanScope (fictional)", country: "독일", segment: "분석 장비", products: "라만 분광 분석 SW", industry: "Analytical", foundedRaw: "2011", animalAlternative: false },
+    { name: "바이오칩스 (가상)", country: "대한민국", segment: "장기칩", products: "폐 장기칩", industry: "바이오", foundedRaw: "2021", headcountRaw: "12명", animalAlternative: true },
+  ]
+  for (const m of market) await prisma.marketCompany.create({ data: { ...m, source: "demo" } })
+
+  // 인력 — 데모 계정 5인과 연결. 연락처·생년월일은 넣지 않는다
+  const staff = [
+    { name: "팀장", position: "대표", haddRole: "CEO", duties: "경영 총괄 · 과제 수주", joinedOn: "2024-11-01", insured: true },
+    { name: "부팀장", position: "이사", haddRole: "COO", duties: "인허가 · 회계", joinedOn: "2025-02-03", insured: true },
+    { name: "사원1", position: "연구원", haddRole: "AI개발", duties: "시스템 운영 · 문서화", joinedOn: "2025-05-06", insured: true },
+    { name: "사원2", position: "연구원", haddRole: "연구", duties: "실험 · 시제품", joinedOn: "2025-09-01", insured: true },
+    { name: "사원3", position: "주임", haddRole: "행정", duties: "행정 · 외부 커뮤니케이션", joinedOn: "2026-02-02", insured: false },
+  ]
+  for (const s of staff) {
+    const user = await prisma.user.findUniqueOrThrow({ where: { name: s.name } })
+    await prisma.staffProfile.create({
+      data: { ...s, joinedOn: day(s.joinedOn), affiliation: "데모바이오", userId: user.id },
+    })
+  }
+  await prisma.staffProfile.create({
+    data: { name: "전직원A", affiliation: "데모바이오", position: "연구원", employment: "FORMER" },
+  })
+
+  return `회사기록 ${records.length}, 연도 ${years.length}, 시장 ${market.length}, 인력 ${staff.length + 1}`
+}
+
+// ─── 9. CRM · 세금계산서 — 가상 거래처 ─────────────────────────────
+// 세금계산서 PDF 는 NAS 에 없다 — 데모에서는 파일 열기를 막는다(lib/demo).
+async function seedCrm(uploadedById: string) {
+  const orgs = [
+    { code: "ORG001", name: "가나대학교 산학협력단", type: "UNIVERSITY" as const, bizRegNo: "100-82-00001" },
+    { code: "ORG002", name: "다라생명연구원", type: "RESEARCH" as const, bizRegNo: "100-82-00002" },
+    { code: "ORG003", name: "(주)마바제약", type: "COMPANY" as const, bizRegNo: "100-81-00003" },
+    { code: "ORG004", name: "사아병원 임상연구소", type: "HOSPITAL" as const, bizRegNo: "100-82-00004" },
+  ]
+  const org: Record<string, string> = {}
+  for (const o of orgs) org[o.code] = (await prisma.crmOrg.create({ data: o })).id
+
+  const contacts = [
+    { code: "CT001", orgId: org.ORG001, name: "김교수", title: "교수" },
+    { code: "CT002", orgId: org.ORG002, name: "이연구원", title: "선임연구원" },
+    { code: "CT003", orgId: org.ORG003, name: "박팀장", title: "구매팀장" },
+    { code: "CT004", orgId: org.ORG004, name: "최박사", title: "책임연구원" },
+  ]
+  const contact: Record<string, string> = {}
+  for (const c of contacts) contact[c.code] = (await prisma.crmContact.create({ data: c })).id
+
+  const membership = await prisma.crmMembership.create({
+    data: { code: "HRP260001", orgId: org.ORG001, contactId: contact.CT001 },
+  })
+
+  const material = await prisma.crmProduct.create({
+    data: { code: "PRD001", name: "코팅 원료", spec: "분말", kind: "원료", isMaterial: true, stockUnit: "GRAM" },
+  })
+  const kit = await prisma.crmProduct.create({
+    data: { code: "PRD002", name: "오가노이드 키트", spec: "96well", kind: "키트", unitPrice: 450_000 },
+  })
+  const plate = await prisma.crmProduct.create({
+    data: { code: "PRD003", name: "코팅 플레이트", spec: "24well", kind: "소모품", unitPrice: 120_000 },
+  })
+
+  const quotes = [
+    { code: "HADD260812-001", quotedAt: day("2026-08-12"), orgId: org.ORG001, contactId: contact.CT001, membershipId: membership.id, discountAmount: 400_000, status: "DONE" as const, taxInvoicedAt: day("2026-08-20"), items: [{ productId: kit.id, quantity: 4, unitPrice: 450_000 }] },
+    { code: "HADD260903-001", quotedAt: day("2026-09-03"), orgId: org.ORG003, contactId: contact.CT003, status: "SENT" as const, items: [{ productId: kit.id, quantity: 10, unitPrice: 430_000 }, { productId: plate.id, quantity: 20, unitPrice: 120_000 }] },
+    { code: "HADD260910-001", quotedAt: day("2026-09-10"), orgId: org.ORG002, contactId: contact.CT002, status: "DRAFT" as const, items: [{ productId: plate.id, quantity: 5, unitPrice: 120_000 }] },
+  ]
+  const quote: Record<string, string> = {}
+  for (const { items, ...q } of quotes) {
+    quote[q.code] = (
+      await prisma.crmQuote.create({
+        data: { ...q, items: { create: items.map((it, i) => ({ ...it, sortOrder: i })) } },
+      })
+    ).id
+  }
+
+  const sample = await prisma.crmSampleRequest.create({
+    data: { code: "HADD260825-001", requestedAt: day("2026-08-25"), orgId: org.ORG004, contactId: contact.CT004, productId: plate.id, request: "코팅 플레이트 시험용 2장", referral: "학회 부스", status: "SENT", sentAt: day("2026-08-28") },
+  })
+  await prisma.crmSampleRequest.create({
+    data: { code: "HADD260911-001", requestedAt: day("2026-09-11"), orgId: org.ORG002, contactId: contact.CT002, productId: kit.id, request: "키트 1세트 평가", status: "PENDING" },
+  })
+
+  await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-01"), productId: kit.id, direction: "IN", quantity: 30, note: "초기 재고" } })
+  await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-01"), productId: plate.id, direction: "IN", quantity: 50, note: "초기 재고" } })
+  await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-01"), productId: material.id, direction: "IN", quantity: 500, note: "원료 입고 (g)" } })
+
+  const production = await prisma.crmProduction.create({
+    data: { code: "MFG260805-001", producedAt: day("2026-08-05"), productId: plate.id, quantity: 20, materialId: material.id, materialGrams: 40 },
+  })
+  await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-05"), productId: plate.id, direction: "IN", quantity: 20, productionId: production.id, note: "생산 입고" } })
+  await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-05"), productId: material.id, direction: "OUT", quantity: 40, productionId: production.id, note: "생산 투입 (g)" } })
+
+  const shipments = [
+    { code: "SH001", shippedAt: day("2026-08-21"), orgId: org.ORG001, productId: kit.id, quantity: 4, kind: "SALE" as const, status: "DELIVERED" as const, quoteId: quote["HADD260812-001"] },
+    { code: "SH002", shippedAt: day("2026-08-28"), orgId: org.ORG004, productId: plate.id, quantity: 2, kind: "SAMPLE" as const, status: "DELIVERED" as const, sampleRequestId: sample.id },
+  ]
+  for (const s of shipments) {
+    const shipment = await prisma.crmShipment.create({ data: s })
+    await prisma.crmStockMove.create({ data: { movedAt: s.shippedAt, productId: s.productId, direction: "OUT", quantity: s.quantity, shipmentId: shipment.id } })
+  }
+
+  const supplier = { supplierBizNo: "000-00-00000", supplierName: "데모바이오 (익명)" }
+  const invoices = [
+    { approvalNo: "20260820-10000000-00000001", issuedOn: day("2026-08-20"), buyer: orgs[0], orgId: org.ORG001, quoteId: quote["HADD260812-001"], items: [{ name: "오가노이드 키트", spec: "96well", quantity: 4, unitKrw: 350_000, supply: 1_400_000, category: "제품" }] },
+    { approvalNo: "20260731-10000000-00000002", issuedOn: day("2026-07-31"), buyer: orgs[2], orgId: org.ORG003, quoteId: null, items: [{ name: "세포 분석 위탁 용역", spec: null, quantity: 1, unitKrw: 12_000_000, supply: 12_000_000, category: "용역" }] },
+    { approvalNo: "20260630-10000000-00000003", issuedOn: day("2026-06-30"), buyer: orgs[1], orgId: org.ORG002, quoteId: null, items: [{ name: "코팅 플레이트", spec: "24well", quantity: 30, unitKrw: 120_000, supply: 3_600_000, category: "제품" }, { name: "배송비", spec: null, quantity: 1, unitKrw: 50_000, supply: 50_000, category: "용역" }] },
+  ]
+  for (const inv of invoices) {
+    const supply = inv.items.reduce((s, it) => s + it.supply, 0)
+    const tax = Math.round(supply / 10)
+    await prisma.taxInvoice.create({
+      data: {
+        approvalNo: inv.approvalNo,
+        direction: "SALE",
+        issuedOn: inv.issuedOn,
+        ...supplier,
+        buyerBizNo: inv.buyer.bizRegNo,
+        buyerName: inv.buyer.name,
+        supplyKrw: won(supply),
+        taxKrw: won(tax),
+        totalKrw: won(supply + tax),
+        orgId: inv.orgId,
+        quoteId: inv.quoteId,
+        objectKey: `tax-invoices/demo/${inv.approvalNo}.pdf`,
+        fileName: `세금계산서_${inv.approvalNo}.pdf`,
+        readBy: "text",
+        checks: { itemsSumMatches: true, totalMatches: true, problems: [] },
+        uploadedById,
+        items: {
+          create: inv.items.map((it, i) => ({
+            lineNo: i + 1,
+            name: it.name,
+            spec: it.spec,
+            quantity: it.quantity,
+            unitKrw: won(it.unitKrw),
+            supplyKrw: won(it.supply),
+            taxKrw: won(Math.round(it.supply / 10)),
+            category: it.category,
+          })),
+        },
+      },
+    })
+  }
+
+  return `CRM 거래처 ${orgs.length}·견적 ${quotes.length}·세금계산서 ${invoices.length}`
 }
 
 main()
