@@ -22,7 +22,7 @@ claude.ai 커넥터 목록에 보이는 이름은 서버가 아니라 **커넥�
 | 지식재산권 도구 (그대로) | `lib/ip-mcp.ts` — 설명 한 글자도 안 바꿨다 |
 | 엔드포인트 + OAuth 2.1 + `/upload` · `/download` | `app/api/ip-mcp/[[...path]]/route.ts` |
 | 승인 화면 | `app/ip-mcp/authorize/` |
-| 화면과 함께 쓰는 알맹이 | `lib/chat-post.ts` · `lib/omnis-ask.ts` · `lib/notifications.ts`(respondToAction) · `lib/task-update.ts` · `lib/checklists.ts` |
+| 화면과 함께 쓰는 알맹이 | `lib/chat-post.ts` · `lib/omnis-ask.ts` · `lib/notifications.ts`(respondToAction) · `lib/task-update.ts` · `lib/checklists.ts` · `lib/company-tools.ts` |
 | 검증 | `scripts/verify-ip-mcp.ts` (OAuth·IP 37) · `scripts/verify-omnis-mcp.ts` (옴니스 도구 76) · `scripts/verify-moved-routes.ts` (옮긴 화면 라우트 13) |
 
 ## 붙이는 법
@@ -45,7 +45,10 @@ IP 플랫폼의 「AI 도구 설치하기」(`/api/ip/mcp-token`) 에만 있고 
 Prisma 는 DB 소유자로 붙으므로 `lib/omnis-mcp.ts` 가 곧 권한 경계다.
 업무·체크리스트 수정은 화면 라우트와 같은 권한이다 — 로그인한 구성원이면 누구나. 알림 응답만 **본인 알림**으로 막힌다.
 
-## 도구 27개
+## 도구 33개
+
+`lib/omnis-mcp.ts` 의 `TOOLS = [...OMNIS_TOOLS, ...IP_TOOLS]` — 옴니스 25(업무 · 파일 · 알림 19 + 회사 Context 6) · 지식재산권 8.
+화면의 옴니스 질문(`lib/omnis-ask.ts`)도 `OMNIS_TOOLS` 에서 `ask_omnis` · `post_message` · `create_task` · `search_knowledge` 를 뺀 나머지를 같은 `runTool` 로 부른다.
 
 옴니스 19 — 읽기 12, 쓰기 7:
 
@@ -67,7 +70,26 @@ Prisma 는 DB 소유자로 붙으므로 `lib/omnis-mcp.ts` 가 곧 권한 경계
 | `update_task` | 업무 상세에서 고치는 것과 같은 것. `lib/task-update.updateTask` |
 | `update_checklist` | 추가·체크·해제·삭제. `lib/checklists` |
 
+`post_message` 는 화면과 달리 AI 재구성을 **기다려** 결과를 글로 돌려준다. 화면 경로는 응답 뒤로 미룬다 — [chat-post.md](chat-post.md).
+
+회사 Context 6 — 읽기만 (PR #11, `lib/company-tools.ts`). 연락처 · 이메일 · 생년월일 · 과학기술인번호 · 서명은 내보내지 않는다 — [company-context.md](company-context.md).
+
+| 도구 | 무엇 |
+|---|---|
+| `company_profile` | 회사 기본정보 · 연도별 재무(확정 · 잠정 · 계획) |
+| `list_company_records` | 연혁 · 실적 — 지원사업 · 수상 · 학회 · 전시 … |
+| `list_tax_invoices` | 세금계산서 · 연도별 매출 합 |
+| `list_staff` | 인력 — 이름 · 소속 · 직급 · 직함 · 담당 · 학력 · 4대보험 |
+| `list_market_companies` | 시장 · 경쟁 기업 |
+| `get_context` | 대상 하나의 외래키 · 임베딩 이웃. 인력 노드는 관리자에게만 |
+
 지식재산권 8 — `read_guide` `list_stages` `list_ip` `get_ip` `list_todo` `add_progress` `correct_ip` `create_ip` (변경 없음).
+
+### 전송 — 스트림 GET 에는 405 (PR #17, 머지 전)
+
+Streamable HTTP 클라이언트가 서버 메시지를 받으려고 여는 `GET`(`Accept: text/event-stream`)에 `405` · `Allow: POST, OPTIONS` 로 답한다.
+이 서버는 먼저 보낼 메시지가 없다. 예전에는 모든 GET 에 200 + 서버 정보 JSON 을 주고 끊었고, 재연결이 반복되어 운영 요청의 65.6% 가 이 경로였다(2026-09-15 로그).
+`.well-known/*` · `/authorize` · `/download` · 일반 GET 은 그대로다. PR #17 이 머지되기 전 main 에는 이 분기가 없다. 경위와 한도: [request-budget.md](request-budget.md).
 
 ### 쓰기는 화면과 같은 길로만
 
