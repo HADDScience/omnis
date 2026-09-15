@@ -143,6 +143,25 @@ export function ChatPanel({
       .catch(() => {})
   }
 
+  // AI 재구성은 응답 뒤에 돈다(2026-09-15). 끝날 때까지 「분석하고 있습니다」 를 두고,
+  // 끝나면 메시지 · 업무 목록을 다시 읽는다. 90초가 지나면 거둔다 — 결과는 폴링으로 들어온다.
+  const waitForRebuild = useCallback(
+    async (taskId: string, messageId: string) => {
+      const startedAt = Date.now()
+      while (Date.now() - startedAt < 90_000) {
+        await new Promise((r) => setTimeout(r, 2000))
+        const res = await fetch(apiUrl(`/api/tasks/${taskId}/rebuild-status?messageId=${messageId}`)).catch(() => null)
+        const data = res?.ok ? ((await res.json().catch(() => null)) as { done?: boolean } | null) : null
+        if (data?.done) break
+      }
+      setProcessing(null)
+      fetchMessages()
+      fetchTasks()
+      onTaskUpdated?.()
+    },
+    [fetchMessages, onTaskUpdated],
+  )
+
   const handleSend = useCallback(
     async (content: string, files?: File[]) => {
       // /업무 슬래시 커맨드 감지 → 전송 가로채고 TaskCmdModal로 라우팅
@@ -208,6 +227,7 @@ export function ChatPanel({
         }),
       })
 
+      let queued = false
       if (res.ok) {
         const newMsg = await res.json()
         // 보내는 중 말풍선을 그 자리에서 확정한다 — 다시 떠오르지 않게 표시
@@ -218,13 +238,18 @@ export function ChatPanel({
           fetchTasks()
           onTaskUpdated?.()
         }
+        if (newMsg._rebuild === "queued" && newMsg.task?.id) {
+          queued = true
+          setProcessing(newMsg.task.slug)
+          void waitForRebuild(newMsg.task.id, newMsg.id)
+        }
       }
 
       setUploadProgress(new Map())
-      setProcessing(null)
+      if (!queued) setProcessing(null)
       pausePolling.current = false
     },
-    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated]
+    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild]
   )
 
 

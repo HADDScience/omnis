@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Spinner } from "@/components/ui/spinner"
 import { MessageInput } from "@/components/chat/message-input"
 import { apiUrl } from "@/lib/base-path"
 
@@ -23,6 +22,8 @@ interface ThreadComposerProps extends Partial<ThreadRefs> {
   onSent?: () => void
   /** 보내기 누른 즉시 글을 알린다(목록에 「보내는 중」 줄). 실패하면 null */
   onPending?: (content: string | null) => void
+  /** 서버가 AI 재구성을 응답 뒤로 미뤘다 — 이 메시지의 재구성이 끝날 때까지 목록에 「갱신 중」 */
+  onQueued?: (messageId: string) => void
 }
 
 class SessionExpired extends Error {}
@@ -32,7 +33,8 @@ class SessionExpired extends Error {}
  * 파일은 붙여넣기 · 끌어놓기 · + 메뉴, @사람 · #업무 자동완성까지 채팅과 같다. `/업무` 명령만 뺀다.
  *
  * - taskId 가 자동으로 붙는다 — #멘션 없이도 이 업무 스레드로 간다. 다른 업무를 #멘션하면 참조로 남는다.
- * - 서버는 AI 재구성이 끝난 뒤 응답한다. 그동안 「옴니스가 업무를 갱신하는 중」 을 덮어 보여 준다.
+ * - 서버는 글을 저장하자마자 응답하고 AI 재구성은 뒤에서 돈다(2026-09-15). 입력창을 막지 않는다 —
+ *   「옴니스가 업무를 갱신하고 있어요」 는 스레드 목록이 한 줄로 보여 준다.
  * - 실패하면 던진다 — MessageInput 이 쓴 글과 첨부를 비우지 않는다.
  */
 export function ThreadComposer({
@@ -40,6 +42,7 @@ export function ThreadComposer({
   roomId = "default-room",
   onSent,
   onPending,
+  onQueued,
   tasks = [],
   users = [],
   files = [],
@@ -75,6 +78,8 @@ export function ThreadComposer({
         const err = await res.json().catch(() => ({}))
         throw new Error(err?.error ?? "전송 실패")
       }
+      const saved = (await res.json().catch(() => null)) as { id?: string; _rebuild?: string | null } | null
+      if (saved?.id && saved._rebuild === "queued") onQueued?.(saved.id)
       onSent?.()
       router.refresh()
     } catch (e) {
@@ -108,19 +113,6 @@ export function ThreadComposer({
         // 슬러그를 넣으면 긴 업무명에서 두 줄로 넘친다 — 이 업무로 간다는 것은 탭 이름이 이미 말한다
         placeholder="답장 · @ 사람 · # 업무 · 파일은 끌어다 놓기"
       />
-
-      {/* 처리 중 오버레이 — 입력 차단 + 옴니스 처리 상태 표시 */}
-      {sending && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/85 backdrop-blur-[2px]">
-          <div className="flex items-center gap-2.5 rounded-lg border border-primary/30 bg-card px-4 py-2.5 shadow-lg">
-            <Spinner className="h-4 w-4 text-primary" />
-            <div className="leading-tight">
-              <div className="text-[12px] font-semibold text-foreground">옴니스가 업무를 갱신하는 중…</div>
-              <div className="text-[10.5px] text-muted-foreground">메시지를 분석해 상태·체크리스트를 재구성합니다</div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

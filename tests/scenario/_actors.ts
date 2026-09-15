@@ -32,7 +32,13 @@ export interface Actor {
 }
 
 export async function createActor(browser: Browser, name: string, password: string): Promise<Actor> {
-  const context = await browser.newContext()
+  // E2E_RECORD_DIR 가 있으면 사람마다 화면을 녹화한다 — 컨텍스트를 직접 만들어 설정의 video 가 닿지 않는다
+  const recordDir = process.env.E2E_RECORD_DIR
+  const context = await browser.newContext(
+    recordDir
+      ? { viewport: { width: 1280, height: 800 }, recordVideo: { dir: path.join(recordDir, name), size: { width: 1280, height: 800 } } }
+      : undefined,
+  )
   const page = await context.newPage()
   await page.goto("/login")
   await page.getByRole("textbox", { name: "이름" }).fill(name)
@@ -245,7 +251,10 @@ export async function gotoTask(page: Page, task: TaskRef) {
   await expect(page.getByRole("combobox").first()).toBeVisible({ timeout: 15_000 })
 }
 
-/** 업무 상세의 「이 업무」 스레드에 답장한다. API 는 AI 재구성이 끝난 뒤 응답하므로 전송 종료 = AI 종료. */
+/**
+ * 업무 상세의 「이 업무」 스레드에 답장하고 AI 재구성이 끝날 때까지 기다린다.
+ * API 는 글을 저장하자마자 응답하고 재구성은 뒤에서 돈다(2026-09-15) — 끝은 「옴니스가 업무를 갱신하고 있어요」 줄이 사라지는 것으로 안다.
+ */
 export async function replyInThread(page: Page, task: TaskRef, text: string) {
   await gotoTask(page, task)
   await openPanel(page)
@@ -254,9 +263,13 @@ export async function replyInThread(page: Page, task: TaskRef, text: string) {
   await box.waitFor({ state: "visible", timeout: 8_000 })
   await box.fill(text)
   await page.keyboard.press("ControlOrMeta+Enter")
-  // 서버는 Gemini 재구성이 끝난 뒤 응답하고, 화면은 그때 입력창을 비우고 새로고침한다.
-  await expect(box).toHaveValue("", { timeout: 120_000 })
+  await expect(box).toHaveValue("", { timeout: 30_000 })
   await expect(page.locator("aside").getByText(text, { exact: false }).first()).toBeVisible({ timeout: 20_000 })
+  // 갱신 중 줄은 응답 뒤에 뜬다. 뜨기 전에 「없음」 을 확인하면 AI 가 끝나기 전에 다음 글을 보낸다(2026-09-15 녹화).
+  // 뜨는 것을 먼저 본다 — 재구성이 폴링 간격보다 빨리 끝나면 못 볼 수 있으니 그때는 넘어간다.
+  const updating = page.locator("aside").getByText("옴니스가 업무를 갱신하고 있어요")
+  await updating.first().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {})
+  await expect(updating).toHaveCount(0, { timeout: 120_000 })
 }
 
 /** 업무 상세 상단의 상태 셀렉트가 `label` 이 될 때까지 (새로고침하며) 기다린다. */
