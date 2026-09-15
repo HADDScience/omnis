@@ -3,6 +3,7 @@ import { randomUUID } from "crypto"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
+import { demoStorageBlocked } from "@/lib/demo"
 
 export async function GET() {
   const session = await auth()
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "인증 필요" }, { status: 401 })
   }
+  const blocked = demoStorageBlocked()
+  if (blocked) return blocked
 
   const formData = await req.formData()
   const file = formData.get("file") as File | null

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { writeActivity } from "@/lib/api"
 import { getStaffAsset } from "@/lib/staff-assets"
+import { demoStorageBlocked } from "@/lib/demo"
 
 interface Props {
   params: Promise<{ assetId: string }>
@@ -28,6 +29,8 @@ export async function GET(req: NextRequest, { params }: Props) {
   if ((session.user as { role?: string }).role !== "ADMIN") {
     return NextResponse.json({ error: "관리자만 서명·직인을 꺼낼 수 있습니다" }, { status: 403 })
   }
+  const blocked = demoStorageBlocked()
+  if (blocked) return blocked
 
   const purpose = req.nextUrl.searchParams.get("purpose")
   if (purpose !== "copy" && purpose !== "download") {

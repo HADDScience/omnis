@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
+import { IS_DEMO } from "@/lib/demo"
 
-const IS_DEMO = process.env.NEXT_PUBLIC_IS_DEMO === "true"
 const COOKIE_NAME = "omnis_demo_banner_dismissed"
 const COOKIE_DAYS = 7
 

@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SLASH_COMMANDS } from "./slash-command-parser"
+import { IS_DEMO } from "@/lib/demo"
 
 /** 자동완성 후보. `/`(명령) · `#`(업무) · `@`(사람·파일) 세 갈래가 같은 목록 UI를 쓴다. */
 interface MentionItem {
@@ -206,6 +207,8 @@ export function MessageInput({
 
   // 파일 추가 + 이미지 프리뷰 생성 + 로딩 표시
   function addFiles(files: File[]) {
+    // 데모에는 NAS가 없어 파일을 받지 않는다 — 붙여넣기·드래그로 들어와도 조용히 무시한다.
+    if (IS_DEMO) return
     setAttachedFiles((prev) => {
       const startIdx = prev.length
       const newPreviews = new Map(previews)
@@ -266,6 +269,7 @@ export function MessageInput({
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault()
     e.stopPropagation()
+    if (IS_DEMO) return
     setDragging(true)
   }
 
@@ -439,18 +443,20 @@ export function MessageInput({
       )}
 
       <div className="flex items-end gap-2">
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files) {
-              addFiles(Array.from(e.target.files))
-              e.target.value = ""
-            }
-          }}
-        />
+        {!IS_DEMO && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) {
+                addFiles(Array.from(e.target.files))
+                e.target.value = ""
+              }
+            }}
+          />
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -466,10 +472,12 @@ export function MessageInput({
             <HugeiconsIcon icon={PlusSignIcon} size={18} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" className="w-52">
-            <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-              <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
-              파일 업로드
-            </DropdownMenuItem>
+            {!IS_DEMO && (
+              <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
+                파일 업로드
+              </DropdownMenuItem>
+            )}
             {commands && (
               <DropdownMenuItem onClick={startTaskCommand}>
                 <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />

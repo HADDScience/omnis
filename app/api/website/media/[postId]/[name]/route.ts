@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { getObject } from "@/lib/storage"
 import { parseMediaPath } from "@/lib/website-media"
+import { demoStorageBlocked } from "@/lib/demo"
 
 /**
  * 사진 — 공개. NAS 에서 스트리밍한다.
@@ -18,6 +19,9 @@ export const dynamic = "force-dynamic"
 type Props = { params: Promise<{ postId: string; name: string }> }
 
 export async function GET(_req: NextRequest, { params }: Props) {
+  const blocked = demoStorageBlocked()
+  if (blocked) return blocked
+
   const { postId, name } = await params
   const parsed = parseMediaPath(postId, name)
   if (!parsed) return new NextResponse(null, { status: 404 })

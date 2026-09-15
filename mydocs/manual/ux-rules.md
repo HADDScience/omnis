@@ -142,8 +142,17 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 ## 시연 데모 환경 (NEXT_PUBLIC_IS_DEMO)
 
-`omnis-omega.vercel.app` 배포에서만 활성화. 라이브 데모 보호:
+`omnis-omega.vercel.app` 배포에서만 활성화. **코드는 운영과 같은 main, 데이터는 데모 DB** — 작업지시자 결정(2026-09-14).
+
+| 무엇 | 운영 (`omnis-hadd`) | 데모 (`omnis`) |
+|---|---|---|
+| 코드 | main | main (같은 커밋) |
+| DB | 운영 Neon | 데모 Neon — `prisma/demo-seed.ts` 익명 더미 |
+| NAS 파일 | 있음 | 없음 — 업로드·다운로드 UI 숨김, API 403 (`lib/demo.ts`) |
+| Gemini 일일 한도 | 기본 500회·100만 토큰 | `GEMINI_DAILY_CALL_LIMIT` · `GEMINI_DAILY_TOKEN_LIMIT` 로 낮춘다 |
 
 - 데모 배너: `<DemoBanner />` 상단 alert + dismiss + cookie 7일 (`omnis_demo_banner_dismissed`)
-- 카나리 검증: Phase 2~3 작업은 별도 브랜치 + `NEXT_PUBLIC_FEATURE_*` flag 게이팅
-- Phase 1 작업만 main 직접 머지 (저위험)
+- 새 기능이 NAS 를 쓰면 `IS_DEMO` 로 UI 를 숨기고 API 에 `demoStorageBlocked()` 를 둔다
+- 새 화면에 데이터가 필요하면 `prisma/demo-seed.ts` 에 가상 데이터를 더한다. 실제 회사 데이터·서명은 넣지 않는다
+- 데모 시드는 전 테이블을 비운다. 로컬이 아니면 `DEMO_SEED_ALLOW=1` 없이는 멈추고, 서명·직인 행이 있는 DB(운영)에서도 멈춘다
+- 스키마가 바뀌면 데모 DB 에도 `prisma migrate deploy` 가 필요하다

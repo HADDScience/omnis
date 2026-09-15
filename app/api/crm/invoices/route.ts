@@ -4,6 +4,7 @@ import { writeActivity } from "@/lib/api"
 import { MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { readInvoice } from "@/lib/tax-invoice"
 import { INVOICE_MIME_EXT, InvoiceSaveError, planInvoice, saveBlockers, saveInvoice } from "@/lib/tax-invoice-save"
+import { demoStorageBlocked } from "@/lib/demo"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -21,6 +22,8 @@ export const maxDuration = 60
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "인증 필요" }, { status: 401 })
+  const blocked = demoStorageBlocked()
+  if (blocked) return blocked
   const userId = session.user.id
 
   const form = await req.formData().catch(() => null)

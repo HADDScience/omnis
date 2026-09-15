@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db"
 import { won } from "@/lib/crm"
 import { ymd } from "@/lib/company-context"
 import { apiUrl } from "@/lib/base-path"
+import { IS_DEMO } from "@/lib/demo"
 
 export const metadata: Metadata = { title: "세금계산서 · CRM" }
 export const dynamic = "force-dynamic"
@@ -107,7 +108,7 @@ export default async function CrmInvoicesPage() {
                             <span>견적 없음</span>
                           )}
                           {inv.readBy === "vision" && <span>AI 판독</span>}
-                          {inv.objectKey && (
+                          {inv.objectKey && !IS_DEMO && (
                             <a href={apiUrl(`/api/crm/invoices/${inv.id}/file`)} target="_blank" rel="noopener noreferrer" className="hover:underline">
                               원본
                             </a>

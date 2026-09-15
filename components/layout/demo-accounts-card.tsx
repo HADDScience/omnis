@@ -4,8 +4,7 @@ import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-
-const IS_DEMO = process.env.NEXT_PUBLIC_IS_DEMO === "true"
+import { IS_DEMO } from "@/lib/demo"
 
 const ACCOUNTS = [
   { name: "팀장", role: "ADMIN", note: "업무 지시·캔버스 전체" },
