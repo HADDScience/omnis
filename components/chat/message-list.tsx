@@ -187,12 +187,13 @@ export function MessageList({
           // 시스템 메시지 (구분선 스타일)
           if (msg._isSystem || msg.author.id === "system" || msg.content.startsWith("🤖")) {
             return (
-              <div key={msg.id} className="flex items-center gap-3 py-1">
-                <div className="flex-1 border-t border-dashed border-muted-foreground/20" />
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+              // 재구성 요약은 한 줄을 넘는다 — 줄바꿈 없이 두면 380px 패널 밖으로 잘렸다(2026-09-15 녹화)
+              <div key={msg.id} className="mt-2 flex items-center gap-3 py-1">
+                <div className="min-w-4 flex-1 border-t border-dashed border-muted-foreground/20" />
+                <span className="max-w-[80%] break-keep text-center text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
                   {msg.content.startsWith("🤖") ? msg.content : `🤖 ${msg.content}`}
                 </span>
-                <div className="flex-1 border-t border-dashed border-muted-foreground/20" />
+                <div className="min-w-4 flex-1 border-t border-dashed border-muted-foreground/20" />
               </div>
             )
           }
