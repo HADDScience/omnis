@@ -8,9 +8,12 @@ import { Spinner } from "@/components/ui/spinner"
 import { format } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  ArrowTurnBackwardIcon,
+  Delete02Icon,
   Doc01Icon,
   File01Icon,
   Pdf01Icon,
+  PencilEdit01Icon,
   Ppt01Icon,
   Task01Icon,
   Xls01Icon,
@@ -50,6 +53,11 @@ interface Message {
     _count?: { checklists: number }
   } | null
   files?: FileInfo[]
+  /** 고친 글은 시간 옆에 「수정됨」 을 단다 */
+  editedAt?: string | null
+  /** 지운 글은 자리만 남는다 — 본문은 서버가 내려보내지 않는다 */
+  deletedAt?: string | null
+  replyTo?: { id: string; authorName: string; content: string } | null
 }
 
 /** 새 메시지가 아래에서 살짝 떠오른다. 움직임 줄이기 설정이면 멈춘다 */
@@ -75,6 +83,11 @@ interface MessageListProps {
   hasMoreOlder?: boolean
   /** 이전 메시지 로딩 중 */
   loadingOlder?: boolean
+  /** 답장 — 입력창이 대상 글을 물고 있게 한다 */
+  onReply?: (message: { id: string; authorName: string; content: string }) => void
+  /** 내 글 고치기. 저장이 끝나면 목록을 다시 읽는 것은 부모가 한다 */
+  onEdit?: (id: string, content: string) => Promise<void>
+  onDelete?: (id: string) => Promise<void>
 }
 
 export function MessageList({
@@ -88,8 +101,15 @@ export function MessageList({
   onLoadOlder,
   hasMoreOlder = false,
   loadingOlder = false,
+  onReply,
+  onEdit,
+  onDelete,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 고치는 중인 글은 한 번에 하나다 — 여러 줄을 동시에 열면 무엇을 저장하는지 흐려진다
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState("")
+  const [busyId, setBusyId] = useState<string | null>(null)
   // 이 시각 뒤에 생긴 메시지만 떠오르게 한다 — 처음 불러온 목록 · 이전 메시지는 가만히 둔다
   const [mountedAt] = useState(() => Date.now())
   const prevFirstIdRef = useRef<string | null>(null)
@@ -226,17 +246,113 @@ export function MessageList({
                     {msg.author.name}
                   </span>
                 )}
-                <div
-                  className={`rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] ${
-                    mine ? "bg-primary text-primary-foreground" : "bg-muted"
-                  } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md" : ""} ${
-                    msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
-                  } ${pending ? "opacity-70" : ""} transition-opacity duration-300`}
-                >
-                  <p className="whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">
-                    <MessageContent content={tidyBody(msg.content)} tasks={tasks} isMe={mine} />
-                  </p>
-                  {msg.files && msg.files.length > 0 && <MessageFiles files={msg.files} onPrimary={mine} />}
+                {/* 답장 인용 — 어떤 글에 답하는지 한 줄로만 보인다 */}
+                {msg.replyTo && (
+                  <div
+                    className={`max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground ${
+                      mine ? "text-right" : ""
+                    }`}
+                    title={msg.replyTo.content}
+                  >
+                    <span className="font-medium">{msg.replyTo.authorName}</span> · {msg.replyTo.content}
+                  </div>
+                )}
+                <div className={`flex items-end gap-1 ${mine ? "flex-row-reverse" : ""}`}>
+                  <div
+                    className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] ${
+                      mine ? "bg-primary text-primary-foreground" : "bg-muted"
+                    } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md" : ""} ${
+                      msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
+                    } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}
+                  >
+                    {editingId === msg.id ? (
+                      // 고치기는 말풍선 자리에서 한다 — 창을 띄우면 앞뒤 대화가 가려진다
+                      <div className="flex flex-col gap-1">
+                        <textarea
+                          autoFocus
+                          value={editDraft}
+                          onChange={(e) => setEditDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setEditingId(null)
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault()
+                              const next = editDraft.trim()
+                              if (!next || next === msg.content) return setEditingId(null)
+                              setBusyId(msg.id)
+                              void onEdit?.(msg.id, next).finally(() => {
+                                setBusyId(null)
+                                setEditingId(null)
+                              })
+                            }
+                          }}
+                          rows={Math.min(6, editDraft.split("\n").length + 1)}
+                          className="w-[min(60vw,340px)] resize-none rounded-md bg-background p-1.5 text-[13.5px] text-foreground outline-none ring-1 ring-primary/40"
+                        />
+                        <span className="text-[10.5px] opacity-70">Enter 저장 · Esc 취소</span>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">
+                          {msg.deletedAt ? (
+                            msg.content
+                          ) : (
+                            <MessageContent content={tidyBody(msg.content)} tasks={tasks} isMe={mine} />
+                          )}
+                        </p>
+                        {!msg.deletedAt && msg.files && msg.files.length > 0 && (
+                          <MessageFiles files={msg.files} onPrimary={mine} />
+                        )}
+                      </>
+                    )}
+                  </div>
+                  {/* 말풍선에 겹치지 않게 옆에 둔다. 손이 닿는 화면에서는 늘 보인다 */}
+                  {!selectionMode && !pending && !msg.deletedAt && editingId !== msg.id && (
+                    <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
+                      {onReply && (
+                        <button
+                          type="button"
+                          aria-label="답장"
+                          title="답장"
+                          onClick={() =>
+                            onReply({ id: msg.id, authorName: msg.author.name, content: msg.content.slice(0, 80) })
+                          }
+                          className="rounded p-1 text-muted-foreground hover:bg-muted"
+                        >
+                          <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
+                        </button>
+                      )}
+                      {isMe && onEdit && (
+                        <button
+                          type="button"
+                          aria-label="수정"
+                          title="수정"
+                          onClick={() => {
+                            setEditDraft(msg.content)
+                            setEditingId(msg.id)
+                          }}
+                          className="rounded p-1 text-muted-foreground hover:bg-muted"
+                        >
+                          <HugeiconsIcon icon={PencilEdit01Icon} size={13} />
+                        </button>
+                      )}
+                      {isMe && onDelete && (
+                        <button
+                          type="button"
+                          aria-label="삭제"
+                          title="삭제"
+                          disabled={busyId === msg.id}
+                          onClick={() => {
+                            if (!window.confirm("이 메시지를 지울까요? 자리는 남고 내용만 사라집니다.")) return
+                            setBusyId(msg.id)
+                            void onDelete(msg.id).finally(() => setBusyId(null))
+                          }}
+                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                        >
+                          <HugeiconsIcon icon={Delete02Icon} size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {(row.groupEnd || (msg.task && msg.nextTaskId !== msg.task.id)) && (
                   <div className="flex items-center gap-2 px-0.5">
@@ -247,7 +363,13 @@ export function MessageList({
                           보내는 중…
                         </span>
                       ) : (
-                        <MessageTime iso={msg.createdAt} className="text-[10.5px]" />
+                        <span className="flex items-center gap-1">
+                          <MessageTime iso={msg.createdAt} className="text-[10.5px]" />
+                          {/* 고친 글임을 알린다 — 나중에 읽는 사람이 원문과 다름을 알아야 한다 */}
+                          {msg.editedAt && !msg.deletedAt && (
+                            <span className="text-[10px] text-muted-foreground">수정됨</span>
+                          )}
+                        </span>
                       ))}
                     {msg.task && (row.groupEnd || msg.nextTaskId !== msg.task.id) && (
                       <Link href={`/tasks/${msg.task.id}`} onClick={(e) => e.stopPropagation()} title={msg.task.name}>

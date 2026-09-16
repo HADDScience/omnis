@@ -183,7 +183,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
           // pb-safe: 안드로이드 제스처바·홈 인디케이터에 입력창이 가리지 않게
           <div className="pb-safe flex min-h-0 flex-1 flex-col">
             {view === "task" && task ? (
-              <TaskThread taskId={task.id} taskName={task.name} messages={task.messages} />
+              <TaskThread taskId={task.id} taskName={task.name} messages={task.messages} currentUserId={currentUserId} />
             ) : view === "ai" ? (
               <OmnisAsk variant="dock" />
             ) : (

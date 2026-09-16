@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { AiMagicIcon } from "@hugeicons/core-free-icons"
+import {
+  AiMagicIcon,
+  ArrowTurnBackwardIcon,
+  Delete02Icon,
+  PencilEdit01Icon,
+} from "@hugeicons/core-free-icons"
 import { ThreadComposer, type ThreadRefs } from "@/components/chat/thread-composer"
 import { MESSAGE_ENTER, MessageContent, MessageFiles, type FileInfo } from "@/components/chat/message-list"
 import { Spinner } from "@/components/ui/spinner"
@@ -29,12 +34,19 @@ interface Message {
   isTaskInstruction: boolean
   kind?: string
   files?: FileInfo[]
+  /** 고친 글은 시간 옆에 「수정됨」 */
+  editedAt?: string | null
+  /** 지운 글은 자리만 남는다 */
+  deletedAt?: string | null
+  replyTo?: { id: string; authorName: string; content: string } | null
 }
 
 interface TaskSidebarProps {
   taskId: string
   taskName: string
   messages: Message[]
+  /** 내 글에만 수정 · 삭제를 보여 준다 */
+  currentUserId?: string
 }
 
 function formatTime(iso: string): string {
@@ -88,7 +100,7 @@ function useThreadRefs(): ThreadRefs {
   return refs
 }
 
-export function TaskThread({ taskId, messages }: TaskSidebarProps) {
+export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps) {
   const refs = useThreadRefs()
   const slug = refs.tasks.find((t) => t.id === taskId)?.slug
   const systemMessages = messages.filter(
@@ -135,6 +147,24 @@ export function TaskThread({ taskId, messages }: TaskSidebarProps) {
   const showPending = pending && pending.count === threadMessages.length ? pending : null
   // 이 시각 뒤에 생긴 메시지만 떠오르게 한다
   const [mountedAt] = useState(() => Date.now())
+
+  // 답장 · 고치기 · 지우기 (2026-09-16). 고치는 중인 글은 한 번에 하나다.
+  const [replyTarget, setReplyTarget] = useState<{ id: string; authorName: string; content: string } | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState("")
+
+  /**
+   * 고치거나 지운 뒤, 업무에 붙은 글이면 서버가 재구성을 다시 돌린다(`_rebuild`).
+   * 그 동안 스레드에 「갱신 중」 한 줄을 띄우는 것은 보낼 때와 같다.
+   */
+  async function changeMessage(id: string, init: RequestInit) {
+    const res = await fetch(apiUrl(`/api/chat/messages/${id}`), init)
+    if (!res.ok) return
+    const data = (await res.json().catch(() => null)) as { _rebuild?: string | null } | null
+    setEditingId(null)
+    if (data?._rebuild === "queued") setRebuildWait(id)
+    router.refresh()
+  }
 
   // 채팅처럼 최신 메시지가 보이게 — 열 때와 새 메시지가 붙을 때 맨 아래로 내린다
   const listRef = useRef<HTMLDivElement>(null)
@@ -216,13 +246,103 @@ export function TaskThread({ taskId, messages }: TaskSidebarProps) {
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-[13px] font-semibold">{m.author.name}</span>
                           <MessageTime iso={m.createdAt} />
+                          {m.editedAt && !m.deletedAt && (
+                            <span className="text-[10px] text-muted-foreground">수정됨</span>
+                          )}
                         </div>
                       )}
-                      <div className="whitespace-pre-wrap break-keep text-[13px] leading-[1.6] [overflow-wrap:anywhere]">
-                        <MessageContent content={tidyBody(m.content)} tasks={refs.tasks} />
-                      </div>
-                      {m.files && m.files.length > 0 && <MessageFiles files={m.files} />}
+                      {m.replyTo && (
+                        <div
+                          className="mb-0.5 max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground"
+                          title={m.replyTo.content}
+                        >
+                          <span className="font-medium">{m.replyTo.authorName}</span> · {m.replyTo.content}
+                        </div>
+                      )}
+                      {editingId === m.id ? (
+                        // 고치기는 줄 자리에서 한다 — 창을 띄우면 앞뒤 대화가 가려진다
+                        <div className="flex flex-col gap-1">
+                          <textarea
+                            autoFocus
+                            value={editDraft}
+                            onChange={(e) => setEditDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") setEditingId(null)
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault()
+                                const next = editDraft.trim()
+                                if (!next || next === m.content) return setEditingId(null)
+                                void changeMessage(m.id, {
+                                  method: "PATCH",
+                                  headers: { "content-type": "application/json" },
+                                  body: JSON.stringify({ content: next }),
+                                })
+                              }
+                            }}
+                            rows={Math.min(6, editDraft.split("\n").length + 1)}
+                            className="w-full resize-none rounded-md border p-1.5 text-[13px] outline-none ring-1 ring-primary/30"
+                          />
+                          <span className="text-[10.5px] text-muted-foreground">Enter 저장 · Esc 취소</span>
+                        </div>
+                      ) : (
+                        <div
+                          className={`whitespace-pre-wrap break-keep text-[13px] leading-[1.6] [overflow-wrap:anywhere] ${
+                            m.deletedAt ? "italic text-muted-foreground" : ""
+                          }`}
+                        >
+                          {m.deletedAt ? (
+                            m.content
+                          ) : (
+                            <MessageContent content={tidyBody(m.content)} tasks={refs.tasks} />
+                          )}
+                        </div>
+                      )}
+                      {!m.deletedAt && m.files && m.files.length > 0 && <MessageFiles files={m.files} />}
                     </div>
+                    {/* 줄 오른쪽에 붙는다 — 본문 폭을 줄이지 않게 hover 에만 보인다 */}
+                    {!m.deletedAt && editingId !== m.id && (
+                      <div className="absolute right-2 top-0 flex gap-0.5 rounded-md border bg-background px-0.5 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
+                        <button
+                          type="button"
+                          aria-label="답장"
+                          title="답장"
+                          onClick={() =>
+                            setReplyTarget({ id: m.id, authorName: m.author.name, content: m.content.slice(0, 80) })
+                          }
+                          className="rounded p-1 text-muted-foreground hover:bg-muted"
+                        >
+                          <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
+                        </button>
+                        {currentUserId === m.author.id && (
+                          <>
+                            <button
+                              type="button"
+                              aria-label="수정"
+                              title="수정"
+                              onClick={() => {
+                                setEditDraft(m.content)
+                                setEditingId(m.id)
+                              }}
+                              className="rounded p-1 text-muted-foreground hover:bg-muted"
+                            >
+                              <HugeiconsIcon icon={PencilEdit01Icon} size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="삭제"
+                              title="삭제"
+                              onClick={() => {
+                                if (!window.confirm("이 메시지를 지울까요? 자리는 남고 내용만 사라집니다.")) return
+                                void changeMessage(m.id, { method: "DELETE" })
+                              }}
+                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                            >
+                              <HugeiconsIcon icon={Delete02Icon} size={13} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -264,6 +384,8 @@ export function TaskThread({ taskId, messages }: TaskSidebarProps) {
             files={refs.files}
             onPending={(content) => setPending(content ? { content, count: threadMessages.length } : null)}
             onQueued={setRebuildWait}
+            replyTo={replyTarget}
+            onClearReply={() => setReplyTarget(null)}
           />
         </TabsContent>
 

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { TaskDetail } from "./task-detail"
 import { RegisterPanelTask } from "@/components/layout/right-panel-context"
+import { CHAT_DELETED_TEXT } from "@/lib/constants"
 
 export const dynamic = "force-dynamic"
 
@@ -35,6 +36,7 @@ export default async function TaskDetailPage({ params }: Props) {
       include: {
         author: { select: { id: true, name: true } },
         files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
+        replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
       },
     }),
     prisma.file.findMany({
@@ -80,14 +82,24 @@ export default async function TaskDetailPage({ params }: Props) {
     })),
   }
 
+  // 지운 글은 자리만 남긴다 — 본문과 첨부는 넘기지 않는다(채팅 목록 API 와 같은 규칙)
   const sidebarMessages = feedbackMessages.map((m) => ({
     id: m.id,
-    content: m.content,
+    content: m.deletedAt ? CHAT_DELETED_TEXT : m.content,
     createdAt: m.createdAt.toISOString(),
     author: { id: m.author.id, name: m.author.name },
     isTaskInstruction: m.isTaskInstruction,
     kind: m.kind,
-    files: m.files,
+    files: m.deletedAt ? [] : m.files,
+    editedAt: m.editedAt?.toISOString() ?? null,
+    deletedAt: m.deletedAt?.toISOString() ?? null,
+    replyTo: m.replyTo
+      ? {
+          id: m.replyTo.id,
+          authorName: m.replyTo.author.name,
+          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
+        }
+      : null,
   }))
 
   return (

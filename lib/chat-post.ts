@@ -22,6 +22,8 @@ export interface PostMessageInput {
   content: string
   taskId?: string | null
   fileIds?: string[]
+  /** 답장 대상 메시지. 화면은 인용 한 줄로 그린다. */
+  replyToId?: string | null
 }
 
 export interface PostMessageOptions {
@@ -85,6 +87,7 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
       authorId: user.id,
       content: trimmedContent,
       taskId: linkedTaskId,
+      replyToId: input.replyToId ?? null,
     },
     include: {
       author: { select: { id: true, name: true } },
@@ -157,6 +160,8 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
       author: { select: { id: true, name: true } },
       task: { select: { id: true, name: true, slug: true } },
       files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
+      // 보낸 직후에도 답장 인용이 보이게 — 폴링을 기다리지 않는다
+      replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
     },
   })
 
@@ -195,7 +200,8 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
     if (process.env.GEMINI_API_KEY) {
       // 이 업무에 연결된 모든 메시지 + 파일 수집
       const allMessages = await prisma.chatMessage.findMany({
-        where: { taskId: task.id },
+        // 지운 글은 넣지 않는다 — 지웠는데도 그 내용이 업무 카드에 남으면 지운 의미가 없다(2026-09-16)
+        where: { taskId: task.id, deletedAt: null },
         orderBy: { createdAt: "asc" },
         include: {
           author: { select: { name: true } },

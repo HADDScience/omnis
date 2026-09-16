@@ -48,6 +48,8 @@ export function ChatPanel({
   const [uploadedFiles, setUploadedFiles] = useState<{ id: string; name: string; path: string; mimeType: string }[]>([])
   const [processing, setProcessing] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map()) // msgId → 0~100
+  // 답장 대상 — 입력창 위에 한 줄로 물고 있다가 보낼 때 함께 넘긴다
+  const [replyTo, setReplyTo] = useState<{ id: string; authorName: string; content: string } | null>(null)
   const pausePolling = useRef(false)
 
   const lastFetchedAt = useRef(
@@ -223,8 +225,10 @@ export function ChatPanel({
           taskId: filterTaskId ?? undefined,
           fileIds: uploadedFiles.map((f) => f.id),
           fileNames: uploadedFiles.map((f) => f.name),
+          replyToId: replyTo?.id,
         }),
       })
+      setReplyTo(null)
 
       let queued = false
       if (res.ok) {
@@ -248,7 +252,48 @@ export function ChatPanel({
       if (!queued) setProcessing(null)
       pausePolling.current = false
     },
-    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild]
+    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild, replyTo]
+  )
+
+  /**
+   * 내 글 고치기 · 지우기.
+   *
+   * 업무에 붙은 글이면 서버가 응답 뒤에 재구성을 다시 돌린다(`_rebuild`) —
+   * 보낼 때와 같은 자리에서 「분석하고 있습니다」 를 띄우고 끝을 기다린다.
+   */
+  const applyMessageChange = useCallback(
+    async (res: Response, messageId: string) => {
+      if (!res.ok) return
+      const data = await res.json().catch(() => null)
+      await fetchMessages()
+      const taskId = data?.task?.id ?? messages.find((m) => m.id === messageId)?.task?.id
+      if (data?._rebuild === "queued" && taskId) {
+        const slug = data?.task?.slug ?? messages.find((m) => m.id === messageId)?.task?.slug ?? null
+        if (slug) setProcessing(slug)
+        void waitForRebuild(taskId, messageId)
+      }
+    },
+    [fetchMessages, messages, waitForRebuild],
+  )
+
+  const handleEdit = useCallback(
+    async (id: string, content: string) => {
+      const res = await fetch(apiUrl(`/api/chat/messages/${id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      })
+      await applyMessageChange(res, id)
+    },
+    [applyMessageChange],
+  )
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const res = await fetch(apiUrl(`/api/chat/messages/${id}`), { method: "DELETE" })
+      await applyMessageChange(res, id)
+    },
+    [applyMessageChange],
   )
 
 
@@ -270,9 +315,27 @@ export function ChatPanel({
         onLoadOlder={loadOlder}
         hasMoreOlder={hasMoreOlder}
         loadingOlder={loadingOlder}
+        onReply={setReplyTo}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
       />
 
       <div className="shrink-0 border-t">
+        {/* 무엇에 답하는 중인지 입력창 바로 위에 둔다 — 보내고 나면 사라진다 */}
+        {replyTo && (
+          <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+            <span className="shrink-0 font-medium">{replyTo.authorName}에게 답장</span>
+            <span className="min-w-0 flex-1 truncate">{replyTo.content}</span>
+            <button
+              type="button"
+              aria-label="답장 취소"
+              onClick={() => setReplyTo(null)}
+              className="shrink-0 rounded px-1 hover:bg-muted"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
       </div>
 

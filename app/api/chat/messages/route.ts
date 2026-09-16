@@ -2,7 +2,7 @@ import { after, NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
-import { CHAT_PAGE_SIZE } from "@/lib/constants"
+import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 
 // 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
 export const maxDuration = 60
@@ -50,11 +50,26 @@ export async function GET(req: NextRequest) {
         },
       },
       files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
+      replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
     },
   })
 
+  // 지운 글은 자리만 남긴다 — 본문과 첨부는 내려보내지 않는다(행은 DB 에 그대로 있다)
+  const shaped = messages.map((m) => ({
+    ...m,
+    content: m.deletedAt ? CHAT_DELETED_TEXT : m.content,
+    files: m.deletedAt ? [] : m.files,
+    replyTo: m.replyTo
+      ? {
+          id: m.replyTo.id,
+          authorName: m.replyTo.author.name,
+          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
+        }
+      : null,
+  }))
+
   // 초기 로드·이전 메시지는 desc로 가져왔으므로 화면 표시용 오름차순으로 정렬
-  return NextResponse.json(isPolling ? messages : messages.reverse())
+  return NextResponse.json(isPolling ? shaped : shaped.reverse())
 }
 
 export async function POST(req: NextRequest) {
@@ -64,7 +79,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { roomId, content, taskId, fileIds } = body
+  const { roomId, content, taskId, fileIds, replyToId } = body
 
   if (!roomId || !content?.trim()) {
     return NextResponse.json({ error: "roomId, content 필수" }, { status: 400 })
@@ -77,6 +92,7 @@ export async function POST(req: NextRequest) {
       content,
       taskId,
       fileIds,
+      replyToId,
     },
     // 글은 바로 돌려주고 AI 재구성은 응답 뒤에 — 화면은 GET /api/tasks/[taskId]/rebuild-status 로 끝을 안다
     { deferRebuild: true },
