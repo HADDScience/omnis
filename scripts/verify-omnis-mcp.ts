@@ -85,6 +85,7 @@ async function main() {
   })
   await prisma.$executeRaw`DELETE FROM ip.members WHERE user_id = ${user.id}`
   let createdTaskId: string | null = null
+  let createdCardId: string | null = null
   const uploadedIds: string[] = []
 
   try {
@@ -98,7 +99,7 @@ async function main() {
     check("지침에 파일 올리고 읽는 법이 있다", init.instructions.includes("upload_file") && init.instructions.includes("create_upload_link") && init.instructions.includes("read_file"))
     check("지침에 알림 응답·업무 수정 안내가 있다", init.instructions.includes("respond_notification") && init.instructions.includes("update_task"))
     const tools = ((await rpc("tools/list", undefined, token)).body.result as { tools: { name: string }[] }).tools
-    check(`도구 27개 (옴니스 19 + 지식재산권 8) — ${tools.length}`, tools.length === 27)
+    check(`도구 37개 (옴니스 29 + 지식재산권 8) — ${tools.length}`, tools.length === 37)
 
     console.log("\n[3] 거부되어야 하는 것")
     const bad = await rpc("tools/list", undefined, "hadd_nope")
@@ -300,6 +301,51 @@ async function main() {
     check("list_members(과거 구성원 포함)에 시스템 계정이 없다", !isErr(members2) && !/^- Omnis\b/m.test(text(members2)), text(members2).slice(0, 200))
     const sysAssignee = await call("create_task", { name: "x", assignees: ["Omnis"] }, token)
     check("시스템 계정을 담당자로 지정하면 isError", isErr(sysAssignee), text(sysAssignee))
+
+    console.log("\n[11] 주간보고 · 지식 카드 쓰기 · 채팅")
+    const emptyEdit = await call("write_weekly_report", { report: "00000000-0000-0000-0000-000000000000" }, token)
+    check("report 만 주고 내용이 없으면 isError", isErr(emptyEdit), text(emptyEdit))
+    const foreignReport = await call("write_weekly_report", { report: "00000000-0000-0000-0000-000000000000", markdown: "x" }, token)
+    check("남의(없는) 보고서 수정은 isError", isErr(foreignReport) && text(foreignReport).includes("list_weekly_reports"), text(foreignReport))
+
+    const made = await call("write_weekly_report", {}, token)
+    const reportId = text(made).match(/ID ([0-9a-f-]{36})/)?.[1] ?? ""
+    check("write_weekly_report 가 이번 주 보고서를 만든다", !isErr(made) && Boolean(reportId), text(made).slice(0, 160))
+    const written = await call("write_weekly_report", { markdown: "## 이번 주\n- 검증용 본문", submit: true }, token)
+    check("본문·제출이 반영된다", !isErr(written) && text(written).includes("제출 완료"), text(written).slice(0, 160))
+    const saved = await prisma.weeklyReport.findUnique({ where: { id: reportId } })
+    check("DB 에 본문과 제출 시각이 남는다", ((saved?.content as { markdown?: string })?.markdown ?? "").includes("검증용 본문") && !!saved?.submittedAt)
+    const listed = await call("list_weekly_reports", {}, token)
+    check("list_weekly_reports 가 주차·상태·본문을 준다", !isErr(listed) && text(listed).includes(reportId) && text(listed).includes("검증용 본문"), text(listed).slice(0, 200))
+
+    const noCat = await call("write_omnis_card", { title: "__검증 카드__" }, token)
+    check("분류 없는 새 카드는 isError", isErr(noCat), text(noCat))
+    const badCat = await call("write_omnis_card", { title: "x", category: "__없는분류__", markdown: "x" }, token)
+    check("없는 분류는 isError", isErr(badCat), text(badCat))
+    const someCat = await prisma.omnisCategory.findFirst({ select: { name: true } })
+    if (someCat) {
+      const card = await call("write_omnis_card", { title: "__MCP 검증 카드__", category: someCat.name, markdown: "첫 줄", tags: ["검증"] }, token)
+      createdCardId = text(card).match(/ID ([0-9a-f-]{36})/)?.[1] ?? null
+      check("write_omnis_card 가 카드를 만든다", !isErr(card) && Boolean(createdCardId), text(card))
+      const appended = await call("write_omnis_card", { card: createdCardId ?? "", markdown: "둘째 줄", append: true }, token)
+      check("append 가 본문 뒤에 붙인다", !isErr(appended) && text(appended).includes("v2"), text(appended))
+      const row = createdCardId ? await prisma.omnisCard.findUnique({ where: { id: createdCardId }, include: { versions: true } }) : null
+      const body = ((row?.content as { sections?: { type: string; body?: string }[] })?.sections ?? []).find((sec) => sec.type === "text")?.body ?? ""
+      check("본문·태그·버전 기록이 화면과 같게 남는다", body.includes("첫 줄") && body.includes("둘째 줄") && (row?.tags ?? []).includes("검증") && (row?.versions.length ?? 0) === 2, body.slice(0, 80))
+      const ghostCard = await call("write_omnis_card", { card: "__없는카드__", markdown: "x" }, token)
+      check("없는 카드를 고치면 isError", isErr(ghostCard), text(ghostCard))
+    }
+
+    const badView = await call("list_chat", { view: "inbox" }, token)
+    check("모르는 view 는 isError", isErr(badView), text(badView))
+    const dmNoUser = await call("list_chat", { view: "dm" }, token)
+    check("view=dm 에 상대가 없으면 isError", isErr(dmNoUser), text(dmNoUser))
+    const taskGhost = await call("list_chat", { view: "task", task: "__없는_업무__" }, token)
+    check("view=task 에 없는 업무는 isError", isErr(taskGhost))
+    const feed = await call("list_chat", { limit: 5 }, token)
+    check("list_chat 이 최근 글을 시간순으로 준다", !isErr(feed) && /^\[\d{4}-\d{2}-\d{2}/m.test(text(feed)), text(feed).slice(0, 160))
+    const taskFeed = await call("list_chat", { view: "task", task: slug, limit: 20 }, token)
+    check("view=task 가 그 업무의 글만 준다", !isErr(taskFeed) && text(taskFeed).includes(`#${slug}`), text(taskFeed).slice(0, 160))
   } finally {
     // ─── 정리 ───
     // 파일이 메시지·업무를 FK 로 물고 있어 먼저 지운다. NAS 실물도 함께.
@@ -307,6 +353,15 @@ async function main() {
       await deleteObject(objectKeyFor(f.id, f.name)).catch((e) => console.log(`  (NAS 정리 실패 ${f.name}: ${e})`))
     }
     await prisma.file.deleteMany({ where: { id: { in: uploadedIds } } })
+    if (createdCardId) {
+      await prisma.omnisCardVersion.deleteMany({ where: { cardId: createdCardId } })
+      await prisma.embeddingChunk.deleteMany({ where: { source: "OMNIS_CARD", sourceId: createdCardId } })
+      await prisma.omnisCard.delete({ where: { id: createdCardId } }).catch(() => {})
+    }
+    for (const r of await prisma.weeklyReport.findMany({ where: { ownerId: user.id }, select: { id: true } })) {
+      await prisma.embeddingChunk.deleteMany({ where: { source: "WEEKLY_REPORT", sourceId: r.id } })
+    }
+    await prisma.weeklyReport.deleteMany({ where: { ownerId: user.id } })
     if (createdTaskId) {
       await prisma.notification.deleteMany({ where: { entityId: createdTaskId } }).catch(() => {})
       await prisma.chatMention.deleteMany({ where: { message: { taskId: createdTaskId } } }).catch(() => {})
