@@ -64,10 +64,29 @@ async function main() {
 
   for (const a of ACCOUNTS) {
     // 이름이 unique 다. 있으면 비밀번호·권한만 맞추고 나머지 칸은 건드리지 않는다.
+    // 온보딩을 마친 것으로 둔다. 안 그러면 로그인 직후 화면 전체를 덮는 안내
+    // (`사용 안내를 준비하는 중…`, onboarding-provider.tsx)가 떠서 사이드바 클릭을
+    // 가로챈다 — feature 테스트 3건이 이것 때문에 60초씩 타임아웃되고 있었다.
+    // 온보딩 자체를 보는 tests/feature/onboarding.spec.ts 는 자기 전용 임시 계정을
+    // 따로 만들어 쓰므로 여기 값과 무관하다.
+    const onboarded = new Date()
     await prisma.user.upsert({
       where: { name: a.name },
-      update: { passwordHash: hash, role: a.role, isActive: true },
-      create: { name: a.name, role: a.role, passwordHash: hash, isActive: true },
+      update: {
+        passwordHash: hash,
+        role: a.role,
+        isActive: true,
+        onboardingVideoSeenAt: onboarded,
+        onboardingCompletedAt: onboarded,
+      },
+      create: {
+        name: a.name,
+        role: a.role,
+        passwordHash: hash,
+        isActive: true,
+        onboardingVideoSeenAt: onboarded,
+        onboardingCompletedAt: onboarded,
+      },
     })
   }
 
