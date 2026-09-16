@@ -46,6 +46,22 @@ Omnis 로그인 → 승인 화면 → 끝. 8시간마다 자동 갱신. 이미 �
 주소가 셋으로 갈린 것을 찾았다 — 옛 Supabase(410) · 옛 도메인 `omnis-hadd.vercel.app`(307, MCP 클라이언트는 따라가지 않는다) · 현재.
 이름도 지식재산권 전용처럼 읽혀 AI 가 업무 질문에 이 서버를 쓰지 않았다. 안내는 옛 `hadd-ip` 를 지우라고 함께 말한다.
 
+### 폴더 하나로 공유하기 — `~/NAS/.mcp.json` (2026-09-16)
+
+`--scope user` 대신 **어떤 폴더 아래에서만** 쓰이게 하려면 그 폴더 루트에 `.mcp.json` 을 둔다.
+정우창 맥에는 `~/NAS/.mcp.json` 에 `hadd-omnis` 한 벌만 둔다(`{"mcpServers":{"hadd-omnis":{"type":"http","url":"<주소>"}}}`).
+
+실측(2026-09-16). 아래 둘은 공식 문서에 적혀 있지 않아 직접 시험해 확인했다.
+
+- **상위 폴더까지 찾아 올라간다.** 자식 폴더에 `.mcp.json` 이 없어도 부모의 것이 잡힌다 — 그래서 `~/NAS` 아래 모든 폴더가 한 벌을 쓴다. 새로 만든 폴더도 그대로 적용된다.
+- **상위 것과 폴더 것은 합쳐진다.** 덮어쓰지 않는다. NAS 폴더 18곳의 notion `.mcp.json` 과 상위의 `hadd-omnis` 가 함께 뜬다.
+- **폴더마다 최초 1회 승인이 필요하다.** `claude mcp list` 에 `⏸ Pending approval` 로 보이고, 그 폴더에서 `claude` 를 띄워 승인해야 붙는다.
+  `~/.claude.json` 의 `enabledMcpjsonServers` 에 미리 값을 넣어도 승인으로 인정되지 않았다 — 그 폴더에서 CLI 가 돌면 넣어 둔 값이 지워졌다.
+- OAuth 로그인은 서버 이름 기준이라 한 번만 하면 폴더마다 다시 하지 않는다.
+
+같은 날 폴더별 `hadd-ip` 등록 5건을 지웠다. 그중 2건은 헤더에 개인 토큰(`Bearer hadd_…`)이 박힌 채 죽은 Supabase 주소를 가리키고 있었다.
+`~/.claude.json` 을 고치기 전에 사본을 남긴다(`~/.claude.json.bak-{YYMMDD}-{이름}`).
+
 개인 토큰(`hadd_…`)을 헤더로 보내는 방식도 서버는 받는다. 발급은 IP 플랫폼의 「AI 도구 설치하기」(`/api/ip/mcp-token`) 에만 있고
 지식재산권 구성원만 받는다. OAuth 로 모든 도구가 붙으므로 Omnis 안내에는 넣지 않았다.
 
@@ -150,7 +166,12 @@ MCP 전용 지름길을 만들면 알림·AI 재구성·완료 확인·색인·�
 - **사람이 아니다.** `isActive=false` 라 로그인·SSO·`/api/users` 가 걸러낸다. `passwordHash` 는 `!` 라 어떤 비밀번호와도 맞지 않는다.
   `isActive` 를 거르지 않는 곳 두 군데에서 따로 뺐다 — AI 담당자 후보(`app/api/ai/structure-task`)와 `list_members(includeInactive)`.
 - **이미 쌓인 메시지.** `scripts/backfill-system-author.ts` — 기본은 미리보기, `--apply` 가 바꾸고 원래 작성자를 JSON 으로 남긴다.
-  프로덕션은 아직 돌리지 않았다.
+  운영 env 를 넘겨 돌린다: `npx tsx --env-file=<…/.env.production.local> scripts/backfill-system-author.ts [--apply]`.
+  첫 줄에 접속 대상 호스트가 찍힌다 — `neon.tech` 가 아니면 멈춘다.
+- **운영 반영 2026-09-16 — 3건.** 전부 김아리 이름이었고 같은 업무(`#ai-기반-창업사업-가이드-ppt-제작`, 2026-09-14)였다.
+  재구성 2 · 완료 확인 대기 1. 로컬 스냅샷의 36건은 9월 초 **로컬** 시험 실행분이라 운영과 수가 다르다.
+  되돌리기 기록(메시지 id + 원래 작성자 id)은 `~/work/omnis-backfill-records/` 에 둔다 — 스크립트는 **실행한 폴더**에 쓰므로
+  워크트리에 두면 다음 커밋에 섞인다(`.gitignore` 에 없다).
 
 ## 검증 (2026-09-14 로컬, 워크트리 `~/work/omnis-mcp` · DB `omnis_mcp` · :3100)
 
