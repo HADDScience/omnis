@@ -7,7 +7,6 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { won } from "@/lib/crm"
 import { RECORD_KIND_LABEL, compactWon, periodText } from "@/lib/company-context"
-import { isAdminSession } from "@/lib/company-edit"
 import { RecordDialog, RecordEditButton } from "@/components/company/record-editors"
 import { EMPTY_RECORD_FORM, type RecordForm } from "@/lib/schemas/company"
 import type { CompanyRecord, Prisma, RecordKind } from "@/generated/prisma/client"
@@ -54,7 +53,8 @@ const KINDS = Object.keys(RECORD_KIND_LABEL) as RecordKind[]
  */
 export default async function RecordsPage({ searchParams }: Props) {
   const { kind: kindParam, q: qParam } = await searchParams
-  const isAdmin = isAdminSession(await auth())
+  // 연혁은 구성원이면 누구나 남기고 고친다 — 로그인만 확인한다(2026-09-16)
+  const signedIn = !!(await auth())?.user?.id
   const kind = KINDS.includes(kindParam as RecordKind) ? (kindParam as RecordKind) : null
   const q = qParam?.trim() || null
 
@@ -109,7 +109,7 @@ export default async function RecordsPage({ searchParams }: Props) {
             {total}건 · 지원사업 {grants._count}건 · 지원금 합계 {compactWon(Number(grants._sum.fundingKrw ?? 0))}
           </span>
           {/* 사건이 생긴 날 바로 남길 수 있게 — 그 전에는 이식 스크립트를 다시 돌리는 수밖에 없었다 */}
-          {isAdmin && (
+          {signedIn && (
             <span className="ml-auto">
               <RecordDialog initial={EMPTY_RECORD_FORM} />
             </span>
@@ -171,7 +171,7 @@ export default async function RecordsPage({ searchParams }: Props) {
                       <span className="min-w-0 break-words text-[13.5px] font-medium">{r.title}</span>
                       {r.status && <Badge variant={r.status === "진행중" || r.status === "계획" ? "default" : "secondary"}>{r.status}</Badge>}
                       <span className="ml-auto text-[11.5px] tabular-nums text-muted-foreground">{periodText(r)}</span>
-                      {isAdmin && <RecordEditButton initial={recordForm(r)} />}
+                      {signedIn && <RecordEditButton initial={recordForm(r)} />}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
                       {r.organizer && <span>{r.organizer}</span>}
