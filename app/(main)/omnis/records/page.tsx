@@ -3,10 +3,41 @@ import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { Badge } from "@/components/ui/badge"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { won } from "@/lib/crm"
 import { RECORD_KIND_LABEL, compactWon, periodText } from "@/lib/company-context"
-import type { Prisma, RecordKind } from "@/generated/prisma/client"
+import { isAdminSession } from "@/lib/company-edit"
+import { RecordDialog, RecordEditButton } from "@/components/company/record-editors"
+import { EMPTY_RECORD_FORM, type RecordForm } from "@/lib/schemas/company"
+import type { CompanyRecord, Prisma, RecordKind } from "@/generated/prisma/client"
+
+/** DB 줄 → 편집 창이 쓰는 글자 폼. BigInt · Date 를 여기서 글자로 바꾼다 */
+function recordForm(r: CompanyRecord): RecordForm {
+  const ymd = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "")
+  const num = (v: bigint | null) => (v === null ? "" : String(v))
+  return {
+    id: r.id,
+    kind: r.kind,
+    title: r.title,
+    organizer: r.organizer ?? "",
+    startsOn: ymd(r.startsOn),
+    endsOn: ymd(r.endsOn),
+    periodRaw: r.periodRaw ?? "",
+    status: r.status ?? "",
+    note: r.note ?? "",
+    subject: r.subject ?? "",
+    role: r.role ?? "",
+    fundingKrw: num(r.fundingKrw),
+    ownCashKrw: num(r.ownCashKrw),
+    ownInKindKrw: num(r.ownInKindKrw),
+    grantNo: r.grantNo ?? "",
+    prize: r.prize ?? "",
+    venue: r.venue ?? "",
+    partner: r.partner ?? "",
+    category: r.category ?? "",
+  }
+}
 
 export const metadata: Metadata = { title: "연혁·실적 · HADD DB" }
 export const dynamic = "force-dynamic"
@@ -23,6 +54,7 @@ const KINDS = Object.keys(RECORD_KIND_LABEL) as RecordKind[]
  */
 export default async function RecordsPage({ searchParams }: Props) {
   const { kind: kindParam, q: qParam } = await searchParams
+  const isAdmin = isAdminSession(await auth())
   const kind = KINDS.includes(kindParam as RecordKind) ? (kindParam as RecordKind) : null
   const q = qParam?.trim() || null
 
@@ -76,6 +108,12 @@ export default async function RecordsPage({ searchParams }: Props) {
           <span className="text-[13px] text-muted-foreground">
             {total}건 · 지원사업 {grants._count}건 · 지원금 합계 {compactWon(Number(grants._sum.fundingKrw ?? 0))}
           </span>
+          {/* 사건이 생긴 날 바로 남길 수 있게 — 그 전에는 이식 스크립트를 다시 돌리는 수밖에 없었다 */}
+          {isAdmin && (
+            <span className="ml-auto">
+              <RecordDialog initial={EMPTY_RECORD_FORM} />
+            </span>
+          )}
         </div>
 
         <form action="/omnis/records" className="mb-3 flex gap-2" role="search">
@@ -133,6 +171,7 @@ export default async function RecordsPage({ searchParams }: Props) {
                       <span className="min-w-0 break-words text-[13.5px] font-medium">{r.title}</span>
                       {r.status && <Badge variant={r.status === "진행중" || r.status === "계획" ? "default" : "secondary"}>{r.status}</Badge>}
                       <span className="ml-auto text-[11.5px] tabular-nums text-muted-foreground">{periodText(r)}</span>
+                      {isAdmin && <RecordEditButton initial={recordForm(r)} />}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
                       {r.organizer && <span>{r.organizer}</span>}

@@ -107,3 +107,99 @@ export const PROFILE_FIELD_LABEL: Record<keyof CompanyProfileInput, string> = {
   partnerAddress: "연구협력기관",
   asOfDate: "기준일",
 }
+
+// ─── 연혁·실적 (2026-09-16) ──────────────────────────────
+// 화면에서 연혁을 고칠 수 있게 하면서 만들었다. 그 전에는 이식 스크립트만 이 표에 썼다.
+
+export const RECORD_KINDS = [
+  "GRANT", "AWARD", "EXHIBITION", "FORUM", "EDUCATION", "NETWORKING", "INTERNAL", "MILESTONE",
+] as const
+
+/** 종류 이름표. 브라우저(편집 창)도 쓰므로 prisma 를 부르는 company-context 가 아니라 여기 둔다 */
+export const RECORD_KIND_LABEL: Record<(typeof RECORD_KINDS)[number], string> = {
+  GRANT: "지원사업",
+  AWARD: "수상",
+  EXHIBITION: "학회·전시",
+  FORUM: "포럼·세미나",
+  EDUCATION: "교육",
+  NETWORKING: "네트워킹",
+  INTERNAL: "내부행사",
+  MILESTONE: "주요",
+}
+
+export const CompanyRecordSchema = z
+  .object({
+    kind: z.enum(RECORD_KINDS, { message: "종류를 고르세요" }),
+    title: z.string().trim().min(1, "제목을 입력하세요").max(300, "제목은 300자 이내로"),
+    organizer: optText(200, "주관"),
+    startsOn: optDate("시작일"),
+    endsOn: optDate("종료일"),
+    /** 원문 기간 표기. 비우면 서버가 날짜로 만들어 넣는다 */
+    periodRaw: optText(100, "기간 표기"),
+    status: optText(20, "상태"),
+    note: optText(1000, "비고"),
+    subject: optText(300, "과제명"),
+    role: optText(50, "역할"),
+    fundingKrw: optMoney("지원금"),
+    ownCashKrw: optMoney("자부담 현금"),
+    ownInKindKrw: optMoney("자부담 현물"),
+    grantNo: optText(100, "과제번호"),
+    prize: optText(100, "상격"),
+    venue: optText(200, "장소"),
+    partner: optText(100, "대리점"),
+    category: optText(50, "분류"),
+  })
+  .refine((d) => !(d.startsOn && d.endsOn) || d.startsOn <= d.endsOn, {
+    message: "종료일이 시작일보다 앞섭니다",
+    path: ["endsOn"],
+  })
+
+export type CompanyRecordInput = z.infer<typeof CompanyRecordSchema>
+
+/** 폼 상태 — 전부 글자. 서버 값(BigInt · Date)은 화면이 이 모양으로 바꿔 넘긴다 */
+export type RecordForm = { id?: string } & { [K in keyof CompanyRecordInput]: string }
+
+export const EMPTY_RECORD_FORM: RecordForm = {
+  kind: "MILESTONE",
+  title: "",
+  organizer: "",
+  startsOn: "",
+  endsOn: "",
+  periodRaw: "",
+  status: "",
+  note: "",
+  subject: "",
+  role: "",
+  fundingKrw: "",
+  ownCashKrw: "",
+  ownInKindKrw: "",
+  grantNo: "",
+  prize: "",
+  venue: "",
+  partner: "",
+  category: "",
+}
+
+export const RECORD_FIELD_LABEL: Record<keyof CompanyRecordInput, string> = {
+  kind: "종류",
+  title: "제목",
+  organizer: "주관",
+  startsOn: "시작일",
+  endsOn: "종료일",
+  periodRaw: "기간 표기",
+  status: "상태",
+  note: "비고",
+  subject: "과제명",
+  role: "역할",
+  fundingKrw: "지원금",
+  ownCashKrw: "자부담 현금",
+  ownInKindKrw: "자부담 현물",
+  grantNo: "과제번호",
+  prize: "상격",
+  venue: "장소",
+  partner: "대리점",
+  category: "분류",
+}
+
+/** 상태 칸에 자주 들어가는 값 — 자유 입력이되 고르기 쉽게 */
+export const RECORD_STATUSES = ["완료", "진행중", "발표완료", "계획"] as const

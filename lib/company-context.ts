@@ -3,16 +3,8 @@
 import { prisma } from "@/lib/db"
 import type { FigureBasis, RecordKind } from "@/generated/prisma/client"
 
-export const RECORD_KIND_LABEL: Record<RecordKind, string> = {
-  GRANT: "지원사업",
-  AWARD: "수상",
-  EXHIBITION: "학회·전시",
-  FORUM: "포럼·세미나",
-  EDUCATION: "교육",
-  NETWORKING: "네트워킹",
-  INTERNAL: "내부행사",
-  MILESTONE: "주요",
-}
+// 이름표는 브라우저도 쓴다 — 정의는 schemas/company.ts 에 있고 여기서는 이어 내보내기만 한다(2026-09-16)
+export { RECORD_KIND_LABEL } from "@/lib/schemas/company"
 
 /** 확정 = 결산서 · 잠정 = 결산 전 세금계산서 합(저장하지 않는다) · 계획 = 예상·추정 */
 export const BASIS_LABEL: Record<FigureBasis | "PROVISIONAL", string> = {

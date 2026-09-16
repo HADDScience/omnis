@@ -25,7 +25,7 @@ import { createNotification } from "@/lib/notifications"
 import { getMembership, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
-import { companyProfileText, companyRecordsText, contextText, marketCompaniesText, staffText, taxInvoicesText } from "@/lib/company-tools"
+import { companyProfileText, companyRecordsText, contextText, marketCompaniesText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
@@ -377,6 +377,34 @@ export const OMNIS_TOOLS = [
           description: "GRANT 지원사업 · AWARD 수상 · EXHIBITION 학회·전시 · FORUM 포럼·세미나 · EDUCATION 교육 · NETWORKING 네트워킹 · INTERNAL 내부행사 · MILESTONE 주요 사건",
         },
         year: { type: "integer", description: "시작 연도" },
+      },
+    },
+  },
+  {
+    name: "save_company_record",
+    description:
+      "회사 연혁·실적을 남기거나 고친다(관리자만). 수상·전시·MOU·과제 선정처럼 사건이 생긴 자리에서 바로 적는다. record_id 를 주면 그 줄을 고치고(준 칸만 바뀐다), 주지 않으면 새로 만든다. 같은 사건을 두 번 넣으면 거절된다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        record_id: { type: "string", description: "고칠 연혁 id. 없으면 새로 만든다 (list_company_records 로 찾는다)" },
+        kind: {
+          type: "string",
+          enum: ["GRANT", "AWARD", "EXHIBITION", "FORUM", "EDUCATION", "NETWORKING", "INTERNAL", "MILESTONE"],
+          description: "GRANT 지원사업 · AWARD 수상 · EXHIBITION 학회·전시 · FORUM 포럼·세미나 · EDUCATION 교육 · NETWORKING 네트워킹 · INTERNAL 내부행사 · MILESTONE 주요 사건",
+        },
+        title: { type: "string", description: "제목. 새로 만들 때 필수" },
+        organizer: { type: "string", description: "주관 기관" },
+        starts_on: { type: "string", description: "시작일 YYYY-MM-DD" },
+        ends_on: { type: "string", description: "종료일 YYYY-MM-DD" },
+        period_raw: { type: "string", description: "원문 기간 표기(예: 2026.04.28~04.30). 비우면 날짜로 만든다" },
+        status: { type: "string", description: "완료 · 진행중 · 발표완료 · 계획" },
+        venue: { type: "string", description: "장소" },
+        prize: { type: "string", description: "상격(수상)" },
+        subject: { type: "string", description: "과제명" },
+        grant_no: { type: "string", description: "과제번호" },
+        funding_krw: { type: "string", description: "지원금(원). 숫자" },
+        note: { type: "string", description: "비고 — 근거가 된 메일·문서를 적어 둔다" },
       },
     },
   },
@@ -1161,6 +1189,15 @@ export async function runTool(
       return { text: await companyProfileText() }
     case "list_company_records":
       return { text: await companyRecordsText(args) }
+    case "save_company_record": {
+      // MCP 는 snake_case, Zod 스키마는 camelCase 다 — 여기서 한 번만 맞춘다
+      const map: Record<string, string> = {
+        starts_on: "startsOn", ends_on: "endsOn", period_raw: "periodRaw",
+        grant_no: "grantNo", funding_krw: "fundingKrw", record_id: "record_id",
+      }
+      const mapped = Object.fromEntries(Object.entries(args).map(([k, v]) => [map[k] ?? k, v]))
+      return saveCompanyRecordText(mapped, caller)
+    }
     case "list_tax_invoices":
       return { text: await taxInvoicesText(args) }
     case "list_staff":

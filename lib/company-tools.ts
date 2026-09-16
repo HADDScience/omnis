@@ -6,6 +6,9 @@
 import { prisma } from "@/lib/db"
 import { BASIS_LABEL, RECORD_KIND_LABEL, invoiceRevenue, periodText, ymd } from "@/lib/company-context"
 import { loadNeighborhood, searchContext, NODE_TYPE_LABEL, type ContextNode } from "@/lib/context-graph"
+import { CompanyRecordSchema } from "@/lib/schemas/company"
+import { recordData, recordDedupeKey } from "@/lib/company-edit"
+import { writeActivity } from "@/lib/api"
 import type { Prisma, RecordKind } from "@/generated/prisma/client"
 
 const money = (v: bigint | number | null | undefined) => (v === null || v === undefined ? "—" : `${Number(v).toLocaleString("ko-KR")}원`)
@@ -231,5 +234,80 @@ export async function contextText(args: Record<string, unknown>, isAdmin: boolea
     ]
       .filter((l) => l !== "")
       .join("\n"),
+  }
+}
+
+/**
+ * 연혁 한 줄 남기기 · 고치기 (MCP · 2026-09-16).
+ *
+ * 화면과 같은 규칙을 쓴다 — 같은 Zod 스키마, 같은 멱등 키, 같은 활동 기록.
+ * 관리자만 부를 수 있다. 사건이 생긴 자리에서 바로 남기라고 만든 길이다.
+ */
+export async function saveCompanyRecordText(
+  args: Record<string, unknown>,
+  caller: { userId: string; role: "ADMIN" | "MEMBER" }
+): Promise<{ text: string } | { error: string }> {
+  if (caller.role !== "ADMIN") return { error: "관리자만 연혁을 남기거나 고칠 수 있습니다" }
+
+  const recordId = typeof args.record_id === "string" ? args.record_id : null
+  const before = recordId ? await prisma.companyRecord.findUnique({ where: { id: recordId } }) : null
+  if (recordId && !before) return { error: "없는 연혁입니다 — list_company_records 로 확인하세요" }
+
+  // 고칠 때는 지금 값을 바탕에 깔고 넘어온 칸만 덮는다. 안 그러면 안 보낸 칸이 비워진다.
+  const base: Record<string, unknown> = before
+    ? {
+        kind: before.kind,
+        title: before.title,
+        organizer: before.organizer,
+        startsOn: before.startsOn?.toISOString().slice(0, 10) ?? null,
+        endsOn: before.endsOn?.toISOString().slice(0, 10) ?? null,
+        periodRaw: before.periodRaw,
+        status: before.status,
+        note: before.note,
+        subject: before.subject,
+        role: before.role,
+        fundingKrw: before.fundingKrw === null ? null : String(before.fundingKrw),
+        ownCashKrw: before.ownCashKrw === null ? null : String(before.ownCashKrw),
+        ownInKindKrw: before.ownInKindKrw === null ? null : String(before.ownInKindKrw),
+        grantNo: before.grantNo,
+        prize: before.prize,
+        venue: before.venue,
+        partner: before.partner,
+        category: before.category,
+      }
+    : {}
+
+  const given = Object.fromEntries(Object.entries(args).filter(([k, v]) => k !== "record_id" && v !== undefined))
+  const parsed = CompanyRecordSchema.safeParse({ ...base, ...given })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "잘못된 입력" }
+
+  const data = recordData(parsed.data)
+  const dedupeKey = recordDedupeKey({
+    kind: data.kind,
+    title: data.title,
+    organizer: data.organizer,
+    partner: data.partner,
+    startsOn: parsed.data.startsOn,
+    periodRaw: data.periodRaw,
+  })
+
+  try {
+    const row = before
+      ? await prisma.companyRecord.update({ where: { id: before.id }, data: { dedupeKey, ...data } })
+      : await prisma.companyRecord.create({ data: { dedupeKey, source: "옴니스", ...data } })
+    await writeActivity({
+      userId: caller.userId,
+      action: before ? "company.record.updated" : "company.record.created",
+      entity: "COMPANY_RECORD",
+      entityId: row.id,
+      title: `${before ? "연혁 수정" : "연혁 추가"}: [${RECORD_KIND_LABEL[row.kind]}] ${row.title}`,
+      metadata: { via: "mcp" },
+    })
+    return {
+      text: `${before ? "고쳤습니다" : "남겼습니다"} — [${RECORD_KIND_LABEL[row.kind]}] ${row.title} · ${row.periodRaw ?? "기간 없음"}${row.status ? ` · ${row.status}` : ""}\nid ${row.id}`,
+    }
+  } catch (err) {
+    if ((err as { code?: string }).code === "P2002") return { error: "같은 연혁이 이미 있습니다" }
+    throw err
   }
 }
