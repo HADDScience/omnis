@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/manual/ai-pairing.md
-last_verified: 2026-09-14
+last_verified: 2026-09-16
 ---
 
 # 기존 데이터와 분리된 전체 E2E

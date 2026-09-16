@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/manual/ux-rules.md
-last_verified: 2026-09-04
+last_verified: 2026-09-16
 ---
 
 # UX·구조 규칙 — canonical
