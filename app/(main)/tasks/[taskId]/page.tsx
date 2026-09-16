@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { TaskDetail } from "./task-detail"
 import { RegisterPanelTask } from "@/components/layout/right-panel-context"
+import { SYSTEM_USER_ID } from "@/lib/system-user"
 
 export const dynamic = "force-dynamic"
 
@@ -13,7 +14,7 @@ interface Props {
 export default async function TaskDetailPage({ params }: Props) {
   const { taskId } = await params
 
-  const [task, feedbackMessages, files, projects] = await Promise.all([
+  const [task, feedbackMessages, files, projects, users] = await Promise.all([
     prisma.task.findUnique({
       where: { id: taskId },
       include: {
@@ -49,6 +50,12 @@ export default async function TaskDetailPage({ params }: Props) {
         name: true,
         product: { select: { id: true, name: true, color: true } },
       },
+    }),
+    // 담당자·지시자를 고칠 때 고를 사람들. 🤖 시스템 계정은 뺀다.
+    prisma.user.findMany({
+      where: { id: { not: SYSTEM_USER_ID } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
     }),
   ])
 
@@ -98,7 +105,7 @@ export default async function TaskDetailPage({ params }: Props) {
       <RegisterPanelTask id={task.id} name={task.name} messages={sidebarMessages} />
       <div className="flex flex-1 overflow-hidden">
         <div className="min-w-0 flex-1 overflow-auto">
-          <TaskDetail task={serialized} projects={projects} />
+          <TaskDetail task={serialized} projects={projects} users={users} />
         </div>
       </div>
     </>
