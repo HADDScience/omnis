@@ -29,7 +29,7 @@ import { createNotification } from "@/lib/notifications"
 import { getMembership, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
-import { companyProfileText, companyRecordsText, contextText, marketCompaniesText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
+import { companyProfileText, companyRecordsText, contextText, deleteCompanyRecordText, marketCompaniesText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
@@ -445,7 +445,7 @@ export const OMNIS_TOOLS = [
   {
     name: "save_company_record",
     description:
-      "회사 연혁·실적을 남기거나 고친다(관리자만). 수상·전시·MOU·과제 선정처럼 사건이 생긴 자리에서 바로 적는다. record_id 를 주면 그 줄을 고치고(준 칸만 바뀐다), 주지 않으면 새로 만든다. 같은 사건을 두 번 넣으면 거절된다.",
+      "회사 연혁·실적을 남기거나 고친다. 수상·전시·MOU·과제 선정처럼 사건이 생긴 자리에서 바로 적는다. record_id 를 주면 그 줄을 고치고(준 칸만 바뀐다), 주지 않으면 새로 만든다. 같은 사건을 두 번 넣으면 거절된다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -468,6 +468,16 @@ export const OMNIS_TOOLS = [
         funding_krw: { type: "string", description: "지원금(원). 숫자" },
         note: { type: "string", description: "비고 — 근거가 된 메일·문서를 적어 둔다" },
       },
+    },
+  },
+  {
+    name: "delete_company_record",
+    description:
+      "연혁·실적 한 줄을 지운다. 같은 사건이 두 줄로 들어갔을 때 정리하는 용도다. 되돌릴 수 없으니 list_company_records 로 확인한 id 만 넘긴다.",
+    inputSchema: {
+      type: "object",
+      properties: { record_id: { type: "string", description: "지울 연혁 id (list_company_records 가 줄 끝에 함께 준다)" } },
+      required: ["record_id"],
     },
   },
   {
@@ -1405,6 +1415,8 @@ export async function runTool(
       const mapped = Object.fromEntries(Object.entries(args).map(([k, v]) => [map[k] ?? k, v]))
       return saveCompanyRecordText(mapped, caller)
     }
+    case "delete_company_record":
+      return deleteCompanyRecordText(args, caller)
     case "list_tax_invoices":
       return { text: await taxInvoicesText(args) }
     case "list_staff":

@@ -100,7 +100,8 @@ export async function companyRecordsText(args: Record<string, unknown>): Promise
       r.venue,
       r.partner && `대리점 ${r.partner}`,
     ].filter(Boolean)
-    return `- ${bits.join(" · ")}`
+    // id 를 함께 준다 — 이게 없으면 고칠 줄을 get_context 로 한 건씩 캐야 한다(2026-09-16)
+    return `- ${bits.join(" · ")} · id ${r.id}`
   })
   return [`연혁·실적 ${rows.length}건${total > rows.length ? ` (전체 ${total}건 중 최근 ${rows.length}건 — 조건을 좁혀 다시 부르세요)` : ""}`, ...lines].join("\n")
 }
@@ -241,13 +242,13 @@ export async function contextText(args: Record<string, unknown>, isAdmin: boolea
  * 연혁 한 줄 남기기 · 고치기 (MCP · 2026-09-16).
  *
  * 화면과 같은 규칙을 쓴다 — 같은 Zod 스키마, 같은 멱등 키, 같은 활동 기록.
- * 관리자만 부를 수 있다. 사건이 생긴 자리에서 바로 남기라고 만든 길이다.
+ * 구성원이면 누구나 부른다(2026-09-16) — 사건을 겪은 사람이 그 자리에서 적어야 연혁이 낡지 않는다.
+ * 누가 남겼는지는 활동 기록에 있다.
  */
 export async function saveCompanyRecordText(
   args: Record<string, unknown>,
   caller: { userId: string; role: "ADMIN" | "MEMBER" }
 ): Promise<{ text: string } | { error: string }> {
-  if (caller.role !== "ADMIN") return { error: "관리자만 연혁을 남기거나 고칠 수 있습니다" }
 
   const recordId = typeof args.record_id === "string" ? args.record_id : null
   const before = recordId ? await prisma.companyRecord.findUnique({ where: { id: recordId } }) : null
@@ -310,4 +311,32 @@ export async function saveCompanyRecordText(
     if ((err as { code?: string }).code === "P2002") return { error: "같은 연혁이 이미 있습니다" }
     throw err
   }
+}
+
+/**
+ * 연혁 한 줄 지우기 (MCP · 2026-09-16).
+ *
+ * 중복으로 들어간 줄을 MCP 에서 바로 정리하라고 열었다. 행을 지운다 —
+ * 연혁은 가리키는 것도 색인도 없다. 누가 지웠는지는 활동 기록에 남는다.
+ */
+export async function deleteCompanyRecordText(
+  args: Record<string, unknown>,
+  caller: { userId: string }
+): Promise<{ text: string } | { error: string }> {
+  const id = typeof args.record_id === "string" ? args.record_id.trim() : ""
+  if (!id) return { error: "record_id 가 필요합니다 — list_company_records 의 id 를 씁니다" }
+
+  const row = await prisma.companyRecord.findUnique({ where: { id } })
+  if (!row) return { error: "없는 연혁입니다" }
+
+  await prisma.companyRecord.delete({ where: { id } })
+  await writeActivity({
+    userId: caller.userId,
+    action: "company.record.deleted",
+    entity: "COMPANY_RECORD",
+    entityId: id,
+    title: `연혁 삭제: [${RECORD_KIND_LABEL[row.kind]}] ${row.title}`,
+    metadata: { via: "mcp", startsOn: row.startsOn?.toISOString().slice(0, 10) ?? null },
+  })
+  return { text: `지웠습니다 — [${RECORD_KIND_LABEL[row.kind]}] ${row.title} · ${row.periodRaw ?? "기간 없음"}` }
 }

@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
 import { CompanyRecordSchema, RECORD_FIELD_LABEL } from "@/lib/schemas/company"
-import { isAdminSession, isUniqueViolation, recordData, recordDedupeKey, sameValue } from "@/lib/company-edit"
+import { isUniqueViolation, recordData, recordDedupeKey, sameValue } from "@/lib/company-edit"
 import { RECORD_KIND_LABEL } from "@/lib/company-context"
 
 export const runtime = "nodejs"
@@ -16,7 +16,6 @@ interface Props {
 export async function PATCH(req: NextRequest, { params }: Props) {
   const session = await auth()
   if (!session?.user?.id) return apiError(401, "인증 필요")
-  if (!isAdminSession(session)) return apiError(403, "관리자만 연혁을 고칠 수 있습니다")
 
   const { recordId } = await params
   const before = await prisma.companyRecord.findUnique({ where: { id: recordId } })
@@ -58,8 +57,8 @@ export async function PATCH(req: NextRequest, { params }: Props) {
 
 export async function DELETE(_req: NextRequest, { params }: Props) {
   const session = await auth()
+  // 지우는 것도 구성원 전체에게 연다(작업지시자 결정 2026-09-16). 누가 지웠는지는 활동 기록에 남는다.
   if (!session?.user?.id) return apiError(401, "인증 필요")
-  if (!isAdminSession(session)) return apiError(403, "관리자만 연혁을 지울 수 있습니다")
 
   const { recordId } = await params
   const row = await prisma.companyRecord.findUnique({ where: { id: recordId } })

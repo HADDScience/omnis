@@ -7,15 +7,16 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
 import { CompanyRecordSchema } from "@/lib/schemas/company"
-import { isAdminSession, isUniqueViolation, recordData, recordDedupeKey } from "@/lib/company-edit"
+import { isUniqueViolation, recordData, recordDedupeKey } from "@/lib/company-edit"
 import { RECORD_KIND_LABEL } from "@/lib/company-context"
 
 export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
+  // 구성원이면 누구나 남긴다(2026-09-16) — 사건을 겪은 사람이 그 자리에서 적어야 연혁이 낡지 않는다.
+  // 관리자만 열어 두면 결국 한 사람에게 몰리고, 나중에 메일·엑셀을 뒤져 복원하게 된다.
   if (!session?.user?.id) return apiError(401, "인증 필요")
-  if (!isAdminSession(session)) return apiError(403, "관리자만 연혁을 남길 수 있습니다")
 
   const parsed = CompanyRecordSchema.safeParse(await parseJson(req))
   if (!parsed.success) return apiError(400, parsed.error.issues[0]?.message ?? "잘못된 입력")
