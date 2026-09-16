@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/tech/stack-and-conventions.md
-last_verified: 2026-09-04
+last_verified: 2026-09-16
 ---
 
 # 기술 스택과 코딩 관례

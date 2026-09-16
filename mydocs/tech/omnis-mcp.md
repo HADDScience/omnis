@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/tech/omnis-mcp.md
-last_verified: 2026-09-14
+last_verified: 2026-09-16
 ---
 
 # hadd-omnis — Omnis 의 원격 MCP 서버
