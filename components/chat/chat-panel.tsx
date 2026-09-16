@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
-import { CHAT_PAGE_SIZE } from "@/lib/constants"
+import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 
@@ -14,6 +14,12 @@ interface Message {
   isTaskInstruction: boolean
   author: { id: string; name: string }
   task?: { id: string; name: string; slug: string } | null
+  /** 고친 시각 · 지운 시각 · 답장 대상 (2026-09-16) */
+  editedAt?: string | null
+  deletedAt?: string | null
+  replyTo?: { id: string; authorName: string; content: string } | null
+  files?: { id: string; name: string; path: string; size: number; mimeType: string }[]
+  _settled?: boolean
 }
 
 interface User {
@@ -265,7 +271,17 @@ export function ChatPanel({
     async (res: Response, messageId: string) => {
       if (!res.ok) return
       const data = await res.json().catch(() => null)
-      await fetchMessages()
+      // 폴링은 `after` 뒤에 새로 생긴 글만 가져온다 — 고치거나 지운 옛 글은 여기서 그 자리에 갈아 끼운다.
+      // fetchMessages() 를 불러도 그 글은 오지 않는다(createdAt 이 과거다).
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId) return m
+          if (data?.deleted) {
+            return { ...m, content: CHAT_DELETED_TEXT, deletedAt: new Date().toISOString(), files: [], _settled: true }
+          }
+          return data ? { ...m, ...data, _settled: true } : m
+        }),
+      )
       const taskId = data?.task?.id ?? messages.find((m) => m.id === messageId)?.task?.id
       if (data?._rebuild === "queued" && taskId) {
         const slug = data?.task?.slug ?? messages.find((m) => m.id === messageId)?.task?.slug ?? null
@@ -273,7 +289,7 @@ export function ChatPanel({
         void waitForRebuild(taskId, messageId)
       }
     },
-    [fetchMessages, messages, waitForRebuild],
+    [messages, waitForRebuild],
   )
 
   const handleEdit = useCallback(
