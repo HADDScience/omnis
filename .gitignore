@@ -42,6 +42,8 @@ next-env.d.ts
 # playwright
 playwright-report/
 test-results/
+# MCP 브라우저가 남기는 화면·녹화. 사내 데이터가 그대로 찍혀 있고 한 번에 수십 MB 다
+.playwright-mcp/
 .sisyphus/
 .omc/
 .claude/
