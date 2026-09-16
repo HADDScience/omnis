@@ -140,33 +140,59 @@ export function HaddDbLanding({
   activityLogs,
 }: HaddDbLandingProps) {
   const palette = useCommandPalette()
-  const topTrigger = recent[0]?.title ?? "HPLC 세척 주기"
+  const hasCards = totalCards > 0
+  /* 카드가 0건일 때 없는 카드 제목("HPLC 세척 주기")을 예시로 걸면 있는 것처럼 보인다.
+     그때는 검색이 실제로 훑는 범위를 적는다 — app/api/search/route.ts 기준. */
+  const searchHint = recent[0]?.title ?? null
 
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-[960px] px-4 pb-16 pt-8 sm:px-8 md:px-12 md:pt-12">
-        <div className="mb-7 text-center">
+        <div className="mb-6 text-center">
           <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             HADD DB
           </div>
           <h1 className="my-2 text-[24px] font-bold tracking-[-0.03em] sm:text-[32px]">
-            회사의 모든 지식, 한 번의 검색으로.
+            회사가 쌓아 온 것, 한자리에.
           </h1>
+          {/* 부제는 화면에 실제로 있는 것만 말한다. 카드 0건에 "매주 업데이트"라고 쓰면
+              첫 줄부터 거짓이 된다 — 카드 수는 카드가 생긴 뒤에 내세운다. */}
           <p className="text-[14px] text-muted-foreground">
-            {totalCards} 카드 · {categoryCount} 카테고리 · 매주 업데이트
+            {hasCards
+              ? `카드 ${totalCards} · 카테고리 ${categoryCount}`
+              : "회사 정보 · 연혁 · 시장기업부터. 카드는 AI 제안으로 쌓입니다"}
           </p>
         </div>
 
+        {/* 회사 Context — 이식 · 업무에서 쌓이는 회사 자료. 카드처럼 사람이 쓰지 않는다.
+            이 화면에서 유일하게 내용이 차 있는 곳이라 맨 앞에 둔다(2026-09-16 결정).
+            카드가 쌓이고 검색이 회사 자료까지 훑게 되면 검색을 다시 앞으로 올린다. */}
+        <nav aria-label="회사 Context" className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+          {contextTiles.map((t) => (
+            <Link
+              key={t.href}
+              href={t.href}
+              className="touch-target min-w-0 rounded-lg border bg-card px-4 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-colors hover:border-border-strong hover:bg-muted/40"
+            >
+              <div className="text-[11.5px] text-muted-foreground">{t.title}</div>
+              <div className="mt-1 truncate text-[17px] font-semibold tabular-nums">{t.value}</div>
+              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{t.meta}</div>
+            </Link>
+          ))}
+        </nav>
+
         {/* 사람이 문서를 한 땀씩 쓰는 곳이 아니라 Context 를 살펴보는 곳이다(2026-09-14 결정) —
             「새 카드」 버튼을 앞에서 뺐다. 카드는 AI 가 업무에서 뽑아 제안한다. */}
-        <div className="flex items-stretch gap-2">
+        <div className="mt-3.5 flex items-stretch gap-2">
           <button
             type="button"
             onClick={() => palette.open()}
-            className="flex flex-1 items-center gap-3 rounded-lg border bg-card px-5 py-4 text-[15px] text-muted-foreground shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-colors hover:border-border-strong"
+            className="flex flex-1 items-center gap-3 rounded-lg border bg-card px-5 py-3.5 text-[14px] text-muted-foreground transition-colors hover:border-border-strong"
           >
             <HugeiconsIcon icon={Search01Icon} size={16} />
-            <span className="flex-1 truncate text-left">검색 · &quot;{topTrigger}&quot;</span>
+            <span className="flex-1 truncate text-left">
+              {searchHint ? `검색 · "${searchHint}"` : "검색 · 업무 · 보고서 · 지식재산권"}
+            </span>
             {/* 물리 키보드가 없는 기기에선 단축키 힌트를 숨긴다 */}
             <Kbd className="hidden md:inline-flex">⌘K</Kbd>
           </button>
@@ -175,49 +201,37 @@ export function HaddDbLanding({
         {/*
           규칙 20 (omnis/CLAUDE.md): 상단 Input = 검색 전용. 카테고리 버튼은 라우트 직접 진입.
           사용자 원본 #14 — 카테고리 클릭 → 검색 모달 대신 /omnis/c/[name] 진입.
+          카드가 한 장도 없으면 칩이 전부 · 0 이고 눌러도 빈 화면이라 줄째로 감춘다.
         */}
-        <div className="mt-3.5 flex flex-wrap justify-center gap-1.5">
-          <Link
-            href="/omnis"
-            className={`rounded-full border px-3 py-1 text-[12px] transition-colors hover:border-border-strong ${
-              activeFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/70"
-            }`}
-          >
-            전체
-          </Link>
-          <Link
-            href="/omnis?filter=bookmarks"
-            className={`rounded-full border px-3 py-1 text-[12px] transition-colors hover:border-border-strong ${
-              activeFilter === "bookmarks" ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/70"
-            }`}
-          >
-            즐겨찾기 · {bookmarks.length}
-          </Link>
-          {categories.map((cat) => (
+        {hasCards && (
+          <div className="mt-3.5 flex flex-wrap justify-center gap-1.5">
             <Link
-              key={cat.name}
-              href={`/omnis/c/${encodeURIComponent(cat.name)}`}
-              className="rounded-full border bg-muted px-3 py-1 text-[12px] transition-colors hover:border-border-strong hover:bg-muted/70"
+              href="/omnis"
+              className={`rounded-full border px-3 py-1 text-[12px] transition-colors hover:border-border-strong ${
+                activeFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/70"
+              }`}
             >
-              {cat.name} · {cat.count}
+              전체
             </Link>
-          ))}
-        </div>
-
-        {/* 회사 Context — 이식 · 업무에서 쌓이는 회사 자료. 카드처럼 사람이 쓰지 않는다 */}
-        <nav aria-label="회사 Context" className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
-          {contextTiles.map((t) => (
             <Link
-              key={t.href}
-              href={t.href}
-              className="touch-target min-w-0 rounded-lg border bg-card px-3.5 py-3 transition-colors hover:border-border-strong hover:bg-muted/40"
+              href="/omnis?filter=bookmarks"
+              className={`rounded-full border px-3 py-1 text-[12px] transition-colors hover:border-border-strong ${
+                activeFilter === "bookmarks" ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/70"
+              }`}
             >
-              <div className="text-[11.5px] text-muted-foreground">{t.title}</div>
-              <div className="mt-0.5 truncate text-[14.5px] font-semibold tabular-nums">{t.value}</div>
-              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{t.meta}</div>
+              즐겨찾기 · {bookmarks.length}
             </Link>
-          ))}
-        </nav>
+            {categories.map((cat) => (
+              <Link
+                key={cat.name}
+                href={`/omnis/c/${encodeURIComponent(cat.name)}`}
+                className="rounded-full border bg-muted px-3 py-1 text-[12px] transition-colors hover:border-border-strong hover:bg-muted/70"
+              >
+                {cat.name} · {cat.count}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Context 그래프 — 대상 하나를 가운데 두고 DB 연결(실선)과 의미상 이웃(점선)을 펼친다 */}
         <Link
@@ -299,6 +313,9 @@ export function HaddDbLanding({
           />
         </Link>
 
+        {/* 카드 목록 3열. 카드가 없으면 "아직 카드 없음" 상자 셋이 화면 절반을 차지한다 —
+            빈 상태를 세 번 보여 주는 대신 줄째로 감추고, 카드가 생기면 그대로 돌아온다. */}
+        {hasCards && (
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 md:mt-12 md:gap-5 lg:grid-cols-3">
           {(activeFilter === "bookmarks"
             ? [
@@ -338,6 +355,8 @@ export function HaddDbLanding({
             )
           })}
         </div>
+        )}
+
         <div className="mt-8">
           <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             활동 이력
