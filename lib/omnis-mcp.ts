@@ -21,6 +21,10 @@ import { retrieveContext, sectionToText, syncEmbeddingsSafe, type EmbeddingSourc
 import { migrateContent } from "@/lib/omnis-types"
 import { askOmnis, buildCrmOverview, SOURCE_LABEL } from "@/lib/omnis-ask"
 import { postChatMessage } from "@/lib/chat-post"
+import { listWeeklyReports, updateWeeklyReport, upsertThisWeekReport } from "@/lib/weekly-report"
+import { createOmnisCard, updateOmnisCard } from "@/lib/omnis-cards"
+import { readChatFeed, type FeedView } from "@/lib/chat-feed"
+import type { Prisma } from "@/generated/prisma/client"
 import { createNotification } from "@/lib/notifications"
 import { getMembership, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
@@ -96,6 +100,7 @@ export const INSTRUCTIONS = [
   "사람 이름은 list_members 의 정식 이름을 씁니다. 업무는 슬러그·ID·이름 일부 어느 것으로든 찾습니다 — 사용자에게 ID 를 되묻지 않습니다.",
   "파일은 upload_file(텍스트·작은 파일) 또는 create_upload_link(셸에서 curl 로 올리는 링크)로 올리고, 받은 파일 ID 를 post_message 의 files 에 넣어 채팅·업무 스레드에 붙입니다. 첨부를 읽을 때는 get_task 에 보이는 파일 ID 로 read_file.",
   "「나한테 온 거」는 list_notifications. 업무 수락·완료 확인은 respond_notification 으로 — 사용자 본인에게 온 알림에만 응답할 수 있습니다.",
+  "주간보고는 list_weekly_reports·write_weekly_report, 사내 지식 카드 작성은 write_omnis_card, 업무 밖 채팅은 list_chat 입니다.",
   "업무 카드의 상태·마감·우선순위는 update_task, 체크리스트는 update_checklist. 진행 보고라면 post_message 가 먼저입니다(담당자 확인과 AI 재구성이 따라옵니다).",
   "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
   "",
@@ -355,6 +360,63 @@ export const OMNIS_TOOLS = [
     name: "get_omnis_card",
     description: "지식 카드 본문 전부. card 는 ID 또는 제목 일부.",
     inputSchema: { type: "object", properties: { card: { type: "string" } }, required: ["card"] },
+  },
+  {
+    name: "write_omnis_card",
+    description: [
+      "지식 카드를 만들거나 고친다. card 에 ID·제목 일부를 주면 그 카드를, 없으면 새로 만든다(새 카드는 category 와 title 이 필요하다).",
+      "markdown 은 첫 텍스트 구역의 본문을 바꾼다 — 표·키값 구역은 건드리지 않는다. append=true 면 기존 본문 뒤에 덧붙인다.",
+      "화면에서 쓴 것과 똑같이 버전 기록·Git 커밋·색인이 남는다.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        card: { type: "string", description: "고칠 카드의 ID 또는 제목 일부. 생략하면 새 카드" },
+        title: { type: "string", description: "카드 제목" },
+        category: { type: "string", description: "분류 이름 — list_omnis_cards 의 [대괄호] 안 이름" },
+        markdown: { type: "string", description: "본문" },
+        append: { type: "boolean", description: "true 면 기존 본문 뒤에 덧붙인다" },
+        tags: { type: "array", items: { type: "string" } },
+      },
+    },
+  },
+  {
+    name: "list_weekly_reports",
+    description: "사용자 본인의 주간보고. 주차·상태·그 주의 완료/진행 업무와 본문을 준다. 남의 보고서는 보이지 않는다.",
+    inputSchema: { type: "object", properties: { limit: { type: "integer", description: "기본 4, 최대 20" } } },
+  },
+  {
+    name: "write_weekly_report",
+    description: [
+      "이번 주 주간보고를 만들거나 고친다. 인자 없이 부르면 이번 주 업무(완료·진행)를 다시 세어 담는다 — 사람이 쓴 본문은 지우지 않는다.",
+      "draft=true 면 AI 초안을 함께 만들고, markdown 을 주면 본문을 그 글로 바꾸고, submit=true 면 「제출 완료」로 표시한다.",
+      "report 에 ID 를 주면 그 주차 보고서의 본문·상태만 고친다(지난 주 수정).",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        draft: { type: "boolean", description: "AI 초안 생성" },
+        markdown: { type: "string", description: "보고서 본문" },
+        submit: { type: "boolean", description: "제출 완료로 표시" },
+        report: { type: "string", description: "고칠 보고서 ID (list_weekly_reports). 생략하면 이번 주" },
+      },
+    },
+  },
+  {
+    name: "list_chat",
+    description: [
+      "업무 밖 채팅까지 읽는다. view=all 최근 전체 · task 업무 하나에 걸린 글(스레드 + #멘션) · dm 나와 그 사람이 서로 @부른 글 · ai 옴니스 AI 가 쓰거나 불린 글.",
+      "특정 업무의 대화만 필요하면 get_task 가 더 짧다.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        view: { type: "string", enum: ["all", "task", "dm", "ai"], description: "기본 all" },
+        task: { type: "string", description: "view=task 일 때 업무 슬러그·ID·이름 일부" },
+        user: { type: "string", description: "view=dm 일 때 상대 이름" },
+        limit: { type: "integer", description: "기본 40, 최대 200" },
+      },
+    },
   },
   // ─── 회사 Context (lib/company-tools) — 개인정보는 내보내지 않는다 ───
   {
@@ -1155,6 +1217,151 @@ export async function runTool(
       const cc = migrateContent(card.content)
       const body = cc.sections.map((s) => { const t = sectionToText(s).trim(); return t ? `${s.title ? `## ${s.title}\n` : ""}${t}` : "" }).filter(Boolean).join("\n\n")
       return { text: `# [${card.category.name}] ${card.title}\n갱신 ${kst(card.updatedAt)} · v${card.version}${card.tags.length ? ` · ${card.tags.join(", ")}` : ""}\n\n${body || "(본문 없음)"}` }
+    }
+
+    case "write_omnis_card": {
+      const key = str(args.card)
+      const title = str(args.title)
+      const categoryName = str(args.category)
+      const markdown = args.markdown !== undefined ? String(args.markdown) : undefined
+      const tags = Array.isArray(args.tags)
+        ? args.tags.map(String).map((t) => t.trim()).filter(Boolean)
+        : undefined
+
+      let categoryId: string | undefined
+      if (categoryName) {
+        const cats = await prisma.omnisCategory.findMany({
+          where: { name: { contains: categoryName, mode: "insensitive" } }, select: { id: true, name: true }, take: 10,
+        })
+        if (cats.length === 0) return { error: `'${categoryName}' 분류가 없습니다. list_omnis_cards 의 [대괄호] 이름을 쓰세요.` }
+        const exact = cats.find((c) => c.name === categoryName)
+        if (cats.length > 1 && !exact) return { error: `분류가 ${cats.length}개 걸립니다: ${cats.map((c) => c.name).join(" / ")}` }
+        categoryId = (exact ?? cats[0]).id
+      }
+
+      if (!key) {
+        if (!title || !categoryId) {
+          return { error: "새 카드는 title 과 category 가 필요합니다. 기존 카드를 고치려면 card 에 ID·제목을 주세요." }
+        }
+        const sections = markdown !== undefined ? [{ id: randomUUID(), type: "text", title: "", body: markdown }] : []
+        const card = await createOmnisCard(caller.userId, {
+          categoryId, title, tags, content: { sections } as unknown as Prisma.InputJsonValue,
+        })
+        return { text: `만들었습니다: [${card.category.name}] ${card.title} · ID ${card.id}` }
+      }
+
+      const existing =
+        (await prisma.omnisCard.findFirst({ where: { id: key } })) ??
+        (await prisma.omnisCard.findFirst({ where: { title: { contains: key, mode: "insensitive" } }, orderBy: { updatedAt: "desc" } }))
+      if (!existing) return { error: `'${key}' 에 맞는 카드가 없습니다. list_omnis_cards 로 확인하세요.` }
+
+      // 본문은 첫 텍스트 구역만 바꾼다 — 표·키값·첨부 구역을 통째로 날리지 않으려는 것이다.
+      let content: Prisma.InputJsonValue | undefined
+      if (markdown !== undefined) {
+        const cc = migrateContent(existing.content)
+        const sections = [...cc.sections]
+        const at = sections.findIndex((sec) => sec.type === "text")
+        if (at >= 0) {
+          const prev = sections[at] as { body: string }
+          const body = args.append === true && prev.body ? `${prev.body}\n\n${markdown}` : markdown
+          sections[at] = { ...sections[at], body } as (typeof sections)[number]
+        } else {
+          sections.push({ id: randomUUID(), type: "text", title: "", body: markdown })
+        }
+        content = { ...cc, sections } as unknown as Prisma.InputJsonValue
+      }
+
+      const updated = await updateOmnisCard(caller.userId, {
+        id: existing.id, title: title || undefined, content, tags, categoryId,
+      })
+      if ("error" in updated) return { error: updated.error }
+      const card = updated.card
+      return { text: `고쳤습니다: [${card.category.name}] ${card.title} · v${card.version} · ID ${card.id}` }
+    }
+
+    case "list_weekly_reports": {
+      const rows = await listWeeklyReports(caller.userId)
+      if (rows.length === 0) return { text: "주간보고가 없습니다. write_weekly_report 로 이번 주 보고서를 만듭니다." }
+      const out = rows.slice(0, clampInt(args.limit, 4, 20)).map((r) => {
+        const c = (r.content ?? {}) as { completed?: string[]; inProgress?: string[]; markdown?: string; draft?: string }
+        const lines = [
+          `# ${r.title} · ${r.isoWeek} · ${r.status}${r.submittedAt ? ` · 제출 ${kst(r.submittedAt)}` : ""} · ID ${r.id}`,
+          `기간 ${kst(r.weekStart)} ~ ${kst(r.weekEnd)}`,
+        ]
+        if (c.completed?.length) lines.push(`완료 ${c.completed.length}: ${c.completed.join(", ")}`)
+        if (c.inProgress?.length) lines.push(`진행 ${c.inProgress.length}: ${c.inProgress.join(", ")}`)
+        const body = c.markdown || c.draft
+        if (body) lines.push("", clip(body))
+        return lines.join("\n")
+      })
+      return { text: [`주간보고 ${rows.length}건${rows.length > out.length ? ` 중 ${out.length}건` : ""}`, "", ...out].join("\n") }
+    }
+
+    case "write_weekly_report": {
+      const markdown = args.markdown !== undefined ? String(args.markdown) : undefined
+      const submit = args.submit === true
+      const status = submit ? "제출 완료" : undefined
+      const reportId = str(args.report)
+
+      if (reportId) {
+        if (markdown === undefined && !submit) {
+          return { error: "report 를 줄 때는 markdown 이나 submit 중 하나가 필요합니다." }
+        }
+        const r = await updateWeeklyReport(caller.userId, { id: reportId, markdown, status })
+        if ("error" in r) return { error: `${r.error}. list_weekly_reports 로 사용자 본인의 보고서 ID 를 확인하세요.` }
+        return { text: `고쳤습니다: ${r.report.title} · ${r.report.status}` }
+      }
+
+      // 이번 주 보고서 — 없으면 만들고, 있으면 업무 목록만 다시 센다.
+      const report = await upsertThisWeekReport(caller.userId, { generateDraft: args.draft === true })
+      let current = report
+      if (markdown !== undefined || submit) {
+        const r = await updateWeeklyReport(caller.userId, { id: report.id, markdown, status })
+        if ("error" in r) return { error: r.error }
+        current = r.report
+      }
+      const c = (current.content ?? {}) as { completed?: string[]; inProgress?: string[]; markdown?: string; draft?: string }
+      return {
+        text: [
+          `${current.title} · ${current.status} · ID ${current.id}`,
+          `완료 ${c.completed?.length ?? 0} · 진행 ${c.inProgress?.length ?? 0}`,
+          c.draft && args.draft === true ? "\nAI 초안:\n" + clip(c.draft) : "",
+          c.markdown ? "\n본문:\n" + clip(c.markdown) : "",
+        ].filter(Boolean).join("\n"),
+      }
+    }
+
+    case "list_chat": {
+      const view = (str(args.view) || "all") as FeedView
+      if (!["all", "task", "dm", "ai"].includes(view)) return { error: "view 는 all · task · dm · ai 중 하나입니다." }
+      let id: string | undefined
+      let userId: string | undefined
+      if (view === "task") {
+        if (!str(args.task)) return { error: "view=task 에는 task 가 필요합니다." }
+        const found = await findTask(str(args.task))
+        if ("error" in found) return found
+        id = found.id
+      }
+      if (view === "dm") {
+        const name = str(args.user)
+        if (!name) return { error: "view=dm 에는 user(상대 이름)가 필요합니다." }
+        const { ids, missing } = await findUsers([name])
+        if (missing.length || !ids[0]) return { error: `모르는 이름: ${name}. list_members 로 확인하세요.` }
+        userId = ids[0]
+      }
+      const r = await readChatFeed({ currentUserId: caller.userId, view, id, userId, take: clampInt(args.limit, 40, 200) })
+      if ("error" in r) return { error: r.error }
+      if (r.messages.length === 0) return { text: "글이 없습니다." }
+      return {
+        text: [
+          `채팅 ${r.messages.length}건 (오래된 것부터)`,
+          ...r.messages.map((m) =>
+            `[${kst(m.createdAt, true)}] ${m.author.name}${m.task ? ` · #${m.task.slug}` : ""}: ` +
+            `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
+            `${m.files.length ? ` [첨부: ${m.files.map((f) => f.name).join(", ")}]` : ""}`
+          ),
+        ].join("\n"),
+      }
     }
 
     case "company_profile":

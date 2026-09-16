@@ -22,8 +22,8 @@ claude.ai 커넥터 목록에 보이는 이름은 서버가 아니라 **커넥�
 | 지식재산권 도구 (그대로) | `lib/ip-mcp.ts` — 설명 한 글자도 안 바꿨다 |
 | 엔드포인트 + OAuth 2.1 + `/upload` · `/download` | `app/api/ip-mcp/[[...path]]/route.ts` |
 | 승인 화면 | `app/ip-mcp/authorize/` |
-| 화면과 함께 쓰는 알맹이 | `lib/chat-post.ts` · `lib/omnis-ask.ts` · `lib/notifications.ts`(respondToAction) · `lib/task-update.ts` · `lib/checklists.ts` · `lib/company-tools.ts` |
-| 검증 | `scripts/verify-ip-mcp.ts` (OAuth·IP 37) · `scripts/verify-omnis-mcp.ts` (옴니스 도구 76) · `scripts/verify-moved-routes.ts` (옮긴 화면 라우트 13) |
+| 화면과 함께 쓰는 알맹이 | `lib/chat-post.ts` · `lib/omnis-ask.ts` · `lib/notifications.ts`(respondToAction) · `lib/task-update.ts` · `lib/checklists.ts` · `lib/company-tools.ts` · `lib/weekly-report.ts` · `lib/omnis-cards.ts` · `lib/chat-feed.ts` |
+| 검증 | `scripts/verify-ip-mcp.ts` (OAuth·IP 37) · `scripts/verify-omnis-mcp.ts` (옴니스 도구 93) · `scripts/verify-moved-routes.ts` (옮긴 화면 라우트 30) · `scripts/verify-system-author.ts` (시스템 계정 10) |
 
 ## 붙이는 법
 
@@ -76,12 +76,12 @@ Omnis 로그인 → 승인 화면 → 끝. 8시간마다 자동 갱신. 이미 �
 Prisma 는 DB 소유자로 붙으므로 `lib/omnis-mcp.ts` 가 곧 권한 경계다.
 업무·체크리스트 수정은 화면 라우트와 같은 권한이다 — 로그인한 구성원이면 누구나. 알림 응답만 **본인 알림**으로 막힌다.
 
-## 도구 33개
+## 도구 37개
 
-`lib/omnis-mcp.ts` 의 `TOOLS = [...OMNIS_TOOLS, ...IP_TOOLS]` — 옴니스 25(업무 · 파일 · 알림 19 + 회사 Context 6) · 지식재산권 8.
+`lib/omnis-mcp.ts` 의 `TOOLS = [...OMNIS_TOOLS, ...IP_TOOLS]` — 옴니스 29(업무 · 파일 · 알림 · 주간보고 · 카드 · 채팅 23 + 회사 Context 6) · 지식재산권 8.
 화면의 옴니스 질문(`lib/omnis-ask.ts`)도 `OMNIS_TOOLS` 에서 `ask_omnis` · `post_message` · `create_task` · `search_knowledge` 를 뺀 나머지를 같은 `runTool` 로 부른다.
 
-옴니스 19 — 읽기 12, 쓰기 7:
+옴니스 23 — 읽기 14, 쓰기 9:
 
 | 도구 | 무엇 |
 |---|---|
@@ -100,6 +100,9 @@ Prisma 는 DB 소유자로 붙으므로 `lib/omnis-mcp.ts` 가 곧 권한 경계
 | `respond_notification` | 알림 버튼과 같은 것. `lib/notifications.respondToAction` |
 | `update_task` | 업무 상세에서 고치는 것과 같은 것. `lib/task-update.updateTask` |
 | `update_checklist` | 추가·체크·해제·삭제. `lib/checklists` |
+| `write_omnis_card` | 지식 카드 만들기·고치기. `lib/omnis-cards` — 버전 기록·Git 커밋·색인이 화면과 같이 남는다 |
+| `list_weekly_reports` `write_weekly_report` | 사용자 본인 주간보고 읽기·쓰기. `lib/weekly-report` |
+| `list_chat` | 업무 밖 채팅 (all · task · dm · ai). `lib/chat-feed` |
 
 `post_message` 는 화면과 달리 AI 재구성을 **기다려** 결과를 글로 돌려준다. 화면 경로는 응답 뒤로 미룬다 — [chat-post.md](chat-post.md).
 
@@ -125,7 +128,7 @@ Streamable HTTP 클라이언트가 서버 메시지를 받으려고 여는 `GET`
 ### 쓰기는 화면과 같은 길로만
 
 MCP 도구는 라우트가 부르는 바로 그 함수를 부른다. 그러려고 라우트에서 알맹이를 lib 로 옮겼다 —
-`chat-post` · `omnis-ask`(2026-09-07), `notifications.respondToAction` · `task-update` · `checklists`(2026-09-14).
+`chat-post` · `omnis-ask`(2026-09-07), `notifications.respondToAction` · `task-update` · `checklists`(2026-09-14), `weekly-report` · `omnis-cards` · `chat-feed`(2026-09-16).
 MCP 전용 지름길을 만들면 알림·AI 재구성·완료 확인·색인·활동 기록 중 하나가 빠지고, 그것은 조용히 빠진다.
 
 `create_task` 만 예외로 `app/api/tasks` 를 부르지 않고 같은 일을 다시 한다(담당자 알림 ·
@@ -138,6 +141,9 @@ MCP 전용 지름길을 만들면 알림·AI 재구성·완료 확인·색인·�
 - `update_checklist` — 가리킨 항목을 먼저 전부 해석하고, 하나라도 못 찾거나 여럿 걸리면 아무것도 바꾸지 않는다.
   순서는 remove → add → check → uncheck, 번호는 고치기 전 목록 기준.
 - `update_task` — 상태·우선순위·마감 형식, 프로젝트 이름을 확인. 바꿀 필드가 없으면 거절.
+- `write_omnis_card` — `markdown` 은 **첫 텍스트 구역만** 바꾼다(`append` 로 덧붙이기). 표·키값·첨부 구역을 통째로 날리지 않으려는 것이다.
+  새 카드는 분류 이름을 찾아 붙이고, 여럿 걸리면 고르지 않고 후보를 돌려준다.
+- `write_weekly_report` · `list_weekly_reports` — 사용자 본인 것만. 남의 보고서는 찾지 못한 것으로 답한다(화면 라우트와 같은 판정).
 
 ### 파일 (2026-09-14)
 
