@@ -22,6 +22,10 @@ export interface PanelTaskContext {
     isTaskInstruction: boolean
     kind?: string
     files?: { id: string; name: string; path: string; size: number; mimeType: string }[]
+    /** 고친 시각 · 지운 시각 · 답장 대상 (2026-09-16) */
+    editedAt?: string | null
+    deletedAt?: string | null
+    replyTo?: { id: string; authorName: string; content: string } | null
   }[]
 }
 

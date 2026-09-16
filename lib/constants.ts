@@ -41,6 +41,12 @@ export const REPORT_STATUS = {
 /** 채팅 메시지 페이지 크기 — 초기 로드 및 무한 스크롤 1페이지 단위 */
 export const CHAT_PAGE_SIZE = 30
 
+/**
+ * 지운 글이 목록에서 차지하는 자리. 본문 대신 이 문장만 내려보낸다.
+ * 행은 DB 에 그대로 있다 — 답장이 가리키는 글 · 업무 연결 · 색인이 함께 사라지지 않게(2026-09-16).
+ */
+export const CHAT_DELETED_TEXT = "삭제된 메시지입니다"
+
 // ─── 네비게이션 ──────────────────────────────────────────
 
 export const NAV_ITEMS = [

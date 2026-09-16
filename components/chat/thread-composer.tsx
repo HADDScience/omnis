@@ -24,6 +24,9 @@ interface ThreadComposerProps extends Partial<ThreadRefs> {
   onPending?: (content: string | null) => void
   /** 서버가 AI 재구성을 응답 뒤로 미뤘다 — 이 메시지의 재구성이 끝날 때까지 목록에 「갱신 중」 */
   onQueued?: (messageId: string) => void
+  /** 답장 대상 — 목록에서 고른 글. 보내면 비운다 */
+  replyTo?: { id: string; authorName: string; content: string } | null
+  onClearReply?: () => void
 }
 
 class SessionExpired extends Error {}
@@ -43,6 +46,8 @@ export function ThreadComposer({
   onSent,
   onPending,
   onQueued,
+  replyTo,
+  onClearReply,
   tasks = [],
   users = [],
   files = [],
@@ -71,7 +76,7 @@ export function ThreadComposer({
       const res = await fetch(apiUrl("/api/chat/messages"), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ roomId, content, taskId, fileIds }),
+        body: JSON.stringify({ roomId, content, taskId, fileIds, replyToId: replyTo?.id }),
       })
       if (res.status === 401) throw new SessionExpired()
       if (!res.ok) {
@@ -80,6 +85,7 @@ export function ThreadComposer({
       }
       const saved = (await res.json().catch(() => null)) as { id?: string; _rebuild?: string | null } | null
       if (saved?.id && saved._rebuild === "queued") onQueued?.(saved.id)
+      onClearReply?.()
       onSent?.()
       router.refresh()
     } catch (e) {
@@ -103,6 +109,21 @@ export function ThreadComposer({
       data-thread-composer
       data-sending={sending ? "true" : "false"}
     >
+      {/* 무엇에 답하는 중인지 입력창 바로 위에 둔다 — 채팅 패널과 같은 모양 */}
+      {replyTo && (
+        <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <span className="shrink-0 font-medium">{replyTo.authorName}에게 답장</span>
+          <span className="min-w-0 flex-1 truncate">{replyTo.content}</span>
+          <button
+            type="button"
+            aria-label="답장 취소"
+            onClick={onClearReply}
+            className="shrink-0 rounded px-1 hover:bg-muted"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <MessageInput
         onSend={send}
         tasks={tasks}

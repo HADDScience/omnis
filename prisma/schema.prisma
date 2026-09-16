@@ -101,12 +101,22 @@ model ChatMessage {
   isTaskInstruction Boolean     @default(false)
   kind              MessageKind @default(NORMAL)
   createdAt         DateTime    @default(now())
+  /// 고친 시각. null 이면 보낸 그대로다.
+  editedAt          DateTime?
+  /// 지운 시각. 행은 지우지 않는다 — 답장이 가리키는 글 · 업무 연결 · 색인이 함께 사라지기 때문이다.
+  /// 본문은 그대로 두고 API 가 내려보내지 않는다.
+  deletedAt         DateTime?
+  /// 답장 대상. 지워진 글에도 답장이 달려 있을 수 있어 행을 남긴다.
+  replyToId         String?
+  replyTo           ChatMessage?  @relation("MessageReply", fields: [replyToId], references: [id])
+  replies           ChatMessage[] @relation("MessageReply")
 
   files    File[]
   mentions ChatMention[]
 
   @@index([roomId, createdAt])
   @@index([taskId])
+  @@index([replyToId])
 }
 
 enum MessageKind {
