@@ -76,9 +76,12 @@ const PRIORITY_OPTIONS = ["LOW", "NORMAL", "HIGH"] as const
 export function TaskDetail({
   task: initial,
   projects = [],
+  users = [],
 }: {
   task: Task
   projects?: Project[]
+  /** 담당자·지시자를 고를 사람들. 🤖 시스템 계정은 빠져 있다. */
+  users?: { id: string; name: string }[]
 }) {
   const router = useRouter()
   const [task, setTask] = useState(initial)
@@ -95,6 +98,11 @@ export function TaskDetail({
   const [draftDeadline, setDraftDeadline] = useState(
     task.deadline ? task.deadline.slice(0, 10) : ""
   )
+
+  // 담당자·지시자 — 업무를 만들 때만 정해지던 값이라, 반대로 넣으면 고칠 길이 없었다(2026-09-16)
+  const [editingPeople, setEditingPeople] = useState(false)
+  const [draftOwnerIds, setDraftOwnerIds] = useState<string[]>(task.assignees.map((a) => a.id))
+  const [draftInstructorId, setDraftInstructorId] = useState(task.instructor.id)
 
   const nameRef = useRef<HTMLInputElement>(null)
   const backgroundRef = useRef<HTMLTextAreaElement>(null)
@@ -175,6 +183,36 @@ export function TaskDetail({
     }
   }
 
+  // 담당자·지시자 저장. 담당자는 통째로 바꾼다 — 서버가 TaskAssignee 를 갈아끼운다.
+  async function savePeople() {
+    if (draftOwnerIds.length === 0) return
+    setSaving("people")
+    try {
+      const res = await fetch(apiUrl(`/api/tasks/${task.id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigneeIds: draftOwnerIds, instructorId: draftInstructorId }),
+      })
+      if (res.ok) {
+        setTask((prev) => ({
+          ...prev,
+          assignees: users.filter((u) => draftOwnerIds.includes(u.id)),
+          instructor: users.find((u) => u.id === draftInstructorId) ?? prev.instructor,
+        }))
+        setEditingPeople(false)
+        router.refresh()
+      }
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  function cancelPeople() {
+    setEditingPeople(false)
+    setDraftOwnerIds(task.assignees.map((a) => a.id))
+    setDraftInstructorId(task.instructor.id)
+  }
+
   const doneCount = task.checklists.filter((c) => c.done).length
   const sourceMsgs = task.sourceMessages as { author: string; content: string; createdAt: string }[] | null
   const feedbackMsgs = task.feedbackMessages.filter((m) => !m.isTaskInstruction && !m.content.startsWith("🤖"))
@@ -218,8 +256,66 @@ export function TaskDetail({
       {/* 상태 + 메타 */}
       <Card>
         <CardContent className="pt-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="flex items-start justify-between gap-2">
+            {editingPeople ? (
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div>
+                  <div className="mb-1 text-xs text-muted-foreground">담당자</div>
+                  {/* 인원이 10명 안쪽이라 칩 토글이 드롭다운보다 빠르다 — /업무 모달과 같은 방식 */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {users.map((u) => {
+                      const on = draftOwnerIds.includes(u.id)
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() =>
+                            setDraftOwnerIds((prev) =>
+                              on ? prev.filter((id) => id !== u.id) : [...prev, u.id]
+                            )
+                          }
+                          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                            on
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-input hover:bg-muted"
+                          }`}
+                        >
+                          {u.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground">지시</span>
+                  <Select value={draftInstructorId} onValueChange={(v) => v && setDraftInstructorId(v)}>
+                    <SelectTrigger className="h-8 w-28 text-xs">
+                      <SelectValue>{users.find((u) => u.id === draftInstructorId)?.name ?? "선택"}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((u) => (
+                        <SelectItem key={u.id} value={u.id} label={u.name} className="text-xs">
+                          {u.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={savePeople}
+                    disabled={saving === "people" || draftOwnerIds.length === 0}
+                  >
+                    저장
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={cancelPeople}>
+                    취소
+                  </Button>
+                </div>
+              </div>
+            ) : (
+            <div className="group flex items-center gap-2">
               {/* 담당자가 여러 명이면 아바타를 겹쳐 쌓고 이름은 한 줄로 적는다 */}
               <div className="flex -space-x-2">
                 {task.assignees.slice(0, 3).map((a) => (
@@ -246,7 +342,19 @@ export function TaskDetail({
                   지시: {task.instructor.name}
                 </div>
               </div>
+              <button
+                onClick={() => {
+                  setDraftOwnerIds(task.assignees.map((a) => a.id))
+                  setDraftInstructorId(task.instructor.id)
+                  setEditingPeople(true)
+                }}
+                className="rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
+                aria-label="담당자·지시자 편집"
+              >
+                <HugeiconsIcon icon={PencilEdit01Icon} size={14} className="text-muted-foreground" />
+              </button>
             </div>
+            )}
             <Select value={task.status} onValueChange={(v) => v && updateStatus(v)} disabled={saving === "status"}>
               <SelectTrigger className="w-28 h-8 text-xs">
                 <SelectValue>{TASK_STATUS_LABELS[task.status] ?? task.status}</SelectValue>

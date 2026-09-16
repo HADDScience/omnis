@@ -134,6 +134,7 @@ npm run build           # prisma generate + next build (DATABASE_URL 필요)
 |---|---|
 | `prisma/schema.prisma` | 마이그레이션 + Zod 스키마 갱신 + 백필 스크립트를 같은 커밋에 (규칙 23) |
 | `app/` · `components/` UI | [`ux-rules.md`](mydocs/manual/ux-rules.md) 규칙 11~30 자가 점검 |
+| `app/` · `components/` 레이아웃 | `AUDIT_USER=… AUDIT_PASS=… node scripts/narrow-audit.mjs` — 320~200px 에서 넘침 · 잘림 · 44px 미만 터치 타깃. 깨지면 exit 1 |
 | 인증 · SSO | `tsx scripts/verify-sso.ts` + `verify-sso-live.ts` |
 | ip 스키마 · 함수 | `tsx scripts/verify-ip-import.ts` |
 | 사용자 흐름 | `npm run test:e2e` (dev 서버가 떠 있는 상태에서) |

@@ -1,6 +1,6 @@
 ---
 kind: decision
-status: draft
+status: active
 canonical: mydocs/plans/2026-09-10-company-records.md
 last_verified: 2026-09-10
 ---
