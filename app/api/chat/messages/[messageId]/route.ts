@@ -6,7 +6,8 @@
 import { after, NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { runTaskRebuild } from "@/lib/chat-post"
+import { extractMentionSlug, runTaskRebuild } from "@/lib/chat-post"
+import { replaceMentions } from "@/lib/mentions"
 import { syncEmbeddingsSafe, deleteEmbeddingsSafe } from "@/lib/embeddings"
 import { CHAT_DELETED_TEXT } from "@/lib/constants"
 
@@ -45,10 +46,10 @@ function refusal(message: Target, userId: string): string | null {
 function rebuildAfterChange(
   message: Target,
   user: { id: string; name: string },
-  restText: string
+  restText: string,
+  taskId: string | null = message.taskId
 ) {
-  if (!message.taskId) return
-  const taskId = message.taskId
+  if (!taskId) return
   after(async () => {
     await runTaskRebuild({
       user,
@@ -59,6 +60,24 @@ function rebuildAfterChange(
       restText,
     })
   })
+}
+
+/**
+ * 고친 글의 `#슬러그` 로 업무 연결을 다시 잡는다 (2026-09-16).
+ *
+ * 전체 채팅에 그냥 쓴 글을 뒤늦게 업무에 붙이려면 이 길이 있어야 한다 — 그 전에는
+ * 고쳐서 `#슬러그` 를 넣어도 화면에만 칩으로 보이고 스레드에는 오지 않았다.
+ *
+ * 다른 업무로 **옮기는 것도 허용한다**(작업지시자 결정). 옮기면 옛 업무는 그 글이 빠진
+ * 채로, 새 업무는 그 글이 붙은 채로 각각 다시 구성해야 근거가 맞는다.
+ */
+async function resolveTask(content: string, current: string | null): Promise<{ taskId: string | null; restText: string }> {
+  const mention = extractMentionSlug(content)
+  if (!mention) return { taskId: current, restText: content }
+
+  const task = await prisma.task.findUnique({ where: { slug: mention.slug }, select: { id: true } })
+  if (!task) return { taskId: current, restText: content }
+  return { taskId: task.id, restText: mention.restText || content }
 }
 
 export async function PATCH(req: NextRequest, { params }: Props) {
@@ -76,9 +95,12 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   const refused = refusal(message, session.user.id)
   if (refused) return NextResponse.json({ error: refused }, { status: 403 })
 
+  const { taskId: nextTaskId, restText } = await resolveTask(content, message.taskId)
+  const movedFrom = message.taskId && nextTaskId !== message.taskId ? message.taskId : null
+
   const updated = await prisma.chatMessage.update({
     where: { id: messageId },
-    data: { content, editedAt: new Date() },
+    data: { content, editedAt: new Date(), taskId: nextTaskId },
     include: {
       author: { select: { id: true, name: true } },
       task: { select: { id: true, name: true, slug: true } },
@@ -87,8 +109,14 @@ export async function PATCH(req: NextRequest, { params }: Props) {
     },
   })
 
+  // 멘션은 더하지 않고 갈아끼운다 — 옛 멘션이 남으면 스레드 라우팅이 옛 업무를 가리킨다
+  void replaceMentions(messageId, content).catch(() => {})
   void syncEmbeddingsSafe("CHAT_MESSAGE", messageId, session.user.id)
-  rebuildAfterChange(message, { id: session.user.id, name: session.user.name ?? "" }, content)
+
+  const user = { id: session.user.id, name: session.user.name ?? "" }
+  rebuildAfterChange(message, user, restText, nextTaskId)
+  // 떠난 업무도 다시 구성한다 — 그 글이 빠진 채로 카드가 맞아야 한다
+  if (movedFrom) rebuildAfterChange(message, user, "(다른 업무로 옮긴 글)", movedFrom)
 
   return NextResponse.json({
     ...updated,
@@ -99,7 +127,9 @@ export async function PATCH(req: NextRequest, { params }: Props) {
           content: updated.replyTo.deletedAt ? CHAT_DELETED_TEXT : updated.replyTo.content.slice(0, 80),
         }
       : null,
-    _rebuild: message.taskId ? "queued" : null,
+    _rebuild: nextTaskId || movedFrom ? "queued" : null,
+    _taskId: nextTaskId,
+    _movedFrom: movedFrom,
   })
 }
 
