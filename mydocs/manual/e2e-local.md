@@ -23,6 +23,18 @@ npm run test:e2e:local -- --grep 'REGRESSION|API로 첫'
 
 `npm run test:e2e`는 기존처럼 이미 준비된 서버에 대해 실행한다. 개발 DB의 데모 계정·데이터가 없으면 전체 기능 게이트용으로 `test:e2e:local`을 사용한다. scenario·legacy 프로젝트는 feature 게이트와 별도다.
 
+### 라이브 AI 한 건
+
+`chat-task.spec.ts` 의 「AI 자동완성 … (Gemini 라이브 호출)」만 외부를 실제로 부르고
+`_fallback !== true` 를 요구한다. 키가 없으면 서버가 fallback 을 주므로 반드시 깨진다.
+기본으로는 건너뛰고, 키가 있는 곳에서만 켠다.
+
+```bash
+E2E_LIVE_AI=1 npm run test:e2e
+```
+
+CI 는 켜지 않는다 — 외부 할당량을 PR 마다 쓰고, 남의 서비스 사정에 게이트가 흔들린다.
+
 ## 시나리오 테스트 (`npm run test:scenario`)
 
 여러 사람이 동시에 로그인해 채팅 · 스레드로 일하는 흐름을 한 테스트 안에서 돌린다(`tests/scenario/`). 목킹이 없고 Gemini 도 실제로 부른다.
