@@ -1,0 +1,116 @@
+name: CI
+
+# main 으로 가는 PR 과 main 자체를 지킨다.
+# 브랜치 보호에서 아래 두 job 이름(verify · e2e)을 필수 검사로 걸어 둔다 —
+# 이름을 바꾸면 보호 설정도 같이 바꿔야 한다.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 같은 브랜치에 새 푸시가 오면 돌던 것을 접는다. 러너 시간을 아낀다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # postinstall 의 prisma generate 가 돌아야 타입이 맞는다
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # 러너는 개발자의 로컬 DB(운영 스냅샷)에 닿을 수 없다 — 주소가 사설이고,
+    # 열어 두는 것도 옳지 않다. 그래서 여기서 자기 DB 를 띄우고 데모 시드로 채운다.
+    # pgvector 가 필요하다: 20260521020000_add_embedding_chunks 가 CREATE EXTENSION vector 를 한다.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: omnis
+          POSTGRES_PASSWORD: omnis
+          POSTGRES_DB: omnis_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U omnis"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://omnis:omnis@localhost:5432/omnis_test
+      POSTGRES_URL_NON_POOLING: postgresql://omnis:omnis@localhost:5432/omnis_test
+      NEXTAUTH_SECRET: ci-only-not-a-real-secret
+      NEXTAUTH_URL: http://localhost:3000
+      AUTH_TRUST_HOST: "true"
+      # 실제 호출을 하는 테스트는 feature 에 없다(시나리오 테스트만 부른다).
+      # 값이 없으면 기동 시점에 걸리므로 자리만 채운다.
+      GEMINI_API_KEY: ci-placeholder
+      # 데모 시드로 채운 DB 라 데모 화면이 맞다. auth.spec 의 빠른 로그인 검사가 이 값을 본다.
+      NEXT_PUBLIC_IS_DEMO: "true"
+      E2E_PASSWORD: demo1234
+      BASE_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: 스키마 적용
+        run: npx prisma migrate deploy
+
+      - name: 데모 시드 (모든 표를 비우고 다시 채운다 — 빈 CI DB 라 안전하다)
+        run: npm run db:seed:demo
+
+      - name: e2e 계정 확인
+        run: npx tsx scripts/ensure-e2e-accounts.ts
+
+      - name: 빌드
+        run: npm run build
+
+      - name: 브라우저 설치
+        run: npx playwright install --with-deps chromium
+
+      # wait-on 을 새로 넣지 않는다 — 셸 몇 줄로 되는 일에 의존성을 늘리지 않는다.
+      # 못 뜨면 서버 로그를 찍는다. 로그 없이 "타임아웃" 만 보면 원인을 못 찾는다.
+      - name: 서버 기동
+        run: |
+          npm run start > /tmp/next.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/login && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3000/login || {
+            echo "120초 안에 서버가 뜨지 않았다"; cat /tmp/next.log; exit 1;
+          }
+          echo "서버 준비됨"
+
+      - name: feature e2e
+        run: npm run test:e2e
+
+      # 실패했을 때만 남긴다. 화면에 데모 데이터만 있어 올려도 된다.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
