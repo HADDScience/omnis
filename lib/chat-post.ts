@@ -56,7 +56,8 @@ const taskSelect = {
   assignees: { select: { userId: true } }, instructorId: true, slug: true,
 } as const
 
-function extractMentionSlug(content: string): { slug: string; restText: string } | null {
+/** 본문 첫 `#슬러그` 와 그것을 뺀 나머지. 메시지를 고칠 때도 같은 규칙으로 업무를 다시 잡는다 */
+export function extractMentionSlug(content: string): { slug: string; restText: string } | null {
   const match = content.match(/#([a-z0-9가-힣_-]+)/i)
   if (!match) return null
   const slug = match[1]
