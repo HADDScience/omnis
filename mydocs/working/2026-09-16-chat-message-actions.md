@@ -50,10 +50,27 @@ DELETE /api/chat/messages/e531ca11-…                200 in 5.2s
   고친 글은 `createdAt` 이 과거라 폴링에 걸리지 않는다. 응답으로 받은 글을 그 자리에서 갈아 끼우도록 고쳤다
   (`components/chat/chat-panel.tsx` `applyMessageChange`). DB 와 서버는 처음부터 맞았고 화면만 낡아 있었다.
 
-## 남은 것 · 알려진 것
+## 업무 스레드 — 고치면 재구성이 다시 돈다
 
-- **업무 스레드(오른쪽 패널)의 수정 · 삭제는 아직 화면에서 확인하지 않았다.** 그쪽은 `router.refresh()` 로
-  서버에서 다시 읽으므로 채팅 패널과 같은 함정은 없을 것으로 보지만, 확인 전이다.
+업무 `[09150213] 자가검사 앱 프로토타입 제작` 스레드에서 내 글을 고쳤다(「(수정) 결과 화면은 2안으로 나눠 봤습니다」).
+
+```
+PATCH /api/chat/messages/e3dc0903-…   200 in 93ms
+
+$ psql -c "select content, editedAt from ChatMessage where taskId='bb29f12e-…'"
+… 와이어프레임 잡았고 Figma 로 옮기는 중입니다. (수정) 결 | 01:31:52
+
+$ psql -c "select createdAt, action, metadata from ActivityLog order by createdAt desc limit 1"
+01:32:06 | task.rebuild.finished | {"outcome": "complete", "messageId": "e3dc0903-…"}
+```
+
+화면도 「수정됨」 을 달고 곧바로 「옴니스가 업무를 갱신하고 있어요 · 계속 입력하셔도 됩니다」 한 줄이 떴다 —
+고친 글이 업무에 붙어 있으면 재구성이 다시 돈다는 결정이 실제로 그렇게 동작한다.
+스레드는 `router.refresh()` 로 서버에서 다시 읽어, 채팅 패널에서 났던 「화면만 낡는」 함정이 없다.
+
+내 글에만 답장 · 수정 · 삭제 세 버튼, 김아리 글에는 답장 하나 — 채팅 패널과 같은 규칙으로 보였다.
+
+## 남은 것 · 알려진 것
 - 콘솔에 React key 중복 경고 1건(`4a552eab-…`)이 있다. `key={msg.id}` 로 main 과 같은 구조이고
   이번 변경과 무관하다 — 업무 카드 메시지가 같은 업무를 두 번 가리킬 때 난다.
 - 지운 글의 첨부 파일은 파일 표에 그대로 남는다. 업무에 이미 연결된 파일을 함께 지우지 않기 위해서다.
