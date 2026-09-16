@@ -20,6 +20,11 @@ jobs:
     name: verify
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # prisma.config.ts 가 postinstall 의 `prisma generate` 에서도 DATABASE_URL 을 요구한다.
+    # 이 job 은 DB 에 붙지 않는다 — 모양만 맞는 값이면 된다.
+    env:
+      DATABASE_URL: postgresql://unused:unused@localhost:5432/unused
+      POSTGRES_URL_NON_POOLING: postgresql://unused:unused@localhost:5432/unused
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,7 +39,9 @@ jobs:
   e2e:
     name: e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 25분은 부족했다 — 상한에 걸려 잘리면 playwright 가 실패 요약을 못 찍어
+    # 무엇이 왜 깨졌는지 알 수 없다. 넉넉히 두고, 오래 걸리면 그때 쪼갠다.
+    timeout-minutes: 45
 
     # 러너는 개발자의 로컬 DB(운영 스냅샷)에 닿을 수 없다 — 주소가 사설이고,
     # 열어 두는 것도 옳지 않다. 그래서 여기서 자기 DB 를 띄우고 데모 시드로 채운다.
