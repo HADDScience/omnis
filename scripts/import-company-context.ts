@@ -540,9 +540,32 @@ async function importMarket() {
 
 // ─── 세금계산서 ───────────────────────────────────────────────
 
+/**
+ * 세금계산서 PDF 를 모은다.
+ *
+ * `--invoices-dir <경로>` 를 주면 그 폴더를 **하위까지** 읽는다 — NAS 「07. 세금계산서」 는
+ * 매출·매입 × 연도로 폴더가 갈려 있다(2026-09-16). 없으면 예전처럼 notion/invoices 한 폴더.
+ * 경로는 dir 기준 상대 경로로 돌려준다(로그에 폴더 이름이 보이게).
+ */
+function invoiceFiles(): { dir: string; files: string[] } {
+  const i = args.indexOf("--invoices-dir")
+  const dir = i >= 0 && args[i + 1] ? args[i + 1] : join(NOTION, "invoices")
+  if (!existsSync(dir)) return { dir, files: [] }
+  const out: string[] = []
+  const walk = (rel: string) => {
+    for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) {
+      if (e.name.startsWith(".") || e.name.startsWith("~$")) continue
+      const r = rel ? join(rel, e.name) : e.name
+      if (e.isDirectory()) walk(r)
+      else if (e.name.toLowerCase().endsWith(".pdf")) out.push(r)
+    }
+  }
+  walk("")
+  return { dir, files: out.sort() }
+}
+
 async function importInvoices() {
-  const dir = join(NOTION, "invoices")
-  const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".pdf")).sort() : []
+  const { dir, files } = invoiceFiles()
   const allowVision = args.includes("--vision") || args.includes("--accept-vision")
   const acceptVision = args.includes("--accept-vision")
   const orgs = await prisma.crmOrg.findMany({ include: { quotes: { include: { items: true } } } })
