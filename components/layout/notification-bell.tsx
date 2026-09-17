@@ -140,6 +140,11 @@ export function NotificationBell() {
       setOpen(false)
       router.push(`/tasks/${notification.entityId}?from=notification`)
     }
+    // 발행 요청은 그 견적이 잡힌 채 세금계산서 등록을 연다 — 무엇을 올릴지 다시 찾지 않게
+    if (notification.entityId && notification.type === "crm_invoice_request") {
+      setOpen(false)
+      router.push(`/crm/invoices/new?quote=${notification.entityId}`)
+    }
   }
 
   return (
