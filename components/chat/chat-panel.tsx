@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
+import { toast } from "sonner"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
@@ -211,11 +212,20 @@ export function ChatPanel({
           const form = new FormData()
           form.append("file", files[i])
           const fRes = await fetch(apiUrl("/api/files"), { method: "POST", body: form })
-          if (fRes.ok) {
-            const uploaded = await fRes.json()
-            uploadedFiles.push(uploaded)
-            setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 100))
+          if (!fRes.ok) {
+            // 예전에는 실패한 파일을 건너뛰고 글만 보냈다 — 첨부가 빠진 줄 모른 채 "보냈다"가 됐다(2026-09-17).
+            // 글을 보내지 않고 멈춘다. 던지면 MessageInput 이 쓴 글과 첨부를 남겨 둔다(스레드 입력창과 같은 약속).
+            const err = await fRes.json().catch(() => ({}))
+            setMessages((prev) => prev.filter((m) => m.id !== tempId))
+            setUploadProgress(new Map())
+            pausePolling.current = false
+            const message = err?.error ?? `「${files[i].name}」 을 올리지 못했습니다`
+            toast.error(message)
+            throw new Error(message)
           }
+          const uploaded = await fRes.json()
+          uploadedFiles.push(uploaded)
+          setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 100))
         }
       }
 

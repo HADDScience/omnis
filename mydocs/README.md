@@ -83,6 +83,7 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [troubleshootings/supabase-limits.md](troubleshootings/supabase-limits.md) | canonical | Supabase 에서 무엇이 막혔고 어떻게 풀었나 |
 | [troubleshootings/migration-traps.md](troubleshootings/migration-traps.md) | reference | 이 작업에서 실제로 밟은 함정들 |
 | [troubleshootings/client-error-visibility.md](troubleshootings/client-error-visibility.md) | canonical | 화면이 흰 채로 죽는데 아무도 모르던 문제와 그 배관 |
+| [troubleshootings/large-file-upload.md](troubleshootings/large-file-upload.md) | investigation | 4MB 넘는 첨부가 메시지째 막힌다 — 1단계(이유 표시)만 됨, 큰 파일 올리는 길은 미해결 |
 | [tech/stack-and-conventions.md](tech/stack-and-conventions.md) | canonical | 스택·base-vega 관례·Gemini 함정 |
 | [manual/ai-pairing.md](manual/ai-pairing.md) | guide | AI 와 함께 이 저장소에서 일하는 법 |
 | [manual/ux-rules.md](manual/ux-rules.md) | canonical | UI·구조 규칙 11~30 · viewport 책임 표 · 데모 환경 |

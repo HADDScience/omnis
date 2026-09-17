@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { SLASH_COMMANDS } from "./slash-command-parser"
 import { IS_DEMO } from "@/lib/demo"
+import { toast } from "sonner"
+import { MAX_UPLOAD_BYTES } from "@/lib/constants"
 
 /** 자동완성 후보. `/`(명령) · `#`(업무) · `@`(사람·파일) 세 갈래가 같은 목록 UI를 쓴다. */
 interface MentionItem {
@@ -206,9 +208,19 @@ export function MessageInput({
   }
 
   // 파일 추가 + 이미지 프리뷰 생성 + 로딩 표시
-  function addFiles(files: File[]) {
+  function addFiles(picked: File[]) {
     // 데모에는 NAS가 없어 파일을 받지 않는다 — 붙여넣기·드래그로 들어와도 조용히 무시한다.
     if (IS_DEMO) return
+    // 상한을 넘는 파일은 보낼 때 Vercel 이 이유 없이 끊는다 — 고르는 순간 이유와 함께 거른다(2026-09-17)
+    const tooLarge = picked.filter((f) => f.size > MAX_UPLOAD_BYTES)
+    if (tooLarge.length > 0) {
+      const limitMb = Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)
+      toast.error(`${limitMb}MB 가 넘는 파일은 첨부할 수 없습니다`, {
+        description: `${tooLarge.map((f) => `「${f.name}」 ${(f.size / 1024 / 1024).toFixed(1)}MB`).join(" · ")} — NAS 경로를 글로 남겨 주세요`,
+      })
+    }
+    const files = picked.filter((f) => f.size <= MAX_UPLOAD_BYTES)
+    if (files.length === 0) return
     setAttachedFiles((prev) => {
       const startIdx = prev.length
       const newPreviews = new Map(previews)
