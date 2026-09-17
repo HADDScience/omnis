@@ -38,10 +38,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ kind: "file", ...entry })
   }
 
-  const file = await readFile(path)
+  // 붙여넣은 경로(NFC)와 맥이 저장한 이름(NFD)이 다르면 바로는 404 다 — statNasFile 이 실제 모양을 찾아 준다(2026-09-17)
+  let file = await readFile(path)
+  if (!file) {
+    const actual = await statNasFile(path)
+    if (actual && actual.path !== path) file = await readFile(actual.path)
+  }
   if (!file) return NextResponse.json({ error: "찾을 수 없습니다" }, { status: 404 })
 
-  const name = path.split("/").pop() ?? "file"
+  const name = (path.split("/").pop() ?? "file").normalize("NFC")
   const inline = inlineContentType(name)
 
   return new NextResponse(Readable.toWeb(file.body) as ReadableStream, {

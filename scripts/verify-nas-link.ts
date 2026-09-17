@@ -136,6 +136,13 @@ async function main() {
       const statBody = await stat.json().catch(() => null)
       check("stat=1 은 194MB 파일을 JSON 정보로만", stat.ok && statBody?.kind === "file" && statBody?.size === big?.size, JSON.stringify(statBody))
 
+      // 운영에서 404 였다(2026-09-17) — 족자.ai 는 NAS 에 NFD 이름, 붙여넣은 경로는 NFC. 앞부분만 받고 끊는다
+      const direct = await fetch(`${BASE}/api/nas?path=${encodeURIComponent(BIG)}`, { headers: { cookie } })
+      const reader = direct.body?.getReader()
+      const first = reader ? await reader.read() : null
+      await reader?.cancel()
+      check(`NFC 경로로 NFD 이름 파일을 연다 — ${direct.status}`, direct.status === 200 && (first?.value?.length ?? 0) > 0, direct.headers.get("content-disposition") ?? "")
+
       const res = await post("/api/files/nas", { path: `Z:${SMALL.replace(/\//g, "\\")}` })
       const rec = await res.json()
       if (rec?.id) fileIds.push(rec.id)
