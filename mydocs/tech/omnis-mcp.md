@@ -55,8 +55,11 @@ Omnis 로그인 → 승인 화면 → 끝. 8시간마다 자동 갱신. 이미 �
 
 - **상위 폴더까지 찾아 올라간다.** 자식 폴더에 `.mcp.json` 이 없어도 부모의 것이 잡힌다 — 그래서 `~/NAS` 아래 모든 폴더가 한 벌을 쓴다. 새로 만든 폴더도 그대로 적용된다.
 - **상위 것과 폴더 것은 합쳐진다.** 덮어쓰지 않는다. NAS 폴더 18곳의 notion `.mcp.json` 과 상위의 `hadd-omnis` 가 함께 뜬다.
-- **폴더마다 최초 1회 승인이 필요하다.** `claude mcp list` 에 `⏸ Pending approval` 로 보이고, 그 폴더에서 `claude` 를 띄워 승인해야 붙는다.
-  `~/.claude.json` 의 `enabledMcpjsonServers` 에 미리 값을 넣어도 승인으로 인정되지 않았다 — 그 폴더에서 CLI 가 돌면 넣어 둔 값이 지워졌다.
+- **폴더마다 최초 1회 승인이 필요하다.** 승인은 **그 폴더의 `.claude/settings.local.json`** 에 `"enabledMcpjsonServers": ["hadd-omnis"]` 로 남는다.
+  이 값을 미리 써 두면 승인 창 없이 붙는다(2026-09-16, NAS 프로젝트 19곳에 기록 · `상표권` 에서 실제 호출로 확인).
+  `~/.claude.json` 의 프로젝트 항목에 같은 키를 넣는 것은 인정되지 않았다 — 그 폴더에서 CLI 가 돌면 지워졌다.
+- **`claude mcp list` 의 「⏸ Pending approval」 은 믿지 않는다.** 승인이 기록돼 실제 세션에서 도구가 동작하는 폴더에서도 그렇게 보였다.
+  붙었는지는 `claude -p "…" --allowedTools mcp__hadd-omnis__<도구>` 로 실제로 불러 본다.
 - OAuth 로그인은 서버 이름 기준이라 한 번만 하면 폴더마다 다시 하지 않는다.
 
 같은 날 폴더별 `hadd-ip` 등록 5건을 지웠다. 그중 2건은 헤더에 개인 토큰(`Bearer hadd_…`)이 박힌 채 죽은 Supabase 주소를 가리키고 있었다.
