@@ -39,9 +39,25 @@ export interface OutstandingChain {
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`
 const today = () => new Date().toISOString().slice(0, 10)
 
-export function PaymentComposer({ chains: initial, preselect }: { chains: OutstandingChain[]; preselect: string | null }) {
+/** 시작 전 정리에서 미리 체크해 둘 기준 — 이만큼 지난 매출은 이미 받았을 가능성이 높다 */
+const SETTLE_DEFAULT_DAYS = 60
+
+export function PaymentComposer({
+  chains: initial,
+  preselect,
+  neverRecorded,
+}: {
+  chains: OutstandingChain[]
+  preselect: string | null
+  /** 입금 기록이 아직 한 줄도 없다 — 처음 여는 것이다 */
+  neverRecorded: boolean
+}) {
   const router = useRouter()
   const [chains, setChains] = useState(initial)
+  // 처음 한 번 — 오래된 매출이 전부 「받을 돈」 으로 뜨는 거짓 경보를 먼저 걷는다
+  const oldOnes = initial.filter((c) => c.overdue)
+  const [settling, setSettling] = useState(neverRecorded && !preselect && oldOnes.length > 0)
+  const [settlePick, setSettlePick] = useState<Set<string>>(() => new Set(oldOnes.filter((c) => c.days > SETTLE_DEFAULT_DAYS).map((c) => c.invoiceId)))
   const [invoiceId, setInvoiceId] = useState<string | null>(preselect && initial.some((c) => c.invoiceId === preselect) ? preselect : null)
   const [paidOn, setPaidOn] = useState(today)
   const [amount, setAmount] = useState<number>(() => initial.find((c) => c.invoiceId === preselect)?.remaining ?? 0)
@@ -91,6 +107,25 @@ export function PaymentComposer({ chains: initial, preselect }: { chains: Outsta
     })
   }
 
+  function settle() {
+    startTransition(async () => {
+      const res = await fetch(apiUrl("/api/crm/payments/settle"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceIds: [...settlePick] }),
+      }).catch(() => null)
+      const data = res ? await res.json().catch(() => null) : null
+      if (!res?.ok) {
+        toast.error(data?.error ?? "표시하지 못했습니다")
+        return
+      }
+      toast.success(`${data.settled}건을 받은 것으로 표시했어요`)
+      setChains((prev) => prev.filter((c) => !settlePick.has(c.invoiceId)))
+      setSettling(false)
+      router.refresh()
+    })
+  }
+
   const overdueCount = chains.filter((c) => c.overdue).length
   const totalRemaining = chains.reduce((a, c) => a + c.remaining, 0)
 
@@ -105,8 +140,48 @@ export function PaymentComposer({ chains: initial, preselect }: { chains: Outsta
       </p>
 
       <div className="mt-7 flex flex-col gap-5">
+        {/* 0 — 처음 한 번: 이미 받은 것 걷어내기 */}
+        <Step show={settling} label="시작하기 전에 — 이미 받은 것을 걷어낼까요?" hint="처음 한 번만 묻습니다">
+          <p className="mb-2 text-[12.5px] text-muted-foreground">
+            입금 기록이 아직 없어서 예전 세금계산서도 모두 받을 돈으로 보여요. 이미 받은 것을 고르면 한 번에 정리합니다.
+            입금일은 모르는 채로 「시작 전 정리」 라고 남기고, 나중에 지울 수 있어요.
+          </p>
+          <ul className="flex max-h-[320px] flex-col gap-1 overflow-y-auto rounded-xl border p-2">
+            {oldOnes.map((c) => (
+              <li key={c.invoiceId}>
+                <label className="touch-target flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-muted/50">
+                  <input
+                    type="checkbox"
+                    checked={settlePick.has(c.invoiceId)}
+                    onChange={(e) =>
+                      setSettlePick((prev) => {
+                        const n = new Set(prev)
+                        if (e.target.checked) n.add(c.invoiceId)
+                        else n.delete(c.invoiceId)
+                        return n
+                      })
+                    }
+                  />
+                  <span className="tabular-nums text-muted-foreground">{c.issuedOn}</span>
+                  <span className="min-w-0 flex-1 truncate">{c.counterName}</span>
+                  <span className="tabular-nums">{won(c.remaining)}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex gap-2">
+            <Button onClick={settle} disabled={pending || settlePick.size === 0} className="flex-1 gap-1.5">
+              {pending ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} size={16} aria-hidden />}
+              {settlePick.size}건 받은 것으로 표시
+            </Button>
+            <Button variant="ghost" onClick={() => setSettling(false)} disabled={pending}>
+              건너뛰기
+            </Button>
+          </div>
+        </Step>
+
         {/* 1 — 어느 세금계산서 */}
-        <Step show={chains.length > 0} label="어느 세금계산서에 들어온 돈인가요?" hint="오래 기다린 것부터">
+        <Step show={!settling && chains.length > 0} label="어느 세금계산서에 들어온 돈인가요?" hint="오래 기다린 것부터">
           {chains.length > 6 && (
             <Input
               value={query}
@@ -168,7 +243,7 @@ export function PaymentComposer({ chains: initial, preselect }: { chains: Outsta
           </Button>
         </Step>
 
-        {chains.length > 0 && !picked && (
+        {!settling && chains.length > 0 && !picked && (
           <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
             <HugeiconsIcon icon={ArrowRight02Icon} size={13} aria-hidden />
             들어온 돈에 맞는 세금계산서를 고르면 금액이 채워집니다

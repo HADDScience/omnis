@@ -9,6 +9,9 @@
 import { prisma } from "@/lib/db"
 import type { TaxInvoiceDirection } from "@/generated/prisma/client"
 
+/** 시작 전 정리로 적은 입금의 메모 — 진짜 입금 기록과 가릴 수 있게 고정 문구로 둔다 */
+export const SETTLE_NOTE = "시작 전 정리 — 실제 입금일 모름"
+
 /** 발행 뒤 이만큼 지나도 다 안 들어오면 「늦은」 것으로 본다 */
 export const OVERDUE_DAYS = 30
 

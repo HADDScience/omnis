@@ -48,6 +48,7 @@ interface Plan {
   duplicateId: string | null
   attachToId: string | null
   twin: { id: string; approvalNo: string } | null
+  supersededBy: { approvalNo: string } | null
 }
 
 interface Candidate {
@@ -71,6 +72,7 @@ interface Row {
 interface Decision {
   quoteId?: string | null
   twinIsDifferent?: boolean
+  keepOriginal?: boolean
   acceptVision?: boolean
   skip?: boolean
 }
@@ -87,12 +89,15 @@ const MAX_BYTES = 4 * 1024 * 1024
 const ACCEPT = ".xls,.xlsx,application/pdf,image/png,image/jpeg"
 
 /** 이 줄에 사람이 답해야 하는 질문 — 없으면 null */
-function questionOf(row: Row): "readFail" | "twin" | "vision" | "quote" | null {
+function questionOf(row: Row): "readFail" | "superseded" | "twin" | "vision" | "quote" | null {
   if (row.plan.duplicateId) return null
-  const others = row.blockers.filter((b) => !b.startsWith("같은 날") && !b.startsWith("이미 올린"))
+  const others = row.blockers.filter((b) => !b.startsWith("같은 날") && !b.startsWith("이미 올린") && !b.startsWith("이미 수정 발행"))
   if (others.length) return "readFail"
+  if (row.plan.supersededBy) return "superseded"
   if (row.plan.twin) return "twin"
   if (row.invoice.readBy === "vision") return "vision"
+  // 수정세금계산서는 견적을 따로 묻지 않는다 — 당초 장의 답을 따른다(울산대: 당초 · 취소 · 재발행에 같은 질문 세 번)
+  if (row.invoice.kind === "수정") return null
   if (row.invoice.direction === "SALE" && !row.plan.quote && row.candidates.length > 0) return "quote"
   return null
 }
@@ -102,6 +107,7 @@ function answered(row: Row, d: Decision | undefined): boolean {
   if (!q) return true
   if (d?.skip) return true
   if (q === "readFail") return true // 저장할 수 없는 줄 — 건너뛰는 것 말고는 할 일이 없다
+  if (q === "superseded") return d?.keepOriginal === true
   if (q === "twin") return d?.twinIsDifferent === true
   if (q === "vision") return d?.acceptVision === true
   if (q === "quote") return d?.quoteId !== undefined
@@ -196,7 +202,13 @@ export function InvoiceComposer({ quote }: { quote: QuoteContext | null }) {
         const ds: Record<string, Decision> = {}
         for (const r of rows.filter((x) => x.file === file)) {
           if (!r.invoice.approvalNo) continue
-          ds[r.invoice.approvalNo] = list.includes(r) ? (decisions[r.key] ?? {}) : { skip: true }
+          if (!list.includes(r)) {
+            ds[r.invoice.approvalNo] = { skip: true }
+            continue
+          }
+          // 수정 장은 당초 장이 고른 견적을 그대로 잇는다
+          const root = r.invoice.kind === "수정" && r.invoice.originalApprovalNo ? rows.find((x) => x.invoice.approvalNo === r.invoice.originalApprovalNo) : null
+          ds[r.invoice.approvalNo] = root ? { ...decisions[r.key], quoteId: decisions[root.key]?.quoteId } : (decisions[r.key] ?? {})
         }
         form.append("decisions", JSON.stringify(ds))
         const res = await fetch(apiUrl("/api/crm/invoices/import"), { method: "POST", body: form }).catch(() => null)
@@ -383,6 +395,23 @@ function QuestionCard({
         <p className="mt-2 text-[12.5px] text-muted-foreground">
           이 파일은 칸을 다 읽지 못했어요({row.blockers[0]}). 홈택스 목록조회 엑셀로 올리면 양식과 상관없이 들어갑니다.
         </p>
+      )}
+
+      {q === "superseded" && (
+        <div className="mt-2">
+          <p className="text-[13px]">
+            이 세금계산서는 이미 수정 발행됐어요 <span className="text-muted-foreground">(수정 승인번호 {row.plan.supersededBy!.approvalNo})</span>.
+            당초 장을 넣으면 매출이 두 번 잡힙니다.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Choice active={decision?.skip === true} onClick={() => onDecide({ skip: true, keepOriginal: false })}>
+              건너뛰기 (권장)
+            </Choice>
+            <Choice active={decision?.keepOriginal === true} onClick={() => onDecide({ keepOriginal: true, skip: false })}>
+              취소 장도 함께 넣어요 — 저장
+            </Choice>
+          </div>
+        </div>
       )}
 
       {q === "twin" && (

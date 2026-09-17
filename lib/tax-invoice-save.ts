@@ -49,6 +49,12 @@ export interface InvoicePlan {
    * (2025-09-23 가천대 90만원 · 운영 실측 2026-09-17).
    */
   twin: { id: string; approvalNo: string } | null
+  /**
+   * 이 장을 당초로 둔 수정세금계산서가 이미 있고, 그 묶음에 취소(−) 장이 없다.
+   * 이대로 넣으면 당초(+) 와 수정 재발행(+) 이 둘 다 매출로 잡힌다 — 가천대 2025-09-23 실측
+   * (Omnis 에 수정 …77822081 만 있고, NAS 에는 당초 …77746491 PDF 가 있었다).
+   */
+  supersededBy: { approvalNo: string } | null
 }
 
 /** 사람이 정한 것 — 화면이 물은 질문의 답 */
@@ -57,6 +63,8 @@ export interface InvoiceDecisions {
   quoteId?: string | null
   /** 같은 날 · 같은 거래처 · 같은 합계가 있어도 **다른 건**이라고 확인했다 */
   twinIsDifferent?: boolean
+  /** 이미 수정 발행된 건의 당초 장인데도 넣는다 — 취소(−) 장도 함께 넣는 경우 */
+  keepOriginal?: boolean
 }
 
 export async function planInvoice(r: ParsedInvoice, orgs?: OrgWithQuotes[], opts: { hasFile?: boolean } = {}): Promise<InvoicePlan> {
@@ -72,6 +80,11 @@ export async function planInvoice(r: ParsedInvoice, orgs?: OrgWithQuotes[], opts
     ? await prisma.taxInvoice.findUnique({ where: { approvalNo: r.approvalNo }, select: { id: true, objectKey: true } })
     : null
   const attachToId = duplicate && !duplicate.objectKey && opts.hasFile ? duplicate.id : null
+  const reissued =
+    !duplicate && r.approvalNo && r.kind !== "수정"
+      ? await prisma.taxInvoice.findMany({ where: { originalApprovalNo: r.approvalNo }, select: { approvalNo: true, totalKrw: true } })
+      : []
+  const supersededBy = reissued.length && reissued.reduce((a, x) => a + Number(x.totalKrw), 0) > 0 ? { approvalNo: reissued[0].approvalNo } : null
   const twin =
     !duplicate && r.issuedOn && counterBizNo && r.totalKrw !== null && r.direction
       ? await prisma.taxInvoice.findFirst({
@@ -80,6 +93,13 @@ export async function planInvoice(r: ParsedInvoice, orgs?: OrgWithQuotes[], opts
             issuedOn: new Date(`${r.issuedOn}T00:00:00Z`),
             totalKrw: BigInt(r.totalKrw),
             OR: [{ buyerBizNo: counterBizNo }, { supplierBizNo: counterBizNo }],
+            // 같은 수정 묶음은 쌍둥이가 아니다 — 울산대 당초(+) 와 수정 재발행(+) 은 날짜 · 거래처 · 금액이 같다
+            NOT: {
+              OR: [
+                { originalApprovalNo: r.approvalNo ?? "" },
+                ...(r.originalApprovalNo ? [{ approvalNo: r.originalApprovalNo }, { originalApprovalNo: r.originalApprovalNo }] : []),
+              ],
+            },
           },
           select: { id: true, approvalNo: true },
         })
@@ -95,6 +115,7 @@ export async function planInvoice(r: ParsedInvoice, orgs?: OrgWithQuotes[], opts
     duplicateId: duplicate && !attachToId ? duplicate.id : null,
     attachToId,
     twin,
+    supersededBy,
   }
 }
 
@@ -109,6 +130,9 @@ export function saveBlockers(r: ParsedInvoice, plan: InvoicePlan, decisions: Inv
     ...(plan.duplicateId ? ["이미 올린 세금계산서입니다 (승인번호 같음)"] : []),
     ...(plan.twin && !decisions.twinIsDifferent
       ? [`같은 날 · 같은 거래처 · 같은 합계가 이미 있습니다 (승인번호 ${plan.twin.approvalNo}) — 다른 건인지 확인해 주세요`]
+      : []),
+    ...(plan.supersededBy && !decisions.keepOriginal
+      ? [`이미 수정 발행된 건의 당초 장입니다 (수정 ${plan.supersededBy.approvalNo}) — 그대로 넣으면 매출이 두 번 잡힙니다`]
       : []),
   ]
 }
