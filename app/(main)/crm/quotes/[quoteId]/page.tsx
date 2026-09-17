@@ -6,6 +6,7 @@ import { quoteTotals, won, ORG_TYPE_LABEL } from "@/lib/crm"
 import { QuoteStatusControl } from "@/components/crm/quote-status"
 import { DeleteRecordButton } from "@/components/crm/delete-record-button"
 import { receivableChains } from "@/lib/crm-receivables"
+import { LinkInvoiceButton } from "@/components/crm/link-invoice-button"
 
 export const dynamic = "force-dynamic"
 
@@ -28,11 +29,26 @@ export default async function QuoteDetailPage({
     },
   })
   if (!q) notFound()
+  const t = quoteTotals(q.items, q.discountAmount, q.vatRate)
   // 입금 상태는 수정세금계산서 묶음으로 센다
   const chains = q.taxInvoices.length ? await receivableChains("SALE") : []
   const chainOf = (invoiceId: string) => chains.find((c) => c.invoiceId === invoiceId)
+  // 연결이 없으면 다른 기관 앞으로 나간 **같은 합계** 세금계산서를 찾아 내민다 — 대학은 견적은 학과,
+  // 세금계산서는 산학협력단이라 자동으로 못 잇는다(가천대 의과대학 ↔ 가천대학교 산학협력단)
+  const orphans =
+    q.taxInvoices.length === 0 && q.status === "DONE"
+      ? await prisma.taxInvoice.findMany({
+          where: {
+            direction: "SALE",
+            quoteId: null,
+            totalKrw: BigInt(t.total),
+            issuedOn: { gte: new Date(q.quotedAt.getTime() - 15 * 86_400_000), lte: new Date(q.quotedAt.getTime() + 90 * 86_400_000) },
+          },
+          select: { id: true, issuedOn: true, buyerName: true, totalKrw: true },
+          take: 3,
+        })
+      : []
 
-  const t = quoteTotals(q.items, q.discountAmount, q.vatRate)
 
   return (
     <>
@@ -211,8 +227,30 @@ export default async function QuoteDetailPage({
             ) : (
               q.status === "DONE" && (
                 <section className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-                  <h2 className="mb-1 text-[13px] font-semibold">세금계산서가 아직 없어요</h2>
-                  <p className="mb-3 text-[12px] text-muted-foreground">완료된 견적이에요. 발행했으면 올려서 이 견적에 이으세요.</p>
+                  {orphans.length > 0 ? (
+                    <>
+                      <h2 className="mb-1 text-[13px] font-semibold">이 세금계산서인가요?</h2>
+                      <p className="mb-2 text-[12px] text-muted-foreground">
+                        금액이 같은데 다른 기관 앞으로 나가 자동으로 잇지 못했어요.
+                      </p>
+                      <div className="mb-3 flex flex-col gap-1.5">
+                        {orphans.map((o) => (
+                          <LinkInvoiceButton
+                            key={o.id}
+                            invoiceId={o.id}
+                            quoteId={q.id}
+                            label={`${o.issuedOn.toISOString().slice(0, 10)} · ${o.buyerName} · ${won(Number(o.totalKrw))}`}
+                          />
+                        ))}
+                      </div>
+                      <p className="mb-2 text-[11.5px] text-muted-foreground">아니면 발행한 세금계산서를 올리세요.</p>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="mb-1 text-[13px] font-semibold">세금계산서가 아직 없어요</h2>
+                      <p className="mb-3 text-[12px] text-muted-foreground">완료된 견적이에요. 발행했으면 올려서 이 견적에 이으세요.</p>
+                    </>
+                  )}
                   <Link
                     href={`/crm/invoices/new?quote=${q.id}`}
                     className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90"

@@ -54,6 +54,8 @@ interface Plan {
 interface Candidate {
   id: string
   code: string
+  orgName: string
+  sameOrg: boolean
   quotedAt: string
   total: number
   invoiced: boolean
@@ -451,7 +453,8 @@ function QuestionCard({
             {row.candidates.map((c) => (
               <Choice key={c.id} active={decision?.quoteId === c.id} onClick={() => onDecide({ quoteId: c.id, skip: false })}>
                 {c.code} · {won(c.total)}
-                {c.sameTotal && <span className="ml-1 text-primary">금액 같음</span>}
+                {!c.sameOrg && <span className="ml-1 text-muted-foreground">{c.orgName}</span>}
+                {c.invoiced && <span className="ml-1 text-muted-foreground">이미 발행</span>}
                 {c.id === contextQuoteId && <span className="ml-1 text-primary">지금 견적</span>}
               </Choice>
             ))}

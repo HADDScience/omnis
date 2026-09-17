@@ -80,17 +80,21 @@ export async function POST(req: NextRequest) {
     const rows = []
     for (const invoice of read.invoices) {
       const plan = await planInvoice(invoice, orgs, { hasFile })
-      const org = plan.org ? orgs.find((o) => o.id === plan.org!.id) : null
-      // 「어느 견적인가요?」 에 내밀 후보 — 이어진 기관의 견적, 합계가 맞는 것부터
+      // 「어느 견적인가요?」 후보 — **합계가 같은 견적만.** 금액이 다른 견적을 내밀면 답할 이유 없는 질문이 된다
+      // (국일그래핀 1억 용역에 346만 · 99만 견적을 내밀었다). 다른 기관 견적도 넣는다 — 대학은 견적은 학과로,
+      // 세금계산서는 산학협력단으로 나간다(가천대 의과대학 견적 ↔ 가천대학교 산학협력단 세금계산서).
       const candidates =
-        invoice.direction === "SALE" && org
-          ? org.quotes
-              .map((q) => {
-                const t = quoteTotals(q.items.map((i) => ({ quantity: i.quantity, unitPrice: i.unitPrice })), q.discountAmount, q.vatRate)
-                return { id: q.id, code: q.code, quotedAt: q.quotedAt.toISOString().slice(0, 10), total: t.total, invoiced: !!q.taxInvoicedAt, sameTotal: t.total === invoice.totalKrw }
-              })
-              .sort((a, b) => Number(b.sameTotal) - Number(a.sameTotal) || b.quotedAt.localeCompare(a.quotedAt))
-              .slice(0, 6)
+        invoice.direction === "SALE" && invoice.totalKrw !== null
+          ? orgs
+              .flatMap((o) =>
+                o.quotes.map((q) => {
+                  const t = quoteTotals(q.items.map((i) => ({ quantity: i.quantity, unitPrice: i.unitPrice })), q.discountAmount, q.vatRate)
+                  return { id: q.id, code: q.code, orgName: o.name, sameOrg: o.id === plan.org?.id, quotedAt: q.quotedAt.toISOString().slice(0, 10), total: t.total, invoiced: !!q.taxInvoicedAt, sameTotal: t.total === invoice.totalKrw }
+                })
+              )
+              .filter((c) => c.sameTotal)
+              .sort((a, b) => Number(b.sameOrg) - Number(a.sameOrg) || Number(a.invoiced) - Number(b.invoiced) || b.quotedAt.localeCompare(a.quotedAt))
+              .slice(0, 4)
           : []
       rows.push({ invoice, plan, blockers: saveBlockers(invoice, plan), candidates })
     }
