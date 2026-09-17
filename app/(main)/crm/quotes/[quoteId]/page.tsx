@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db"
 import { quoteTotals, won, ORG_TYPE_LABEL } from "@/lib/crm"
 import { QuoteStatusControl } from "@/components/crm/quote-status"
 import { DeleteRecordButton } from "@/components/crm/delete-record-button"
+import { receivableChains } from "@/lib/crm-receivables"
 
 export const dynamic = "force-dynamic"
 
@@ -23,9 +24,13 @@ export default async function QuoteDetailPage({
       membership: true,
       items: { include: { product: true }, orderBy: { sortOrder: "asc" } },
       shipments: { select: { id: true } },
+      taxInvoices: { select: { id: true, issuedOn: true, totalKrw: true, kind: true }, orderBy: { issuedOn: "asc" } },
     },
   })
   if (!q) notFound()
+  // 입금 상태는 수정세금계산서 묶음으로 센다
+  const chains = q.taxInvoices.length ? await receivableChains("SALE") : []
+  const chainOf = (invoiceId: string) => chains.find((c) => c.invoiceId === invoiceId)
 
   const t = quoteTotals(q.items, q.discountAmount, q.vatRate)
 
@@ -172,13 +177,50 @@ export default async function QuoteDetailPage({
               )}
             </section>
 
-            {q.taxInvoicedAt && (
+            {/* 발행 여부는 연결된 세금계산서로만 판단한다 — 완료 때 날짜를 지어 넣던 것을 멈췄다(2026-09-17) */}
+            {q.taxInvoices.length > 0 ? (
               <section className="rounded-xl border bg-card p-4">
                 <h2 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   세금계산서
                 </h2>
-                <div className="text-[13px]">{q.taxInvoicedAt.toISOString().slice(0, 10)} 발행</div>
+                <ul className="flex flex-col gap-1.5 text-[13px]">
+                  {q.taxInvoices.map((inv) => {
+                    const c = chainOf(inv.id)
+                    return (
+                      <li key={inv.id}>
+                        <div>
+                          {inv.issuedOn.toISOString().slice(0, 10)} 발행 · {won(Number(inv.totalKrw))}
+                          {inv.kind === "수정" && <span className="ml-1 text-muted-foreground">(수정)</span>}
+                        </div>
+                        {c &&
+                          (c.remaining <= 0 ? (
+                            <div className="text-[12px] text-primary">입금 완료</div>
+                          ) : (
+                            <Link
+                              href={`/crm/payments/new?invoice=${c.invoiceId}`}
+                              className={`text-[12px] hover:underline ${c.overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}
+                            >
+                              {won(c.remaining)} 받을 돈 · {c.days}일째 — 입금 확인 →
+                            </Link>
+                          ))}
+                      </li>
+                    )
+                  })}
+                </ul>
               </section>
+            ) : (
+              q.status === "DONE" && (
+                <section className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+                  <h2 className="mb-1 text-[13px] font-semibold">세금계산서가 아직 없어요</h2>
+                  <p className="mb-3 text-[12px] text-muted-foreground">완료된 견적이에요. 발행했으면 올려서 이 견적에 이으세요.</p>
+                  <Link
+                    href={`/crm/invoices/new?quote=${q.id}`}
+                    className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    세금계산서 등록
+                  </Link>
+                </section>
+              )
             )}
           </aside>
         </div>

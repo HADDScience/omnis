@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { CrmNav } from "@/components/crm/crm-nav"
-import { InvoiceUpload } from "@/components/crm/invoice-upload"
+import { NewRecordButton } from "@/components/crm/new-record-button"
 import { Badge } from "@/components/ui/badge"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { prisma } from "@/lib/db"
@@ -10,6 +10,7 @@ import { won } from "@/lib/crm"
 import { ymd } from "@/lib/company-context"
 import { apiUrl } from "@/lib/base-path"
 import { IS_DEMO } from "@/lib/demo"
+import { OVERDUE_DAYS, receivableChains } from "@/lib/crm-receivables"
 
 export const metadata: Metadata = { title: "세금계산서 · CRM" }
 export const dynamic = "force-dynamic"
@@ -28,6 +29,12 @@ export default async function CrmInvoicesPage() {
     },
   })
 
+  // 받을 돈 — 수정세금계산서를 당초 승인번호로 묶어 센다(lib/crm-receivables)
+  const chains = await receivableChains("SALE")
+  const owing = chains.filter((c) => c.remaining > 0)
+  const overdue = owing.filter((c) => c.overdue)
+  const chainByInvoice = new Map(chains.map((c) => [c.invoiceId, c]))
+
   const years = new Map<string, typeof invoices>()
   for (const inv of invoices) {
     const y = String(inv.issuedOn.getUTCFullYear())
@@ -36,7 +43,7 @@ export default async function CrmInvoicesPage() {
 
   return (
     <>
-      <Header crumbs={["CRM", "세금계산서"]} />
+      <Header crumbs={["CRM", "세금계산서"]} actions={<NewRecordButton />} />
       <div className="mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6">
         <CrmNav />
         <div className="mb-4 flex flex-wrap items-baseline gap-3">
@@ -46,13 +53,25 @@ export default async function CrmInvoicesPage() {
           </span>
         </div>
 
-        <InvoiceUpload />
+        {/* 여기서 올리지 않는다 — 올리는 입구는 「새로 만들기」 하나다. 이 자리는 「지금 할 일」 을 보여 준다 */}
+        {owing.length > 0 && (
+          <Link
+            href="/crm/payments/new"
+            className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border bg-card px-4 py-3 transition-colors hover:bg-muted/40"
+          >
+            <span className="text-[13px] font-semibold">받을 돈 {owing.length}건 · {won(owing.reduce((a, c) => a + c.remaining, 0))}</span>
+            {overdue.length > 0 && (
+              <span className="text-[12.5px] font-medium text-destructive">{OVERDUE_DAYS}일 넘은 것 {overdue.length}건</span>
+            )}
+            <span className="ml-auto text-[12.5px] text-primary">입금 확인 →</span>
+          </Link>
+        )}
 
         {invoices.length === 0 ? (
           <Empty className="rounded-xl border border-dashed">
             <EmptyHeader>
               <EmptyTitle>올린 세금계산서가 없습니다</EmptyTitle>
-              <EmptyDescription>홈택스에서 받은 PDF 를 위에 올리면 기관 · 견적에 이어서 쌓입니다.</EmptyDescription>
+              <EmptyDescription>「새로 만들기 → 세금계산서 등록」 에서 홈택스 목록 엑셀이나 PDF 를 올리면 기관 · 견적에 이어서 쌓입니다.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -108,6 +127,16 @@ export default async function CrmInvoicesPage() {
                             <span>견적 없음</span>
                           )}
                           {inv.readBy === "vision" && <span>AI 판독</span>}
+                          {inv.direction === "SALE" && chainByInvoice.get(inv.id) && (() => {
+                            const c = chainByInvoice.get(inv.id)!
+                            return c.remaining <= 0 ? (
+                              <span className="text-primary">입금 완료</span>
+                            ) : (
+                              <Link href={`/crm/payments/new?invoice=${inv.id}`} className={c.overdue ? "font-medium text-destructive hover:underline" : "hover:underline"}>
+                                {won(c.remaining)} 받을 돈 · {c.days}일째
+                              </Link>
+                            )
+                          })()}
                           {inv.objectKey && !IS_DEMO && (
                             <a href={apiUrl(`/api/crm/invoices/${inv.id}/file`)} target="_blank" rel="noopener noreferrer" className="hover:underline">
                               원본
