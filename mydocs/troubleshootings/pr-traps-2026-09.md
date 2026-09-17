@@ -25,6 +25,7 @@ PR #1 ~ #6 의 함정은 [narrow-viewport-traps.md](narrow-viewport-traps.md) ·
 | [#16](#pr-16--ai-대기-ux) | AI 대기 UX | 동기 재구성 · 늦게 끝난 결과 · 모달 경합 |
 | [#17](#pr-17--요청-한도) | 요청 한도 | MCP GET 재연결 루프 · 안 보이는 탭 폴링 |
 | [핫픽스](#핫픽스--mcp-등록-안내--온보딩-연결-hotfixmcp-setup-guide) | MCP 등록 안내 · 온보딩 연결 | 격리 e2e 는 새 파일 모름 · grid `min-w-0` · 탭 `h-[calc]` · 좌우 탭 영역이 클릭 가로챔 · 포커스 가두기 |
+| [#30](#pr-30--주간보고지식-카드채팅-도구--nas-mcp-설정) | 주간보고·카드·채팅 도구 · NAS MCP 설정 | 「배포 성공」이 데모 프로젝트였음 · MCP 승인 위치 · `claude mcp list` 표시 · NAS 재귀 탐색 · 자리표시자 리다이렉션 |
 
 ---
 
@@ -289,6 +290,34 @@ rebase 뒤 다시 돌린 검증에서 4번이 드러났다.
 **8. `innerText` 로 잡은 글을 `toHaveText` 로 비교하면 줄바꿈 때문에 끝내 안 맞는다.** 「지금 연결하기\n9초」 를 기다리는 10초 동안
 실제 시간이 흘러 장면이 넘어가 「element not found」 로 끝났다. `page.clock.install()` 만으로는 실제 시간도 흐른다.
 → 시간에 따라 바뀌는 글은 숫자를 꺼내 범위로 비교한다.
+
+---
+
+## PR #30 — 주간보고·지식 카드·채팅 도구 · NAS MCP 설정
+
+**1. 「배포 성공」 이 운영이 아니라 데모 프로젝트였다.** 머지 커밋으로 GitHub 배포 기록(`deployments?sha=`)을 기다렸더니 `success` 가 떴다.
+그런데 운영 MCP 에는 새 도구가 없었다. 그 기록은 `Production – omnis`(**데모**) 하나뿐이었고, 운영을 서비스하는 `omnis-hadd` 는 그 목록에 없이
+아직 빌드 중이었다(`vercel ls omnis-hadd` 에서 `● Building`). PR #10·#21 때는 `Production – omnis-hadd` 가 같은 목록에 떴다.
+→ 운영 반영은 **운영 엔드포인트의 응답이 바뀌는지**로 확인한다. MCP 는 `initialize` 의 `instructions` 에 새 도구 이름이 나타나는지 본다.
+배포 기록을 쓸 때는 `environment` 가 `omnis-hadd` 인지까지 거른다.
+
+**2. MCP 승인은 폴더의 `.claude/settings.local.json` 에 남는다.** `~/.claude.json` 프로젝트 항목에 `enabledMcpjsonServers` 를 넣으면
+인정되지 않고 지워졌다. 사용자가 한 폴더에서 승인한 뒤 그 폴더의 `settings.local.json` 에 값이 생긴 것을 보고 자리를 찾았다.
+→ 승인을 미리 해 두려면 폴더마다 `settings.local.json` 에 쓴다. 자세한 것: [omnis-mcp.md](../tech/omnis-mcp.md) 「폴더 하나로 공유하기」.
+
+**3. `claude mcp list` 는 승인된 서버도 「⏸ Pending approval」 로 보여 줬다.** 같은 폴더에서 실제 세션은 도구를 불러 결과를 받았다.
+→ 붙었는지는 목록이 아니라 `claude -p "…" --allowedTools mcp__<서버>__<도구>` 로 실제 호출해 확인한다.
+
+**4. NAS(macFUSE) 전체를 재귀로 훑으면 끝나지 않는다.** `.claude` 폴더를 찾으려고 `glob("~/NAS/**/.claude", recursive=True)` 를 돌렸더니
+120초 안에 끝나지 않아 중단했다. 중단 시점이 탐색 단계라 쓴 파일은 없었다.
+→ 대상 목록은 이미 아는 곳에서 뽑는다(`~/.claude.json` 의 `projects` 키 중 `~/NAS/` 로 시작하는 것). NAS 를 훑어야 하면 깊이를 제한한다.
+
+**5. 명령 안내에 `<운영 env 파일>` 같은 꺾쇠 자리표시자를 넣으면 셸이 리다이렉션으로 읽는다.** 사용자가 그대로 `!` 로 붙여넣자
+`no such file or directory: 운영` 으로 실패했다.
+→ 사용자가 바로 실행할 명령에는 실제 경로를 넣는다. `--env-file=` 뒤에는 `~` 가 펼쳐지지 않을 수 있어 절대경로로 쓴다.
+
+**6. 운영 백필 수는 로컬 스냅샷과 크게 달랐다.** 로컬 36건, 운영 3건. 로컬의 나머지는 9월 초 로컬 시험 실행이 남긴 것이었다.
+→ 운영에 돌리기 전 미리보기로 **운영의** 건수·작성자·예시를 먼저 보고 판단한다. 스크립트 첫 줄의 접속 호스트가 `neon.tech` 인지 확인한다.
 
 ---
 
