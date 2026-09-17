@@ -160,6 +160,7 @@ MCP 전용 지름길을 만들면 알림·AI 재구성·완료 확인·색인·�
   내려받을 수 없다. 10분 동안 여러 번 쓸 수 있고, 검증할 때 계정이 닫혔으면 거절한다. 한 번만 쓰게 하려면 표가 필요하다.
 - **상한 4MB** (`MAX_UPLOAD_BYTES`). Vercel 함수 본문 상한 때문이다. `upload_file` 은 base64 팽창(4/3) 때문에 실제로는 약 3MB.
   `read_file` 은 4MB 넘는 파일(NAS 에서 들여온 것)도 본문 대신 링크를 준다. 텍스트는 10만 자에서 자른다.
+  「NAS 파일 연결」 첨부(`path` 가 `/api/nas?path=…`, 2026-09-17)는 사본이 없어 `lib/file-object.openFileObject` 가 NAS 원본을 읽는다 — `read_file` · 내려받기 링크 모두 같은 함수를 지난다.
 - **형식.** 주어진 형식이 없거나 `application/octet-stream`(curl 기본값)이면 확장자로 정하고, 텍스트에는 `; charset=utf-8` 을 붙인다.
 - **PDF·워드·한글 본문은 못 푼다.** 파서 의존성을 들이지 않았다. 필요해지면 `read_file` 의 `other` 갈래에 붙인다.
 

@@ -168,5 +168,5 @@ export function objectKeyFor(id: string, originalName: string): string {
   return `${id}${ext}`
 }
 
-/** Vercel 서버리스 함수의 요청 본문 상한. 이보다 큰 파일은 프록시로 받을 수 없다. */
-export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+/** Vercel 서버리스 함수의 요청 본문 상한. 이보다 큰 파일은 프록시로 받을 수 없다. 값은 화면과 함께 쓴다. */
+export { MAX_UPLOAD_BYTES } from "@/lib/constants"

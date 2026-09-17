@@ -16,6 +16,7 @@ import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
 
 import { prisma } from "@/lib/db"
 import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
+import { openFileObject } from "@/lib/file-object"
 import { TASK_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/constants"
 import { retrieveContext, sectionToText, syncEmbeddingsSafe, type EmbeddingSource } from "@/lib/embeddings"
 import { migrateContent } from "@/lib/omnis-types"
@@ -34,7 +35,6 @@ import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
-import { getObject } from "@/lib/storage"
 import * as XLSX from "xlsx"
 import {
   TOOLS as IP_TOOLS,
@@ -677,11 +677,11 @@ export async function verifyDownloadLink(token: string): Promise<{ fileId: strin
   return p && typeof p.f === "string" ? { fileId: p.f } : null
 }
 
-type FileRow = { id: string; name: string; mimeType: string; size: number; task: { slug: string } | null }
+type FileRow = { id: string; name: string; path: string; mimeType: string; size: number; task: { slug: string } | null }
 
 /** 파일 찾기 — ID, 없으면 업무 첨부(업무에 직접 붙었거나 그 스레드 메시지에 붙은 것) 중 이름 일부. 여럿이면 고르지 않는다. */
 async function findFile(args: Record<string, unknown>): Promise<FileRow | { error: string }> {
-  const select = { id: true, name: true, mimeType: true, size: true, task: { select: { slug: true } } } as const
+  const select = { id: true, name: true, path: true, mimeType: true, size: true, task: { select: { slug: true } } } as const
   const id = str(args.file)
   if (id) {
     const f = await prisma.file.findUnique({ where: { id }, select })
@@ -712,8 +712,8 @@ function fileKind(name: string, mimeType: string): "text" | "sheet" | "image" | 
   return "other"
 }
 
-async function readObject(id: string, name: string): Promise<Buffer> {
-  const res = await getObject(objectKeyFor(id, name))
+async function readObject(file: { id: string; name: string; path: string }): Promise<Buffer> {
+  const res = await openFileObject(file)
   const chunks: Buffer[] = []
   for await (const chunk of res.body) chunks.push(Buffer.from(chunk))
   return Buffer.concat(chunks)
@@ -929,7 +929,7 @@ export async function runTool(
         const url = `${ctx.base}/download?t=${signDownloadLink(caller.userId, f.id)}`
         return { text: [head, "", `${why} 셸이 있으면 내려받아 여세요 (10분):`, url, "", `curl -sS -o '${f.name.replace(/'/g, "")}' '${url}'`].join("\n") }
       }
-      const buf = await readObject(f.id, f.name)
+      const buf = await readObject(f)
       if (kind === "image") return { text: head, image: { data: buf.toString("base64"), mimeType: f.mimeType.split(";")[0].trim() } }
       if (kind === "sheet") {
         const wb = XLSX.read(buf, { type: "buffer" })

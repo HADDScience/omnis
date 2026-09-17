@@ -47,6 +47,15 @@ export const CHAT_PAGE_SIZE = 30
  */
 export const CHAT_DELETED_TEXT = "삭제된 메시지입니다"
 
+// ─── 파일 ────────────────────────────────────────────────
+
+/**
+ * 한 파일의 업로드 상한. 파일은 Vercel 함수를 거쳐 NAS 로 가는데, Vercel 은 4.5MB 가 넘는 요청 본문을
+ * 함수에 닿기 전에 413 으로 끊는다 — 서버 로그에도 남지 않는다. 그래서 화면이 고를 때 먼저 막는다.
+ * 서버 라우트는 lib/storage 가 다시 내보내는 같은 값을 쓴다(storage 는 node:tls 를 써 화면이 못 읽는다).
+ */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+
 // ─── 네비게이션 ──────────────────────────────────────────
 
 export const NAV_ITEMS = [
