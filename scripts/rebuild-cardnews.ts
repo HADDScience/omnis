@@ -90,7 +90,13 @@ interface Spec {
    * 새 글일 때(아임웹에서 옮긴 글이 아니라 처음 쓰는 카드뉴스): DB 에 행이 없어도 dry-run 으로 굽고 검사할 수
    * 있게, 행은 실제 반영 때 만든다. 관리 화면의 savePost 처럼 맨 앞(position 0)에 넣고 나머지를 한 칸씩 민다.
    */
-  create?: { date: string; title: string; summary?: string }
+  create?: {
+    date: string
+    title: string
+    summary?: string
+    /** 목록 자리. 없으면 맨 앞(0). 그 자리부터 뒤는 한 칸씩 민다 — 날짜가 이전 글보다 이른 새 글을 끼워 넣을 때. */
+    position?: number
+  }
 }
 
 /** spec.thumbnail(옛 카드 파일명)이 새 덱에서 몇 번째 카드인지. 옛 카드가 여러 장으로 나뉘었으면 그 첫 장. */
@@ -437,8 +443,9 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
     if (found) await prisma.websitePost.update({ where: { id }, data })
     else
       await prisma.$transaction(async (tx) => {
-        await tx.websitePost.updateMany({ data: { position: { increment: 1 } } })
-        await tx.websitePost.create({ data: { id, position: 0, date: spec.create!.date, sourceLang: "ko", ...data } })
+        const at = spec.create!.position ?? 0
+        await tx.websitePost.updateMany({ where: { position: { gte: at } }, data: { position: { increment: 1 } } })
+        await tx.websitePost.create({ data: { id, position: at, date: spec.create!.date, sourceLang: "ko", ...data } })
       })
   }
 
