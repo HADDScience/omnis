@@ -18,7 +18,7 @@ import {
   verifyUploadLink,
   MAX_UPLOAD_BYTES,
 } from "@/lib/omnis-mcp"
-import { getObject, objectKeyFor } from "@/lib/storage"
+import { openFileObject } from "@/lib/file-object"
 import { Readable } from "node:stream"
 
 /**
@@ -379,11 +379,11 @@ async function downloadViaLink(req: NextRequest) {
   }
   const file = await prisma.file.findUnique({
     where: { id: grant.fileId },
-    select: { id: true, name: true, mimeType: true },
+    select: { id: true, name: true, path: true, mimeType: true },
   })
   if (!file) return json({ error: "파일 없음" }, 404)
 
-  const object = await getObject(objectKeyFor(file.id, file.name))
+  const object = await openFileObject(file)
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
     headers: {
       ...CORS,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Readable } from "node:stream"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { getObject, objectKeyFor } from "@/lib/storage"
+import { openFileObject } from "@/lib/file-object"
 import { demoStorageBlocked } from "@/lib/demo"
 
 interface Props {
@@ -22,11 +22,11 @@ export async function GET(_req: NextRequest, { params }: Props) {
   const { fileId } = await params
   const file = await prisma.file.findUnique({
     where: { id: fileId },
-    select: { id: true, name: true, mimeType: true },
+    select: { id: true, name: true, path: true, mimeType: true },
   })
   if (!file) return NextResponse.json({ error: "파일 없음" }, { status: 404 })
 
-  const object = await getObject(objectKeyFor(file.id, file.name))
+  const object = await openFileObject(file)
 
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
     headers: {

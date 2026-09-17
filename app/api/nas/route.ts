@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Readable } from "node:stream"
 import { auth } from "@/lib/auth"
-import { listDirectory, readFile, normalizeNasPath, inlineContentType } from "@/lib/nas"
+import { listDirectory, readFile, normalizeNasPath, inlineContentType, statNasFile } from "@/lib/nas"
 
 export const runtime = "nodejs"
 
@@ -29,6 +29,13 @@ export async function GET(req: NextRequest) {
   const entries = await listDirectory(path)
   if (entries) {
     return NextResponse.json({ kind: "dir", path, entries })
+  }
+
+  // ?stat=1 — 파일이면 내용 대신 정보만. 첨부로 고를 때 수백 MB 를 흘리지 않으려고(2026-09-17)
+  if (req.nextUrl.searchParams.get("stat") === "1") {
+    const entry = await statNasFile(path)
+    if (!entry) return NextResponse.json({ error: "찾을 수 없습니다" }, { status: 404 })
+    return NextResponse.json({ kind: "file", ...entry })
   }
 
   const file = await readFile(path)

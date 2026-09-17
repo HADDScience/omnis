@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { MessageInput } from "@/components/chat/message-input"
 import { apiUrl } from "@/lib/base-path"
+import { reportIncident } from "@/lib/report-client-error"
 
 /** 자동완성 후보 — 스레드 목록이 한 번 불러와 목록(멘션 링크)과 입력창이 같이 쓴다 */
 export interface ThreadRefs {
@@ -55,7 +56,7 @@ export function ThreadComposer({
   const router = useRouter()
   const [sending, setSending] = useState(false)
 
-  async function send(content: string, attached?: File[]) {
+  async function send(content: string, attached?: File[], nasPaths?: string[]) {
     setSending(true)
     onPending?.(content)
     try {
@@ -68,9 +69,26 @@ export function ThreadComposer({
         if (up.status === 401) throw new SessionExpired()
         if (!up.ok) {
           const err = await up.json().catch(() => ({}))
-          throw new Error(err?.error ?? `「${f.name}」 을 올리지 못했습니다`)
+          const message = err?.error ?? `「${f.name}」 을 올리지 못했습니다`
+          reportIncident({ kind: "upload_failed", message: err?.error ?? "파일 업로드 실패", status: up.status, size: f.size, fileName: f.name })
+          throw new Error(message)
         }
         fileIds.push((await up.json()).id)
+      }
+      // NAS 에 있는 파일은 올리지 않고 잇는다(2026-09-17)
+      for (const path of nasPaths ?? []) {
+        const link = await fetch(apiUrl("/api/files/nas"), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path }),
+        })
+        if (link.status === 401) throw new SessionExpired()
+        if (!link.ok) {
+          const err = await link.json().catch(() => ({}))
+          reportIncident({ kind: "upload_failed", message: err?.error ?? "NAS 파일 연결 실패", status: link.status, fileName: path })
+          throw new Error(err?.error ?? "NAS 파일을 연결하지 못했습니다")
+        }
+        fileIds.push((await link.json()).id)
       }
 
       const res = await fetch(apiUrl("/api/chat/messages"), {
@@ -81,6 +99,7 @@ export function ThreadComposer({
       if (res.status === 401) throw new SessionExpired()
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
+        reportIncident({ kind: "send_failed", message: err?.error ?? "메시지 전송 실패", status: res.status })
         throw new Error(err?.error ?? "전송 실패")
       }
       const saved = (await res.json().catch(() => null)) as { id?: string; _rebuild?: string | null } | null

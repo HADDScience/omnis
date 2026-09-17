@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/troubleshootings/client-error-visibility.md
-last_verified: 2026-09-07
+last_verified: 2026-09-17
 ---
 
 # 화면이 흰 채로 죽는데 아무도 모르던 문제
@@ -98,3 +98,26 @@ TypeError: Cannot read properties of undefined (reading 'data')
 없는 노드면 `null` 을 넘겨 인스펙터만 닫히게 고쳤다.
 
 같은 모양이다 — `as` 로 타입을 덮은 자리에서 런타임 `undefined` 가 새 나간다. `find` 의 결과에 `as` 를 붙이지 않는다.
+
+## 화면은 살아 있는데 일이 막힌 경우 · GitHub 이슈 (2026-09-17)
+
+4MB 넘는 첨부를 보내면 Vercel 이 요청을 함수에 닿기 전에 끊었다. 흰 화면이 아니라 error boundary 가
+잡지 않았고, 서버 로그에도 남지 않았다([`large-file-upload.md`](large-file-upload.md)). 사용자가 말해 줘서 알았다.
+
+| | |
+|---|---|
+| 화면만 아는 실패를 보낸다 | `reportIncident({ kind })` — `upload_too_large` · `upload_failed` · `send_failed`. 같은 `POST /api/errors` 로 간다 |
+| 메일 | 기존과 같다. 누가 · 어느 화면 · 파일명 · 크기 · HTTP 상태까지 |
+| GitHub 이슈 | `lib/github-issue.ts` — 같은 오류(지문)는 **열린 이슈 하나에 댓글로** 모인다. 닫힌 뒤 재발하면 새 이슈 |
+| 중복 억제 | 인스턴스 메모리 30분. 첨부류는 사람별로 따로 센다 |
+
+**저장소가 공개다(`HADDScience/omnis`).** 이슈에는 사람 이름 · 파일명 · 업무명 · NAS 경로 · 쿼리를 적지 않는다.
+`redactForPublic` 이 「…」 안 · ` — ` 뒤 · `/HADD Science/…` · UUID 를 걷어내고, 화면 주소는 경로만 남긴다.
+지문도 걷어낸 문구로 만들어 파일이 달라도 같은 오류는 한 이슈에 모인다. 화면 오류(crash)의 메시지 · 스택은
+다듬은 뒤 그대로 올라간다 — 예외 메시지에 사용자 데이터가 섞이는 코드를 만들면 여기서 샌다.
+
+**켜려면 `GITHUB_ISSUE_TOKEN` 이 운영 환경변수에 있어야 한다.** 이 저장소 하나 · `Issues: Read and write` 만 준
+fine-grained 토큰. 없으면 이슈는 건너뛰고 메일만 나간다. 라벨은 기존 `bug` 를 쓴다.
+
+검증: `scripts/verify-nas-link.ts` 의 [2] · [3] — fetch 를 가로채 실제 저장소에는 쓰지 않는다.
+

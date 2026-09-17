@@ -7,6 +7,7 @@ import { MessageInput } from "@/components/chat/message-input"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
+import { reportIncident } from "@/lib/report-client-error"
 
 interface Message {
   id: string
@@ -170,8 +171,17 @@ export function ChatPanel({
     [fetchMessages, onTaskUpdated],
   )
 
+  /** 첨부가 막혀 보내기를 멈춘다 — 임시 말풍선을 거두고 알린 뒤 던진다. 던지면 MessageInput 이 글과 첨부를 남긴다 */
+  const stopSending = useCallback((tempId: string, message: string): never => {
+    setMessages((prev) => prev.filter((m) => m.id !== tempId))
+    setUploadProgress(new Map())
+    pausePolling.current = false
+    toast.error(message)
+    throw new Error(message)
+  }, [])
+
   const handleSend = useCallback(
-    async (content: string, files?: File[]) => {
+    async (content: string, files?: File[], nasPaths?: string[]) => {
       // /업무 슬래시 커맨드 감지 → 전송 가로채고 TaskCmdModal로 라우팅
       if (content.trim().startsWith("/업무") && onSlashTaskCommand) {
         onSlashTaskCommand(content.trim())
@@ -216,17 +226,28 @@ export function ChatPanel({
             // 예전에는 실패한 파일을 건너뛰고 글만 보냈다 — 첨부가 빠진 줄 모른 채 "보냈다"가 됐다(2026-09-17).
             // 글을 보내지 않고 멈춘다. 던지면 MessageInput 이 쓴 글과 첨부를 남겨 둔다(스레드 입력창과 같은 약속).
             const err = await fRes.json().catch(() => ({}))
-            setMessages((prev) => prev.filter((m) => m.id !== tempId))
-            setUploadProgress(new Map())
-            pausePolling.current = false
-            const message = err?.error ?? `「${files[i].name}」 을 올리지 못했습니다`
-            toast.error(message)
-            throw new Error(message)
+            reportIncident({ kind: "upload_failed", message: err?.error ?? "파일 업로드 실패", status: fRes.status, size: files[i].size, fileName: files[i].name })
+            stopSending(tempId, err?.error ?? `「${files[i].name}」 을 올리지 못했습니다`)
           }
           const uploaded = await fRes.json()
           uploadedFiles.push(uploaded)
           setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 100))
         }
+      }
+
+      // NAS 에 있는 파일은 올리지 않고 잇는다(2026-09-17)
+      for (const path of nasPaths ?? []) {
+        const lRes = await fetch(apiUrl("/api/files/nas"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path }),
+        })
+        if (!lRes.ok) {
+          const err = await lRes.json().catch(() => ({}))
+          reportIncident({ kind: "upload_failed", message: err?.error ?? "NAS 파일 연결 실패", status: lRes.status, fileName: path })
+          stopSending(tempId, err?.error ?? "NAS 파일을 연결하지 못했습니다")
+        }
+        uploadedFiles.push(await lRes.json())
       }
 
       // 처리 중 상태 표시
@@ -247,6 +268,11 @@ export function ChatPanel({
       setReplyTo(null)
 
       let queued = false
+      if (!res.ok) {
+        // 화면 동작은 그대로 두고(보내는 중 말풍선이 남는다) 알리기만 한다
+        const err = await res.json().catch(() => ({}))
+        reportIncident({ kind: "send_failed", message: err?.error ?? "메시지 전송 실패", status: res.status })
+      }
       if (res.ok) {
         const newMsg = await res.json()
         // 보내는 중 말풍선을 그 자리에서 확정한다 — 다시 떠오르지 않게 표시
@@ -268,7 +294,7 @@ export function ChatPanel({
       if (!queued) setProcessing(null)
       pausePolling.current = false
     },
-    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild, replyTo]
+    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild, replyTo, stopSending]
   )
 
   /**

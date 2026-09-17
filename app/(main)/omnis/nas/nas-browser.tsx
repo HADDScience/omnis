@@ -1,13 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Folder01Icon, File01Icon, ArrowLeft01Icon } from "@hugeicons/core-free-icons"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { apiUrl } from "@/lib/base-path"
 
-interface Entry {
+export interface Entry {
   name: string
   path: string
   isDir: boolean
@@ -29,17 +29,24 @@ function humanSize(n: number | null): string {
  *
  * 브라우저는 NAS 에 직접 붙지 못한다 — 인증서가 자체서명이고 Basic 인증이 걸려 있으며
  * DSM 웹 UI 포트도 외부에 닫혀 있다. 그래서 옴니스가 중계한다(`/api/nas`).
+ *
+ * `onPick` 을 주면 고르기 모드다 — 파일을 누르면 열지 않고 돌려준다. 채팅의 「NAS 파일 연결」 이 쓴다(2026-09-17).
  */
-export function NasBrowser({ initialPath }: { initialPath: string }) {
+export function NasBrowser({ initialPath, onPick }: { initialPath: string; onPick?: (entry: Entry) => void }) {
   const [path, setPath] = useState(initialPath)
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // 부르는 쪽이 매번 새 함수를 넘겨도 목록을 다시 읽지 않게 ref 로 든다
+  const onPickRef = useRef(onPick)
+  useEffect(() => { onPickRef.current = onPick }, [onPick])
+  const pickMode = !!onPick
 
   const load = useCallback(async (p: string) => {
     setEntries(null)
     setError(null)
     try {
-      const res = await fetch(apiUrl(`/api/nas?path=${encodeURIComponent(p)}`))
+      // 고르기 모드는 파일 내용을 받지 않는다 — 붙여넣은 경로가 수백 MB 파일일 수 있다
+      const res = await fetch(apiUrl(`/api/nas?path=${encodeURIComponent(p)}${pickMode ? "&stat=1" : ""}`))
       if (!res.ok) {
         setError((await res.json().catch(() => null))?.error ?? "열 수 없습니다")
         return
@@ -52,12 +59,16 @@ export function NasBrowser({ initialPath }: { initialPath: string }) {
         return
       }
       const body = await res.json()
+      if (body.kind === "file" && onPickRef.current) {
+        onPickRef.current(body as Entry)
+        return
+      }
       setEntries(body.entries ?? [])
       setPath(body.path ?? p)
     } catch {
       setError("NAS 에 연결하지 못했습니다")
     }
-  }, [])
+  }, [pickMode])
 
   useEffect(() => { load(initialPath) }, [initialPath, load])
 
@@ -116,17 +127,27 @@ export function NasBrowser({ initialPath }: { initialPath: string }) {
                 <button
                   type="button"
                   onClick={() => load(e.path)}
-                  className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-[13.5px] hover:bg-muted"
+                  className="touch-target flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-[13.5px] hover:bg-muted"
                 >
                   <HugeiconsIcon icon={Folder01Icon} size={17} className="shrink-0 text-muted-foreground" aria-hidden />
                   <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                </button>
+              ) : onPick ? (
+                <button
+                  type="button"
+                  onClick={() => onPick(e)}
+                  className="touch-target flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-[13.5px] hover:bg-muted"
+                >
+                  <HugeiconsIcon icon={File01Icon} size={17} className="shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                  <span className="shrink-0 text-[11.5px] text-muted-foreground">{humanSize(e.size)}</span>
                 </button>
               ) : (
                 <a
                   href={apiUrl(`/api/nas?path=${encodeURIComponent(e.path)}`)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-[13.5px] hover:bg-muted"
+                  className="touch-target flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-[13.5px] hover:bg-muted"
                 >
                   <HugeiconsIcon icon={File01Icon} size={17} className="shrink-0 text-muted-foreground" aria-hidden />
                   <span className="min-w-0 flex-1 truncate">{e.name}</span>

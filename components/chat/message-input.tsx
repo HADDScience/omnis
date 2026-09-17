@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { SentIcon, Attachment01Icon, Cancel01Icon, PlusSignIcon, Task01Icon, AtIcon } from "@hugeicons/core-free-icons"
+import { SentIcon, Attachment01Icon, Cancel01Icon, PlusSignIcon, Task01Icon, AtIcon, Folder01Icon } from "@hugeicons/core-free-icons"
 import { Spinner } from "@/components/ui/spinner"
 import {
   DropdownMenu,
@@ -17,6 +17,8 @@ import { SLASH_COMMANDS } from "./slash-command-parser"
 import { IS_DEMO } from "@/lib/demo"
 import { toast } from "sonner"
 import { MAX_UPLOAD_BYTES } from "@/lib/constants"
+import { reportIncident } from "@/lib/report-client-error"
+import { NasFilePicker } from "./nas-file-picker"
 
 /** 자동완성 후보. `/`(명령) · `#`(업무) · `@`(사람·파일) 세 갈래가 같은 목록 UI를 쓴다. */
 interface MentionItem {
@@ -29,8 +31,11 @@ interface MentionItem {
 }
 
 interface MessageInputProps {
-  /** 실패하면 던진다 — 입력한 글과 첨부를 비우지 않고 남겨 둔다. */
-  onSend: (content: string, files?: File[]) => Promise<void>
+  /**
+   * 실패하면 던진다 — 입력한 글과 첨부를 비우지 않고 남겨 둔다.
+   * nasPaths: 「NAS 파일 연결」 로 고른 파일의 NAS 경로. 올리지 않고 POST /api/files/nas 로 잇는다.
+   */
+  onSend: (content: string, files?: File[], nasPaths?: string[]) => Promise<void>
   disabled?: boolean
   tasks?: { id: string; name: string; slug: string; status?: string }[]
   files?: { id: string; name: string; path: string; mimeType: string }[]
@@ -66,6 +71,8 @@ export function MessageInput({
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
+  const [nasFiles, setNasFiles] = useState<{ path: string; name: string }[]>([])
+  const [nasPickerOpen, setNasPickerOpen] = useState(false)
   const [uploadingIdx, setUploadingIdx] = useState<Set<number>>(new Set())
   const [previews, setPreviews] = useState<Map<number, string>>(new Map())
   const [dragging, setDragging] = useState(false)
@@ -215,9 +222,20 @@ export function MessageInput({
     const tooLarge = picked.filter((f) => f.size > MAX_UPLOAD_BYTES)
     if (tooLarge.length > 0) {
       const limitMb = Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)
-      toast.error(`${limitMb}MB 가 넘는 파일은 첨부할 수 없습니다`, {
-        description: `${tooLarge.map((f) => `「${f.name}」 ${(f.size / 1024 / 1024).toFixed(1)}MB`).join(" · ")} — NAS 경로를 글로 남겨 주세요`,
+      // 이미 NAS 에 있으면 연결하면 되고, 아니면 NAS 에 올린 뒤 연결한다 — 어느 쪽이든 같은 버튼으로 간다
+      toast.error(`${limitMb}MB 가 넘는 파일은 바로 올릴 수 없습니다`, {
+        description: `${tooLarge.map((f) => `「${f.name}」 ${(f.size / 1024 / 1024).toFixed(1)}MB`).join(" · ")} — NAS 에 올린 뒤 「NAS 파일 연결」 로 다시 첨부해 주세요`,
+        duration: 12_000,
+        action: { label: "NAS 파일 연결", onClick: () => setNasPickerOpen(true) },
       })
+      for (const f of tooLarge) {
+        reportIncident({
+          kind: "upload_too_large",
+          message: `첨부 상한(${limitMb}MB) 초과로 업로드를 막았다`,
+          size: f.size,
+          fileName: f.name,
+        })
+      }
     }
     const files = picked.filter((f) => f.size <= MAX_UPLOAD_BYTES)
     if (files.length === 0) return
@@ -301,22 +319,28 @@ export function MessageInput({
 
   const handleSend = useCallback(async () => {
     const trimmed = content.trim()
-    if (!trimmed && attachedFiles.length === 0) return
+    const attachedCount = attachedFiles.length + nasFiles.length
+    if (!trimmed && attachedCount === 0) return
     if (sending) return
     setSending(true)
     try {
-      await onSend(trimmed || (attachedFiles.length > 0 ? `[파일 ${attachedFiles.length}개 첨부]` : ""), attachedFiles.length > 0 ? attachedFiles : undefined)
+      await onSend(
+        trimmed || (attachedCount > 0 ? `[파일 ${attachedCount}개 첨부]` : ""),
+        attachedFiles.length > 0 ? attachedFiles : undefined,
+        nasFiles.length > 0 ? nasFiles.map((f) => f.path) : undefined,
+      )
       setContent("")
       previews.forEach((url) => URL.revokeObjectURL(url))
       setPreviews(new Map())
       setAttachedFiles([])
+      setNasFiles([])
       textareaRef.current?.focus()
     } catch {
       // 보내지 못했다 — 쓴 글과 첨부를 그대로 둔다. 알림은 onSend 쪽이 띄운다.
     } finally {
       setSending(false)
     }
-  }, [content, sending, onSend, attachedFiles])
+  }, [content, sending, onSend, attachedFiles, nasFiles])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // 멘션 팝오버가 열려있을 때
@@ -413,8 +437,24 @@ export function MessageInput({
       )}
 
       {/* 첨부 파일 프리뷰 */}
-      {attachedFiles.length > 0 && (
+      {(attachedFiles.length > 0 || nasFiles.length > 0) && (
         <div className="flex flex-wrap gap-1.5 mb-2">
+          {/* NAS 연결 — 올리지 않으므로 로딩이 없다 */}
+          {nasFiles.map((f) => (
+            <Badge key={f.path} variant="secondary" className="text-[10px] gap-1 pr-1" title={f.path}>
+              <HugeiconsIcon icon={Folder01Icon} size={10} aria-hidden />
+              <span className="font-medium">NAS</span>
+              {f.name.length > 20 ? f.name.slice(0, 20) + "..." : f.name}
+              <button
+                type="button"
+                onClick={() => setNasFiles((prev) => prev.filter((x) => x.path !== f.path))}
+                className="ml-0.5 hover:bg-muted rounded"
+                aria-label={`${f.name} 연결 빼기`}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} size={10} />
+              </button>
+            </Badge>
+          ))}
           {attachedFiles.map((f, i) => {
             const previewUrl = previews.get(i)
             const isUploading = uploadingIdx.has(i)
@@ -488,6 +528,13 @@ export function MessageInput({
               <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                 <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
                 파일 업로드
+                <span className="ml-auto text-[10px] text-muted-foreground">4MB 이하</span>
+              </DropdownMenuItem>
+            )}
+            {!IS_DEMO && (
+              <DropdownMenuItem onClick={() => setNasPickerOpen(true)}>
+                <HugeiconsIcon icon={Folder01Icon} size={14} aria-hidden />
+                NAS 파일 연결
               </DropdownMenuItem>
             )}
             {commands && (
@@ -529,11 +576,22 @@ export function MessageInput({
           aria-label="메시지 전송"
           className="size-10 shrink-0 md:size-9"
           onClick={handleSend}
-          disabled={(!content.trim() && attachedFiles.length === 0) || sending}
+          disabled={(!content.trim() && attachedFiles.length === 0 && nasFiles.length === 0) || sending}
         >
           <HugeiconsIcon icon={SentIcon} size={18} />
         </Button>
       </div>
+      {!IS_DEMO && (
+        <NasFilePicker
+          open={nasPickerOpen}
+          onOpenChange={setNasPickerOpen}
+          onPick={(entry) =>
+            setNasFiles((prev) =>
+              prev.some((f) => f.path === entry.path) ? prev : [...prev, { path: entry.path, name: entry.name }],
+            )
+          }
+        />
+      )}
     </div>
   )
 }
