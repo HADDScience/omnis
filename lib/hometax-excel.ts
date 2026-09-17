@@ -10,7 +10,7 @@
 //      수정 재발행(+) 세 장이고, 셋을 다 넣어야 합계가 홈택스와 맞는다(1,650,000). 비고의 「당초 승인번호」
 //      로 서로 잇는다.
 import * as XLSX from "xlsx"
-import { OUR_BIZ_NO, classifyItem, type InvoiceItem, type ParsedInvoice } from "@/lib/tax-invoice"
+import { OUR_BIZ_NO, approvalNoIn, classifyItem, type InvoiceItem, type ParsedInvoice } from "@/lib/tax-invoice"
 
 export interface ExcelSkip {
   approvalNo: string
@@ -24,7 +24,6 @@ export interface ExcelRead {
   title: string | null
 }
 
-const APPROVAL = /\d{8}-\d{8}-\d{6,8}/
 
 const text = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim())
 const money = (v: unknown): number | null => {
@@ -89,8 +88,9 @@ export function readHometaxExcel(data: Uint8Array): ExcelRead {
   // 승인번호로 묶는다 — 여러 줄이면 품목 줄이다
   const groups = new Map<string, unknown[][]>()
   for (const r of rows.slice(headerAt + 1)) {
-    const no = text(cell(r, col.approvalNo))
-    if (!APPROVAL.test(no)) continue
+    // 민간 발행 서비스로 나간 계산서는 승인번호에 영문이 섞인다 — PDF 판독과 같은 모양으로 맞춰야 첨부가 붙는다
+    const no = approvalNoIn(text(cell(r, col.approvalNo)))
+    if (!no) continue
     const key = `${no}|${money(cell(r, col.total))}`
     groups.set(key, [...(groups.get(key) ?? []), r])
   }
@@ -163,7 +163,7 @@ export function readHometaxExcel(data: Uint8Array): ExcelRead {
       totalKrw,
       modifyReason: kindText.includes("수정") ? note || null : null,
       kind: kindText.includes("수정") ? "수정" : "일반",
-      originalApprovalNo: kindText.includes("수정") ? (note.match(APPROVAL)?.[0] ?? null) : null,
+      originalApprovalNo: kindText.includes("수정") ? approvalNoIn(note) : null,
       items,
       direction,
       readBy: "excel",

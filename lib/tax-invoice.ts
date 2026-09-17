@@ -53,7 +53,19 @@ interface Line { y: number; pieces: Piece[] }
 const BIZ = /\b\d{3}-\d{2}-\d{5}\b/
 const NUM = /^-?[\d,]+$/
 /** 수정사유 "기재사항착오정정 당초 승인번호 (20250923-…)" 에서 당초 승인번호 */
-const originalOf = (reason: string | null) => reason?.match(/당초\s*승인\s*번호\s*\(?\s*(\d{8}-\d{8}-\d{8})/)?.[1] ?? null
+const originalOf = (reason: string | null) => approvalNoIn(reason?.match(/당초\s*승인\s*번호\s*\(?\s*([\dA-Za-z-]{24,26})/)?.[1])
+
+/**
+ * 승인번호 — 작성일 8자리 · 발행 사업자 8자 · 일련 8자. 홈택스가 발행하면 전부 숫자지만
+ * **민간 발행 서비스(ASP)는 뒤 두 칸에 영문이 섞인다** — 엘지유플러스 `20250304-50000035-a8166145`,
+ * 테크타워 `20250429-41000061-4a2f7wwg`. 네이버클라우드는 하이픈 없이 24자로 붙여 찍는다.
+ * 숫자 8-8-8 만 찾다가 NAS 매입 42장 중 대부분을 놓쳤다(2026-09-17). 찾으면 하이픈 형태로 맞춘다.
+ */
+export function approvalNoIn(text: string | null | undefined): string | null {
+  if (!text) return null
+  const m = text.match(/(?<![\dA-Za-z])(\d{8})-?([\dA-Za-z]{8})-?([\dA-Za-z]{8})(?![\dA-Za-z])/)
+  return m ? `${m[1]}-${m[2]}-${m[3]}`.toLowerCase() : null
+}
 const toNum = (s: string | null | undefined) => (s && NUM.test(s.trim()) ? Number(s.replace(/,/g, "")) : null)
 
 /** 용역 · 기술료 성격의 품목. 나머지는 제품 */
@@ -100,7 +112,7 @@ const find = (l: Line, s: string) => l.pieces.filter((p) => p.str === s)
 
 export function parseFromLines(lines: Line[], pageWidth: number): Omit<ParsedInvoice, "readBy" | "checks" | "direction"> {
   const all = lines.flatMap((l) => l.pieces.map((p) => p.str)).join(" ")
-  const approvalNo = all.match(/\d{8}-\d{8}-\d{8}/)?.[0] ?? null
+  const approvalNo = approvalNoIn(all.match(/승인\s*번호\s*:?\s*([\dA-Za-z-]{24,26})/)?.[1]) ?? approvalNoIn(all)
 
   // 공급자 · 공급받는자 경계 — 「등록」 머리가 두 번 나오는 줄의 두 번째 「등록」 x
   const regIdx = lines.findIndex((l) => find(l, "등록").length >= 2)
@@ -275,7 +287,7 @@ JSON 만:
   const n = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" ? toNum(v) : null)
   const modifyReason = s(j.modifyReason)
   return checkInvoice({
-    approvalNo: s(j.approvalNo), issuedOn: s(j.issuedOn),
+    approvalNo: approvalNoIn(s(j.approvalNo)), issuedOn: s(j.issuedOn),
     supplierBizNo: s(j.supplierBizNo), supplierName: s(j.supplierName), supplierCeo: s(j.supplierCeo),
     buyerBizNo: s(j.buyerBizNo), buyerName: s(j.buyerName), buyerCeo: s(j.buyerCeo),
     supplyKrw: n(j.supplyKrw), taxKrw: n(j.taxKrw), totalKrw: n(j.totalKrw), modifyReason,
