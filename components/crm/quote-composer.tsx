@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -47,12 +47,23 @@ const newLine = (): Line => ({
 export function QuoteComposer({
   orgs: initialOrgs,
   products,
+  initialOrgId = null,
 }: {
   orgs: OrgLite[]
   products: ProductLite[]
+  /** 샘플을 보낸 기관에서 이어 열면 그 기관이 골라진 채로 시작한다 */
+  initialOrgId?: string | null
 }) {
   const router = useRouter()
   const r = useRecipient(initialOrgs)
+  const prefilled = useRef(false)
+  useEffect(() => {
+    if (prefilled.current || !initialOrgId || !initialOrgs.some((o) => o.id === initialOrgId)) return
+    prefilled.current = true
+    r.pickOrg(initialOrgId)
+    onOrgPicked(initialOrgId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOrgId])
   const [quotedAt, setQuotedAt] = useState(() => new Date().toISOString().slice(0, 10))
   const [lines, setLines] = useState<Line[]>([newLine()])
   const [discount, setDiscount] = useState(0)

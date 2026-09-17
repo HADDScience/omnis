@@ -53,8 +53,17 @@ export function QuoteStatusControl({
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "상태를 바꾸지 못했습니다")
-        toast.success(`${QUOTE_STATUS_LABEL[next]} 로 바꿨어요`)
-        // 세금계산서 날짜가 자동으로 채워질 수 있어 화면을 새로 읽는다
+        // 완료가 됐는데 세금계산서가 없으면 **지금이 올릴 때**다 — 다음 할 일을 그 자리에서 내민다.
+        // 재무 담당 본인이 완료한 경우엔 발행 요청 알림이 가지 않으므로 여기가 유일한 이음새다.
+        if (next === CrmQuoteStatus.DONE && data?._count?.taxInvoices === 0) {
+          toast.success("완료로 바꿨어요", {
+            description: "세금계산서를 발행했으면 이어서 올리세요",
+            action: { label: "세금계산서 등록", onClick: () => router.push(`/crm/invoices/new?quote=${quoteId}`) },
+            duration: 10_000,
+          })
+        } else {
+          toast.success(`${QUOTE_STATUS_LABEL[next]} 로 바꿨어요`)
+        }
         router.refresh()
       } catch (e) {
         setStatus(prev)

@@ -4,7 +4,8 @@ import { QuoteComposer } from "@/components/crm/quote-composer"
 
 export const dynamic = "force-dynamic"
 
-export default async function NewQuotePage() {
+export default async function NewQuotePage({ searchParams }: { searchParams: Promise<{ org?: string }> }) {
+  const { org: initialOrgId } = await searchParams
   const [orgs, products] = await Promise.all([
     prisma.crmOrg.findMany({
       orderBy: { name: "asc" },
@@ -23,6 +24,7 @@ export default async function NewQuotePage() {
     <>
       <Header crumbs={["CRM", "견적", "새 견적"]} />
       <QuoteComposer
+        initialOrgId={initialOrgId ?? null}
         orgs={orgs.map((o) => ({
           id: o.id,
           name: o.name,

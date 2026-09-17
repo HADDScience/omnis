@@ -1181,20 +1181,41 @@ model TaxInvoice {
   org                CrmOrg?             @relation(fields: [orgId], references: [id], onDelete: SetNull)
   quoteId            String?
   quote              CrmQuote?           @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  objectKey          String
-  fileName           String
-  /// text(PDF 글자) · vision(AI 판독 — 사람이 확인해야 저장)
+  /// 원본 PDF. 홈택스 목록 엑셀로 들어온 줄은 비어 있다 — 나중에 PDF 가 승인번호로 붙는다(2026-09-17)
+  objectKey          String?
+  fileName           String?
+  /// text(PDF 글자) · vision(AI 판독 — 사람이 확인해야 저장) · excel(홈택스 목록조회)
   readBy             String
   /// 검산 결과 { itemsSumMatches, totalMatches, problems[] }
   checks             Json
   uploadedById       String?
   createdAt          DateTime            @default(now())
 
-  items TaxInvoiceItem[]
+  items    TaxInvoiceItem[]
+  payments CrmPayment[]
 
   @@index([issuedOn])
   @@index([orgId])
   @@index([direction, issuedOn])
+}
+
+/// 세금계산서 한 장에 들어온 돈(매출) · 나간 돈(매입).
+///
+/// 나눠 들어오는 일이 있어 여러 줄이다. 합계가 세금계산서 합계에 닿으면 끝난 것으로 본다 —
+/// 「입금 완료」 칸을 따로 두지 않는다. 요약 칸은 언젠가 장부와 어긋난다(tech/crm.md 「현재고」 와 같은 이유).
+model CrmPayment {
+  id          String     @id @default(uuid())
+  invoiceId   String
+  invoice     TaxInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  /// 날짜만 — timestamp 로 두면 시간대에 따라 하루가 밀린다(migration-traps)
+  paidOn      DateTime   @db.Date
+  amountKrw   BigInt
+  note        String?
+  createdById String?
+  createdAt   DateTime   @default(now())
+
+  @@index([invoiceId])
+  @@index([paidOn])
 }
 
 model TaxInvoiceItem {

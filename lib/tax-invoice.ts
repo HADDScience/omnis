@@ -42,7 +42,8 @@ export interface ParsedInvoice {
   originalApprovalNo: string | null
   items: InvoiceItem[]
   direction: "SALE" | "PURCHASE" | null
-  readBy: "text" | "vision"
+  /** text(PDF 글자) · vision(AI 판독) · excel(홈택스 목록조회 엑셀) */
+  readBy: "text" | "vision" | "excel"
   checks: { itemsSumMatches: boolean; totalMatches: boolean; problems: string[] }
 }
 

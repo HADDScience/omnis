@@ -133,6 +133,15 @@ export function SampleList({ samples: initial }: { samples: Sample[] }) {
                   />
                   {s.sent ? "발송완료" : "미발송"}
                 </button>
+                {/* 샘플을 보낸 뒤 다음 일은 견적이다 — 그 기관이 골라진 채로 연다 */}
+                {s.sent && (
+                  <Link
+                    href={`/crm/quotes/new?org=${s.orgId}`}
+                    className="inline-flex h-7 shrink-0 items-center rounded-md border border-primary/30 px-2.5 text-[12px] text-primary transition-colors hover:bg-primary/10"
+                  >
+                    견적 만들기
+                  </Link>
+                )}
                 <DeleteRecordButton
                   endpoint={`/api/crm/samples/${s.id}`}
                   onDeleted={() => setSamples((prev) => prev.filter((x) => x.id !== s.id))}

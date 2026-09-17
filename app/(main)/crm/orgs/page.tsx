@@ -10,26 +10,61 @@ import { ORG_TYPE_LABEL, CONTACT_NO_NAME, won, quoteTotals } from "@/lib/crm"
 
 export const dynamic = "force-dynamic"
 
-export default async function CrmOrgsPage() {
-  const orgs = await prisma.crmOrg.findMany({
+/**
+ * 기관 — 고객과 매입처를 나눠 본다 (2026-09-17).
+ *
+ * 매입 세금계산서를 가져오면 우정바이오 · CNK세무회계 같은 매입처가 기관으로 생긴다.
+ * 섞어 두면 영업할 고객 목록이 매입처에 묻힌다. 기관에 「매입처」 칸을 두지 않는다 —
+ * 이에이에스코리아는 고객이면서 매입처다. **관계로 가른다:** 견적 · 샘플 · 매출 세금계산서가
+ * 하나라도 있으면 고객, 매입 세금계산서만 있으면 매입처.
+ */
+export default async function CrmOrgsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const { view } = await searchParams
+  const vendorsView = view === "vendors"
+  const all = await prisma.crmOrg.findMany({
     orderBy: { name: "asc" },
     include: {
       contacts: { orderBy: { name: "asc" } },
       memberships: true,
       quotes: { include: { items: true } },
+      taxInvoices: { select: { direction: true } },
+      _count: { select: { sampleRequests: true } },
     },
   })
+  const isVendorOnly = (o: (typeof all)[number]) =>
+    o.quotes.length === 0 &&
+    o._count.sampleRequests === 0 &&
+    o.taxInvoices.length > 0 &&
+    o.taxInvoices.every((t) => t.direction === "PURCHASE")
+  const vendorCount = all.filter(isVendorOnly).length
+  const orgs = all.filter((o) => (vendorsView ? isVendorOnly(o) : !isVendorOnly(o)))
 
   return (
     <>
       <Header crumbs={["CRM", "기관"]} actions={<NewRecordButton />} />
       <div className="mx-auto w-full max-w-[1100px] px-6 py-6">
         <CrmNav />
-        <div className="mb-4 flex items-baseline gap-3">
+        <div className="mb-4 flex flex-wrap items-baseline gap-3">
           <h1 className="text-[18px] font-bold tracking-[-0.02em]">기관</h1>
           <span className="text-[13px] text-muted-foreground">
             {orgs.length}곳 · 담당자 {orgs.reduce((a, o) => a + o.contacts.length, 0)}명
           </span>
+          <nav aria-label="기관 구분" className="ml-auto flex gap-1.5">
+            <Link
+              href="/crm/orgs"
+              aria-current={!vendorsView ? "page" : undefined}
+              className={`rounded-full border px-3 py-1 text-[12px] ${!vendorsView ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/70"}`}
+            >
+              고객 · {all.length - vendorCount}
+            </Link>
+            <Link
+              href="/crm/orgs?view=vendors"
+              aria-current={vendorsView ? "page" : undefined}
+              className={`rounded-full border px-3 py-1 text-[12px] ${vendorsView ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/70"}`}
+            >
+              매입처 · {vendorCount}
+            </Link>
+          </nav>
         </div>
 
         <div className="flex flex-col gap-2">
