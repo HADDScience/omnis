@@ -11,6 +11,9 @@ haddscience.com 을 아임웹에서 Vercel 로 옮기고, Omnis 를 `omnis.hadds
 허브를 `hub.haddscience.com` 으로 분리하면서 실제로 겪은 것만 적는다.
 같은 일을 다시 할 때(새 앱에 도메인을 붙일 때) 읽는다.
 
+**여기는 Omnis 쪽 함정이다.** 홈페이지 쪽(옛 글 주소 404 · www 대표 주소 · 검색 차단 · 서브도메인 basePath)은
+hadd-website 저장소의 `mydocs/troubleshootings/domain-cutover-traps.md` 에 있다.
+
 ## 1. 옛 서버가 주는 응답을 새 배포로 착각한다
 
 옮긴 직후 `haddscience.com/ko/news` 가 404 였다. 새 코드의 리다이렉트가 잘못된 줄 알았지만
