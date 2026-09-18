@@ -56,6 +56,13 @@ test.describe("/업무 슬래시 명령 → 업무 자동 등록", () => {
   test("AI 자동완성 → 지시사항·체크리스트가 자동으로 채워진다 (Gemini 라이브 호출)", async ({
     page,
   }) => {
+    // 이 테스트만 외부(Gemini)를 실제로 부르고 `_fallback !== true` 를 요구한다.
+    // 키가 없으면 서버가 fallback 을 주므로 반드시 깨진다 — CI 기본 실행에서는
+    // 돌리지 않는다. 키·할당량이 있는 곳에서 E2E_LIVE_AI=1 로 켠다.
+    test.skip(
+      process.env.E2E_LIVE_AI !== "1",
+      "실제 Gemini 호출 — E2E_LIVE_AI=1 일 때만 돈다",
+    )
     test.setTimeout(60_000)
     const textarea = page.getByPlaceholder(
       "메시지 입력...  / 명령 · @ 사람 · # 업무"
