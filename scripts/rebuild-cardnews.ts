@@ -86,6 +86,17 @@ interface Spec {
    * 박으면 읽지도 누르지도 못한다. 카드에는 `list` 로 언론사 이름만 남긴다.
    */
   links?: { label: string; href: string }[]
+  /**
+   * 새 글일 때(아임웹에서 옮긴 글이 아니라 처음 쓰는 카드뉴스): DB 에 행이 없어도 dry-run 으로 굽고 검사할 수
+   * 있게, 행은 실제 반영 때 만든다. 관리 화면의 savePost 처럼 맨 앞(position 0)에 넣고 나머지를 한 칸씩 민다.
+   */
+  create?: {
+    date: string
+    title: string
+    summary?: string
+    /** 목록 자리. 없으면 맨 앞(0). 그 자리부터 뒤는 한 칸씩 민다 — 날짜가 이전 글보다 이른 새 글을 끼워 넣을 때. */
+    position?: number
+  }
 }
 
 /** spec.thumbnail(옛 카드 파일명)이 새 덱에서 몇 번째 카드인지. 옛 카드가 여러 장으로 나뉘었으면 그 첫 장. */
@@ -305,8 +316,14 @@ async function cropPhoto(site: string, id: string, source: string, box: [number,
 // ─── 본체 ───────────────────────────────────────────────────────────
 async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, summary: string[]) {
   const spec = JSON.parse(fs.readFileSync(path.join(SITE, "content/data/cardnews-rebuild", `${id}.json`), "utf8")) as Spec
-  const row = await prisma.websitePost.findUnique({ where: { id } })
-  if (!row) throw new Error(`${id}: WebsitePost 없음`)
+  const found = await prisma.websitePost.findUnique({ where: { id } })
+  if (!found && !spec.create) throw new Error(`${id}: WebsitePost 없음 (새 글이면 스펙에 create 를 적는다)`)
+  if (found && spec.create) throw new Error(`${id}: 이미 있는 글인데 스펙에 create 가 있다`)
+  const row = found ?? {
+    id,
+    thumbnail: null as string | null,
+    content: { ko: { title: spec.create!.title, summary: spec.create!.summary ?? "", blocks: [] } } as Prisma.JsonValue,
+  }
   const content = row.content as Partial<Record<"ko" | "en", PostLocale>>
   const ko = content.ko
   if (!ko) throw new Error(`${id}: ko 없음`)
@@ -421,11 +438,15 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   const nextKo: PostLocale = { ...ko, blocks: [...koBaked.blocks, ...linksKo] }
   const nextEn: PostLocale = { title: enLocale.title, summary: enLocale.summary, blocks: [...enBaked.blocks, ...linksEn], translatedFrom: sourceHash(nextKo), ...(enThumbUrl ? { thumbnail: enThumbUrl } : {}) }
   if (!DRY) {
-    await prisma.websitePost.update({
-      where: { id },
-      // 본문이 생겼으니 아임웹 원문으로 보내지 않는다(옛 글은 externalHref 만 있었다).
-      data: { content: { ...content, ko: nextKo, en: nextEn } as Prisma.InputJsonValue, deck: koFinal as unknown as Prisma.InputJsonValue, thumbnail: thumbUrl, externalHref: null },
-    })
+    // 본문이 생겼으니 아임웹 원문으로 보내지 않는다(옛 글은 externalHref 만 있었다).
+    const data = { content: { ...content, ko: nextKo, en: nextEn } as Prisma.InputJsonValue, deck: koFinal as unknown as Prisma.InputJsonValue, thumbnail: thumbUrl, externalHref: null }
+    if (found) await prisma.websitePost.update({ where: { id }, data })
+    else
+      await prisma.$transaction(async (tx) => {
+        const at = spec.create!.position ?? 0
+        await tx.websitePost.updateMany({ where: { position: { gte: at } }, data: { position: { increment: 1 } } })
+        await tx.websitePost.create({ data: { id, position: at, date: spec.create!.date, sourceLang: "ko", ...data } })
+      })
   }
 
   // 7) 대조표: 옛 | ko | en
