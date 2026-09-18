@@ -914,6 +914,8 @@ model CrmProduction {
 model WebsitePost {
   /// "20260827-1149"(관리 화면이 매김) 또는 아임웹 시절 숫자 id
   id           String   @id
+  /// 어느 목록에 속하는가 — "news"(뉴스) · "library"(하드:라이브러리). 화면·주소가 갈린다
+  category     String   @default("news")
   /// 목록 순서. 작을수록 위. 옛 order.json 을 대신한다
   position     Int
   /// 표시용 날짜 "2026.07.08"
@@ -933,6 +935,7 @@ model WebsitePost {
   updatedById  String?
 
   @@index([position])
+  @@index([category, position])
 }
 
 /// 기사에 딸린 사진. 실물은 NAS(lib/storage.ts), 여기는 목록 — 기사를 지울 때 함께 지우기 위해서다.

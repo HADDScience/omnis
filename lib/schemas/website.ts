@@ -140,7 +140,12 @@ export type CardDeck = z.infer<typeof CardDeckSchema>
 export const PostIdSchema = z.string().regex(/^[0-9]{6,}(-[0-9]{4})?$/, "기사 id 형식이 아닙니다")
 
 /** 관리 화면이 PUT 으로 보내는 것. position 은 order 로 따로 정하므로 여기 없다. */
+/** 어느 목록의 글인가. 뉴스와 하드:라이브러리가 같은 표를 쓰고 화면만 갈린다. */
+export const PostCategorySchema = z.enum(["news", "library"])
+export type PostCategory = z.infer<typeof PostCategorySchema>
+
 export const PostInputSchema = z.object({
+  category: PostCategorySchema.default("news"),
   date: z.string().regex(/^\d{4}\.\d{2}\.\d{2}$/, "날짜는 2026.07.08 형식"),
   sourceLang: LangSchema,
   thumbnail: z.string().max(2_000).nullable(),
