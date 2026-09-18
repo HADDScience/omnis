@@ -149,7 +149,14 @@ async function run() {
     if (TRANSLATE) {
       try {
         const t = await translateLocale(ko, "ko", "en")
-        en = { ...t, blocks: t.blocks.map((b, i) => (b.type === "image" ? blocks[i] : b)) }
+        // 사진은 **주소만** 한국어 블록에서 가져온다. 블록을 통째로 갈면 번역된 alt 까지 한글로 돌아간다.
+        en = {
+          ...t,
+          blocks: t.blocks.map((b, i) => {
+            const src = blocks[i]
+            return b.type === "image" && src?.type === "image" ? { ...b, src: src.src } : b
+          }),
+        }
       } catch (err) {
         summary.push(`${id}: 번역 실패 — ${err instanceof Error ? err.message : err}`)
       }

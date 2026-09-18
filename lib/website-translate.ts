@@ -53,7 +53,7 @@ Rules:
   in the same order.
 - Leave a field out only if the input block does not have it.
 - Answer with JSON only, no prose, no code fences:
-  { "title": string, "summary": string, "blocks": [ { "text"?: string, "cite"?: string, "alt"?: string, "caption"?: string } ] }`
+  { "title": string, "summary": string, "blocks": [ { "text"?: string, "cite"?: string, "alt"?: string, "caption"?: string, "labels"?: string[] } ] }`
 
 const OutputSchema = z.object({
   title: z.string(),
@@ -65,6 +65,7 @@ const OutputSchema = z.object({
       cite: z.string().optional(),
       alt: z.string().optional(),
       caption: z.string().optional(),
+      labels: z.array(z.string()).optional(),
     })
   ),
 })
@@ -82,7 +83,8 @@ export async function translateLocale(
       b.type === "image"
         ? { type: "image", alt: b.alt, ...(b.caption ? { caption: b.caption } : {}) }
         : b.type === "links"
-          ? { type: "links", text: b.title } // 항목(언론사 이름·URL)은 번역하지 않는다
+          ? // 주소는 그대로 두고 보이는 이름만 번역한다("기사 원문 보기" 가 영문 페이지에 남는다).
+            { type: "links", text: b.title, labels: b.items.map((it) => it.label) }
           : b
     ),
   }
@@ -107,7 +109,15 @@ export async function translateLocale(
     if (src.type === "quote") {
       return { type: "quote", text: t.text ?? src.text, ...(src.cite ? { cite: t.cite ?? src.cite } : {}) }
     }
-    if (src.type === "links") return { type: "links", title: t.text ?? src.title, items: src.items }
+    if (src.type === "links") {
+      // 이름 수가 맞지 않으면(모델이 빼먹으면) 원문 이름을 지킨다 — 주소는 항상 원문 그대로.
+      const labels = t.labels?.length === src.items.length ? t.labels : null
+      return {
+        type: "links",
+        title: t.text ?? src.title,
+        items: src.items.map((it, k) => ({ label: labels ? labels[k] : it.label, href: it.href })),
+      }
+    }
     return { type: src.type, text: t.text ?? src.text }
   })
 

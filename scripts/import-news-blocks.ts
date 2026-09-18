@@ -140,7 +140,11 @@ async function run() {
         en = {
           title: old.en?.title || t.title,
           summary: old.en?.summary || t.summary,
-          blocks: t.blocks.map((b, i) => (b.type === "image" ? blocks[i] : b)),
+          // 사진은 주소만 한국어 블록에서 가져온다. 블록을 통째로 갈면 번역된 alt 까지 한글로 돌아간다.
+          blocks: t.blocks.map((b, i) => {
+            const ko = blocks[i]
+            return b.type === "image" && ko?.type === "image" ? { ...b, src: ko.src } : b
+          }),
         }
       } catch (err) {
         notes.push(`${id}: 번역 실패 — ${err instanceof Error ? err.message : err}`)
