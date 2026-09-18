@@ -54,12 +54,12 @@ const PRODUCTION_APPS: SsoApp[] = [
     basePath: "/hub",
   },
   {
-    // 도메인을 붙인 뒤(2026-09-18)의 허브. 같은 배포가 haddscience.com 과
-    // haddscience.vercel.app 두 오리진에서 보이고, 앱 id 는 오리진 하나에 묶인다.
+    // 도메인을 붙인 뒤(2026-09-18) 허브는 자기 서브도메인 루트로 옮겼다. 홈페이지의
+    // /hub 아래 얹혀 살 때 필요했던 basePath 가 없어졌다 — 홈페이지가 옛 주소를 308 로 보낸다.
     id: "hub-com",
     label: "HADD Hub",
-    origin: "https://haddscience.com",
-    basePath: "/hub",
+    origin: "https://hub.haddscience.com",
+    basePath: "",
   },
   {
     id: "ip-platform",
