@@ -45,7 +45,6 @@ export async function savePost(
 ): Promise<{ post: WebsitePostDto; translationFailures: string[] }> {
   const { content, failures } = await fillTranslations(input.content, input.sourceLang, userId)
   const data = {
-    category: input.category,
     date: input.date,
     sourceLang: input.sourceLang,
     thumbnail: input.thumbnail,
@@ -56,15 +55,22 @@ export async function savePost(
   }
 
   const row = await prisma.$transaction(async (tx) => {
-    const existing = await tx.websitePost.findUnique({ where: { id }, select: { id: true } })
-    if (existing) return tx.websitePost.update({ where: { id }, data })
+    const existing = await tx.websitePost.findUnique({ where: { id }, select: { id: true, category: true } })
+    // 분류를 안 보내면 원래 것을 지킨다. 새 글은 뉴스다.
+    const category = input.category ?? existing?.category ?? "news"
+    if (existing) {
+      if (category === existing.category) return tx.websitePost.update({ where: { id }, data: { ...data, category } })
+      // 목록을 옮기는 저장: 새 목록의 맨 앞으로 넣고 그 목록을 한 칸씩 민다.
+      await tx.websitePost.updateMany({ where: { category }, data: { position: { increment: 1 } } })
+      return tx.websitePost.update({ where: { id }, data: { ...data, category, position: 0 } })
+    }
     // position 은 목록별로 센다. 라이브러리 글 하나를 저장했다고 뉴스가 한 칸씩 밀리면
     // 두 목록의 순서가 서로 흔들린다.
     await tx.websitePost.updateMany({
-      where: { category: input.category },
+      where: { category },
       data: { position: { increment: 1 } },
     })
-    return tx.websitePost.create({ data: { id, position: 0, ...data } })
+    return tx.websitePost.create({ data: { id, position: 0, category, ...data } })
   })
   return { post: toDto(row), translationFailures: failures }
 }
@@ -78,15 +84,28 @@ export async function deletePost(id: string): Promise<boolean> {
   return true
 }
 
-/** id 배열 순서대로 position 을 다시 매긴다. 배열에 없는 글은 그 뒤에 기존 순서대로 붙는다. */
+/**
+ * id 배열 순서대로 position 을 다시 매긴다. 배열에 없는 글은 그 뒤에 기존 순서대로 붙는다.
+ *
+ * position 은 **목록별로** 센다(뉴스 0..n · 라이브러리 0..m). 한 줄로 세면 두 목록이
+ * 서로의 순서를 흔든다 — 라이브러리 글을 위로 올렸는데 뉴스 순서가 바뀌는 식이다.
+ * 그래서 받은 배열을 분류별로 나눠 각각 0 부터 다시 매긴다.
+ */
 export async function reorderPosts(order: string[]): Promise<void> {
-  const all = await prisma.websitePost.findMany({ select: { id: true }, orderBy: { position: "asc" } })
-  const known = new Set(all.map((p) => p.id))
-  const head = order.filter((id) => known.has(id))
-  const tail = all.map((p) => p.id).filter((id) => !head.includes(id))
-  const final = [...head, ...tail]
+  const all = await prisma.websitePost.findMany({
+    select: { id: true, category: true },
+    orderBy: { position: "asc" },
+  })
+  const catOf = new Map(all.map((p) => [p.id, p.category]))
+  const updates: { id: string; position: number }[] = []
+  for (const category of ["news", "library"]) {
+    const ids = all.filter((p) => p.category === category).map((p) => p.id)
+    const head = order.filter((id) => catOf.get(id) === category && ids.includes(id))
+    const tail = ids.filter((id) => !head.includes(id))
+    ;[...head, ...tail].forEach((id, position) => updates.push({ id, position }))
+  }
   await prisma.$transaction(
-    final.map((id, position) => prisma.websitePost.update({ where: { id }, data: { position } }))
+    updates.map((u) => prisma.websitePost.update({ where: { id: u.id }, data: { position: u.position } }))
   )
 }
 

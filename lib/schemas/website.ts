@@ -145,7 +145,11 @@ export const PostCategorySchema = z.enum(["news", "library"])
 export type PostCategory = z.infer<typeof PostCategorySchema>
 
 export const PostInputSchema = z.object({
-  category: PostCategorySchema.default("news"),
+  /**
+   * 없으면 저장할 때 **원래 분류를 지킨다**(새 글은 뉴스). 기본값을 "news" 로 두면
+   * category 를 보내지 않는 옛 관리 화면이 라이브러리 글을 뉴스로 옮겨 버린다.
+   */
+  category: PostCategorySchema.optional(),
   date: z.string().regex(/^\d{4}\.\d{2}\.\d{2}$/, "날짜는 2026.07.08 형식"),
   sourceLang: LangSchema,
   thumbnail: z.string().max(2_000).nullable(),
