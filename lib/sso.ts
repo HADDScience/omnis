@@ -54,6 +54,14 @@ const PRODUCTION_APPS: SsoApp[] = [
     basePath: "/hub",
   },
   {
+    // 도메인을 붙인 뒤(2026-09-18)의 허브. 같은 배포가 haddscience.com 과
+    // haddscience.vercel.app 두 오리진에서 보이고, 앱 id 는 오리진 하나에 묶인다.
+    id: "hub-com",
+    label: "HADD Hub",
+    origin: "https://haddscience.com",
+    basePath: "/hub",
+  },
+  {
     id: "ip-platform",
     label: "지식재산권 팔로우업",
     origin: "https://haddscience.github.io",
