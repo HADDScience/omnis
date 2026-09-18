@@ -12,6 +12,7 @@ import { fillTranslations } from "@/lib/website-translate"
 export function toDto(row: WebsitePost): WebsitePostDto {
   return {
     id: row.id,
+    category: (row.category === "library" ? "library" : "news") as WebsitePostDto["category"],
     position: row.position,
     date: row.date,
     sourceLang: row.sourceLang as Lang,
@@ -44,6 +45,7 @@ export async function savePost(
 ): Promise<{ post: WebsitePostDto; translationFailures: string[] }> {
   const { content, failures } = await fillTranslations(input.content, input.sourceLang, userId)
   const data = {
+    category: input.category,
     date: input.date,
     sourceLang: input.sourceLang,
     thumbnail: input.thumbnail,
@@ -56,7 +58,12 @@ export async function savePost(
   const row = await prisma.$transaction(async (tx) => {
     const existing = await tx.websitePost.findUnique({ where: { id }, select: { id: true } })
     if (existing) return tx.websitePost.update({ where: { id }, data })
-    await tx.websitePost.updateMany({ data: { position: { increment: 1 } } })
+    // position 은 목록별로 센다. 라이브러리 글 하나를 저장했다고 뉴스가 한 칸씩 밀리면
+    // 두 목록의 순서가 서로 흔들린다.
+    await tx.websitePost.updateMany({
+      where: { category: input.category },
+      data: { position: { increment: 1 } },
+    })
     return tx.websitePost.create({ data: { id, position: 0, ...data } })
   })
   return { post: toDto(row), translationFailures: failures }
