@@ -59,7 +59,31 @@ const nextConfig = {
     ]
   },
   async rewrites() {
+    /*
+     * basePath 를 뗀 뒤에도 옛 주소(/omnis/…)를 그대로 받는다 (2026-09-18, 도메인 이전).
+     *
+     * redirect 가 아니라 rewrite 다. 옛 주소로 등록된 것이 사람의 북마크만이 아니기 때문이다 —
+     * claude.ai MCP 커넥터가 `…/omnis/api/ip-mcp` 로 등록돼 있고, OAuth 디스커버리는
+     * `/.well-known/…/omnis/api/ip-mcp` 를 찾는다. 이런 클라이언트는 redirect 를 따라가지
+     * 않거나 따라가도 POST 본문을 잃는다. rewrite 면 주소가 그대로인 채 안에서 이어진다.
+     * 홈페이지(haddscience.com/omnis)가 넘겨주는 요청도 여기로 들어온다.
+     */
+    const legacy = basePath
+      ? []
+      : [
+          { source: "/omnis", destination: "/" },
+          { source: "/omnis/:path*", destination: "/:path*" },
+          {
+            source: "/.well-known/oauth-authorization-server/omnis/api/ip-mcp",
+            destination: "/api/ip-mcp/.well-known/oauth-authorization-server",
+          },
+          {
+            source: "/.well-known/oauth-protected-resource/omnis/api/ip-mcp",
+            destination: "/api/ip-mcp/.well-known/oauth-protected-resource",
+          },
+        ]
     return [
+      ...legacy,
       {
         source: "/.well-known/oauth-authorization-server/api/ip-mcp",
         destination: "/api/ip-mcp/.well-known/oauth-authorization-server",

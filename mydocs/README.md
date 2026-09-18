@@ -89,6 +89,7 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [manual/ux-rules.md](manual/ux-rules.md) | canonical | UI·구조 규칙 11~30 · viewport 책임 표 · 데모 환경 |
 | [manual/e2e-local.md](manual/e2e-local.md) | guide | 로컬에서 feature e2e 를 돌리는 법 |
 | [manual/hyper-waterfall.md](manual/hyper-waterfall.md) | decision | 이 저장소가 AI 와 일하는 방식 |
+| [troubleshootings/domain-migration-traps.md](troubleshootings/domain-migration-traps.md) | reference | 도메인 이전에서 밟은 함정 (DNS 캐시 · basePath 제거 · 저장소 셋의 순서 · SSO 오리진 · 메일 레코드) |
 | [troubleshootings/kakao-import-traps.md](troubleshootings/kakao-import-traps.md) | reference | 카톡 이식 파이프라인에서 밟은 함정 (LIKE `_` · 파서 바이트 일치 · 청크 시각) |
 | [plans/archives/2026-09-07-kakao-pipeline.md](plans/archives/2026-09-07-kakao-pipeline.md) | decision | 카톡 이식 CLI — claude -p · 순차 구조화 · 세션별 캐시를 고른 이유 |
 | [troubleshootings/narrow-viewport-traps.md](troubleshootings/narrow-viewport-traps.md) | reference | 좁은 뷰포트·터치 타깃에서 밟은 함정 (min-w-0 · rem 축소 · coarse 측정) |
