@@ -78,6 +78,23 @@ function splitText(text: string, links: Item["links"]): { summary: string; body:
   return { summary, body: lines.join("\n\n") }
 }
 
+/** Neon 이 간헐적으로 끊긴다(pooler). 이식은 오래 돌므로 몇 번 다시 시도한다. */
+async function retry<T>(label: string, fn: () => Promise<T>, times = 4): Promise<T> {
+  let last: unknown
+  for (let i = 1; i <= times; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      last = err
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!/reach database server|Closed|ECONNRESET|timeout/i.test(msg)) throw err
+      console.warn(`  다시 시도 ${i}/${times} — ${label}`)
+      await new Promise((r) => setTimeout(r, 2000 * i))
+    }
+  }
+  throw last
+}
+
 async function run() {
   guardTarget()
   if (!fs.existsSync(ITEMS)) throw new Error(`items.json 이 없다: ${ITEMS}`)
@@ -111,13 +128,13 @@ async function run() {
       const bytes = fs.readFileSync(file)
       const url = DRY
         ? `/omnis/api/website/media/${id}/${img.file}`
-        : (await storeMedia({ postId: id, bytes, contentType, name: img.file })).url
+        : (await retry(`${id} 사진`, () => storeMedia({ postId: id, bytes, contentType, name: img.file }))).url
       blocks.push({ type: "image", src: url, alt: `${item.title} 이미지 ${n + 1}` })
       if (!thumbnail) {
         const thumbBytes = await sharp(bytes).resize(640, 640, { fit: "inside" }).webp({ quality: 85 }).toBuffer()
         thumbnail = DRY
           ? `/omnis/api/website/media/${id}/thumb.webp`
-          : (await storeMedia({ postId: id, bytes: thumbBytes, contentType: "image/webp", name: "thumb.webp" })).url
+          : (await retry(`${id} 썸네일`, () => storeMedia({ postId: id, bytes: thumbBytes, contentType: "image/webp", name: "thumb.webp" }))).url
       }
     }
 
@@ -132,7 +149,14 @@ async function run() {
     if (TRANSLATE) {
       try {
         const t = await translateLocale(ko, "ko", "en")
-        en = { ...t, blocks: t.blocks.map((b, i) => (b.type === "image" ? blocks[i] : b)) }
+        // 사진은 **주소만** 한국어 블록에서 가져온다. 블록을 통째로 갈면 번역된 alt 까지 한글로 돌아간다.
+        en = {
+          ...t,
+          blocks: t.blocks.map((b, i) => {
+            const src = blocks[i]
+            return b.type === "image" && src?.type === "image" ? { ...b, src: src.src } : b
+          }),
+        }
       } catch (err) {
         summary.push(`${id}: 번역 실패 — ${err instanceof Error ? err.message : err}`)
       }
@@ -159,11 +183,13 @@ async function run() {
         deck: Prisma.JsonNull,
         updatedById: USER,
       }
-      await prisma.websitePost.upsert({
-        where: { id },
-        create: { id, position, ...data },
-        update: { position, ...data },
-      })
+      await retry(`${id} 저장`, () =>
+        prisma.websitePost.upsert({
+          where: { id },
+          create: { id, position, ...data },
+          update: { position, ...data },
+        })
+      )
     }
 
     console.log(

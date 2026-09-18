@@ -127,6 +127,25 @@ function cardText(card: Card, deck: CardDeck): string {
 }
 
 /** 카드의 글자 칸을 전부 잇는다. 원문 대조용. */
+/**
+ * 대조용으로 본문 계열 글자만 모은다.
+ *
+ * 옛 카드 하나를 새 카드 여럿으로 나누면, 이어지던 한 문장 사이에 다음 카드의 배지·제목이
+ * 끼어든다. allText 로 이으면 그 문장이 끊겨 "빠진 원문"으로 잡힌다 — 글자는 그대로 남아
+ * 있는데도 그렇다. 그래서 배지·제목을 뺀 이음줄도 함께 보고, 둘 중 한쪽에 있으면 통과로 친다.
+ */
+function bodyText(card: Card): string {
+  if (card.type === "cover") return [card.title, card.cta].join(" ")
+  if (card.type === "quote") return [card.quote, card.attrib].join(" ")
+  const parts: (string | undefined)[] = []
+  if ("subtitle" in card) parts.push(card.subtitle)
+  if ("body" in card) parts.push(card.body)
+  if ("footnote" in card) parts.push(card.footnote)
+  if (card.layout === "stat") card.stats.forEach((s) => parts.push(s.value, s.unit, s.label))
+  if (card.layout === "list") card.items.forEach((it) => parts.push(it.title, it.desc))
+  return parts.filter(Boolean).join(" ")
+}
+
 function allText(card: Card): string {
   if (card.type === "cover") return [card.title, card.cta].join(" ")
   if (card.type === "quote") return [card.badge, card.quote, card.attrib].join(" ")
@@ -370,13 +389,17 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
   // 2) 원문 글자 대조 (덱 텍스트 ⊇ 옛 카드 텍스트)
   const missing: string[] = []
   spec.cards.forEach((sc, i) => {
-    const have = norm((sc.cards ?? [sc.card]).map(allText).join(" ") + " @haddscience haddscience 알아보기")
+    const cardsOf = sc.cards ?? [sc.card]
+    const have = norm(cardsOf.map(allText).join(" ") + " @haddscience haddscience 알아보기")
+    // 배지·제목을 뺀 이음줄도 본다 — 카드를 나눠 문장이 끊긴 경우를 살린다(bodyText 주석).
+    const haveBody = norm(cardsOf.map(bodyText).join(" "))
     const omitted = new Set((sc.omit ?? []).map((o) => norm(o.line)))
     for (const raw of sc.sourceText.split("\n").map((l) => l.trim()).filter(Boolean)) {
       // 목록 카드의 "1 ", "• " 같은 표식은 마커로 그려지지 글자가 아니다
       const line = raw.replace(/^(\d{1,2}|[•·▪✅])\s+/, "")
       if (omitted.has(norm(line)) || omitted.has(norm(raw))) continue
-      if (!have.includes(norm(line))) missing.push(`옛 카드 ${i + 1}: "${raw}"`)
+      const n = norm(line)
+      if (!have.includes(n) && !haveBody.includes(n)) missing.push(`옛 카드 ${i + 1}: "${raw}"`)
     }
   })
 
@@ -411,7 +434,12 @@ async function rebuild(id: string, h: Awaited<ReturnType<typeof openHarness>>, s
     const blocks: PostBlock[] = []
     const pngs: Buffer[] = []
     for (let i = 0; i < deck.cards.length; i++) {
-      const dataUrl = await h.png(i)
+      // html-to-image 는 실패를 Event 로 던져 어느 카드인지 알려주지 않는다. 여기서 카드를 붙여준다.
+      const dataUrl = await h.png(i).catch((err) => {
+        const c = deck.cards[i]
+        const kind = c.type === "chapter" ? `chapter/${c.layout}` : c.type
+        throw new Error(`${lang} 카드 ${i + 1}(${kind}) 굽기 실패: ${err instanceof Error ? err.message : String(err)}`)
+      })
       const png = Buffer.from(dataUrl.split(",")[1], "base64")
       pngs.push(png)
       fs.writeFileSync(path.join(reportDir, `${lang}-${String(i + 1).padStart(2, "0")}.png`), png)
