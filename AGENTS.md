@@ -94,7 +94,7 @@ AI 는 지금 대화의 컨텍스트 안에서만 일관성을 유지한다. 목
 2. 계획   AI 가 수행 계획서 작성 (3~6단계)   → mydocs/plans/{yyyy-mm-dd}-{슬러그}.md
           작업지시자: 검토 → 승인 또는 수정      ← 승인 없이 3 으로 가지 않는다
 3. 구현   AI 가 단계별로 코드 + 테스트        → 단계 끝마다 커밋
-4. 검증   npm run verify + 범위별 게이트      → mydocs/working/{yyyy-mm-dd}-{슬러그}.md
+4. 검증   pnpm run verify + 범위별 게이트      → mydocs/working/{yyyy-mm-dd}-{슬러그}.md
           실측 출력을 보고서에 붙인다
 5. 마감   작업지시자 승인 → main 머지         → 계획서를 mydocs/plans/archives/ 로 이동
 ```
@@ -125,9 +125,16 @@ AI 는 지금 대화의 컨텍스트 안에서만 일관성을 유지한다. 목
 push 하기 전에 통과시킨다. 한 단계라도 실패하면 고치기 전에는 push 하지 않는다.
 
 ```bash
-npm run verify          # typecheck → lint 순차 실행
-npm run build           # prisma generate + next build (DATABASE_URL 필요)
+pnpm run verify          # typecheck → lint 순차 실행
+pnpm run build           # prisma generate + next build (DATABASE_URL 필요)
 ```
+
+**패키지 매니저는 pnpm 하나다** (2026-09-21). `package.json` 의 `packageManager` 가 버전을 고정하고,
+`pnpm-lock.yaml` 과 `pnpm-workspace.yaml`(설치 스크립트 허용 목록)이 커밋돼 있다.
+여기서 `npm install` 을 돌리지 않는다 — `package-lock.json` 이 생기면 Git 배포와 CLI 배포가 서로 다른
+매니저로 빌드된다. 실제로 그렇게 갈려 운영에 옛 코드가 올라간 적이 있다
+([domain-migration-traps](mydocs/troubleshootings/domain-migration-traps.md) 의 배포 항목).
+pnpm 은 **package.json 에 적지 않은 패키지를 import 하면 잡아낸다** — `jose` · `playwright` 가 그렇게 드러나 직접 의존성으로 올라갔다.
 
 범위별 추가 게이트:
 
@@ -138,7 +145,7 @@ npm run build           # prisma generate + next build (DATABASE_URL 필요)
 | `app/` · `components/` 레이아웃 | `AUDIT_USER=… AUDIT_PASS=… node scripts/narrow-audit.mjs` — 320~200px 에서 넘침 · 잘림 · 44px 미만 터치 타깃. 깨지면 exit 1 |
 | 인증 · SSO | `tsx scripts/verify-sso.ts` + `verify-sso-live.ts` |
 | ip 스키마 · 함수 | `tsx scripts/verify-ip-import.ts` |
-| 사용자 흐름 | `npm run test:e2e` (dev 서버가 떠 있는 상태에서) |
+| 사용자 흐름 | `pnpm run test:e2e` (dev 서버가 떠 있는 상태에서) |
 | 배포본 | 실제 HTTP 요청. 화면 확인만으로는 부족하다 |
 | 문서만 | 게이트 없음 |
 
@@ -160,14 +167,14 @@ feat/{주제} ──커밋──푸시──┐                    ┌─→ 프
   확인: `gh api repos/HADDScience/omnis/deployments` · `vercel ls omnis-hadd`
 - `vercel deploy --prod --yes` 로 손으로 올릴 수도 있지만 **커밋하지 않은 것까지 올라간다.**
   다른 세션의 미커밋 변경이 있으면 검증하지 않은 남의 작업이 운영에 나간다. 기본은 푸시다
-- **자동 배포에 게이트가 없다.** Vercel 은 `npm run build` 만 돌린다 — lint 와 e2e 는
+- **자동 배포에 게이트가 없다.** Vercel 은 `pnpm run build` 만 돌린다 — lint 와 e2e 는
   돌지 않고, `main` 은 브랜치 보호가 없어 곧장 푸시할 수 있다. 그래서 푸시 전에
   품질 게이트를 사람이 돌린다(위 "품질 게이트")
 - **마이그레이션은 운영 배포에 딸려 오지 않는다.** 운영(`omnis-hadd`) 빌드는 `prisma generate && next build` 다.
-  스키마를 바꿨으면 **운영 DB 에 `prisma migrate deploy`(`npm run db:deploy`) 를 먼저 적용하고, 그 다음 머지한다** —
+  스키마를 바꿨으면 **운영 DB 에 `prisma migrate deploy`(`pnpm run db:deploy`) 를 먼저 적용하고, 그 다음 머지한다** —
   새 표를 읽는 코드가 먼저 나가면 화면이 없는 표를 읽다 오류가 난다
 - **`main` 푸시는 운영과 데모를 둘 다 배포한다.** 데모 프로젝트 `omnis` 는 2026-09-14 부터 같은 main 에 연결돼 있고,
-  빌드 명령이 `prisma migrate deploy && npm run build` 라 데모 DB 에는 빌드가 마이그레이션을 적용한다
+  빌드 명령이 `prisma migrate deploy && pnpm run build` 라 데모 DB 에는 빌드가 마이그레이션을 적용한다
 - 커밋 메시지는 기존 스타일을 따른다: `feat(scope): 한국어 요약` / `fix(scope):` / `docs(scope):`
 - 커밋 메시지에는 **무엇을 했는지가 아니라 왜 그랬는지**를 적는다. 무엇을 했는지는 diff 가 말한다
 - 작업 단계가 바뀌면 현재 단계를 커밋한 뒤 다음 단계를 시작한다

@@ -27,14 +27,16 @@ jobs:
       POSTGRES_URL_NON_POOLING: postgresql://unused:unused@localhost:5432/unused
     steps:
       - uses: actions/checkout@v4
+      # pnpm 을 먼저 켠다 — setup-node 의 cache: pnpm 이 pnpm store 경로를 물어보기 때문이다.
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
       # postinstall 의 prisma generate 가 돌아야 타입이 맞는다
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run lint
 
   e2e:
     name: e2e
@@ -79,32 +81,34 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      # pnpm 을 먼저 켠다 — setup-node 의 cache: pnpm 이 pnpm store 경로를 물어보기 때문이다.
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
 
       - name: 스키마 적용
-        run: npx prisma migrate deploy
+        run: pnpm exec prisma migrate deploy
 
       - name: 데모 시드 (모든 표를 비우고 다시 채운다 — 빈 CI DB 라 안전하다)
-        run: npm run db:seed:demo
+        run: pnpm run db:seed:demo
 
       - name: e2e 계정 확인
-        run: npx tsx scripts/ensure-e2e-accounts.ts
+        run: pnpm exec tsx scripts/ensure-e2e-accounts.ts
 
       - name: 빌드
-        run: npm run build
+        run: pnpm run build
 
       - name: 브라우저 설치
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       # wait-on 을 새로 넣지 않는다 — 셸 몇 줄로 되는 일에 의존성을 늘리지 않는다.
       # 못 뜨면 서버 로그를 찍는다. 로그 없이 "타임아웃" 만 보면 원인을 못 찾는다.
       - name: 서버 기동
         run: |
-          npm run start > /tmp/next.log 2>&1 &
+          pnpm run start > /tmp/next.log 2>&1 &
           for i in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:3000/login && break
             sleep 2
@@ -115,7 +119,7 @@ jobs:
           echo "서버 준비됨"
 
       - name: feature e2e
-        run: npm run test:e2e
+        run: pnpm run test:e2e
 
       # 실패했을 때만 남긴다. 화면에 데모 데이터만 있어 올려도 된다.
       - uses: actions/upload-artifact@v4

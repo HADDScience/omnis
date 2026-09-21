@@ -26,6 +26,6 @@ NextAuth v5 · Gemini · Vercel.
 |---|---|
 | UI · 구조 규칙 11~30 | [`mydocs/manual/ux-rules.md`](mydocs/manual/ux-rules.md) |
 | 방법론 (Hyper-Waterfall) | [`mydocs/manual/hyper-waterfall.md`](mydocs/manual/hyper-waterfall.md) |
-| 품질 게이트 | `npm run verify` — 자세한 건 `AGENTS.md` |
+| 품질 게이트 | `pnpm run verify` — 자세한 건 `AGENTS.md` |
 | 인증 불변식 | [`mydocs/tech/auth-architecture.md`](mydocs/tech/auth-architecture.md) |
 | 이미 밟은 함정 | [`mydocs/troubleshootings/migration-traps.md`](mydocs/troubleshootings/migration-traps.md) |

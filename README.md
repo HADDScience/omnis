@@ -169,16 +169,16 @@ E2E_PASSWORD="demo1234"
 ### 3. 의존성 설치 + DB 기동
 
 ```bash
-npm install
-npm run docker:up        # PostgreSQL 컨테이너 기동
-npm run db:migrate       # Prisma 스키마 적용
-npm run db:seed:demo     # 공모전 데모용 익명 사용자 + 데모 데이터 시드
+pnpm install
+pnpm run docker:up        # PostgreSQL 컨테이너 기동
+pnpm run db:migrate       # Prisma 스키마 적용
+pnpm run db:seed:demo     # 공모전 데모용 익명 사용자 + 데모 데이터 시드
 ```
 
 ### 4. 개발 서버 시작
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 브라우저에서 [http://localhost:3000](http://localhost:3000) 접속. 로그인 화면에서 시연용 익명 계정과 비밀번호 `demo1234`로 로그인합니다.
@@ -194,16 +194,16 @@ npm run dev
 
 | 명령어 | 설명 |
 |--------|------|
-| `npm run dev` | 개발 서버 (Turbopack) |
-| `npm run build` | 프로덕션 빌드 |
-| `npm run start` | 프로덕션 실행 |
-| `npm run typecheck` | TypeScript 타입 체크 |
-| `npm run lint` | ESLint |
-| `npm run format` | Prettier 포매팅 |
-| `npm run db:studio` | Prisma Studio (DB GUI) |
-| `npm run db:seed` | 시드 데이터 재적용 |
-| `npm run db:seed:demo` | 데모용 익명 시드 재적용 — **모든 테이블을 비운다**. 로컬 DB 가 아니면 `DEMO_SEED_ALLOW=1` 이 있어야 돈다 |
-| `npm run docker:up` / `down` | PostgreSQL 컨테이너 기동·정지 |
+| `pnpm run dev` | 개발 서버 (Turbopack) |
+| `pnpm run build` | 프로덕션 빌드 |
+| `pnpm run start` | 프로덕션 실행 |
+| `pnpm run typecheck` | TypeScript 타입 체크 |
+| `pnpm run lint` | ESLint |
+| `pnpm run format` | Prettier 포매팅 |
+| `pnpm run db:studio` | Prisma Studio (DB GUI) |
+| `pnpm run db:seed` | 시드 데이터 재적용 |
+| `pnpm run db:seed:demo` | 데모용 익명 시드 재적용 — **모든 테이블을 비운다**. 로컬 DB 가 아니면 `DEMO_SEED_ALLOW=1` 이 있어야 돈다 |
+| `pnpm run docker:up` / `down` | PostgreSQL 컨테이너 기동·정지 |
 
 ---
 
@@ -245,11 +245,11 @@ omnis/
 
 | 증상 | 해결 |
 |------|------|
-| `npm install` 실패 (peer deps) | Node 20 LTS 사용 중인지 확인. `npm install --legacy-peer-deps`로 우회 가능 |
-| `db:migrate` 실패 | `docker ps`로 PostgreSQL 컨테이너가 healthy인지 확인. `npm run docker:down && npm run docker:up` 후 재시도 |
+| `pnpm install` 실패 (peer deps) | Node 20 LTS 사용 중인지 확인. `pnpm install --legacy-peer-deps`로 우회 가능 |
+| `db:migrate` 실패 | `docker ps`로 PostgreSQL 컨테이너가 healthy인지 확인. `pnpm run docker:down && pnpm run docker:up` 후 재시도 |
 | 로그인 후 401 | `.env`의 `NEXTAUTH_SECRET`이 비었거나 너무 짧음. `openssl rand -base64 32`로 32바이트 이상 |
 | 채팅 → 업무 자동 생성 안 됨 | `GEMINI_API_KEY`가 비었거나 만료. Google AI Studio에서 재발급 |
-| `Module not found: '@dnd-kit/core'` | `npm install` 미실행. 의존성 설치 후 재시작 |
+| `Module not found: '@dnd-kit/core'` | `pnpm install` 미실행. 의존성 설치 후 재시작 |
 
 ---
 
