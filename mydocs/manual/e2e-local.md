@@ -8,9 +8,9 @@ last_verified: 2026-09-16
 # 기존 데이터와 분리된 전체 E2E
 
 ```bash
-npm run test:e2e:local
+pnpm run test:e2e:local
 # 한 흐름만 재현
-npm run test:e2e:local -- --grep 'REGRESSION|API로 첫'
+pnpm run test:e2e:local -- --grep 'REGRESSION|API로 첫'
 ```
 
 로컬 PostgreSQL(pgvector 설치, CREATE DATABASE 권한), 설치된 node_modules·Prisma Client·Playwright Chromium, `.env`의 로컬 DATABASE_URL과 인증 설정이 필요하다. AI 자동완성 검증은 GEMINI_API_KEY로 실제 호출하며 fallback 응답을 통과로 취급하지 않는다.
@@ -21,7 +21,7 @@ npm run test:e2e:local -- --grep 'REGRESSION|API로 첫'
 
 전체 feature 프로젝트를 재시도 없이 실행한다. 이 모드에서는 실패 스크린샷·오류 컨텍스트를 남기고 영상·trace는 끈다. 통과하거나 테스트가 실패하면 실행기가 자신의 서버를 종료하고 임시 DB를 삭제한다. 앱 복사본과 server.log, test-results, playwright-report는 출력된 임시 경로에 남는다. OS 강제 종료로 정리되지 않았다면 출력된 임시 DB 이름과 서버를 확인해서 해당 자원만 정리한다.
 
-`npm run test:e2e`는 기존처럼 이미 준비된 서버에 대해 실행한다. 개발 DB의 데모 계정·데이터가 없으면 전체 기능 게이트용으로 `test:e2e:local`을 사용한다. scenario·legacy 프로젝트는 feature 게이트와 별도다.
+`pnpm run test:e2e`는 기존처럼 이미 준비된 서버에 대해 실행한다. 개발 DB의 데모 계정·데이터가 없으면 전체 기능 게이트용으로 `test:e2e:local`을 사용한다. scenario·legacy 프로젝트는 feature 게이트와 별도다.
 
 ### 라이브 AI 한 건
 
@@ -30,12 +30,12 @@ npm run test:e2e:local -- --grep 'REGRESSION|API로 첫'
 기본으로는 건너뛰고, 키가 있는 곳에서만 켠다.
 
 ```bash
-E2E_LIVE_AI=1 npm run test:e2e
+E2E_LIVE_AI=1 pnpm run test:e2e
 ```
 
 CI 는 켜지 않는다 — 외부 할당량을 PR 마다 쓰고, 남의 서비스 사정에 게이트가 흔들린다.
 
-## 시나리오 테스트 (`npm run test:scenario`)
+## 시나리오 테스트 (`pnpm run test:scenario`)
 
 여러 사람이 동시에 로그인해 채팅 · 스레드로 일하는 흐름을 한 테스트 안에서 돌린다(`tests/scenario/`). 목킹이 없고 Gemini 도 실제로 부른다.
 이미 떠 있는 서버와 그 DB 의 계정을 쓰므로 **점검용으로 새로 만든 로컬 DB** 에서 돌린다.

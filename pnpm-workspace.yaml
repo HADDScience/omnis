@@ -1,0 +1,10 @@
+# pnpm 은 의존성의 설치 스크립트를 기본으로 막는다. 여기 적은 것만 돌린다.
+# prisma·@prisma/* 는 엔진 바이너리를, sharp·esbuild·unrs-resolver 는 네이티브 모듈을
+# 설치 중에 받아 온다 — 빠지면 빌드가 깨진다.
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true

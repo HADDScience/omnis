@@ -98,7 +98,7 @@ AI 출력을 검증할 능력이 없을 때.
 |---|---|
 | `rhwp replay --capsule` 작업 영수증 | rhwp CLI 고유 기능. Omnis 에 대응물이 없다 |
 | `lineage` · `audit` 재현율 회계 | 위와 같음 |
-| `cargo clippy` 3단 게이트 사슬 | Rust 전용. `npm run verify` 로 대체 |
+| `cargo clippy` 3단 게이트 사슬 | Rust 전용. `pnpm run verify` 로 대체 |
 | GitHub Issue 자동 채번 · 마일스톤 | 이 저장소는 Issue 를 쓰지 않는다. 필요해지면 그때 |
 | 시각 회귀 (`render-diff`) | 문서 렌더링 엔진이 아니다. Playwright E2E 로 대체 |
 | 도구별 규칙 파일 8종 (`.clinerules` 등) | Claude Code 단일 도구. 늘어나면 그때 포인터로 |

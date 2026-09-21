@@ -32,7 +32,7 @@ Git 워크플로우는 거기 있다. 이 문서는 **이 저장소 고유의 �
 | Hub 는 `main` 푸시 = 즉시 배포 | 전사 런처다. 브랜치에서 작업하고 확인 후 머지 |
 | `prisma generate` 는 `DATABASE_URL` 을 요구한다 | 빌드 시 더미라도 필요 |
 | 마이그레이션은 `POSTGRES_URL_NON_POOLING` 으로 | 풀러를 거치면 DDL 이 불안정하다 |
-| NAS 경로에서는 `npm install` 이 안 된다 | macFUSE 가 symlink 미지원 |
+| NAS 경로에서는 `pnpm install` 이 안 된다 | macFUSE 가 symlink 미지원 |
 
 ### DB 를 건드리기 전에
 
@@ -53,7 +53,7 @@ case "$URL" in *neon.tech*) : ;; *) echo "중단"; exit 1;; esac
 
 | 무엇을 고쳤나 | 무엇을 돌리나 |
 |---|---|
-| 무엇이든 (push 전) | `npm run verify` — typecheck + lint |
+| 무엇이든 (push 전) | `pnpm run verify` — typecheck + lint |
 | SSO · 인증 | `scripts/verify-sso.ts` (36가지) + `verify-sso-live.ts` |
 | ip 스키마 · 함수 | `scripts/verify-ip-import.ts` (20가지, `rebuild_ledger` 동일성 포함) |
 | 소셜 연결 규칙 | `lib/auth-identity.ts` 를 실 DB 에 대고 |

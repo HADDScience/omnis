@@ -4,30 +4,34 @@ FROM node:20-alpine AS base
 # schema·config를 먼저 복사해야 postinstall(prisma generate)이 성공한다.
 FROM base AS deps
 WORKDIR /app
+# pnpm 은 node 이미지에 딸려 오는 corepack 으로 켠다 — 버전은 package.json 의 packageManager 가 정한다.
+RUN corepack enable
 # prisma.config.ts가 로드 시 DATABASE_URL을 요구한다. generate는 DB에 연결하지 않으므로
 # 빌드 단계에서는 더미값으로 충족시킨다 (runner에는 상속되지 않음).
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-RUN npm ci
+RUN pnpm install --frozen-lockfile
 
 # 런타임용 프로덕션 의존성만 (prisma CLI + 엔진 바이너리 포함 → migrate deploy용)
 FROM base AS prod-deps
 WORKDIR /app
+RUN corepack enable
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-RUN npm ci --omit=dev
+RUN pnpm install --frozen-lockfile --prod
 
 FROM base AS builder
 WORKDIR /app
+RUN corepack enable
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npx prisma generate
-RUN npm run build
+RUN pnpm exec prisma generate
+RUN pnpm run build
 # 시드 스크립트를 런타임 이미지에서도 실행할 수 있도록 CommonJS로 변환한다.
 # 런타임에는 devDependency인 tsx가 없고 Node 20은 .ts를 직접 실행하지 못한다.
 # esbuild는 tsx의 의존성으로 이 단계(devDependencies 포함)에 이미 존재한다.
@@ -63,4 +67,4 @@ ENV HOSTNAME="0.0.0.0"
 # 마이그레이션 → 기본 계정/데이터 시드 → 서버 시작.
 # 시드는 전부 upsert라 재시작마다 실행해도 기존 데이터를 덮어쓰지 않는다.
 # 시드가 실패해도 앱은 기동시킨다(재시작 루프 방지). 로그로 원인을 확인할 수 있다.
-CMD ["sh", "-c", "npx prisma migrate deploy && { node prisma/seed.cjs || echo '[seed] 실패 — 기본 계정 생성을 건너뜁니다'; } && node server.js"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && { node prisma/seed.cjs || echo '[seed] 실패 — 기본 계정 생성을 건너뜁니다'; } && node server.js"]
