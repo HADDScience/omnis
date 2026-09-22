@@ -11,6 +11,7 @@ import { SignJWT, importJWK, type JWK } from "jose"
 
 import {
   consumeGrant,
+  isAllowedOrigin,
   issueGrant,
   issueSession,
   resolveApp,
@@ -150,6 +151,26 @@ async function main() {
     check("github.io 세션을 haddscience.com 앱이 쓰면 거부", (await verifySession(siteSess, siteCom)) === null)
     check("github.io 세션을 hub 가 쓰면 거부", (await verifySession(siteSess, hub)) === null)
     check("자기 앱에서는 통과", (await verifySession(siteSess, site))?.userId === "u-1")
+  }
+
+  // ─── 7. AI ECM → VivoFrame 전환 ─────────────────────────────────
+  // 같은 도구가 주소를 옮기는 중이라 세 항목이 나란히 산다. 옛 주소를 지우면
+  // 그 주소로 들어오던 로그인이 그 순간 막힌다 — 남아 있는지까지 확인한다.
+  console.log("\n[7] AI ECM · VivoFrame")
+  const vivo = resolveApp("vivoframe")
+  const ecmCom = resolveApp("ai-ecm-com")
+  check("vivoframe 등록", vivo?.origin === "https://vivoframe.haddscience.com" && vivo.basePath === "")
+  check("ai-ecm-com 그대로 (회귀)", ecmCom?.origin === "https://ecm.haddscience.com")
+  check("ai-ecm(tailnet) 그대로 (회귀)", resolveApp("ai-ecm")?.origin === "https://macbookpro.tail28eea6.ts.net")
+  check("vivoframe 오리진은 CORS 허용", isAllowedOrigin("https://vivoframe.haddscience.com"))
+  check("모르는 오리진은 거부", !isAllowedOrigin("https://evil.example"))
+  if (vivo && ecmCom) {
+    const { token: vivoSess } = await issueSession(vivo, subject)
+    // 두 주소가 같은 도구를 가리켜도 앱이 다르면 토큰은 건너가지 못한다.
+    check("vivoframe 세션을 ai-ecm-com 이 쓰면 거부", (await verifySession(vivoSess, ecmCom)) === null)
+    check("자기 앱에서는 통과", (await verifySession(vivoSess, vivo))?.userId === "u-1")
+    check("복귀 경로 기본값은 /", safeReturnPath(vivo, null) === "/")
+    check("다른 오리진으로는 못 돌아감", safeReturnPath(vivo, "//evil.example") === null)
   }
 
   console.log(`\n${failed === 0 ? "통과" : "실패"}: ${passed} passed, ${failed} failed\n`)
