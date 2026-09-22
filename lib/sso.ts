@@ -109,6 +109,20 @@ const PRODUCTION_APPS: SsoApp[] = [
     origin: "https://macbookpro.tail28eea6.ts.net",
     basePath: "",
   },
+  {
+    // 같은 도구를 Vercel 에 올린 배포(2026-09-22). 위 tailnet 항목과 나란히 둔다 —
+    // 앱 id 는 오리진 하나에 묶이므로 주소가 다르면 따로 등록한다. 허브가
+    // hub → hub-com 으로 갔을 때와 같은 사정이고, 같은 이유로 위 항목은 지우지 않는다.
+    //
+    // 이쪽은 화면이 정적 번들이지만 문은 브라우저가 아니라 **서버**가 지킨다.
+    // Vercel 미들웨어가 모든 요청을 먼저 받아 세션 JWT 를 공개키로 검증하고,
+    // 그 토큰은 HttpOnly 쿠키에만 담겨 브라우저 JS 로 내려가지 않는다.
+    // (ecm_ai_mvp/OMNIS-SSO-인수인계.md 가 정한 방침 그대로다.)
+    id: "ai-ecm-com",
+    label: "AI ECM (장기별 ECM 조성 처방)",
+    origin: "https://ecm.haddscience.com",
+    basePath: "",
+  },
 ]
 
 /**
