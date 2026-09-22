@@ -92,6 +92,25 @@ Omnis(앱) · hadd-website(홈페이지) · hadd-hub(허브)가 서로를 주소
 
 `NEXTAUTH_URL` · `PUBLIC_URL` 도 함께 바꾼다. **환경변수는 빌드 때 번들에 박히므로 바꾼 뒤 재배포해야 한다.**
 
+## 9. 환경변수만 바꾸려고 **옛 배포를 재배포하지 않는다**
+
+`vercel redeploy <배포>` 는 그 배포의 **소스를 그대로 다시 굽고 환경변수만 새로 입힌다.**
+그래서 옛 배포를 고르면 코드가 그 시점으로 돌아간다 — 2026-09-21 에 Gemini 키를 바꾸려다
+9/17 커밋(`52c2e4a`)이 운영에 다시 올라갔고, 허브 로그인이 「등록되지 않은 앱」 으로 막혔다.
+
+- 키만 바꿀 때도 **가장 최근 배포**를 재배포하거나, main 에서 새로 배포한다
+- 배포가 어느 커밋인지는 메타로 확인한다 —
+  `curl -H "Authorization: Bearer $TOKEN" https://api.vercel.com/v13/deployments/<url>` 의
+  `meta.githubCommitSha` · `source`(`git` 인지 `cli` 인지)
+- 무엇이 올라가 있는지 의심되면 배포된 응답으로 지문을 본다(있어야 할 경로가 404 인지 등).
+  자세한 사례: [2026-09-21-pnpm-and-stale-redeploy](../working/2026-09-21-pnpm-and-stale-redeploy.md)
+
+## 10. 커밋되지 않은 잠금파일이 빌드를 두 갈래로 만든다
+
+Vercel 은 **업로드된 파일**을 보고 매니저를 고른다. untracked `pnpm-lock.yaml` 이 있으면
+Git 푸시 배포는 npm, 폴더에서 한 `vercel --prod` 는 pnpm 으로 빌드된다. 같은 코드가 다르게 구워진다.
+2026-09-21 에 pnpm 하나로 정하고 잠금파일을 커밋해 없앴다 — `AGENTS.md` 의 「패키지 매니저」 항목.
+
 ## 8. 메일 레코드를 건드리지 않는다
 
 `haddscience.com` 존에는 회사 메일(네이버웍스)의 `MX` · SPF `TXT` 가 있다.

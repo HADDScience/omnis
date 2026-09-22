@@ -92,6 +92,9 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [troubleshootings/domain-migration-traps.md](troubleshootings/domain-migration-traps.md) | reference | 도메인 이전에서 밟은 함정 (DNS 캐시 · basePath 제거 · 저장소 셋의 순서 · SSO 오리진 · 메일 레코드) |
 | [troubleshootings/kakao-import-traps.md](troubleshootings/kakao-import-traps.md) | reference | 카톡 이식 파이프라인에서 밟은 함정 (LIKE `_` · 파서 바이트 일치 · 청크 시각) |
 | [plans/archives/2026-09-07-kakao-pipeline.md](plans/archives/2026-09-07-kakao-pipeline.md) | decision | 카톡 이식 CLI — claude -p · 순차 구조화 · 세션별 캐시를 고른 이유 |
+| [tech/company-mail-dns.md](tech/company-mail-dns.md) | canonical | 회사 메일(네이버웍스) DNS — MX · SPF · DKIM · DMARC, 화면 말고 헤더로 확인하는 법 |
+| [working/2026-09-18-domain-cutover.md](working/2026-09-18-domain-cutover.md) | snapshot | Omnis 를 omnis.haddscience.com 루트로 · 주소 지도 · 배포 순서 · 회계 백필 운영 반영 |
+| [working/2026-09-21-pnpm-and-stale-redeploy.md](working/2026-09-21-pnpm-and-stale-redeploy.md) | snapshot | 옛 배포가 운영을 덮은 사고와 복구 · pnpm 통일 · 파비콘 |
 | [troubleshootings/narrow-viewport-traps.md](troubleshootings/narrow-viewport-traps.md) | reference | 좁은 뷰포트·터치 타깃에서 밟은 함정 (min-w-0 · rem 축소 · coarse 측정) |
 | [troubleshootings/pr-traps-2026-09.md](troubleshootings/pr-traps-2026-09.md) | reference | PR #7~#17 에서 밟은 함정 (next start 운영 DB 사고 · zoom 좌표계 · 늦게 끝난 AI 재구성 · MCP GET 재연결 루프 · 요청 한도 · 🤖 작성자 · 외부 API 가 죽어야 통과하던 검증) |
 
