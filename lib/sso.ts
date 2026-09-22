@@ -123,6 +123,23 @@ const PRODUCTION_APPS: SsoApp[] = [
     origin: "https://ecm.haddscience.com",
     basePath: "",
   },
+  {
+    // 제품명을 주소에 맞춘 배포(2026-09-22). 이 도구는 스스로를 VivoFrame 이라
+    // 부르고, 같은 이름으로 상표를 출원해 두었다(제05류 40-2026-0190878 ·
+    // 제10류 40-2026-0190888, 2026-09-10 출원).
+    //
+    // 위 ai-ecm-com 과 **같은 Vercel 프로젝트**가 두 도메인을 서빙한다. 그래서
+    // 브리지가 내보내는 app 값을 빌드 상수로 둘 수 없다 — 상수를 한쪽으로
+    // 고정하면 다른 쪽이 즉시 깨진다. 앱이 자기 오리진을 보고 id 를 고른다
+    // (허브 lib/omnis-auth.ts 의 APP_ID_BY_ORIGIN 과 같은 방식).
+    //
+    // 구 주소는 사내 런처가 아직 가리키고 있어 당분간 함께 남긴다. 런처가
+    // 새 주소로 넘어간 뒤 ai-ecm-com 을 걷는다.
+    id: "vivoframe",
+    label: "VivoFrame (장기별 ECM 조성 처방)",
+    origin: "https://vivoframe.haddscience.com",
+    basePath: "",
+  },
 ]
 
 /**
