@@ -1242,3 +1242,30 @@ model TaxInvoiceItem {
 
   @@index([invoiceId])
 }
+
+// ─── 홈페이지 방문 통계 (2026-09-22) ─────────────────────────────
+//
+// haddscience.com 의 방문 기록. 사이트가 서버 간 호출로 한 건씩 넣는다
+// (POST /api/website/visits · 공유 비밀). 설계는
+// mydocs/plans/2026-09-22-website-visit-stats.md 가 정본이다.
+
+/// 방문 한 건. **쿠키도 IP 도 없다** — 방문자 구분은 사이트가 만든 하루짜리 해시로만 한다.
+/// 날짜가 해시 키에 들어가므로 어제와 오늘을 이어 붙일 수 없다(같은 사람이 이틀 오면 2명).
+model WebsiteVisit {
+  id           String   @id @default(uuid())
+  at           DateTime @default(now())
+  /// "/ko/news/170271833" — 질의문자·해시는 사이트가 떼고 보낸다
+  path         String
+  /// "ko" | "en"
+  lang         String
+  /// 그날 한정 해시(사이트에서 HMAC). 원본 IP·UA 는 여기까지 오지 않는다
+  visitorHash  String
+  /// 유입 호스트 "google.com". 내부 이동과 직접 입력은 null.
+  /// 전체 URL 을 두지 않는 이유는 검색어가 붙어 오는 경우가 있기 때문이다
+  referrerHost String?
+  /// "mobile" | "desktop" — 사이트가 UA 를 보고 판정해 보낸다
+  device       String
+
+  @@index([at])
+  @@index([path, at])
+}
