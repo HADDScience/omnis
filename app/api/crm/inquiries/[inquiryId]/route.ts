@@ -53,7 +53,7 @@ async function accept(inquiryId: string, userId: string, body: unknown) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "잘못된 입력" }, { status: 400 })
   }
-  const { orgId, contactId, note } = parsed.data
+  const { orgId, contactId, outcome, note } = parsed.data
 
   const org = await prisma.crmOrg.findUnique({ where: { id: orgId }, select: { id: true } })
   if (!org) return NextResponse.json({ error: "기관을 찾을 수 없습니다" }, { status: 404 })
@@ -66,11 +66,11 @@ async function accept(inquiryId: string, userId: string, body: unknown) {
     }
   }
 
-  // 견적 코드가 부딪히면 트랜잭션 전체가 되돌아간 뒤 번호를 다시 뽑아 재시도한다 —
+  // 코드가 부딪히면 트랜잭션 전체가 되돌아간 뒤 번호를 다시 뽑아 재시도한다 —
   // 선점한 status 도 함께 되돌아가므로 두 번째 시도가 다시 NEW 를 본다.
   const result = await createWithUniqueCode(() =>
     prisma.$transaction(async (tx) => {
-      // 두 탭에서 동시에 승인해도 견적이 하나만 생기게 먼저 선점한다
+      // 두 탭에서 동시에 승인해도 문서가 하나만 생기게 먼저 선점한다
       // (lib/notifications.ts 의 respondToAction 과 같은 방식).
       const claimed = await tx.websiteInquiry.updateMany({
         where: { id: inquiryId, status: "NEW" },
@@ -84,27 +84,53 @@ async function accept(inquiryId: string, userId: string, body: unknown) {
       if (claimed.count === 0) return { conflict: true as const }
 
       const inquiry = await tx.websiteInquiry.findUniqueOrThrow({ where: { id: inquiryId } })
+      const now = new Date()
+      // 문의 본문을 문서에 옮긴다 — 담당자가 무엇을 채울지 그 화면에서 읽는다
+      const fromInquiry = `홈페이지 문의 (${inquiry.id})\n${inquiry.message}`.slice(0, 2000)
 
-      const quotedAt = new Date()
-      const codes = (await tx.crmQuote.findMany({ select: { code: true } })).map((q) => q.code)
-      const quote = await tx.crmQuote.create({
-        data: {
-          code: nextDatedCode(quotedAt, codes),
-          quotedAt,
-          orgId,
-          contactId: contactId ?? null,
-          status: "DRAFT",
-          // 품목은 비워 둔다. 무엇을 얼마에 줄지는 담당자가 이 본문을 읽고 채운다.
-          note: `홈페이지 문의 (${inquiry.id})\n${inquiry.message}`.slice(0, 2000),
-        },
-      })
+      let quoteId: string | null = null
+      let sampleId: string | null = null
+      let code: string | null = null
+
+      if (outcome === "quote") {
+        const codes = (await tx.crmQuote.findMany({ select: { code: true } })).map((q) => q.code)
+        // 품목은 비워 둔다. 무엇을 얼마에 줄지는 담당자가 정한다.
+        const quote = await tx.crmQuote.create({
+          data: {
+            code: nextDatedCode(now, codes),
+            quotedAt: now,
+            orgId,
+            contactId: contactId ?? null,
+            status: "DRAFT",
+            note: fromInquiry,
+          },
+        })
+        quoteId = quote.id
+        code = quote.code
+      } else if (outcome === "sample") {
+        const codes = (await tx.crmSampleRequest.findMany({ select: { code: true } })).map((r) => r.code)
+        // 제품은 비워 둔다 — 폼에 제품 칸이 없어서 무엇을 원하는지는 본문에만 있다.
+        const sample = await tx.crmSampleRequest.create({
+          data: {
+            code: nextDatedCode(now, codes),
+            requestedAt: now,
+            orgId,
+            contactId: contactId ?? null,
+            request: inquiry.message.slice(0, 2000),
+            referral: "홈페이지 문의",
+            note: `홈페이지 문의 (${inquiry.id})`,
+          },
+        })
+        sampleId = sample.id
+        code = sample.code
+      }
 
       await tx.websiteInquiry.update({
         where: { id: inquiryId },
-        data: { orgId, contactId: contactId ?? null, quoteId: quote.id },
+        data: { orgId, contactId: contactId ?? null, quoteId, sampleId },
       })
 
-      return { conflict: false as const, orgId, contactId: contactId ?? null, quoteId: quote.id, quoteCode: quote.code }
+      return { conflict: false as const, outcome, orgId, contactId: contactId ?? null, quoteId, sampleId, code }
     })
   )
 

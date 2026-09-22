@@ -82,6 +82,9 @@ model WebsiteInquiry {
   contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
   quoteId   String?
   quote     CrmQuote?   @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  /// 샘플 요청으로 받은 문의는 견적이 아니라 이쪽이 생긴다. 둘 중 하나만 차거나 둘 다 비어 있다
+  sampleId  String?
+  sample    CrmSampleRequest? @relation(fields: [sampleId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
   @@index([ip, createdAt])
@@ -89,7 +92,7 @@ model WebsiteInquiry {
 }
 ```
 
-`CrmOrg`·`CrmContact`·`CrmQuote` 에 역관계 한 줄씩(`websiteInquiries WebsiteInquiry[]`)이 붙는다.
+`CrmOrg`·`CrmContact`·`CrmQuote`·`CrmSampleRequest` 에 역관계 한 줄씩(`inquiries WebsiteInquiry[]`)이 붙는다.
 
 `reviewedById` 는 `CrmPayment.createdById` 와 같이 관계 없는 String 으로 둔다 —
 `User` 모델을 건드리지 않는다.
@@ -207,22 +210,36 @@ createNotification(
 - **반려 / 스팸** — `status` 와 `reviewNote` 만 바꾼다. CRM 은 건드리지 않는다.
 - **견적으로 만들기** — 아래.
 
-### 승인이 하는 일 — 「견적으로 만들기」
+### 승인이 하는 일 — 무엇을 만들지는 유형이 먼저 고른다
 
 작업지시자 요청(2026-09-22): **이미 아는 것은 다시 묻지 않고, 모르는 것만 차례로 묻는다.**
 견적·샘플요청의 「새로 만들기」 와 같은 방식이다.
 
+그리고 **무엇을 만들지는 문의 유형이 먼저 고른다** (2차 요청). 샘플 신청으로 들어온 문의에
+견적이 만들어져 담당자가 그 견적을 지워야 했다 — 운영에서 실제로 그렇게 됐다.
+
+| 문의 유형 | 기본값 | 왜 |
+|---|---|---|
+| `sample` | 샘플요청으로 만들기 | 샘플을 달라고 온 것이다 |
+| `pricing` | 견적으로 만들기 | 값을 묻는 것이다 |
+| `technical` · `partnership` · `etc` | 기관·담당자만 등록 | 어느 문서가 맞는지 문의만 보고는 알 수 없다. **모르면 만들지 않는다** |
+
+추천이지 강제가 아니다. 버튼 우측 `⌄` 에 나머지 둘이 들어 있다.
+
 누르기 전에는 칸이 하나도 없다. 대부분의 문의는 읽고 반려하거나 메일로 답하고 끝나는데,
-그 사람에게 기관·담당자 칸을 미리 펼쳐 보일 이유가 없다. 「견적으로 만들기」 를 눌러야 열린다.
+그 사람에게 기관·담당자 칸을 미리 펼쳐 보일 이유가 없다.
 
 ```
-[견적으로 만들기] [반려] [스팸]
+[샘플요청으로 만들기 ⌄] [반려] [스팸]      ← ⌄ 안에 견적 · 기관·담당자만
         ↓
   1. 어느 기관인가요?   ← 검색칸에 문의의 소속이 미리 들어가 있다
   2. 담당자는 누구인가요? ← 검색칸에 문의한 사람 이름이 미리 들어가 있다 · 건너뛸 수 있다
   3. 메모 (선택)
-  4. [견적 만들기] → 견적 상세로 바로 이동
+  4. [샘플요청으로 만들기 ⌄] → 만들어진 문서로 바로 이동
 ```
+
+`기관·담당자만 등록` 을 둔 이유: 기술 문의·협업 제안에 억지로 문서를 만들면 빈 견적이
+장부에 쌓인다. CRM 에 사람은 남기되 문서는 담당자가 필요할 때 연다.
 
 다시 묻지 않는 것: 이름 · 소속 · 이메일 · 연락처 · 본문. 전부 위 원문 카드에 이미 있다.
 담당자를 **새로 만들면 문의의 이메일·연락처가 함께 저장된다** — 사람이 옮겨 적지 않는다.
@@ -243,8 +260,10 @@ createNotification(
 1. 기관이 있는지, 담당자가 그 기관 소속인지 확인 (`POST /api/crm/quotes` 와 같은 검사)
 2. `updateMany({ where: { id, status: NEW }, … })` 로 **선점**. `count === 0` 이면 409
    (`lib/notifications.ts` 의 `respondToAction` 과 같은 방식)
-3. 품목 없는 `DRAFT` 견적 생성. `code` 는 `nextDatedCode`, `note` 에 문의 id 와 본문
-4. 문의에 `orgId`·`contactId`·`quoteId` 기록
+3. `outcome` 에 따라 — `quote` 면 품목 없는 `DRAFT` 견적, `sample` 이면 제품 없는
+   `PENDING` 샘플요청(`referral = "홈페이지 문의"`, `request` 에 본문), `none` 이면 아무것도.
+   코드는 둘 다 `nextDatedCode`
+4. 문의에 `orgId`·`contactId`·`quoteId`·`sampleId` 기록
 
 2~4 가 한 트랜잭션이다. 견적 코드가 부딪히면(`createWithUniqueCode`) 트랜잭션 전체가
 되돌아가므로 재시도가 다시 `NEW` 를 본다.
@@ -326,7 +345,10 @@ createNotification(
 | 형식 | 이메일 형식 오류 · `message` 5001자 · 모르는 `topic` · 모르는 `lang` → 각각 400 |
 | 중복 | 같은 email+message 를 연달아 두 번 → 201 다음 200 `duplicate`, DB 1건 |
 | 레이트리밋 | 같은 IP 로 10분 안에 4건 → 4번째 429. 3건을 SPAM 으로 바꾼 뒤 1건 더 → **여전히 429** |
-| 승인 | 승인 전 `orgId`·`contactId`·`quoteId` 가 전부 null → 승인 후 세 개가 채워지고 `CrmQuote.status = DRAFT`, 품목 0개 |
+| 승인 (견적) | 승인 후 `quoteId` 가 차고 `CrmQuote.status = DRAFT`, 품목 0개 |
+| 승인 (샘플) | 승인 후 `sampleId` 가 차고 `CrmSampleRequest.status = PENDING`, 제품 비움, `referral = "홈페이지 문의"` |
+| 승인 (없음) | `quoteId`·`sampleId` 둘 다 null 인 채 `status = ACCEPTED`. 기관·담당자만 생긴다 |
+| 유형별 기본값 | `sample`→샘플 · `pricing`→견적 · `technical`→없음 이 화면에 그대로 뜬다 |
 | 다시 묻지 않기 | 새 담당자를 만들었을 때 `CrmContact.email`·`phone` 에 문의의 값이 들어간다 |
 | 두 번 승인 | 같은 문의를 두 탭에서 승인 → 견적이 하나만 생긴다 |
 | 파기 | `purge-website-inquiries.ts` 미리보기 → `--apply` 로 3년 지난 것만 |

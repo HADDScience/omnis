@@ -851,6 +851,7 @@ model CrmSampleRequest {
   updatedAt   DateTime        @updatedAt
 
   shipments CrmShipment[]
+  inquiries WebsiteInquiry[]
 
   @@index([orgId])
   @@index([requestedAt])
@@ -1026,7 +1027,7 @@ model WebsiteInquiry {
   reviewedAt   DateTime?
   reviewNote   String?
 
-  /// 승인해야 채워진다. 기관·담당자·견적이 지워지면 null 로 풀리지만 status 와
+  /// 승인해야 채워진다. 기관·담당자·견적·샘플요청이 지워지면 null 로 풀리지만 status 와
   /// reviewedAt 은 남는다 — 「사람이 승인했다」 는 사실이 링크보다 오래 간다.
   orgId     String?
   org       CrmOrg?     @relation(fields: [orgId], references: [id], onDelete: SetNull)
@@ -1034,6 +1035,10 @@ model WebsiteInquiry {
   contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
   quoteId   String?
   quote     CrmQuote?   @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  /// 샘플 요청으로 받은 문의는 견적이 아니라 이쪽이 생긴다. 둘 중 하나만 차거나 둘 다 비어 있다
+  /// (기관·담당자만 등록한 경우) — 어느 쪽이든 status 는 ACCEPTED 다.
+  sampleId  String?
+  sample    CrmSampleRequest? @relation(fields: [sampleId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
   @@index([ip, createdAt])
