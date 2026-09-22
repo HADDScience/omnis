@@ -2,7 +2,11 @@ import { z } from "zod"
 
 import { prisma } from "@/lib/db"
 import { LANGS } from "@/lib/schemas/website"
-import { INQUIRY_TOPICS, type InquiryTopic } from "@/lib/website-inquiry-labels"
+import {
+  INQUIRY_OUTCOMES,
+  INQUIRY_TOPICS,
+  type InquiryTopic,
+} from "@/lib/website-inquiry-labels"
 
 /**
  * 홈페이지 문의 — 받는 쪽의 규칙.
@@ -126,7 +130,7 @@ export async function inquiryRecipientIds(): Promise<string[]> {
 // ─── 검토 ──────────────────────────────────────────────────
 
 /**
- * 승인 — 이미 골라 둔 기관·담당자에 DRAFT 견적을 연다.
+ * 승인 — 이미 골라 둔 기관·담당자에 견적이나 샘플요청을 연다(또는 아무것도 안 연다).
  *
  * 기관·담당자를 **여기서 만들지 않는다.** 화면이 견적·샘플과 같은 EntityPicker 를 쓰고,
  * 없는 이름은 그 자리에서 `/api/crm/orgs`·`/api/crm/contacts` 로 만들어 둔 다음 id 로 넘어온다.
@@ -141,6 +145,8 @@ export const inquiryAcceptSchema = z.object({
   orgId: z.string().uuid(),
   /** 담당자는 건너뛸 수 있다 — 견적이 그렇다 */
   contactId: z.string().uuid().nullish(),
+  /** 무엇을 만들 것인가. 기본값은 문의 유형이 고르고 사람이 바꾼다 */
+  outcome: z.enum(Object.keys(INQUIRY_OUTCOMES) as ["quote", "sample", "none"]),
   note: z.string().trim().max(2000).optional(),
 })
 

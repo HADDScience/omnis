@@ -21,6 +21,7 @@ export default async function InquiryDetailPage({
       org: { select: { id: true, name: true } },
       contact: { select: { id: true, name: true } },
       quote: { select: { id: true, code: true } },
+      sample: { select: { id: true, code: true } },
     },
   })
   if (!inquiry) notFound()
@@ -101,6 +102,7 @@ export default async function InquiryDetailPage({
         {inquiry.status === "NEW" ? (
           <InquiryReview
             inquiryId={inquiry.id}
+            topic={inquiry.topic}
             orgs={orgs.map(({ memberships, ...o }) => ({ ...o, membership: memberships[0] ?? null }))}
             suggestedOrgName={inquiry.organization ?? ""}
             contactName={inquiry.name}
@@ -135,9 +137,24 @@ export default async function InquiryDetailPage({
                     <span className="text-muted-foreground">— 품목을 채워 주세요</span>
                   </li>
                 )}
+                {inquiry.sample && (
+                  <li>
+                    샘플요청{" "}
+                    <Link href="/crm/samples" className="hover:underline">
+                      {inquiry.sample.code}
+                    </Link>{" "}
+                    <span className="text-muted-foreground">— 보낼 제품을 골라 주세요</span>
+                  </li>
+                )}
+                {/* 문서 없이 기관·담당자만 넣은 경우도 정상이다 — 기술 문의·협업 제안이 그렇다 */}
+                {inquiry.org && !inquiry.quote && !inquiry.sample && (
+                  <li className="text-muted-foreground">
+                    문서는 만들지 않았습니다. 필요하면 CRM 에서 직접 여세요.
+                  </li>
+                )}
                 {/* 지워진 뒤에는 링크가 null 이다. status 는 남아 「승인했다」 는 사실을 지킨다 */}
-                {!inquiry.org && !inquiry.quote && (
-                  <li className="text-muted-foreground">이어졌던 기관·견적이 지워졌습니다.</li>
+                {!inquiry.org && (
+                  <li className="text-muted-foreground">이어졌던 기관이 지워졌습니다.</li>
                 )}
               </ul>
             )}

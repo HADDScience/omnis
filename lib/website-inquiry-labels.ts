@@ -32,3 +32,38 @@ export const INQUIRY_STATUS_LABEL = {
   REJECTED: "반려",
   SPAM: "스팸",
 } as const
+
+// ─── 문의를 어떻게 넘길 것인가 ─────────────────────────────
+
+/**
+ * 승인할 때 무엇을 만들 것인가.
+ *
+ * `none` 이 있는 이유: 기술 문의·협업 제안은 견적도 샘플도 아니다. 그런 문의에 억지로
+ * 문서를 만들면 빈 견적이 장부에 쌓인다. 기관·담당자만 CRM 에 넣고, 문서는 담당자가
+ * 필요할 때 만든다.
+ */
+export const INQUIRY_OUTCOMES = {
+  quote: { label: "견적으로 만들기", done: "견적을 만들었어요. 품목을 채워 주세요." },
+  sample: { label: "샘플요청으로 만들기", done: "샘플요청을 만들었어요. 보낼 제품을 골라 주세요." },
+  none: { label: "기관·담당자만 등록", done: "기관·담당자를 등록했어요." },
+} as const
+
+export type InquiryOutcome = keyof typeof INQUIRY_OUTCOMES
+
+/**
+ * 문의 유형이 기본값을 고른다. 사람이 바꿀 수 있다 — 추천이지 강제가 아니다.
+ *
+ * 기술 문의·협업 제안·기타는 `none` 이다. 무엇이 맞는지 문의만 보고는 알 수 없어서,
+ * 모르면 만들지 않는 쪽을 기본으로 둔다.
+ */
+export const DEFAULT_OUTCOME: Record<string, InquiryOutcome> = {
+  sample: "sample",
+  pricing: "quote",
+  technical: "none",
+  partnership: "none",
+  etc: "none",
+}
+
+export function defaultOutcome(topic: string): InquiryOutcome {
+  return DEFAULT_OUTCOME[topic] ?? "none"
+}
