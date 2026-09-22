@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db"
+import { sendPushToUser } from "@/lib/push"
 import {
   ALLOWED_RESPONSES,
   NotificationActionSchema,
+  notificationHref,
   type NotificationAction,
   type NotificationResponse,
 } from "@/lib/schemas/notification"
@@ -101,9 +103,8 @@ async function notifyInstructor(
   entityId: string
 ) {
   if (instructorId === actorId) return
-  await prisma.notification.create({
-    data: { userId: instructorId, type, title, content, entityId },
-  })
+  // 직접 만들지 않고 단일 진입점을 지난다 — 푸시도 여기서 함께 나간다.
+  await createNotification(instructorId, type, title, content, entityId)
 }
 
 /**
@@ -131,9 +132,21 @@ export async function createNotification(
     if (pending) return null
   }
 
-  return prisma.notification.create({
+  const notification = await prisma.notification.create({
     data: { userId, type, title, content, entityId, actionType: actionType ?? null },
   })
+
+  // 탭이 닫혀 있어도 닿게 한다. 기다리지 않는다 — 푸시 서비스가 느리다고 업무 처리가
+  // 함께 느려지면 안 되고, 실패해도 알림 행은 이미 만들어졌으므로 벨에서 보인다.
+  void sendPushToUser(userId, {
+    title,
+    body: content,
+    url: notificationHref(type, entityId) ?? undefined,
+    // 같은 대상의 알림은 기기에서 서로를 덮어쓴다 — 잠금화면에 같은 업무가 쌓이지 않게
+    tag: `omnis:${entityId}`,
+  }).catch(() => {})
+
+  return notification
 }
 
 /**

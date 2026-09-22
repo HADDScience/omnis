@@ -35,6 +35,7 @@ model User {
   cardDecisions    CardProposal[]
   omnisQueries     OmnisQuery[]
   notifications    Notification[]
+  pushSubscriptions PushSubscription[]
   omnisViewLogs    OmnisViewLog[]
   bookmarks        Bookmark[]
   activityLogs     ActivityLog[]
@@ -526,6 +527,29 @@ model Notification {
 
   @@index([userId, read])
   @@index([userId, actionType, resolvedAt])
+}
+
+/// 웹 푸시 구독 — 탭이 닫혀 있어도 알림이 가게 하는 통로.
+///
+/// 사람이 아니라 **기기(브라우저)마다 하나**다. 한 사람이 휴대폰과 노트북에서 따로 구독하고,
+/// 같은 기기라도 브라우저가 다르면 다른 구독이다. 그래서 userId 는 유일하지 않다.
+///
+/// endpoint 는 푸시 서비스(FCM · Mozilla · Apple)가 준 주소이고 그 자체가 식별자다.
+/// 브라우저가 구독을 갱신하면 endpoint 가 바뀌어 같은 기기가 행을 여럿 남길 수 있다 —
+/// 죽은 것은 발송이 404/410 을 받을 때 지운다 (lib/push.ts).
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  /// 브라우저가 준 공개키와 인증 비밀. 이것으로 본문을 암호화한다.
+  p256dh    String
+  auth      String
+  /// 어느 기기인지 사람이 알아보라고 남긴다. 목록에서 "이 기기"를 가리기 위한 참고값
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // ─── 임베딩 (pgvector 벡터 검색) ─────────────────────────

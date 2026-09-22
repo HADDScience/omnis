@@ -58,6 +58,10 @@ data/omnis/
 /*.png
 /public/*.png
 !docs/screenshots/*.png
+# PWA 아이콘은 배포돼야 한다 — manifest 가 이 주소를 가리킨다 (app/manifest.ts)
+!/public/icon-192.png
+!/public/icon-512.png
+!/public/icon-maskable-512.png
 .vercel
 .env*
 

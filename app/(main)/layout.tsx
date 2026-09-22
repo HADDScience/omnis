@@ -7,6 +7,7 @@ import { MainWithChat } from "@/components/layout/main-with-chat"
 import { CommandPaletteProvider } from "@/components/layout/command-palette-context"
 import { RightPanelProvider } from "@/components/layout/right-panel-context"
 import { OnboardingProvider } from "@/components/onboarding/onboarding-provider"
+import { PwaRegister } from "@/components/pwa-register"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 export default async function MainLayout({
@@ -45,6 +46,7 @@ export default async function MainLayout({
 
   return (
     <SidebarProvider>
+      <PwaRegister />
       <CommandPaletteProvider>
         <RightPanelProvider>
         <OnboardingProvider key={session.user.id} initialState={{
