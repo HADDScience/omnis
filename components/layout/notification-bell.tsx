@@ -145,6 +145,11 @@ export function NotificationBell() {
       setOpen(false)
       router.push(`/crm/invoices/new?quote=${notification.entityId}`)
     }
+    // 홈페이지 문의는 원문을 읽어야 판단이 선다 — 목록이 아니라 그 문의로 바로 간다
+    if (notification.entityId && notification.type === "website_inquiry") {
+      setOpen(false)
+      router.push(`/crm/inquiries/${notification.entityId}`)
+    }
   }
 
   return (

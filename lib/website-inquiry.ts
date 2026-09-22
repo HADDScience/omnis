@@ -1,35 +1,18 @@
 import { z } from "zod"
 
-import { CrmOrgType } from "@/generated/prisma"
 import { prisma } from "@/lib/db"
 import { LANGS } from "@/lib/schemas/website"
+import { INQUIRY_TOPICS, type InquiryTopic } from "@/lib/website-inquiry-labels"
 
 /**
  * 홈페이지 문의 — 받는 쪽의 규칙.
  *
  * 계약의 정본은 mydocs/plans/2026-09-22-website-inquiry-to-crm.md 다.
  * 사이트(hadd-website)의 `app/api/contact/route.ts` 가 서버 간 호출로 이걸 부른다.
+ *
+ * 값의 이름표(유형·상태)는 `lib/website-inquiry-labels.ts` 에 있다 — 이 파일은 prisma 를
+ * import 해서 클라이언트 컴포넌트가 가져올 수 없다.
  */
-
-/**
- * 사이트 `content/ko.ts` 의 `contact.form.topicOptions` 가 원본이다.
- * 여기 없는 값은 400 으로 돌려보낸다 — 사이트의 select 가 이미 값을 묶고 있어서,
- * 모르는 값이 온다는 것은 배포 순서가 어긋났다는 뜻이다. 그때 방문자는 사이트의
- * 메일 되돌림을 보므로 문의를 잃지는 않는다. **늘릴 때는 Omnis 를 먼저 배포한다.**
- */
-export const INQUIRY_TOPICS = {
-  sample: "샘플 요청",
-  pricing: "견적 문의",
-  technical: "기술 문의",
-  partnership: "협업 제안",
-  etc: "기타",
-} as const
-
-export type InquiryTopic = keyof typeof INQUIRY_TOPICS
-
-export function topicLabel(topic: string): string {
-  return INQUIRY_TOPICS[topic as InquiryTopic] ?? topic
-}
 
 /** 빈 문자열은 "안 적었다" 로 본다 — 사이트의 선택 입력은 비면 "" 로 온다. */
 const optionalText = (max: number) =>
@@ -143,32 +126,23 @@ export async function inquiryRecipientIds(): Promise<string[]> {
 // ─── 검토 ──────────────────────────────────────────────────
 
 /**
- * 승인 — 기관·담당자를 고르거나 새로 만들고 DRAFT 견적을 연다.
+ * 승인 — 이미 골라 둔 기관·담당자에 DRAFT 견적을 연다.
  *
- * `lib/crm.ts` 의 `quoteCreateSchema` 를 쓰지 않는다. 그쪽은 `items.min(1)` 이라
- * 품목 0개를 막는데, 여기서 만드는 견적은 **품목이 비어 있는 것이 정상**이다 —
- * 무엇을 얼마에 줄지는 담당자가 문의를 읽고 채운다. 손으로 쓰는 견적에 빈 품목을
- * 허용할 이유는 없으므로 저쪽은 그대로 둔다.
+ * 기관·담당자를 **여기서 만들지 않는다.** 화면이 견적·샘플과 같은 EntityPicker 를 쓰고,
+ * 없는 이름은 그 자리에서 `/api/crm/orgs`·`/api/crm/contacts` 로 만들어 둔 다음 id 로 넘어온다.
+ * CRM 이 이미 쓰는 길을 두고 이 경로만 따로 만들 이유가 없다.
+ *
+ * `lib/crm.ts` 의 `quoteCreateSchema` 는 쓰지 않는다. 그쪽은 `items.min(1)` 이라 품목 0개를
+ * 막는데, 여기서 만드는 견적은 **품목이 비어 있는 것이 정상**이다 — 무엇을 얼마에 줄지는
+ * 담당자가 문의를 읽고 채운다. 손으로 쓰는 견적에 빈 품목을 허용할 이유는 없으므로
+ * 저쪽은 그대로 둔다.
  */
-export const inquiryAcceptSchema = z
-  .object({
-    orgId: z.string().uuid().optional(),
-    newOrgName: z.string().trim().min(1).max(200).optional(),
-    /// 문의에는 기관 종류가 없다. 「○○대학교 ○○연구실」 을 보고 사람이 고른다
-    newOrgType: z.enum(CrmOrgType).default(CrmOrgType.OTHER),
-    contactId: z.string().uuid().optional(),
-    newContactName: z.string().trim().min(1).max(100).optional(),
-    note: z.string().trim().max(2000).optional(),
-  })
-  .refine((v) => Boolean(v.orgId) !== Boolean(v.newOrgName), {
-    message: "기관을 고르거나 새 이름을 주세요 (둘 중 하나)",
-  })
-  .refine((v) => !(v.contactId && v.newContactName), {
-    message: "담당자는 고르거나 새로 만들거나 둘 중 하나입니다",
-  })
-  .refine((v) => !(v.contactId && v.newOrgName), {
-    message: "새 기관에는 기존 담당자를 붙일 수 없습니다",
-  })
+export const inquiryAcceptSchema = z.object({
+  orgId: z.string().uuid(),
+  /** 담당자는 건너뛸 수 있다 — 견적이 그렇다 */
+  contactId: z.string().uuid().nullish(),
+  note: z.string().trim().max(2000).optional(),
+})
 
 export const inquiryRejectSchema = z.object({
   status: z.enum(["REJECTED", "SPAM"]),

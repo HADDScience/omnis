@@ -9,8 +9,8 @@ import {
   inquiryIntakeSchema,
   inquiryRecipientIds,
   isRateLimited,
-  topicLabel,
 } from "@/lib/website-inquiry"
+import { topicLabel } from "@/lib/website-inquiry-labels"
 
 /**
  * 홈페이지 /contact 폼이 보낸 문의를 받는다.

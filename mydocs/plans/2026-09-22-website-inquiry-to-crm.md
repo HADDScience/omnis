@@ -203,39 +203,73 @@ createNotification(
 
 - **목록** — `NEW` 먼저, 그 안에서 `createdAt` 내림차순. 처리된 것은 아래로.
 - **상세** — 받은 원문 그대로. `ip`·`userAgent`·`lang` 도 보인다(스팸 판정 근거).
+  다듬지 않는다 — 다듬으면 스팸인지 사람인지 가리는 단서가 지워진다.
 - **반려 / 스팸** — `status` 와 `reviewNote` 만 바꾼다. CRM 은 건드리지 않는다.
-- **승인** — 아래.
+- **견적으로 만들기** — 아래.
 
-### 승인이 하는 일
+### 승인이 하는 일 — 「견적으로 만들기」
 
-한 트랜잭션 안에서:
+작업지시자 요청(2026-09-22): **이미 아는 것은 다시 묻지 않고, 모르는 것만 차례로 묻는다.**
+견적·샘플요청의 「새로 만들기」 와 같은 방식이다.
 
-1. `updateMany({ where: { id, status: NEW }, data: { status: ACCEPTED, reviewedById, reviewedAt } })`
-   로 **먼저 선점한다.** `count === 0` 이면 이미 누가 처리한 것이므로 중단한다
+누르기 전에는 칸이 하나도 없다. 대부분의 문의는 읽고 반려하거나 메일로 답하고 끝나는데,
+그 사람에게 기관·담당자 칸을 미리 펼쳐 보일 이유가 없다. 「견적으로 만들기」 를 눌러야 열린다.
+
+```
+[견적으로 만들기] [반려] [스팸]
+        ↓
+  1. 어느 기관인가요?   ← 검색칸에 문의의 소속이 미리 들어가 있다
+  2. 담당자는 누구인가요? ← 검색칸에 문의한 사람 이름이 미리 들어가 있다 · 건너뛸 수 있다
+  3. 메모 (선택)
+  4. [견적 만들기] → 견적 상세로 바로 이동
+```
+
+다시 묻지 않는 것: 이름 · 소속 · 이메일 · 연락처 · 본문. 전부 위 원문 카드에 이미 있다.
+담당자를 **새로 만들면 문의의 이메일·연락처가 함께 저장된다** — 사람이 옮겨 적지 않는다.
+
+기존 컴포넌트를 그대로 쓴다 — `Step` · `EntityPicker` · `RecipientSteps` · `useRecipient`.
+같은 일을 하는 화면이 서로 다르게 생기면 사람이 화면마다 다시 배워야 한다. 그래서
+**기관·담당자를 승인 API 가 만들지 않는다.** 없는 이름은 그 자리에서 기존
+`POST /api/crm/orgs` · `/api/crm/contacts` 로 만들어지고, 승인에는 id 만 넘어온다.
+
+그 대가로 두 가지를 받아들인다:
+
+- 기관을 만들어 놓고 그만두면 빈 기관이 남는다. 견적·샘플 작성에서 이미 그렇고,
+  이 경로만 다르게 만들 이유가 없다
+- 승인 API 에 「새 기관 이름」 경로가 없다. 이름 중복 409 는 `POST /api/crm/orgs` 가 낸다
+
+승인 API 가 하는 일은 이것뿐이다:
+
+1. 기관이 있는지, 담당자가 그 기관 소속인지 확인 (`POST /api/crm/quotes` 와 같은 검사)
+2. `updateMany({ where: { id, status: NEW }, … })` 로 **선점**. `count === 0` 이면 409
    (`lib/notifications.ts` 의 `respondToAction` 과 같은 방식)
-2. 기관 — 기존 `CrmOrg` 를 고르거나 새로 만든다. 새로 만들 때 코드는
-   `nextCode("ORG", …)` + `createWithUniqueCode`
-3. 담당자 — 같은 방식. `nextCode("CT", …)`
-4. `CrmQuote` 를 `DRAFT` 로, **품목 없이** 만든다. `quotedAt` 은 승인 시각,
-   `code` 는 `nextDatedCode`, `note` 에 문의 id 를 적는다
-5. 문의에 `orgId`·`contactId`·`quoteId` 를 채운다
+3. 품목 없는 `DRAFT` 견적 생성. `code` 는 `nextDatedCode`, `note` 에 문의 id 와 본문
+4. 문의에 `orgId`·`contactId`·`quoteId` 기록
 
-부분 승인으로 기관만 생기고 견적이 없는 상태가 남지 않게 전부 한 트랜잭션이다.
-
-**중복 기관을 덜 만들기.** `CrmOrg.name` 은 `@unique` 다. 승인 화면은 문의의
-`organization` 으로 `contains`(대소문자 무시) 검색을 걸어 후보를 먼저 띄운다.
-그래도 새로 만들다 이름이 부딪히면 기존 `POST /api/crm/orgs` 와 같은 문구로
-409 를 돌려준다 — "같은 이름의 기관이 이미 있습니다".
+2~4 가 한 트랜잭션이다. 견적 코드가 부딪히면(`createWithUniqueCode`) 트랜잭션 전체가
+되돌아가므로 재시도가 다시 `NEW` 를 본다.
 
 ### 함정 — `quoteCreateSchema` 는 품목 0개를 막는다
 
 `lib/crm.ts:121` 이 `items.min(1, "품목을 하나 이상 넣어 주세요")` 다. DB 제약은 아니라
 `CrmQuote` 자체는 품목 없이 만들 수 있다. 승인 경로는 `POST /api/crm/quotes` 를 거치지
-않고 트랜잭션 안에서 직접 만들며, 입력 검사는 새 `inquiryAcceptSchema` 를 쓴다.
+않고 `inquiryAcceptSchema` 로 검사한 뒤 트랜잭션 안에서 직접 만든다.
 `quoteCreateSchema` 는 손대지 않는다 — 손으로 쓰는 견적에 빈 품목을 허용할 이유가 없다.
 
-품목 0개 견적이 `/crm/quotes` 목록과 상세에서 깨지지 않는지 **실제로 열어 확인한다**
-(`quoteTotals([])` 는 전부 0 을 주지만, 화면이 첫 품목을 읽는 곳이 있을 수 있다).
+## 보관기간과 파기 — 3년
+
+작업지시자 확정(2026-09-22). 전자상거래법의 소비자 불만·분쟁처리 기록 보관기간과 같은 길이다.
+개인정보처리방침에 「3년 뒤 파기한다」 고 적는 이상 **실제로 지우는 것이 있어야 한다.**
+
+`scripts/purge-website-inquiries.ts` 가 두 갈래로 다르게 다룬다:
+
+| status | 접수 3년 뒤 |
+|---|---|
+| `NEW` · `REJECTED` · `SPAM` | **행째로 삭제.** CRM 으로 가지 않았으므로 남길 근거가 없다 |
+| `ACCEPTED` | 행은 남기고 **본문·연락처만 비운다.** 기관·담당자·견적으로 옮겨 갔고 그쪽은 거래 기록으로서 상법·국세기본법의 기간을 따로 따른다. 문의함 행까지 지우면 「사람이 승인했다」 는 사실과 그 시각이 사라진다 |
+
+크론을 붙이지 않았다 — 한 해에 몇 번 돌릴 일이다. `--apply` 없이 돌리면 무엇이
+지워질지만 보여 준다.
 
 ## 환경변수
 
@@ -259,8 +293,11 @@ createNotification(
 | 4 | 검토·승인 API | `app/api/crm/inquiries/[inquiryId]/route.ts` (새로) |
 | 5 | 알림 클릭 라우팅 | `components/layout/notification-bell.tsx` |
 | 6 | 탭 | `components/crm/crm-nav.tsx` |
-| 7 | 목록 · 상세 · 승인 화면 | `app/(main)/crm/inquiries/` · `components/crm/inquiry-*.tsx` (새로) |
-| 8 | 환경변수 예시 | `.env.example` |
+| 7 | 목록 · 상세 · 검토 화면 | `app/(main)/crm/inquiries/` · `components/crm/inquiry-{list,review}.tsx` (새로) |
+| 8 | 값 이름표 (클라이언트도 쓴다) | `lib/website-inquiry-labels.ts` (새로) |
+| 9 | 3년 파기 | `scripts/purge-website-inquiries.ts` (새로) |
+| 10 | 검색칸 초깃값 · 새 담당자에 연락처 함께 저장 | `components/crm/{entity-picker,recipient-steps,use-recipient}` |
+| 11 | 환경변수 예시 | `.env.example` |
 
 ## 순서
 
@@ -278,7 +315,6 @@ createNotification(
 | 누가 | 무엇 |
 |---|---|
 | 작업지시자 | **개인정보처리방침.** 이 작업 뒤 이름·이메일·연락처·IP 가 Omnis DB 에 쌓인다. 지금까지는 `mailto:` 라 회사 서버에 남지 않았다. 수집 항목·목적·보관기간·파기를 적은 원문이 공개 전에 올라가야 한다. 이 계획서의 범위 밖이고 원문은 사람이 가지고 있다 |
-| 작업지시자 | **보관기간.** 방침에 적을 값이 정해지면 오래된 `SPAM`·`REJECTED` 를 지우는 일이 따라붙는다. 지금은 넣지 않는다 |
 
 ## 검증 기준
 
@@ -291,7 +327,9 @@ createNotification(
 | 중복 | 같은 email+message 를 연달아 두 번 → 201 다음 200 `duplicate`, DB 1건 |
 | 레이트리밋 | 같은 IP 로 10분 안에 4건 → 4번째 429. 3건을 SPAM 으로 바꾼 뒤 1건 더 → **여전히 429** |
 | 승인 | 승인 전 `orgId`·`contactId`·`quoteId` 가 전부 null → 승인 후 세 개가 채워지고 `CrmQuote.status = DRAFT`, 품목 0개 |
-| 두 번 승인 | 같은 문의를 두 탭에서 승인 → 기관·견적이 하나만 생긴다 |
+| 다시 묻지 않기 | 새 담당자를 만들었을 때 `CrmContact.email`·`phone` 에 문의의 값이 들어간다 |
+| 두 번 승인 | 같은 문의를 두 탭에서 승인 → 견적이 하나만 생긴다 |
+| 파기 | `purge-website-inquiries.ts` 미리보기 → `--apply` 로 3년 지난 것만 |
 | 품목 0 견적 | `/crm/quotes` 목록과 상세를 실제로 연다 |
 | 품질 게이트 | `pnpm run verify` · `pnpm run build` · 화면은 `narrow-audit.mjs` |
 
@@ -304,3 +342,5 @@ createNotification(
 - 문의에 대한 회신 기능. 담당자가 메일로 답한다
 - 폼 필드 추가(제품·수량). 이탈이 늘고, 담당자가 견적에서 어차피 정한다
 - 채팅방 글 · 메일 알림. 이번에는 Omnis 알림만
+- 파기 크론. 스크립트만 둔다 — 한 해에 몇 번 돌릴 일에 스케줄러를 붙이지 않는다
+- 승인 API 안에서의 기관·담당자 생성. 화면이 기존 CRM 경로로 먼저 만든다 (위)

@@ -6,6 +6,8 @@ import { LinkPendingMark } from "@/components/ui/pending-link"
 import { cn } from "@/lib/utils"
 
 const TABS = [
+  // 들어오는 것이 먼저다 — 문의는 아직 CRM 이 아니라서 사람이 봐 줘야 앞으로 간다
+  { href: "/crm/inquiries", label: "문의" },
   { href: "/crm/quotes", label: "견적" },
   { href: "/crm/samples", label: "샘플요청" },
   { href: "/crm/inventory", label: "재고·출고" },

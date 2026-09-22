@@ -63,14 +63,18 @@ export function useRecipient(initialOrgs: OrgLite[]) {
     }
   }
 
-  async function createContact(name: string) {
+  /**
+   * `extra` 는 이미 아는 값을 함께 넣는 자리다 — 홈페이지 문의에서 승인할 때
+   * 방문자가 적은 이메일·연락처를 사람이 다시 타이핑하지 않게 한다.
+   */
+  async function createContact(name: string, extra?: Record<string, unknown>) {
     if (!orgId) return
     setBusy(true)
     try {
       const res = await fetch(apiUrl("/api/crm/contacts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, name }),
+        body: JSON.stringify({ orgId, name, ...extra }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "담당자를 만들지 못했습니다")
