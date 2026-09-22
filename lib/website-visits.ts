@@ -53,6 +53,12 @@ export interface VisitStats {
   /** 날짜별. 방문이 없는 날도 0 으로 채워 자리를 지킨다 */
   daily: { date: string; views: number; visitors: number }[]
   topPaths: { path: string; views: number; visitors: number }[]
+  /**
+   * 글별. 한국어판과 영문판을 한 글로 합쳐 센다 — 관리 화면의 목록이 글 하나를 한 줄로
+   * 보여 주므로, 언어별로 나누면 그 줄에 둘을 붙일 자리가 없다.
+   * 방문이 한 번도 없는 글은 아예 나오지 않는다(화면에서 0 으로 읽는다).
+   */
+  posts: { id: string; views: number; visitors: number }[]
   referrers: { host: string; views: number }[]
   devices: { device: string; views: number }[]
 }
@@ -87,7 +93,7 @@ export async function visitStats(days: number): Promise<VisitStats> {
   const from = kstMidnight(days - 1)
   const todayStart = kstMidnight(0)
 
-  const [daily, totals, today, topPaths, referrers, devices] = await Promise.all([
+  const [daily, totals, today, topPaths, posts, referrers, devices] = await Promise.all([
     prisma.$queryRaw<Row[]>`
       SELECT to_char(("at" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD') AS date,
              COUNT(*)::int AS views,
@@ -107,6 +113,16 @@ export async function visitStats(days: number): Promise<VisitStats> {
       SELECT "path", COUNT(*)::int AS views, COUNT(DISTINCT "visitorHash")::int AS visitors
       FROM "WebsiteVisit" WHERE "at" >= ${from}
       GROUP BY 1 ORDER BY views DESC, "path" ASC LIMIT 10
+    `,
+    prisma.$queryRaw<{ id: string; views: number; visitors: number }[]>`
+      SELECT split_part("path", '/', 4) AS id,
+             COUNT(*)::int AS views,
+             COUNT(DISTINCT "visitorHash")::int AS visitors
+      FROM "WebsiteVisit"
+      WHERE "at" >= ${from}
+        -- 글 주소만. 목록(/ko/news)도 쪽나누기(/ko/news/page/3)도 조각 수가 달라 걸리지 않는다
+        AND "path" ~ '^/(ko|en)/(news|library)/[^/]+$'
+      GROUP BY 1 ORDER BY views DESC, id ASC
     `,
     prisma.$queryRaw<{ host: string; views: number }[]>`
       SELECT "referrerHost" AS host, COUNT(*)::int AS views
@@ -137,6 +153,7 @@ export async function visitStats(days: number): Promise<VisitStats> {
     today: today[0] ?? { views: 0, visitors: 0 },
     daily: filled,
     topPaths,
+    posts,
     referrers,
     devices,
   }

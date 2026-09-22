@@ -80,7 +80,13 @@ model WebsiteVisit {
 | 경로 | 인증 | 하는 일 |
 |---|---|---|
 | `POST /api/website/visits` | 공유 비밀 `WEBSITE_VISIT_SECRET` (Bearer) | 한 건 적는다. 본문은 `{path, lang, visitorHash, referrerHost?, device}` |
-| `GET /api/website/stats?days=30` | SSO Bearer (`requireWebsiteUser`) | 합계 · 일별 추이 · 인기 경로 · 유입 · 기기 |
+| `GET /api/website/stats?days=30` | SSO Bearer (`requireWebsiteUser`) | 합계 · 일별 추이 · 인기 경로 · **글별** · 유입 · 기기 |
+
+**글별(`posts`)은 한국어판과 영문판을 한 글로 합쳐 센다.** 관리 화면의 목록이 글 하나를 한 줄로
+보여 주므로 언어별로 나누면 그 줄에 둘을 붙일 자리가 없다. 주소에서 id 만 떼어 모으고
+(`split_part(path,'/',4)`), 글 주소 모양(`^/(ko|en)/(news|library)/[^/]+$`)만 센다 — 목록
+`/ko/news` 도 쪽나누기 `/ko/news/page/3` 도 조각 수가 달라 걸리지 않는다. 방문이 없는 글은
+결과에 아예 없다(화면에서 0 으로 읽는다).
 
 하루 경계는 **KST** 다(`at AT TIME ZONE 'Asia/Seoul'`). UTC 로 자르면 한국 시간 오전 9시
 전에 들어온 방문이 어제로 넘어간다.
