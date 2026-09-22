@@ -8,15 +8,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Notification03Icon, Delete02Icon } from "@hugeicons/core-free-icons"
+import { Notification03Icon, Delete02Icon, SmartPhone01Icon } from "@hugeicons/core-free-icons"
 import { formatDistanceToNow } from "date-fns"
 import { ko } from "date-fns/locale"
 import {
   ACTION_BUTTONS,
   NotificationActionSchema,
   isPendingAction,
+  notificationHref,
   type NotificationResponse,
 } from "@/lib/schemas/notification"
+import { currentSubscription } from "@/lib/pwa"
 
 import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
@@ -74,6 +76,13 @@ export function NotificationBell() {
   useVisibleInterval(fetchNotifications, NOTIFICATION_POLL_MS)
 
   const [responding, setResponding] = useState<string | null>(null)
+
+  // 이 기기가 푸시를 받고 있는가. 아니라면 벨 안에서 설정으로 데려간다 —
+  // 설정 화면을 스스로 찾아 들어가는 사람은 드물다.
+  const [pushOn, setPushOn] = useState<boolean | null>(null)
+  useEffect(() => {
+    void currentSubscription().then((s) => setPushOn(s !== null))
+  }, [])
 
   // 미응답 액션은 읽음 처리해도 배지에서 빠지지 않는다 — 응답만이 배지를 없앤다.
   const unreadCount = notifications.filter((n) => !n.read || isPendingAction(n)).length
@@ -136,14 +145,11 @@ export function NotificationBell() {
 
   async function openNotification(notification: Notification) {
     if (!notification.read) await markRead(notification.id)
-    if (notification.entityId && notification.type.startsWith("task_")) {
+    // 갈 곳의 판단은 lib/schemas/notification 에 있다 — 푸시를 눌렀을 때와 같은 곳으로 간다.
+    const href = notificationHref(notification.type, notification.entityId)
+    if (href) {
       setOpen(false)
-      router.push(`/tasks/${notification.entityId}?from=notification`)
-    }
-    // 발행 요청은 그 견적이 잡힌 채 세금계산서 등록을 연다 — 무엇을 올릴지 다시 찾지 않게
-    if (notification.entityId && notification.type === "crm_invoice_request") {
-      setOpen(false)
-      router.push(`/crm/invoices/new?quote=${notification.entityId}`)
+      router.push(href)
     }
   }
 
@@ -265,6 +271,20 @@ export function NotificationBell() {
             </div>
           )}
         </ScrollArea>
+        {pushOn === false && (
+          <button
+            className="flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-xs text-muted-foreground hover:bg-muted"
+            onClick={() => {
+              setOpen(false)
+              router.push("/settings")
+            }}
+          >
+            <HugeiconsIcon icon={SmartPhone01Icon} size={14} aria-hidden />
+            <span>
+              Omnis 를 닫아도 알림을 받으려면 — <span className="text-foreground">기기 알림 켜기</span>
+            </span>
+          </button>
+        )}
       </PopoverContent>
     </Popover>
   )
