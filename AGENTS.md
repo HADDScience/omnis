@@ -32,6 +32,7 @@ Omnis(Next.js · Prisma · Vercel)에 맞게 옮겼다. 문서 규약(`mydocs/`)
    | 지식재산권 자료 | [`mydocs/tech/ip-schema.md`](mydocs/tech/ip-schema.md) |
    | DB · 마이그레이션 | [`mydocs/troubleshootings/migration-traps.md`](mydocs/troubleshootings/migration-traps.md) |
    | 도메인 · 배포 주소 | [`mydocs/troubleshootings/domain-migration-traps.md`](mydocs/troubleshootings/domain-migration-traps.md) |
+   | 회사 메일 DNS | [`mydocs/tech/company-mail-dns.md`](mydocs/tech/company-mail-dns.md) |
    | 방법론 · 프로세스 | [`mydocs/manual/hyper-waterfall.md`](mydocs/manual/hyper-waterfall.md) |
    | "왜 Supabase 를 걷었나" | [`mydocs/troubleshootings/supabase-limits.md`](mydocs/troubleshootings/supabase-limits.md) |
 
