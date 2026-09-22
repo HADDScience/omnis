@@ -227,3 +227,84 @@ $ BASE_URL=http://localhost:3001 AUDIT_USER=팀장 AUDIT_PASS=… \
 | `WEBSITE_INQUIRY_SECRET` 실값 | 사용자가 양쪽 Vercel 에 같은 값을 넣는다 |
 | 파기 스크립트의 실제 삭제 실측 | 3년 지난 데이터가 없다 |
 | 개인정보처리방침 | 사이트 쪽 작업. 국외이전 사실은 전달했다 (Neon `ap-southeast-1` 싱가포르) |
+
+---
+
+# 2차 — 무엇을 만들지는 문의 유형이 먼저 고른다
+
+PR #65, 머지 커밋 `a79194b`. 운영 배포 완료.
+
+## 왜 고쳤나
+
+운영에서 샘플 신청(`topic=sample`)으로 들어온 문의에 **견적이 만들어졌다.** 작업지시자가
+그 견적을 지웠고, `onDelete: SetNull` 이 `inquiry.quoteId` 를 null 로 풀었다
+(설계대로 동작한 것이다 — `status` 는 `ACCEPTED` 로 남았다). 그 문의와 기관 `ORG067 테스트`
+는 지웠다.
+
+## 유형별 기본값
+
+```
+「샘플 요청」 → [샘플요청으로 만들기 ⌄]   ⌄ 안: 견적으로 만들기 · 기관·담당자만 등록
+「견적 문의」 → [견적으로 만들기 ⌄]
+「기술 문의」 → [기관·담당자만 등록 ⌄]
+```
+
+화면에서 유형 3건을 넣고 그대로 뜨는 것을 확인했다.
+
+## 샘플 경로 실측 (클릭만으로)
+
+```
+[sample] 유형시험-sample → status=ACCEPTED
+  기관=ORG027 sample 시험기관 | 담당자=CT026 sample@example.com 010-0000-0001
+  견적=- | 샘플요청=HADD260922-016
+    샘플 status=PENDING referral="홈페이지 문의" product=(비움)
+    request="sample 유형으로 들어온 문의입니다. 애드젤 관련 문의드립니다."
+```
+
+견적이 아니라 샘플요청이 섰고, 담당자에 문의의 이메일·연락처가 그대로 옮겨졌다.
+
+## 거부되어야 하는 경우
+
+```
+outcome:"wat"   → 400 Invalid option: expected one of "quote"|"sample"|"none"
+outcome 누락     → 400 (같음)
+같은 문의 두 번   → 409 이미 처리된 문의입니다
+outcome:"none"  → 201, quoteId·sampleId 둘 다 null, 기관만 연결
+```
+
+## 게이트
+
+```
+$ npx tsc --noEmit      (출력 없음)
+$ npx eslint .          ✖ 43 problems (0 errors, 43 warnings) — 새 코드 경고 0
+$ pnpm run build        ✓ Compiled successfully in 22.1s
+```
+
+### 좁은 뷰포트
+
+```
+320px  overflow=0 bleed=0 clip=0   (세 화면 모두)
+280px  상세 2곳 clip=1
+200px  세 화면 clip=1
+```
+
+**넘침·뚫림은 모든 폭에서 0.** 200px 스크린샷에서 분할 버튼(기본 동작 + ⌄)이 붙어 있고
+반려·스팸이 아래로 줄바꿈되는 것을 눈으로 확인했다.
+
+잘리는 것은 이번에도 공용 헤더의 마지막 빵부스러기다. 1차보다 넓은 폭(280px)에서 잘리는
+이유는 시험 이름이 길어서다(`유형시험-pricing`) — `components/layout/header.tsx` 의
+`truncate` 이고 내 컴포넌트가 아니다.
+
+## 운영 확인
+
+```
+WebsiteInquiry: 0 건 (sampleId 열 읽힘)
+기관: 66 | 담당자: 27 | 견적: 13 | 샘플요청: 15
+이름에 테스트/시험/test 가 든 기관: 없음
+
+POST https://omnis.haddscience.com/api/website/inquiries -d '{}'  → 401 forbidden
+GET  https://omnis.haddscience.com/crm/inquiries                  → 307 (로그인)
+```
+
+운영 시험 데이터(문의 `테스트`, 기관 `ORG067 테스트`, 담당자 1명, 알림 3건)는 지웠다.
+기관 66곳은 전부 실제 데이터다.
