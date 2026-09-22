@@ -57,3 +57,15 @@ export function isPendingAction(n: {
 }): boolean {
   return n.actionType !== null && n.resolvedAt === null
 }
+
+/**
+ * 알림이 가리키는 화면. 벨에서 누를 때와 푸시를 누를 때가 같은 곳으로 가야 하므로
+ * 여기 한 곳에 둔다. 갈 곳이 없으면 null.
+ */
+export function notificationHref(type: string, entityId: string | null): string | null {
+  if (!entityId) return null
+  if (type.startsWith("task_")) return `/tasks/${entityId}?from=notification`
+  // 발행 요청은 그 견적이 잡힌 채 세금계산서 등록을 연다 — 무엇을 올릴지 다시 찾지 않게
+  if (type === "crm_invoice_request") return `/crm/invoices/new?quote=${entityId}`
+  return null
+}
