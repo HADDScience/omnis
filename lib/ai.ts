@@ -10,8 +10,48 @@ import {
   recordGeminiUsage,
 } from "@/lib/gemini-usage"
 
-const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+const geminiUrl = (model: string) => `${GEMINI_API_BASE}/${model}:generateContent`
+
+/**
+ * 기본 모델. 환경변수로 뺀 이유는 **코드 배포 없이 갈아끼우기 위해서**다.
+ *
+ * 2026-09-21 에 gemini-2.5 계열이 「no longer available to new users」 로 닫혀 생성 호출이
+ * 전부 404 였다. 모델 이름이 코드에 박혀 있어 고치려면 PR·CI·배포를 거쳐야 했다. 다음에
+ * 같은 일이 나면 Vercel 환경변수 한 줄과 재배포로 끝낸다.
+ *
+ * 무엇을 넣을지는 bench/ 로 정한다 — 기본값을 바꿀 때는 측정부터 한다.
+ */
+const DEFAULT_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash"
+/** 싼 판정용(cardDetect). 같은 이유로 환경변수로 뺀다 */
+const LITE_MODEL = process.env.GEMINI_LITE_MODEL ?? "gemini-3.5-flash-lite"
+
+/**
+ * 되살아나지 않는 실패만 사람에게 올린다 — 404(모델이 사라졌다) · 401/403(키가 죽었다).
+ *
+ * 재시도로 풀리는 종류가 아닌데 지금까지는 console.error 로 함수 로그에만 남았다.
+ * 그래서 2026-09-21 에 모델이 닫힌 것을 하루 뒤에야 알았다(tech/gemini-data-handling.md).
+ * 같은 원인은 열린 이슈 하나에 댓글로 모인다 — 호출마다 이슈가 생기면 아무도 안 본다.
+ */
+function escalateGeminiFailure(endpoint: string, model: string, status: number, detail: string): void {
+  if (status !== 404 && status !== 401 && status !== 403) return
+  const what = status === 404 ? `모델 ${model} 을 부를 수 없습니다` : "Gemini 키가 거부됐습니다"
+  const line = `${what} (endpoint=${endpoint}, status=${status})`
+  void (async () => {
+    const { sendAlertMail } = await import("@/lib/alert-mail")
+    const { fileIssue, issueFingerprint, redactForPublic } = await import("@/lib/github-issue")
+    const short = detail.slice(0, 600)
+    await Promise.allSettled([
+      sendAlertMail(`[Omnis] ${what}`, `${line}\n\n${short}`),
+      fileIssue({
+        fingerprint: issueFingerprint("gemini", String(status), model),
+        title: `[Omnis] ${what}`,
+        body: [line, "", "```", redactForPublic(short), "```", "", "재시도로 풀리지 않는다. 모델 또는 키를 바꿔야 한다 — `GEMINI_MODEL` · `GEMINI_LITE_MODEL` 환경변수로 코드 배포 없이 바꿀 수 있다."].join("\n"),
+        comment: `다시 발생: ${line}`,
+      }),
+    ])
+  })().catch(() => {})
+}
 
 /**
  * @deprecated `TaskAiDraft`(lib/schemas/task-ai.ts)를 사용하세요. expectedResult 제거됨.
@@ -27,7 +67,7 @@ function cleanCodeBlocks(text: string): string {
 }
 
 export interface CallGeminiOptions {
-  /** 기본 gemini-3.6-flash. 싼 판정에는 gemini-3.5-flash-lite 를 준다 */
+  /** 기본은 GEMINI_MODEL(없으면 gemini-3.6-flash). 싼 판정에는 GEMINI_LITE_MODEL 을 준다 */
   model?: string
   /** 함께 보여 줄 파일 (PDF · 이미지). base64 로 인라인 전송한다 — 세금계산서 판독 등 */
   files?: { mimeType: string; data: string }[]
@@ -43,8 +83,8 @@ export async function callGemini(
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다")
   const maxOutputTokens = 8192
-  const model = opts.model ?? "gemini-3.6-flash"
-  const url = GEMINI_API_URL.replace("gemini-3.6-flash", model)
+  const model = opts.model ?? DEFAULT_MODEL
+  const url = geminiUrl(model)
 
   await assertGeminiUsageAllowed({
     endpoint,
@@ -81,6 +121,7 @@ export async function callGemini(
     lastErr = await res.text()
     const transient = res.status === 503 || (res.status === 429 && !/spend(ing)? cap/i.test(lastErr))
     if (!transient || attempt === MAX_ATTEMPTS - 1) {
+      escalateGeminiFailure(endpoint, model, res.status, lastErr)
       throw new Error(`Gemini API 오류 (${endpoint}): ${res.status} ${lastErr}`)
     }
     await new Promise((r) => setTimeout(r, Math.min(2000 * (attempt + 1), 9000)))
@@ -718,7 +759,10 @@ export async function runGeminiToolLoop(
       if (res.ok) break
       lastErr = await res.text()
       const transient = res.status === 503 || (res.status === 429 && !/spend(ing)? cap/i.test(lastErr))
-      if (!transient || attempt === 5) throw new Error(`Gemini API 오류 (${endpoint}): ${res.status} ${lastErr}`)
+      if (!transient || attempt === 5) {
+        escalateGeminiFailure(endpoint, model, res.status, lastErr)
+        throw new Error(`Gemini API 오류 (${endpoint}): ${res.status} ${lastErr}`)
+      }
       await new Promise((r) => setTimeout(r, Math.min(2000 * (attempt + 1), 9000)))
     }
     if (!res?.ok) throw new Error(`Gemini API 오류 (${endpoint}): ${lastErr}`)
@@ -832,7 +876,7 @@ ${text}
 반드시 JSON만: {"topics": [{"title": "카드 제목", "summary": "무엇이 확정됐나"}]}`
 
   try {
-    const raw = await callGemini(prompt, "cardDetect", userId, 0, { model: "gemini-3.5-flash-lite" })
+    const raw = await callGemini(prompt, "cardDetect", userId, 0, { model: LITE_MODEL })
     const m = raw.match(/\{[\s\S]*\}/)
     if (!m) return []
     const parsed = JSON.parse(m[0]) as { topics?: KnowledgeTopic[] }
