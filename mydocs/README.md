@@ -85,6 +85,7 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [troubleshootings/client-error-visibility.md](troubleshootings/client-error-visibility.md) | canonical | 화면이 흰 채로 죽는데 아무도 모르던 문제와 그 배관 |
 | [troubleshootings/large-file-upload.md](troubleshootings/large-file-upload.md) | investigation | 4MB 넘는 첨부가 메시지째 막힌다 — 이유 표시 · NAS 파일 연결 · 실패를 메일/이슈로. NAS 탐색기 함정(크기 · `&amp;` · NFD). 운영 확인 전 |
 | [tech/stack-and-conventions.md](tech/stack-and-conventions.md) | canonical | 스택·base-vega 관례·Gemini 함정 |
+| [tech/gemini-data-handling.md](tech/gemini-data-handling.md) | canonical | Gemini 로 무엇이 나가는가 · 유료 티어와 처리위탁의 근거 · 위험 순위 · 마스킹 스냅샷 · 키 |
 | [manual/ai-pairing.md](manual/ai-pairing.md) | guide | AI 와 함께 이 저장소에서 일하는 법 |
 | [manual/ux-rules.md](manual/ux-rules.md) | canonical | UI·구조 규칙 11~30 · viewport 책임 표 · 데모 환경 |
 | [manual/e2e-local.md](manual/e2e-local.md) | guide | 로컬에서 feature e2e 를 돌리는 법 |
