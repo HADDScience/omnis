@@ -382,13 +382,18 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
   } catch (err) {
     outcome = "failed"
     console.error("[chat-post] 업무 재구성 실패", { taskId: job.taskId, messageId: job.messageId, err })
-    // 응답은 이미 나갔다 — 사람이 알 수 있게 스레드에 남긴다
+    // 응답은 이미 나갔다 — 사람이 알 수 있게 스레드에 남긴다.
+    // 「잠시 뒤 다시」 는 되살아나는 실패에만 맞는 말이다. 모델이 닫히거나 키가 죽으면
+    // 몇 번을 다시 적어도 안 된다 — 2026-09-21 에 그 안내를 하루 동안 내보냈다.
+    const permanent = err instanceof Error && /Gemini API 오류[^:]*: (40[134])\b/.test(err.message)
     await prisma.chatMessage
       .create({
         data: {
           roomId,
           authorId: await getSystemUserId(),
-          content: "🤖 업무 갱신에 실패했습니다 — 잠시 뒤 다시 한 번 적어 주세요",
+          content: permanent
+            ? "🤖 업무 갱신에 실패했습니다 — 설정 문제라 다시 적어도 해결되지 않습니다. 관리자에게 알렸습니다"
+            : "🤖 업무 갱신에 실패했습니다 — 잠시 뒤 다시 한 번 적어 주세요",
           taskId: job.taskId,
         },
       })
