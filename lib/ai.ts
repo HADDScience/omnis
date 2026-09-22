@@ -11,7 +11,7 @@ import {
 } from "@/lib/gemini-usage"
 
 const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
 
 /**
  * @deprecated `TaskAiDraft`(lib/schemas/task-ai.ts)를 사용하세요. expectedResult 제거됨.
@@ -27,7 +27,7 @@ function cleanCodeBlocks(text: string): string {
 }
 
 export interface CallGeminiOptions {
-  /** 기본 gemini-2.5-flash. 싼 판정에는 gemini-2.5-flash-lite 를 준다 */
+  /** 기본 gemini-3.6-flash. 싼 판정에는 gemini-3.5-flash-lite 를 준다 */
   model?: string
   /** 함께 보여 줄 파일 (PDF · 이미지). base64 로 인라인 전송한다 — 세금계산서 판독 등 */
   files?: { mimeType: string; data: string }[]
@@ -43,8 +43,8 @@ export async function callGemini(
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다")
   const maxOutputTokens = 8192
-  const model = opts.model ?? "gemini-2.5-flash"
-  const url = GEMINI_API_URL.replace("gemini-2.5-flash", model)
+  const model = opts.model ?? "gemini-3.6-flash"
+  const url = GEMINI_API_URL.replace("gemini-3.6-flash", model)
 
   await assertGeminiUsageAllowed({
     endpoint,
@@ -832,7 +832,7 @@ ${text}
 반드시 JSON만: {"topics": [{"title": "카드 제목", "summary": "무엇이 확정됐나"}]}`
 
   try {
-    const raw = await callGemini(prompt, "cardDetect", userId, 0, { model: "gemini-2.5-flash-lite" })
+    const raw = await callGemini(prompt, "cardDetect", userId, 0, { model: "gemini-3.5-flash-lite" })
     const m = raw.match(/\{[\s\S]*\}/)
     if (!m) return []
     const parsed = JSON.parse(m[0]) as { topics?: KnowledgeTopic[] }
