@@ -14,6 +14,7 @@ export function toDto(row: WebsitePost): WebsitePostDto {
     id: row.id,
     category: (row.category === "library" ? "library" : "news") as WebsitePostDto["category"],
     position: row.position,
+    pinned: row.pinned,
     date: row.date,
     sourceLang: row.sourceLang as Lang,
     thumbnail: row.thumbnail,
@@ -24,8 +25,17 @@ export function toDto(row: WebsitePost): WebsitePostDto {
   }
 }
 
+/**
+ * 목록 순서. 고정한 글이 먼저고, 그 안에서는 원래 `position` 순서다.
+ *
+ * 고정을 순서 이동으로 흉내 내지 않는 이유: `position` 을 옮기면 고정을 풀었을 때
+ * 원래 자리를 알 수 없다. 덧씌우기로 두면 풀자마자 제자리로 돌아간다.
+ * 사이트는 받은 순서를 그대로 그리므로 정렬은 여기 한 곳에만 있다.
+ */
 export async function listPosts(): Promise<WebsitePostDto[]> {
-  const rows = await prisma.websitePost.findMany({ orderBy: [{ position: "asc" }, { id: "desc" }] })
+  const rows = await prisma.websitePost.findMany({
+    orderBy: [{ pinned: "desc" }, { position: "asc" }, { id: "desc" }],
+  })
   return rows.map(toDto)
 }
 
@@ -52,6 +62,8 @@ export async function savePost(
     content: content as Prisma.InputJsonValue,
     deck: input.deck === null || input.deck === undefined ? Prisma.JsonNull : (input.deck as Prisma.InputJsonValue),
     updatedById: userId,
+    // 안 보내면 원래 고정 상태를 지킨다. 고정은 /posts/<id>/pin 이 따로 맡는다.
+    ...(input.pinned === undefined ? {} : { pinned: input.pinned }),
   }
 
   const row = await prisma.$transaction(async (tx) => {
@@ -73,6 +85,24 @@ export async function savePost(
     return tx.websitePost.create({ data: { id, position: 0, category, ...data } })
   })
   return { post: toDto(row), translationFailures: failures }
+}
+
+/**
+ * 고정을 켜고 끈다. 없는 글이면 null.
+ *
+ * 기사 전체를 PUT 하지 않는 이유: 본문·덱을 다시 쓰고 번역 검사까지 돌아간다.
+ * 압정 한 번 누르는 데 치를 값이 아니고, 그 사이 다른 사람이 고친 본문을 덮을 수도 있다.
+ * 개수 제한은 두지 않는다 — 작업지시자가 뉴스·라이브러리 각각 제한 없이 가자고 했다.
+ */
+export async function setPinned(id: string, pinned: boolean, userId: string): Promise<boolean | null> {
+  const existing = await prisma.websitePost.findUnique({ where: { id }, select: { id: true } })
+  if (!existing) return null
+  const row = await prisma.websitePost.update({
+    where: { id },
+    data: { pinned, updatedById: userId },
+    select: { pinned: true },
+  })
+  return row.pinned
 }
 
 export async function deletePost(id: string): Promise<boolean> {

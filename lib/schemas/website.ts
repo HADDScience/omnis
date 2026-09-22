@@ -150,6 +150,11 @@ export const PostInputSchema = z.object({
    * category 를 보내지 않는 옛 관리 화면이 라이브러리 글을 뉴스로 옮겨 버린다.
    */
   category: PostCategorySchema.optional(),
+  /**
+   * 목록 맨 위에 고정한다. 없으면 **원래 값을 지킨다** — category 와 같은 이유로,
+   * 고정을 모르는 옛 관리 화면이 글을 저장했다고 고정이 풀리면 안 된다.
+   */
+  pinned: z.boolean().optional(),
   date: z.string().regex(/^\d{4}\.\d{2}\.\d{2}$/, "날짜는 2026.07.08 형식"),
   sourceLang: LangSchema,
   thumbnail: z.string().max(2_000).nullable(),
@@ -163,7 +168,12 @@ export type PostInput = z.infer<typeof PostInputSchema>
 export interface WebsitePostDto extends PostInput {
   id: string
   position: number
+  /** 읽을 때는 항상 실린다. 보낼 때만 선택이다. */
+  pinned: boolean
   updatedAt: string
 }
 
 export const OrderInputSchema = z.object({ order: z.array(PostIdSchema).max(1_000) })
+
+/** 고정 토글. 기사 전체를 다시 보내지 않으려고 따로 둔다. */
+export const PinInputSchema = z.object({ pinned: z.boolean() })
