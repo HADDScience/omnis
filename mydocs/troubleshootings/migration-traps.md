@@ -203,3 +203,42 @@ UPDATE ip.trademarks t SET note = (a.before ->> 'note')
 
 **대응:** `date` 타입을 쓰고, 애플리케이션에서도 `YYYY-MM-DD` 문자열로만 다룬다.
 MCP 서버가 `todayKst()` 를 따로 둔 것도 같은 이유다.
+
+---
+
+## 운영 DB 가 `main` 보다 앞서 있을 수 있다 — `migrate dev` 를 부르면 reset 을 제안한다
+
+규약은 「운영에 `migrate deploy` 를 먼저 적용하고, 그 다음 머지」다([`AGENTS.md`](../../AGENTS.md) Git 워크플로우).
+새 표를 읽는 코드가 먼저 나가면 화면이 없는 표를 읽다 오류가 나기 때문이다.
+
+그 순서가 만드는 부작용이 있다. **PR 이 머지되기 전까지 운영 DB 에는 `main` 에 없는
+마이그레이션이 적용돼 있다.** 그 사이에 `main` 에서 갈라진 다른 브랜치는 그 파일을 갖고 있지 않다.
+
+2026-09-22 에 실제로 이랬다 — 웹 푸시 브랜치에서 운영 상태를 보니:
+
+```
+$ pnpm exec prisma migrate status      # 운영을 가리킨 채
+The last common migration is: 20260922000000_website_post_pinned
+
+The migration have not yet been applied:
+20260922020000_push_subscription                  ← 내 것
+
+The migration from the database are not found locally in prisma/migrations:
+20260922010000_website_inquiry                    ← 다른 브랜치 것. 운영에는 이미 있다
+```
+
+**무엇이 위험한가.** `prisma migrate dev` 는 이 상태를 drift 로 보고 **DB 를 리셋하자고 제안한다.**
+로컬 개발 DB 에서 그 제안을 수락하면 운영 스냅샷이 날아간다. 운영을 가리킨 채 부르면 훨씬 나쁘다.
+
+**대응.**
+
+- 새 마이그레이션을 올릴 때는 `migrate deploy` 를 쓴다. 적용되지 않은 것만 적용하고,
+  로컬에 없는 항목을 문제 삼지 않는다. 위 상황에서 그대로 통과했다
+- 마이그레이션 폴더는 손으로 만든다(`20260922020000_push_subscription/migration.sql`).
+  저장소의 기존 이름이 전부 `YYYYMMDDHHMMSS` 의 끝자리가 0 인 것도 그래서다 —
+  `migrate dev` 를 부르지 않고 만들어 왔다
+- 운영을 가리키는 명령은 대상부터 찍고 아니면 멈춘다
+  ([`manual/ai-pairing.md`](../manual/ai-pairing.md) 의 "DB 를 건드리기 전에")
+
+**남는 것:** 이 어긋남은 그 PR 이 머지되면 저절로 사라진다. 오래 열어 둔 PR 이 여럿이면
+그만큼 오래 남는다.
