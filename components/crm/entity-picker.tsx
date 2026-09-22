@@ -45,6 +45,11 @@ interface Props {
    */
   onCreate?: (name: string) => void | Promise<void>
   createLabel?: string
+  /**
+   * 열었을 때 검색칸에 미리 들어가 있을 말. 이미 아는 이름을 다시 타이핑하지 않게 한다 —
+   * 홈페이지 문의의 소속이 그렇다.
+   */
+  initialQuery?: string
   disabled?: boolean
   className?: string
 }
@@ -57,11 +62,12 @@ export function EntityPicker({
   emptyLabel,
   onCreate,
   createLabel = "새로 만들기",
+  initialQuery,
   disabled,
   className,
 }: Props) {
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState(initialQuery ?? "")
   const selected = useMemo(() => options.find((o) => o.id === value), [options, value])
 
   const trimmed = query.trim()

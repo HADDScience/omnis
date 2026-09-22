@@ -14,11 +14,19 @@ export function RecipientSteps({
   r,
   onOrgPicked,
   contactOptional = true,
+  orgQuery,
+  contactQuery,
+  contactExtra,
 }: {
   r: Recipient
   onOrgPicked?: (orgId: string | null) => void
   /** 견적은 담당자를 건너뛸 수 있다. 샘플은 보낼 사람이 있어야 하므로 막을 수도 있다. */
   contactOptional?: boolean
+  /** 이미 아는 이름을 검색칸에 미리 넣어 둔다 — 홈페이지 문의의 소속·이름이 그렇다 */
+  orgQuery?: string
+  contactQuery?: string
+  /** 담당자를 새로 만들 때 함께 저장할 값 (문의에 적힌 이메일·연락처) */
+  contactExtra?: Record<string, unknown>
 }) {
   const orgOptions: PickerOption[] = r.orgs.map((o) => ({ id: o.id, label: o.name }))
   const contactOptions: PickerOption[] = (r.org?.contacts ?? []).map((c) => ({
@@ -41,6 +49,7 @@ export function RecipientSteps({
           emptyLabel="기관을 고르세요"
           onCreate={(name) => r.createOrg(name, (o) => onOrgPicked?.(o?.id ?? null))}
           createLabel="기관으로 새로 만들기"
+          initialQuery={orgQuery}
           disabled={r.busy}
         />
         {r.justCreatedOrgId === r.orgId && r.org && (
@@ -95,8 +104,9 @@ export function RecipientSteps({
           }}
           placeholder="담당자 이름으로 찾기"
           emptyLabel={r.contactSkipped ? "담당자 없이 진행합니다" : "담당자를 고르세요"}
-          onCreate={r.createContact}
+          onCreate={(name) => r.createContact(name, contactExtra)}
           createLabel="담당자로 새로 만들기"
+          initialQuery={contactQuery}
           disabled={r.busy}
         />
         <p className="mt-1.5 text-[11px] text-muted-foreground">
