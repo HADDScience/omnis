@@ -66,7 +66,8 @@ export function LandingPage() {
             <HugeiconsIcon icon={AiMagicIcon} size={12} />
             Internal workspace · Notion + Slack + 지식베이스
           </div>
-          <h1 className="text-[clamp(32px,4.5vw,52px)] font-semibold leading-[1.1] tracking-[-0.02em] text-white">
+          {/* break-keep — 한글은 낱말 안에서 끊지 않는다. 없으면 좁은 화면에서 "바꿉니 / 다." 가 된다 */}
+          <h1 className="text-[clamp(32px,4.5vw,52px)] font-semibold leading-[1.1] tracking-[-0.02em] break-keep text-white">
             흩어진 업무를,
             <br />
             실행 가능한 카드로 바꿉니다.
