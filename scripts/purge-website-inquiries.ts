@@ -7,9 +7,13 @@
  * 두 갈래로 다르게 다룬다:
  *
  * - `NEW` · `REJECTED` · `SPAM` — **행째로 지운다.** CRM 으로 가지 않았으므로 남길 근거가 없다.
- * - `ACCEPTED` — 행은 남기고 **본문·연락처만 비운다.** 기관·담당자·견적으로 옮겨 갔고 그쪽은
+ * - `ACCEPTED` — 행은 남기고 **사람에 관한 것만 비운다.** 기관·담당자·견적으로 옮겨 갔고 그쪽은
  *   거래 기록으로서 상법·국세기본법의 기간을 따로 따른다. 문의함 행까지 지우면 「사람이
  *   승인했다」 는 사실과 그 시각이 사라진다 — orgId 를 FK + SetNull 로 둔 것과 같은 방향이다.
+ *
+ * `reviewNote` 도 비운다. 담당자가 자유롭게 쓰는 칸이라 「전화로 통화, 김OO 교수」 처럼
+ * 방문자 개인정보가 들어갈 수 있다. 「왜 그렇게 처리했는가」 는 이어진 견적·샘플요청의
+ * note 에 남고, 「사람이 언제 처리했는가」 는 status·reviewedAt 이 지킨다.
  *
  * 크론이 없어 손으로 돌린다. 한 해에 몇 번 돌릴 일이라 스케줄러를 붙이지 않았다.
  *
@@ -38,13 +42,14 @@ try {
   const doomed = await prisma.websiteInquiry.count({
     where: { ...where, status: { in: ["NEW", "REJECTED", "SPAM"] } },
   })
-  // 이미 비운 것을 다시 세지 않는다 — email 이 빈 문자열인 행이 처리 끝난 표시다
+  // 이미 비운 것을 다시 세지 않는다 — email 이 빈 문자열인 행이 처리 끝난 표시다.
+  // (빈 이메일은 접수 단계에서 막히므로 실제 문의가 여기 걸리는 일은 없다)
   const toRedact = await prisma.websiteInquiry.count({
     where: { ...where, status: "ACCEPTED", email: { not: "" } },
   })
 
   console.log(`  삭제 대상 (NEW·REJECTED·SPAM): ${doomed}건`)
-  console.log(`  본문·연락처만 비울 대상 (ACCEPTED): ${toRedact}건`)
+  console.log(`  개인정보만 비울 대상 (ACCEPTED): ${toRedact}건`)
 
   if (!apply) {
     console.log("\n아무것도 바꾸지 않았습니다.")
@@ -62,6 +67,7 @@ try {
         message: "(보관기간 경과로 파기)",
         ip: null,
         userAgent: null,
+        reviewNote: null,
       },
     })
     console.log(`\n삭제 ${deleted.count}건 · 파기 ${redacted.count}건`)
