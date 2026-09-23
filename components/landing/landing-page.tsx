@@ -14,6 +14,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { BentoCard } from "./bento-card"
 import { BorderBeamButton } from "./border-beam-button"
+import { OmnisMark } from "@/components/brand/omnis-mark"
 import { AnimatedBeamHub } from "./animated-beam-hub"
 import { CountUp } from "./count-up"
 
@@ -27,9 +28,7 @@ export function LandingPage() {
       >
         <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-6 px-6">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-[14px] font-bold text-primary-foreground">
-              O
-            </div>
+            <OmnisMark className="size-7 rounded-md" />
             <span className="text-[14px] font-semibold">Omnis</span>
           </Link>
           <div className="hidden items-center gap-5 text-[13px] text-muted-foreground md:flex">
@@ -295,9 +294,7 @@ export function LandingPage() {
       <footer className="border-t py-10">
         <div className="mx-auto flex max-w-[1200px] flex-col items-center gap-2 px-6 text-[11.5px] text-muted-foreground md:flex-row md:justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex h-5 w-5 items-center justify-center rounded bg-primary text-[10px] font-bold text-primary-foreground">
-              O
-            </div>
+            <OmnisMark className="size-5 rounded" />
             <span>Made with science by HADD Science</span>
           </div>
           <div className="flex gap-5">

@@ -53,7 +53,7 @@ import { useRightPanel } from "@/components/layout/right-panel-context"
 
 import { useOnboarding } from "@/components/onboarding/onboarding-provider"
 import { ShineBorder } from "@/components/magicui/shine-border"
-import { apiUrl } from "@/lib/base-path"
+import { OmnisMark } from "@/components/brand/omnis-mark"
 /**
  * 사이드바 메뉴.
  *
@@ -115,10 +115,7 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
     <Sidebar mobileModal={!onboarding.active}>
       <SidebarHeader className="px-2.5 pb-2 pt-3">
         <Link href="/dashboard" onClick={closeOnMobile} className="flex items-center gap-2 px-1.5 pb-3">
-          <div className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-primary p-[4px]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={apiUrl("/omnis-logo.png")} alt="Omnis" className="h-full w-full object-contain" />
-          </div>
+          <OmnisMark className="size-[26px] rounded-[7px]" />
           <div className="flex flex-col leading-[1.1]">
             <span className="text-[13.5px] font-semibold">Omnis</span>
             <span className="font-mono text-[9px] text-muted-foreground">HADDScience</span>
