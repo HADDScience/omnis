@@ -75,4 +75,46 @@ omnis /sso/authorize?app=ai-ecm                 307  ← 등록만 살아 있었
 
 ## 배포 후 운영 확인
 
-<!-- 배포 뒤 채운다 -->
+머지 `d1d71ff` (#75). `vercel deploy --prod --yes` → `omnis-hadd-o13gnuq2h`, production, Ready.
+
+```
+GET /sso/authorize?app=ai-ecm&next=/          400  「등록되지 않은 앱입니다」  ← 이전 307
+GET /sso/authorize?app=ai-ecm-com&next=/      400  (#69 에서 이미 제거)
+GET /sso/authorize?app=vivoframe&next=/       307
+GET /sso/authorize?app=hub-com&next=/         307  회귀 없음
+
+OPTIONS /api/sso/redeem  Origin: macbookpro.tail28eea6.ts.net   204, ACAO 없음   ← 닫힘
+OPTIONS /api/sso/redeem  Origin: vivoframe.haddscience.com      204 + ACAO vivoframe
+
+https://vivoframe.haddscience.com/   200
+https://hub.haddscience.com/         200
+https://omnis.haddscience.com/       200
+```
+
+### 400 두 가지를 헷갈리지 않는다
+
+회귀를 의심하게 만드는 자리가 있다. `next=/` 로 전수 확인하면 **멀쩡한 앱도 400 을 낸다.**
+
+```
+app=website-admin-com  next=/                    400  「돌아갈 경로가 올바르지 않습니다」
+app=website-admin-com  next=/admin/              307  ← 정상
+app=ai-alzheimer       next=/                    400  「돌아갈 경로가 올바르지 않습니다」
+app=ai-alzheimer       next=/raman-g-peak-diff/  307  ← 정상
+app=ai-ecm             next=/                    400  「등록되지 않은 앱입니다」  ← 진짜 제거
+```
+
+`basePath` 가 있는 앱에 basePath 밖 경로를 주면 오픈 리다이렉트 방지가 거부한다
+(`safeReturnPath`). **상태 코드가 같으므로 화면 제목으로 가른다.**
+basePath 가 빈 앱(`hub-com`·`vivoframe`)만 `next=/` 로 확인해도 된다.
+
+redeem 쪽은 코드로 갈린다 — `401 invalid_grant` 면 등록이 있는 것, `400 unknown_app` 이면
+없는 것이다([#71](https://github.com/HADDScience/omnis/pull/71)).
+
+## 최종 — 이 도구의 등록
+
+```
+vivoframe   https://vivoframe.haddscience.com   basePath ""
+```
+
+`ai-ecm`(tailnet) · `ai-ecm-com`(ecm.haddscience.com) 둘 다 없다.
+`scripts/verify-sso.ts` [7] 절이 둘의 부재와 두 오리진의 CORS 거부를 지킨다.
