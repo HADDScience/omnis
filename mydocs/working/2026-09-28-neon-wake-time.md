@@ -154,13 +154,51 @@ https://haddscience.com/ko/               → 200
 **숫자는 아직 검증되지 않았다.** Neon Monitoring 에서 전후를 비교하려면 며칠이 지나야
 한다. 위 표는 산수이지 실측이 아니다.
 
+## 처방 3 켜짐 — 운영 실측 (2026-09-28 14:46 KST)
+
+작업지시자가 약관에 동의하고 Upstash 를 omnis-hadd 에 연결했다(리소스 `omnis-visits`).
+
+**환경변수 이름이 코드와 달랐다.** `Redis.fromEnv()` 는 `UPSTASH_REDIS_REST_URL`·`_TOKEN`
+만 보는데 마켓플레이스 통합이 넣은 것은:
+
+```
+UPSTASH_REDIS_REST_KV_REST_API_URL
+UPSTASH_REDIS_REST_KV_REST_API_TOKEN
+UPSTASH_REDIS_REST_KV_REST_API_READ_ONLY_TOKEN
+UPSTASH_REDIS_REST_KV_URL
+UPSTASH_REDIS_REST_REDIS_URL
+```
+
+통합은 연결할 때 준 접두어 뒤에 **늘 `KV_REST_API_*`** 를 붙인다. 접두어를 무엇으로 바꿔도
+기본 이름은 안 나온다. 값을 복사해 기본 이름으로 다시 넣지 않았다 — 통합이 토큰을 돌리면
+복사본만 낡고, 그날 조용히 버퍼가 죽어 Postgres 로 되돌아간다. 되돌아가도 동작은 정상이라
+아무도 알아채지 못한다. 코드가 둘 다 읽게 했다 (PR #68, 머지 `0640394`).
+
+### 운영 전 구간 실측
+
+브라우저로 `https://haddscience.com/ko/news/` 를 실제로 열고(비콘이 나간 것을
+`performance.getEntriesByType("resource")` 로 확인), 운영 Postgres 를 앞뒤로 셌다.
+
+```
+방문 전   Postgres WebsiteVisit: 134건 · 마지막 05:07:01 /ko/library
+(브라우저로 /ko/news/ 방문 — /api/hit 요청 1건 나감)
+방문 후   Postgres WebsiteVisit: 134건   ← 늘지 않았다. Neon 을 깨우지 않았다
+크론 수동 실행          → {"ok":true,"moved":1}  [200]
+flush 후  Postgres WebsiteVisit: 135건 · 마지막 05:46:07 /ko/news/
+빈 버퍼로 한 번 더      → {"ok":true,"moved":0}  [200]
+```
+
+**방문이 Postgres 를 건드리지 않고 Redis 에 머물렀다가, 크론이 부를 때 한 번에 들어온다.**
+설계한 그대로다.
+
 ## 남은 것
 
-- **Upstash 약관 동의(브라우저)** — `vercel integration add upstash/upstash-kv` 가
-  `integration_terms_acceptance_required` 로 막혀 있다.
-  https://vercel.com/woochang4862s-projects/~/integrations/accept-terms/upstash
-  동의 전까지 방문은 예전처럼 Postgres 로 바로 간다(처방 3이 안 켜진 상태)
-- Neon Monitoring 전후 비교. 사이트 세션이 자기 문서에 같이 적겠다고 했다
+- Neon Monitoring 전후 비교. 사이트 세션이 자기 문서에 같이 적겠다고 했다.
+  의미 있는 비교는 며칠 뒤
+- **Upstash 토큰 재발급 검토.** 작업지시자가 값(토큰 포함)을 다른 세션의 대화창에
+  붙여 넣었다고 그 세션이 알려 왔다. 버퍼에는 IP 도 UA 도 없고 경로·하루짜리 해시뿐이지만,
+  그 토큰을 가진 사람은 방문 수를 부풀리거나 버퍼를 읽을 수 있다. 돌리려면 Upstash
+  대시보드에서 재발급 → Vercel 이 env 를 갱신 → 재배포
 - **Neon scale-to-zero 지연 설정**은 검토만 하고 손대지 않았다. 5분을 1분으로 줄이면
   깨어 있는 시간이 더 줄지만, 실제 Omnis 사용자가 겪는 콜드 스타트가 늘어난다.
   폴링·방문을 고친 뒤 남는 양을 보고 정할 일이다
