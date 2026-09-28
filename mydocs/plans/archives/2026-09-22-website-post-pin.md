@@ -2,13 +2,13 @@
 kind: decision
 status: active
 canonical: AGENTS.md
-last_verified: 2026-09-22
+last_verified: 2026-09-28
 ---
 
 # 홈페이지 기사 고정(HADD PICK)
 
-상태: 2026-09-22 설계 선택지에 대해 작업지시자 확정. 구현 뒤 배포 승인 대기.
-사이트 쪽 변경은 `hadd-website` 저장소가 맡고 이 문서를 가리킨다.
+상태: **2026-09-22 배포 완료.** 설계 선택지는 작업지시자가 같은 날 확정했다.
+사이트 쪽 변경은 `hadd-website` 저장소가 맡았다 — 그쪽 canonical 은 `mydocs/tech/content-storage.md`.
 
 ## 왜
 
@@ -64,13 +64,30 @@ PUT /api/website/posts/<id>/pin   { "pinned": true }   → { ok, pinned }
 - `content/{ko,en}.ts` — `ui.pinned = "HADD PICK"` (두 언어 같은 문자열)
 - `app/admin` — 목록 줄마다 압정 토글, 고정 글에는 목록에서도 배지
 
-## 순서
+## 순서 — 이대로 나갔다 (2026-09-22)
 
 1. 마이그레이션을 운영 DB 에 적용 (되돌리기 쉬운 추가 전용)
 2. Omnis 배포 — API 가 `pinned` 를 싣고 받는다
 3. 사이트 배포 — 배지가 그려지고 관리 화면에 토글이 생긴다
 
 2 보다 3 이 먼저 나가도 깨지지 않는다. `pinned` 가 없으면 사이트가 `false` 로 읽는다.
+
+```
+① prisma migrate deploy → 20260922000000_website_post_pinned
+   migrate status: Database schema is up to date!
+   적용 직후 GET /api/website/posts 153건 · haddscience.com/ko/news 200 (영향 없음)
+② PR #55  verify pass 54s · e2e pass 3m36s · Vercel(omnis-hadd·omnis-demo) pass
+   머지 03:02:48Z → 배포 뒤 posts 응답 153건 전부에 pinned
+   PUT /posts/<id>/pin → 400(인증 거부) · 없는 경로 → 404
+③ hadd-website PR #6  Vercel pass → 머지·배포, /admin 새 번들 확인
+```
+
+배포 뒤 오전에 손으로 옮겼던 순서를 되돌리고 그 기사를 고정으로 바꿨다.
+`170271833 → position 17 · pinned true`, 사이트 한글·영문 목록과 홈에서 배지 노출 확인.
+
+관리 화면에서 압정을 눌러 보는 왕복은 담당자가 2026-09-28 에 확인했다. 배포 당시에는
+하지 못했다 — 자동화 쪽에 SSO 세션이 없어 운영 반영을 DB 로 했고, 엔드포인트는 인증
+거부(400)와 경로 존재(404 대조)까지만 확인한 상태였다.
 
 ## 하지 않는 것
 
