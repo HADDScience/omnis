@@ -15,6 +15,17 @@ function env(name: string): string {
 
 const normalizeFingerprint = (v: string) => v.replace(/[^a-fA-F0-9]/g, "").toLowerCase()
 
+/**
+ * NAS 를 기다리는 한도.
+ *
+ * `tls.connect` 도 `https.request` 도 기본 타임아웃이 없다. NAS 는 사무실에 있고 인터넷을
+ * 건너오므로, 전원이 내려가거나 회선이 끊기면 SYN 에 아무도 답하지 않는 상태가 된다 —
+ * 그때 이 함수는 **영원히** 매달리고 서버리스 함수가 maxDuration 까지 자리를 잡는다.
+ * 파일 하나 못 읽는 것이 화면 전체가 멎는 것보다 낫다.
+ */
+const CONNECT_TIMEOUT_MS = 10_000
+const REQUEST_TIMEOUT_MS = 30_000
+
 /** 지문이 일치하는 TLS 소켓을 만든다. 불일치하면 즉시 끊고 실패한다. */
 function connectVerified(): Promise<TLSSocket> {
   const { hostname, port } = new URL(env("SYNOLOGY_WEBDAV_URL"))
@@ -30,9 +41,15 @@ function connectVerified(): Promise<TLSSocket> {
           reject(new Error("NAS 인증서 지문이 일치하지 않습니다. 연결을 중단했습니다."))
           return
         }
+        // 핸드셰이크가 끝났으니 연결 한도를 푼다. 본문을 주고받는 한도는 dav() 가 다시 건다
+        socket.setTimeout(0)
         resolve(socket)
       },
     )
+    socket.setTimeout(CONNECT_TIMEOUT_MS, () => {
+      socket.destroy()
+      reject(new Error(`NAS 연결이 ${CONNECT_TIMEOUT_MS / 1000}초 안에 열리지 않았습니다`))
+    })
     socket.once("error", reject)
   })
 }
@@ -76,8 +93,16 @@ export async function dav(
           ...(extraHeaders ?? {}),
         },
       },
-      (res) => resolve({ status: res.statusCode ?? 0, body: res, headers: res.headers }),
+      (res) => {
+        // 응답 헤더가 왔으면 성공이다. 본문은 호출부가 스트림으로 읽어 가므로
+        // 여기서 한도를 유지하면 큰 파일을 받다 끊긴다
+        req.setTimeout(0)
+        resolve({ status: res.statusCode ?? 0, body: res, headers: res.headers })
+      },
     )
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy(new Error(`NAS 가 ${REQUEST_TIMEOUT_MS / 1000}초 안에 응답하지 않았습니다`))
+    })
     req.once("error", reject)
     if (body) req.write(body)
     req.end()

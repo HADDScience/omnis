@@ -33,6 +33,8 @@ export async function sendAlertMail(
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
+      // 오류를 알리는 길이 오류로 멈추면 안 된다 — 매달리느니 못 보낸 것으로 끝낸다
+      signal: AbortSignal.timeout(10_000),
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
         "Content-Type": "application/json",

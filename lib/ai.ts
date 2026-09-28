@@ -11,6 +11,22 @@ import {
 } from "@/lib/gemini-usage"
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+
+/**
+ * 한 번의 Gemini 호출을 기다리는 한도.
+ *
+ * `fetch` 는 기본 타임아웃이 없다. 연결은 받고 응답하지 않는 상대를 만나면 **영원히**
+ * 매달리고, 그러면 아래 재시도 루프가 첫 시도에서 멈춰 한 번도 돌지 못한다.
+ * 함수는 maxDuration 까지 자리를 잡고 있다가 죽는다.
+ *
+ * 45초인 이유: 업무 카드 재구성 실측이 8~13초다(app/api/chat/messages 주석). 느린 꼬리를
+ * 덮으면서, 그 라우트의 maxDuration 60초 안에서 한 번은 끝나거나 실패하게 둔다.
+ * 시간이 지나면 다른 네트워크 오류와 같은 자리에서 잡힌다 — 조용히 매달리지만 않으면 된다.
+ */
+const GEMINI_TIMEOUT_MS = 45_000
+
+/** 임베딩은 생성보다 짧다. 배치 하나가 30초를 넘으면 무언가 잘못된 것이다. */
+const GEMINI_EMBED_TIMEOUT_MS = 30_000
 const geminiUrl = (model: string) => `${GEMINI_API_BASE}/${model}:generateContent`
 
 /**
@@ -116,6 +132,7 @@ export async function callGemini(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: reqBody,
+      signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
     })
     if (res.ok) break
     lastErr = await res.text()
@@ -537,6 +554,7 @@ export async function embedTexts(
     const res = await fetch(`${GEMINI_BATCH_EMBED_URL}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(GEMINI_EMBED_TIMEOUT_MS),
       body: JSON.stringify({
         requests: batch.map((text) => ({
           model: `models/${GEMINI_EMBED_MODEL}`,
@@ -755,6 +773,7 @@ export async function runGeminiToolLoop(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
+        signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       })
       if (res.ok) break
       lastErr = await res.text()

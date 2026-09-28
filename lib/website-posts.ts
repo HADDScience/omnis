@@ -151,6 +151,9 @@ export async function revalidateWebsite(): Promise<void> {
       method: "POST",
       headers: { authorization: `Bearer ${secret}` },
       cache: "no-store",
+      // 사이트가 연결만 받고 응답하지 않으면 기사 저장 응답이 그만큼 늦는다.
+      // 실패해도 사이트는 ISR 로 따라오므로 짧게 끊는다.
+      signal: AbortSignal.timeout(10_000),
     })
     if (!res.ok) console.warn("[website] 재검증 실패", res.status)
   } catch (err) {
