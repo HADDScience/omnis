@@ -45,6 +45,7 @@
     "@hugeicons/react": "^1.1.6",
     "@prisma/client": "^6.19.2",
     "@tanstack/react-table": "^8.21.3",
+    "@upstash/redis": "^1.39.0",
     "@xyflow/react": "^12.10.2",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
