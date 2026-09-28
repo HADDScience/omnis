@@ -153,26 +153,26 @@ async function main() {
     check("자기 앱에서는 통과", (await verifySession(siteSess, site))?.userId === "u-1")
   }
 
-  // ─── 7. AI ECM → VivoFrame 전환 ─────────────────────────────────
-  // 전환이 끝나 옛 주소(ecm.haddscience.com)의 등록은 2026-09-28 에 걷었다.
-  // 이제 지킬 것은 「다시 들어오지 않는다」다 — 항목이 되살아나면 그 오리진의
-  // CORS 도 같이 열리므로, 사라진 것과 거부되는 것을 함께 본다.
+  // ─── 7. VivoFrame ───────────────────────────────────────────────
+  // 이 도구의 등록은 이제 하나다. 2026-09-28 에 옛 주소 둘을 걷었다 —
+  // ai-ecm-com(ecm.haddscience.com)과 ai-ecm(tailnet).
   //
-  // tailnet 항목은 남는다. 그건 別件이고, 껐던 이유(Funnel 공유 토큰)가 아직
-  // 풀리지 않았다 — 회귀로 지켜서 이 정리에 휩쓸려 사라지지 않게 한다.
-  console.log("\n[7] AI ECM · VivoFrame")
+  // 지킬 것은 「다시 들어오지 않는다」다. 항목이 되살아나면 그 오리진의 CORS 도
+  // 같이 열리므로, 사라진 것과 거부되는 것을 함께 본다. 특히 tailnet 은 인증이
+  // 공유 토큰 하나뿐이라 껐던 주소다 — 무심코 되돌아오면 그때 그 구멍이 같이 온다.
+  console.log("\n[7] VivoFrame")
   const vivo = resolveApp("vivoframe")
-  const ecmTailnet = resolveApp("ai-ecm")
   check("vivoframe 등록", vivo?.origin === "https://vivoframe.haddscience.com" && vivo.basePath === "")
   check("ai-ecm-com 제거됨", resolveApp("ai-ecm-com") === null)
-  check("옛 오리진은 CORS 거부", !isAllowedOrigin("https://ecm.haddscience.com"))
-  check("ai-ecm(tailnet) 그대로 (회귀)", ecmTailnet?.origin === "https://macbookpro.tail28eea6.ts.net")
+  check("옛 오리진(ecm.haddscience.com)은 CORS 거부", !isAllowedOrigin("https://ecm.haddscience.com"))
+  check("ai-ecm(tailnet) 제거됨", resolveApp("ai-ecm") === null)
+  check("tailnet 오리진은 CORS 거부", !isAllowedOrigin("https://macbookpro.tail28eea6.ts.net"))
   check("vivoframe 오리진은 CORS 허용", isAllowedOrigin("https://vivoframe.haddscience.com"))
   check("모르는 오리진은 거부", !isAllowedOrigin("https://evil.example"))
-  if (vivo && ecmTailnet) {
+  if (vivo && hub) {
     const { token: vivoSess } = await issueSession(vivo, subject)
-    // 같은 도구를 가리켜도 앱이 다르면 토큰은 건너가지 못한다.
-    check("vivoframe 세션을 ai-ecm(tailnet)이 쓰면 거부", (await verifySession(vivoSess, ecmTailnet)) === null)
+    // 앱이 다르면 토큰은 건너가지 못한다. 짝이 사라져 hub 로 옮겼다.
+    check("vivoframe 세션을 hub 가 쓰면 거부", (await verifySession(vivoSess, hub)) === null)
     check("자기 앱에서는 통과", (await verifySession(vivoSess, vivo))?.userId === "u-1")
     check("복귀 경로 기본값은 /", safeReturnPath(vivo, null) === "/")
     check("다른 오리진으로는 못 돌아감", safeReturnPath(vivo, "//evil.example") === null)
