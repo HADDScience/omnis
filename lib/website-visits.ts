@@ -48,16 +48,27 @@ const STAGING_KEY = "website:visits:flushing"
 /**
  * Upstash 자격.
  *
- * `Redis.fromEnv()` 를 쓰지 않는다. 그쪽은 `UPSTASH_REDIS_REST_URL`·`..._TOKEN` 만 보는데,
- * **Vercel 마켓플레이스 통합은 그 이름으로 넣어 주지 않는다** — 연결할 때 준 접두어 뒤에
- * 늘 `KV_REST_API_*` 를 붙인다. 접두어를 무엇으로 바꿔도 기본 이름은 안 나온다(2026-09-28 확인).
+ * `Redis.fromEnv()` 를 쓰지 않는다. 그쪽은 `UPSTASH_REDIS_REST_URL`·`..._TOKEN` 만 보는데
+ * **Vercel 마켓플레이스 통합은 그 이름으로 넣어 주지 않는다.** 통합이 넣는 이름은
+ * `KV_REST_API_URL`·`KV_REST_API_TOKEN` 이고, 연결할 때 접두어를 주면 그 앞에 붙는다.
+ * 접두어를 무엇으로 줘도 `fromEnv()` 의 기본 이름은 안 나온다(2026-09-28 확인).
+ *
+ * 그래서 세 가지를 순서대로 본다. 접두어는 연결을 다시 할 때마다 달라질 수 있다 —
+ * 실제로 2026-09-28 에 재연결 한 번으로 `UPSTASH_REDIS_REST_` 접두어가 떨어져 나갔다.
+ * 이름 하나에 매달리면 그때마다 버퍼가 조용히 죽는다.
  *
  * 값을 복사해 기본 이름으로 다시 넣는 방법도 있지만 그러지 않는다 — 통합이 토큰을 돌리면
  * 복사본만 낡은 채로 남아, 어느 날 조용히 버퍼가 죽고 Postgres 로 되돌아간다.
  */
 function credentials(): { url: string; token: string } | null {
-  const url = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL
-  const token = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN
+  const url =
+    process.env.KV_REST_API_URL ??
+    process.env.UPSTASH_REDIS_REST_KV_REST_API_URL ??
+    process.env.UPSTASH_REDIS_REST_URL
+  const token =
+    process.env.KV_REST_API_TOKEN ??
+    process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN ??
+    process.env.UPSTASH_REDIS_REST_TOKEN
   if (!url || !token) return null
   return { url, token }
 }
