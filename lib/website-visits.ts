@@ -1,3 +1,4 @@
+import { Redis } from "@upstash/redis"
 import { z } from "zod"
 
 import { prisma } from "@/lib/db"
@@ -11,6 +12,19 @@ import { prisma } from "@/lib/db"
  *
  * **여기에는 IP 도 UA 도 쿠키도 없다.** 방문자 구분은 사이트가 만들어 보낸 하루짜리
  * 해시뿐이고, 날짜가 그 해시 키에 들어가 있어 어제와 오늘을 이어 붙일 수 없다.
+ *
+ * ## 왜 바로 Postgres 에 쓰지 않는가
+ *
+ * Neon 은 마지막 질의 5분 뒤에 자고, **깨어 있던 시간이 곧 요금**이다. 방문 한 건마다
+ * 쓰면 하루에 흩어진 방문 수십 건이 컴퓨트를 하루 한 시간씩 깨워 둔다(2026-09-28 실측:
+ * 주 6.5시간, 그중 6.3시간은 방문 말고 아무것도 없던 시간). 그래서 받는 즉시는 Redis 에
+ * 쌓고, **하루 한 번** 크론이 한꺼번에 옮긴다 — 깨우는 시간이 하루 5분으로 준다.
+ *
+ * 크론을 더 자주 돌리면 오히려 손해다. 크론 한 번이 최소 5분을 깨우므로 한 시간마다면
+ * 하루 24 × 5분 = 2시간이고, 그것은 묶지 않은 지금보다 나쁘다.
+ *
+ * Redis 가 없거나 떨어져 있으면 **예전처럼 바로 쓴다.** 통계 한 건을 잃는 것보다
+ * 컴퓨트를 한 번 깨우는 편이 낫다.
  */
 
 /* ------------------------------------------------------------ 적기 */
@@ -26,7 +40,35 @@ export const visitIntakeSchema = z.object({
 
 export type VisitIntake = z.infer<typeof visitIntakeSchema>
 
+/** 들어온 방문이 쌓이는 곳. 크론이 통째로 가져간다. */
+const BUFFER_KEY = "website:visits"
+/** 옮기는 중인 것. 넣다 실패하면 여기 남아 다음 크론이 다시 집는다. */
+const STAGING_KEY = "website:visits:flushing"
+
+/** Upstash 가 붙어 있을 때만 Redis 를 쓴다. 없으면 null 이고 호출부가 Postgres 로 간다. */
+function buffer(): Redis | null {
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) return null
+  return Redis.fromEnv()
+}
+
+/** 버퍼에 넣는 모양. `at` 을 여기서 박는다 — 크론이 옮기는 시각이 아니라 방문한 시각이어야 한다. */
+interface BufferedVisit extends VisitIntake {
+  at: string
+}
+
 export async function recordVisit(input: VisitIntake): Promise<void> {
+  const redis = buffer()
+  if (redis) {
+    try {
+      const row: BufferedVisit = { ...input, at: new Date().toISOString() }
+      await redis.rpush(BUFFER_KEY, JSON.stringify(row))
+      return
+    } catch (e) {
+      // 버퍼가 죽었다고 방문을 버리지 않는다. Neon 을 깨우더라도 적는 편이 낫다.
+      console.warn("[visits] 버퍼 실패 — Postgres 로 바로 적는다", e)
+    }
+  }
+
   await prisma.websiteVisit.create({
     data: {
       path: input.path,
@@ -38,11 +80,69 @@ export async function recordVisit(input: VisitIntake): Promise<void> {
   })
 }
 
+/** 아직 Postgres 로 못 간 방문 수. 통계 화면이 「오늘 N건은 집계 전」 을 적는 데 쓴다. */
+export async function pendingVisitCount(): Promise<number> {
+  const redis = buffer()
+  if (!redis) return 0
+  try {
+    const [a, b] = await Promise.all([redis.llen(BUFFER_KEY), redis.llen(STAGING_KEY)])
+    return a + b
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * 버퍼에 쌓인 방문을 Postgres 로 옮긴다. 크론이 하루 한 번 부른다.
+ *
+ * 옮길 것을 **먼저 STAGING 으로 통째로 rename** 한 뒤 읽는다. 옮기는 사이에 들어온 방문은
+ * 새 BUFFER 에 쌓여 다음 차례가 된다 — 읽고 나서 지우는 방식이면 그 사이에 들어온 것이
+ * 함께 지워진다. `createMany` 가 실패하면 STAGING 이 그대로 남아 다음 크론이 다시 집는다.
+ */
+export async function flushVisits(): Promise<{ moved: number }> {
+  const redis = buffer()
+  if (!redis) return { moved: 0 }
+
+  // 지난번에 옮겨 놓고 넣지 못한 것이 있으면 그것부터 끝낸다
+  let staged = await redis.lrange<string>(STAGING_KEY, 0, -1)
+  if (staged.length === 0) {
+    // 버퍼가 비어 있으면 rename 이 실패한다 — 옮길 것이 없다는 뜻이라 정상이다
+    await redis.rename(BUFFER_KEY, STAGING_KEY).catch(() => {})
+    staged = await redis.lrange<string>(STAGING_KEY, 0, -1)
+  }
+  if (staged.length === 0) return { moved: 0 }
+
+  const rows = staged.flatMap((raw) => {
+    // Upstash 가 JSON 을 알아서 풀어 주는 경우가 있어 문자열·객체 둘 다 받는다
+    const v = (typeof raw === "string" ? JSON.parse(raw) : raw) as BufferedVisit
+    const parsed = visitIntakeSchema.safeParse(v)
+    // 모양이 깨진 한 건 때문에 나머지를 못 넣으면 안 된다
+    if (!parsed.success) return []
+    return [{
+      at: new Date(v.at),
+      path: parsed.data.path,
+      lang: parsed.data.lang,
+      visitorHash: parsed.data.visitorHash,
+      referrerHost: parsed.data.referrerHost ?? null,
+      device: parsed.data.device,
+    }]
+  })
+
+  if (rows.length > 0) await prisma.websiteVisit.createMany({ data: rows })
+  await redis.del(STAGING_KEY)
+  return { moved: rows.length }
+}
+
 /* ------------------------------------------------------------ 읽기 */
 
 export interface VisitStats {
   /** 몇 일치인가 */
   days: number
+  /**
+   * 아직 Postgres 로 넘어가지 않아 아래 숫자에 **들어 있지 않은** 방문 수.
+   * 새벽 4시(KST) 크론이 옮긴다. 화면이 「오늘 0명」 을 장애로 오해하지 않게 하는 값이다.
+   */
+  pending?: number
   /** 기간의 첫 날 · 끝 날 (KST, `YYYY-MM-DD`) */
   from: string
   to: string
