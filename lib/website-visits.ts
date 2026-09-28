@@ -45,10 +45,27 @@ const BUFFER_KEY = "website:visits"
 /** 옮기는 중인 것. 넣다 실패하면 여기 남아 다음 크론이 다시 집는다. */
 const STAGING_KEY = "website:visits:flushing"
 
+/**
+ * Upstash 자격.
+ *
+ * `Redis.fromEnv()` 를 쓰지 않는다. 그쪽은 `UPSTASH_REDIS_REST_URL`·`..._TOKEN` 만 보는데,
+ * **Vercel 마켓플레이스 통합은 그 이름으로 넣어 주지 않는다** — 연결할 때 준 접두어 뒤에
+ * 늘 `KV_REST_API_*` 를 붙인다. 접두어를 무엇으로 바꿔도 기본 이름은 안 나온다(2026-09-28 확인).
+ *
+ * 값을 복사해 기본 이름으로 다시 넣는 방법도 있지만 그러지 않는다 — 통합이 토큰을 돌리면
+ * 복사본만 낡은 채로 남아, 어느 날 조용히 버퍼가 죽고 Postgres 로 되돌아간다.
+ */
+function credentials(): { url: string; token: string } | null {
+  const url = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL
+  const token = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN
+  if (!url || !token) return null
+  return { url, token }
+}
+
 /** Upstash 가 붙어 있을 때만 Redis 를 쓴다. 없으면 null 이고 호출부가 Postgres 로 간다. */
 function buffer(): Redis | null {
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) return null
-  return Redis.fromEnv()
+  const c = credentials()
+  return c ? new Redis(c) : null
 }
 
 /** 버퍼에 넣는 모양. `at` 을 여기서 박는다 — 크론이 옮기는 시각이 아니라 방문한 시각이어야 한다. */
