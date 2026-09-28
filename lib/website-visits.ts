@@ -97,15 +97,33 @@ export async function recordVisit(input: VisitIntake): Promise<void> {
   })
 }
 
-/** 아직 Postgres 로 못 간 방문 수. 통계 화면이 「오늘 N건은 집계 전」 을 적는 데 쓴다. */
-export async function pendingVisitCount(): Promise<number> {
+export interface BufferStatus {
+  /** Upstash 자격이 들어와 있는가. 없으면 버퍼를 안 쓰는 것이 정상이다 */
+  configured: boolean
+  /** 버퍼가 실제로 닿는가. configured 인데 false 면 **고장**이다 */
+  ok: boolean
+  /** 아직 Postgres 로 못 간 방문 수 */
+  pending: number
+}
+
+/**
+ * 버퍼의 상태. 통계 화면이 「집계 전 N건」 과 **고장 경고**를 띄우는 데 쓴다.
+ *
+ * `ok: false` 를 굳이 내보내는 이유: 버퍼가 죽으면 `recordVisit` 이 조용히 Postgres 로
+ * 되돌아간다. 방문을 잃지 않으니 화면에는 아무 일도 없어 보이지만, 실제로는 Neon 을
+ * 방문마다 깨우는 옛 상태로 돌아간 것이고 **아무도 모른다.**
+ * 2026-09-28 에 실제로 그랬다 — Upstash 콘솔에서 토큰을 재발급했는데 Vercel env 는
+ * 옛 토큰이라 `WRONGPASS` 가 났고, 로그를 들여다보기 전까지 아무 표시가 없었다.
+ */
+export async function bufferStatus(): Promise<BufferStatus> {
   const redis = buffer()
-  if (!redis) return 0
+  if (!redis) return { configured: false, ok: true, pending: 0 }
   try {
     const [a, b] = await Promise.all([redis.llen(BUFFER_KEY), redis.llen(STAGING_KEY)])
-    return a + b
-  } catch {
-    return 0
+    return { configured: true, ok: true, pending: a + b }
+  } catch (e) {
+    console.error("[visits] 버퍼에 닿지 못한다 — 방문이 Postgres 로 직행하고 있다", e)
+    return { configured: true, ok: false, pending: 0 }
   }
 }
 
@@ -160,6 +178,11 @@ export interface VisitStats {
    * 새벽 4시(KST) 크론이 옮긴다. 화면이 「오늘 0명」 을 장애로 오해하지 않게 하는 값이다.
    */
   pending?: number
+  /**
+   * 버퍼가 닿는가. `false` 면 방문이 Postgres 로 직행하고 있다 — 숫자는 맞지만
+   * Neon 을 방문마다 깨우는 옛 상태다. 화면이 경고를 띄워야 한다.
+   */
+  bufferOk?: boolean
   /** 기간의 첫 날 · 끝 날 (KST, `YYYY-MM-DD`) */
   from: string
   to: string
