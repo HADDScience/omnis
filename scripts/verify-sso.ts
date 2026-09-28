@@ -154,20 +154,25 @@ async function main() {
   }
 
   // ─── 7. AI ECM → VivoFrame 전환 ─────────────────────────────────
-  // 같은 도구가 주소를 옮기는 중이라 세 항목이 나란히 산다. 옛 주소를 지우면
-  // 그 주소로 들어오던 로그인이 그 순간 막힌다 — 남아 있는지까지 확인한다.
+  // 전환이 끝나 옛 주소(ecm.haddscience.com)의 등록은 2026-09-28 에 걷었다.
+  // 이제 지킬 것은 「다시 들어오지 않는다」다 — 항목이 되살아나면 그 오리진의
+  // CORS 도 같이 열리므로, 사라진 것과 거부되는 것을 함께 본다.
+  //
+  // tailnet 항목은 남는다. 그건 別件이고, 껐던 이유(Funnel 공유 토큰)가 아직
+  // 풀리지 않았다 — 회귀로 지켜서 이 정리에 휩쓸려 사라지지 않게 한다.
   console.log("\n[7] AI ECM · VivoFrame")
   const vivo = resolveApp("vivoframe")
-  const ecmCom = resolveApp("ai-ecm-com")
+  const ecmTailnet = resolveApp("ai-ecm")
   check("vivoframe 등록", vivo?.origin === "https://vivoframe.haddscience.com" && vivo.basePath === "")
-  check("ai-ecm-com 그대로 (회귀)", ecmCom?.origin === "https://ecm.haddscience.com")
-  check("ai-ecm(tailnet) 그대로 (회귀)", resolveApp("ai-ecm")?.origin === "https://macbookpro.tail28eea6.ts.net")
+  check("ai-ecm-com 제거됨", resolveApp("ai-ecm-com") === null)
+  check("옛 오리진은 CORS 거부", !isAllowedOrigin("https://ecm.haddscience.com"))
+  check("ai-ecm(tailnet) 그대로 (회귀)", ecmTailnet?.origin === "https://macbookpro.tail28eea6.ts.net")
   check("vivoframe 오리진은 CORS 허용", isAllowedOrigin("https://vivoframe.haddscience.com"))
   check("모르는 오리진은 거부", !isAllowedOrigin("https://evil.example"))
-  if (vivo && ecmCom) {
+  if (vivo && ecmTailnet) {
     const { token: vivoSess } = await issueSession(vivo, subject)
-    // 두 주소가 같은 도구를 가리켜도 앱이 다르면 토큰은 건너가지 못한다.
-    check("vivoframe 세션을 ai-ecm-com 이 쓰면 거부", (await verifySession(vivoSess, ecmCom)) === null)
+    // 같은 도구를 가리켜도 앱이 다르면 토큰은 건너가지 못한다.
+    check("vivoframe 세션을 ai-ecm(tailnet)이 쓰면 거부", (await verifySession(vivoSess, ecmTailnet)) === null)
     check("자기 앱에서는 통과", (await verifySession(vivoSess, vivo))?.userId === "u-1")
     check("복귀 경로 기본값은 /", safeReturnPath(vivo, null) === "/")
     check("다른 오리진으로는 못 돌아감", safeReturnPath(vivo, "//evil.example") === null)
