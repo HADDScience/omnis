@@ -3,7 +3,7 @@
 // 프로덕션과 같은 함수(retrieveContext · build*Overview)를 그대로 부르고 시간을 잰다.
 // 벤치가 프로덕션과 다른 길로 자료를 만들면 비교가 무의미하다.
 import { prisma } from "@/lib/db"
-import { retrieveContext, sectionToText, type RetrievedChunk, type EmbeddingSource } from "@/lib/embeddings"
+import { retrieveContext, sectionToText, withFollowUps, type RetrievedChunk, type EmbeddingSource } from "@/lib/embeddings"
 import { buildTaskOverview, buildIpOverview, buildCrmOverview, SOURCE_LABEL } from "@/lib/omnis-ask"
 import { migrateContent } from "@/lib/omnis-types"
 import { now } from "./providers"
@@ -91,10 +91,15 @@ export async function hybridSearch(question: string, limit = 8): Promise<Timed<R
       })
     add(vec)
     add(kw)
-    return [...score.values()]
-      .sort((a, b) => b.s - a.s)
-      .slice(0, limit)
-      .map(({ row }) => ({
+    // 프로덕션 retrieveHybrid 와 같게 — 채팅 조각에 이후 대화를 붙인다
+    const top = await withFollowUps(
+      [...score.values()]
+        .sort((a, b) => b.s - a.s)
+        .slice(0, limit)
+        .map(({ row }) => ({ ...row, similarity: "similarity" in row ? row.similarity : 0 }))
+    )
+    return top
+      .map((row) => ({
         title: row.title,
         content: row.content,
         sourceLabel: SOURCE_LABEL[row.source],
