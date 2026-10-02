@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db"
 import { won } from "@/lib/crm"
 import { RECORD_KIND_LABEL, compactWon, periodText } from "@/lib/company-context"
 import { RecordDialog, RecordEditButton } from "@/components/company/record-editors"
+import { RecordsTimeline, type TimelineEvent } from "@/components/company/records-timeline"
 import { EMPTY_RECORD_FORM, type RecordForm } from "@/lib/schemas/company"
 import type { CompanyRecord, Prisma, RecordKind } from "@/generated/prisma/client"
 
@@ -83,6 +84,11 @@ export default async function RecordsPage({ searchParams }: Props) {
   ])
   const total = byKind.reduce((a, k) => a + k._count, 0)
 
+  // 타임라인은 지금 거른 결과 그대로 그린다 — 종류·검색을 바꾸면 그림도 따라간다
+  const timeline: TimelineEvent[] = records
+    .filter((r) => r.startsOn)
+    .map((r) => ({ id: r.id, kind: r.kind, title: r.title, date: r.startsOn!.toISOString().slice(0, 10), organizer: r.organizer }))
+
   const groups = new Map<string, typeof records>()
   for (const r of records) {
     const y = r.startsOn ? String(r.startsOn.getUTCFullYear()) : "날짜 없음"
@@ -142,6 +148,19 @@ export default async function RecordsPage({ searchParams }: Props) {
           })}
         </nav>
 
+        {timeline.length > 0 && (
+          <section aria-labelledby="records-timeline" className="mb-8 rounded-xl border bg-card px-3 pt-3 pb-4">
+            <h2 id="records-timeline" className="mb-2 text-[13px] font-semibold text-muted-foreground">
+              한눈에 보기
+            </h2>
+            <RecordsTimeline
+              events={timeline}
+              kinds={KINDS.map((k) => [k, RECORD_KIND_LABEL[k]])}
+              undated={records.length - timeline.length}
+            />
+          </section>
+        )}
+
         {records.length === 0 ? (
           <Empty className="rounded-xl border border-dashed">
             <EmptyHeader>
@@ -165,7 +184,7 @@ export default async function RecordsPage({ searchParams }: Props) {
               </h2>
               <ul className="flex flex-col gap-1.5">
                 {items.map((r) => (
-                  <li key={r.id} className="rounded-lg border bg-card px-3.5 py-2.5">
+                  <li key={r.id} id={`rec-${r.id}`} className="scroll-mt-24 rounded-lg border bg-card px-3.5 py-2.5 target:border-primary">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <Badge variant="outline">{RECORD_KIND_LABEL[r.kind]}</Badge>
                       <span className="min-w-0 break-words text-[13.5px] font-medium">{r.title}</span>
