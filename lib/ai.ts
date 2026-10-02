@@ -9,6 +9,7 @@ import {
   estimateGeminiTokens,
   recordGeminiUsage,
 } from "@/lib/gemini-usage"
+import { KNOWLEDGE_CATEGORIES, matchCategory } from "@/lib/knowledge-categories"
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -842,12 +843,12 @@ export async function runGeminiToolLoop(
 // 배경: mydocs/plans/2026-09-10-ai-maintained-cards.md
 
 /** 카드에 담는 것은 "읽는 것" 이다. 행이 쌓이는 자료(연혁·지원사업·재고)는 모델이 따로 맡는다. */
-const KNOWLEDGE_SCOPE = `카드에 담는 것은 **회사에 계속 남는 서술**이다:
-- 제품·기술 설명, 실험 프로토콜, 사양
-- 표기·브랜드 규칙 (제품명을 어떻게 쓰는지, 로고 사용)
-- 사내 규정·절차 (파일을 어디 두는지, 어떤 순서로 승인하는지)
-- 거래·협업 조건 중 반복 적용되는 것
-- 어떤 방식을 왜 그렇게 정했는지 (배경과 근거)
+/** 분류 목록은 lib/knowledge-categories.ts 하나에서 온다 — 엄격 모드라 목록 밖은 카드가 되지 않는다 */
+const KNOWLEDGE_SCOPE = `카드에 담는 것은 **회사에 계속 남는 서술**이고, 아래 분류 중 하나에 들어가야 한다.
+어느 분류에도 맞지 않으면 카드로 만들지 않는다 (「기타」는 없다):
+${KNOWLEDGE_CATEGORIES.map((c) => `- ${c.name}: ${c.scope}`).join("\n")}
+
+어느 분류든 "어떤 방식을 왜 그렇게 정했는지 (배경과 근거)" 는 함께 담는다.
 
 담지 않는 것:
 - 이 업무에서만 쓰는 일정·담당·진행 상황 (업무 카드가 맡는다)
@@ -864,6 +865,8 @@ export interface KnowledgeTopic {
   title: string
   /** 무엇이 확정됐나 (한두 문장) */
   summary: string
+  /** KNOWLEDGE_CATEGORIES 의 이름. 목록 밖이면 detectKnowledge 가 버린다 */
+  category: string
 }
 
 /**
@@ -890,16 +893,20 @@ ${taskName}
 ${text}
 
 남길 것이 없으면 빈 배열을 반환하세요. 대부분의 업무에는 없습니다 — 없는데 억지로 만들지 마세요.
-있으면 주제마다 카드 제목과 확정된 내용을 적으세요. 최대 2개.
+있으면 주제마다 분류, 카드 제목, 확정된 내용을 적으세요. 최대 2개.
+분류는 위 목록의 이름 그대로 씁니다. 목록에 맞는 분류가 없는 주제는 빼세요.
 
-반드시 JSON만: {"topics": [{"title": "카드 제목", "summary": "무엇이 확정됐나"}]}`
+반드시 JSON만: {"topics": [{"category": "분류 이름", "title": "카드 제목", "summary": "무엇이 확정됐나"}]}`
 
   try {
     const raw = await callGemini(prompt, "cardDetect", userId, 0, { model: LITE_MODEL })
     const m = raw.match(/\{[\s\S]*\}/)
     if (!m) return []
-    const parsed = JSON.parse(m[0]) as { topics?: KnowledgeTopic[] }
-    return (parsed.topics ?? []).filter((t) => t?.title && t?.summary).slice(0, 2)
+    const parsed = JSON.parse(m[0]) as { topics?: (Omit<KnowledgeTopic, "category"> & { category?: unknown })[] }
+    return (parsed.topics ?? [])
+      .map((t) => ({ title: t?.title, summary: t?.summary, category: matchCategory(t?.category) }))
+      .filter((t): t is KnowledgeTopic => Boolean(t.title && t.summary && t.category))
+      .slice(0, 2)
   } catch (err) {
     console.error("[ai/detectKnowledge] 판정 실패", { taskName, err })
     return []

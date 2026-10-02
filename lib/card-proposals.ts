@@ -163,6 +163,13 @@ export async function proposeOne(
 ): Promise<boolean> {
   if (sourceRefs.length === 0) return false // 근거 없이는 만들지 않는다
 
+  // 엄격 모드 — 분류가 DB 에 없으면 만들지 않는다. 엉뚱한 분류에 넣느니 버린다.
+  const category = await prisma.omnisCategory.findUnique({ where: { name: topic.category }, select: { id: true } })
+  if (!category) {
+    console.warn("[card-proposals] 분류가 DB 에 없어 버림", { category: topic.category, title: topic.title })
+    return false
+  }
+
   const target = await findTargetCard(topic)
   const existing = target
     ? {
@@ -184,7 +191,7 @@ export async function proposeOne(
   const proposal = await prisma.cardProposal.create({
     data: {
       cardId: target?.id ?? null,
-      categoryId: target ? null : await defaultCategoryId(),
+      categoryId: target ? null : category.id,
       title: draft.title,
       content: content as unknown as Prisma.InputJsonValue,
       reason: draft.reason,
@@ -223,13 +230,6 @@ async function findTargetCard(topic: KnowledgeTopic) {
   })
   if (!card) return null
   return { ...card, humanEdited: card.versions.some((v) => v.authorKind === "HUMAN") }
-}
-
-async function defaultCategoryId(): Promise<string | null> {
-  const cat =
-    (await prisma.omnisCategory.findFirst({ where: { name: "기업정보" }, select: { id: true } })) ??
-    (await prisma.omnisCategory.findFirst({ orderBy: { sortOrder: "asc" }, select: { id: true } }))
-  return cat?.id ?? null
 }
 
 // ─── 판단 ───────────────────────────────────────────────────────
