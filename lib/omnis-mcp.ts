@@ -18,7 +18,7 @@ import { prisma } from "@/lib/db"
 import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { openFileObject } from "@/lib/file-object"
 import { TASK_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/constants"
-import { retrieveContext, sectionToText, syncEmbeddingsSafe, type EmbeddingSource } from "@/lib/embeddings"
+import { retrieveContext, sectionToText, syncEmbeddingsSafe, withFollowUps, type EmbeddingSource } from "@/lib/embeddings"
 import { migrateContent } from "@/lib/omnis-types"
 import { askOmnis, buildCrmOverview, SOURCE_LABEL } from "@/lib/omnis-ask"
 import { postChatMessage } from "@/lib/chat-post"
@@ -754,11 +754,14 @@ export async function runTool(
       const sources = Array.isArray(args.sources)
         ? (args.sources.filter((s): s is EmbeddingSource => typeof s === "string" && s in SOURCE_LABEL))
         : undefined
-      const chunks = await retrieveContext(query, { limit: clampInt(args.limit, 8, 30), sources, minSimilarity: 0.25, userId: caller.userId })
+      const chunks = await withFollowUps(
+        await retrieveContext(query, { limit: clampInt(args.limit, 8, 30), sources, minSimilarity: 0.25, userId: caller.userId })
+      )
       if (chunks.length === 0) return { text: "비슷한 조각이 없습니다." }
       return {
         text: chunks
-          .map((c, i) => `[${i + 1}] ${SOURCE_LABEL[c.source]} · ${c.title} (${Math.round(c.similarity * 100)}%)\n${c.content.slice(0, 600)}`)
+          // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
+          .map((c, i) => `[${i + 1}] ${SOURCE_LABEL[c.source]} · ${c.title} (${Math.round(c.similarity * 100)}%)\n${c.content.slice(0, c.source === "CHAT_MESSAGE" ? 1500 : 600)}`)
           .join("\n\n"),
       }
     }

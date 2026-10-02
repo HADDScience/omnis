@@ -573,5 +573,57 @@ export async function retrieveHybrid(
   add(vec)
   add(kw)
   const chunks = [...score.values()].sort((a, b) => b.s - a.s).slice(0, limit).map((x) => x.row)
-  return { chunks, keywords }
+  return { chunks: await withFollowUps(chunks), keywords }
+}
+
+const FOLLOW_UP_DAYS = 7
+const FOLLOW_UP_MAX = 6
+const FOLLOW_UP_CHARS = 900
+
+/**
+ * 채팅 조각 뒤에 「이후 대화」를 붙인다.
+ *
+ * 결정이 바뀌는 대화에서 정정은 대개 짧은 답장이다 — 「그럼 월요일 주문으로 할게요」,
+ * 「스탠다드로 변경해주세요」. 주제어가 없어 검색에 걸리지 않고, 걸리는 것은 주제어가 든 옛 말이다.
+ * 실측(2026-10-02, 결정이 바뀐 10문항): 틀린 4문항 모두 옛 말은 상위 5위 안, 정정은 상위 20위 밖이었다.
+ * 그래서 순위를 바꾸는 대신, 걸린 말 뒤에 같은 업무(없으면 같은 방)의 이후 대화를 붙여 모델이 정정을 보게 한다.
+ */
+export async function withFollowUps(chunks: RetrievedChunk[]): Promise<RetrievedChunk[]> {
+  const chatIds = chunks.filter((c) => c.source === "CHAT_MESSAGE").map((c) => c.sourceId)
+  if (chatIds.length === 0) return chunks
+  const heads = await prisma.chatMessage.findMany({
+    where: { id: { in: chatIds } },
+    select: { id: true, roomId: true, taskId: true, createdAt: true },
+  })
+  const after = new Map<string, string>()
+  await Promise.all(
+    heads.map(async (h) => {
+      const rows = await prisma.chatMessage.findMany({
+        where: {
+          ...(h.taskId ? { taskId: h.taskId } : { roomId: h.roomId }),
+          createdAt: { gt: h.createdAt, lt: new Date(h.createdAt.getTime() + FOLLOW_UP_DAYS * 86_400_000) },
+          kind: "NORMAL",
+          deletedAt: null,
+        },
+        orderBy: { createdAt: "asc" },
+        take: FOLLOW_UP_MAX * 2,
+        select: { content: true, createdAt: true, author: { select: { name: true } } },
+      })
+      // 시스템 표식(__…)은 여기서 거른다. Prisma 의 startsWith: "__" 는 LIKE '__%' 가 되는데
+      // LIKE 에서 _ 는 아무 글자 하나라 두 글자 이상인 글을 전부 걸러 버린다.
+      let text = ""
+      for (const m of rows.filter((r) => !r.content.startsWith("__")).slice(0, FOLLOW_UP_MAX)) {
+        const when = m.createdAt.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16)
+        const line = `[채팅 ${when}] ${m.author.name}: ${m.content.trim().slice(0, 200)}\n`
+        if (text.length + line.length > FOLLOW_UP_CHARS) break
+        text += line
+      }
+      if (text) after.set(h.id, text.trimEnd())
+    })
+  )
+  return chunks.map((c) =>
+    c.source === "CHAT_MESSAGE" && after.has(c.sourceId)
+      ? { ...c, content: `${c.content}\n[이후 대화 — 같은 사안이면 늦은 말이 최종이다]\n${after.get(c.sourceId)}` }
+      : c
+  )
 }
