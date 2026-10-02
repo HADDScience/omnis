@@ -99,6 +99,23 @@ export interface SourceRef {
   kind: "task" | "message"
   id: string
   label: string
+  /** 이 근거의 가장 늦은 날짜 (YYYY-MM-DD). 카드가 어디까지의 자료를 반영했는지 가린다 */
+  at?: string
+}
+
+/** 근거 묶음에서 가장 늦은 날짜. 날짜가 없는 옛 근거뿐이면 null */
+export function latestEvidenceAt(refs: unknown): string | null {
+  if (!Array.isArray(refs)) return null
+  const dates = refs.map((r) => (r && typeof r === "object" && typeof (r as SourceRef).at === "string" ? (r as SourceRef).at! : null))
+  return dates.filter((d): d is string => !!d).sort().at(-1) ?? null
+}
+
+/** 근거를 합친다 — 카드를 고쳐도 이전 근거는 남는다. 같은 id 면 새 것이 이긴다 */
+export function mergeSourceRefs(prev: unknown, next: SourceRef[]): SourceRef[] {
+  const out = new Map<string, SourceRef>()
+  if (Array.isArray(prev)) for (const r of prev as SourceRef[]) if (r?.id) out.set(`${r.kind}:${r.id}`, r)
+  for (const r of next) out.set(`${r.kind}:${r.id}`, r)
+  return [...out.values()]
 }
 
 const MAX_PENDING = Number(process.env.CARD_MAX_PENDING ?? 30)
@@ -144,7 +161,8 @@ export async function proposeFromTask(
   const evidence = task.messages
     .map((m) => `[${m.createdAt.toISOString().slice(0, 10)}] ${m.author?.name ?? "?"}: ${m.content}`)
     .join("\n")
-  const sourceRefs: SourceRef[] = [{ kind: "task", id: task.id, label: task.name }]
+  const lastAt = task.messages.at(-1)!.createdAt.toISOString().slice(0, 10)
+  const sourceRefs: SourceRef[] = [{ kind: "task", id: task.id, label: task.name, at: lastAt }]
 
   let created = 0
   for (const topic of topics) {
@@ -163,7 +181,15 @@ export async function proposeOne(
 ): Promise<boolean> {
   if (sourceRefs.length === 0) return false // 근거 없이는 만들지 않는다
 
-  const target = await findTargetCard(topic)
+  // 엄격 모드 — 분류가 DB 에 없으면 만들지 않는다. 엉뚱한 분류에 넣느니 버린다.
+  const category = await prisma.omnisCategory.findUnique({ where: { name: topic.category }, select: { id: true } })
+  if (!category) {
+    console.warn("[card-proposals] 분류가 DB 에 없어 버림", { category: topic.category, title: topic.title })
+    return false
+  }
+
+  let target = await findTargetCard(topic)
+  const evidenceAt = latestEvidenceAt(sourceRefs)
   const existing = target
     ? {
         title: target.title,
@@ -171,10 +197,17 @@ export async function proposeOne(
           .sections.map((s) => `### ${s.title}\n${sectionToText(s)}`)
           .join("\n\n"),
         humanEdited: target.humanEdited,
+        evidenceUntil: latestEvidenceAt(target.sourceRefs),
       }
     : null
 
-  const draft = await draftCardUpdate(topic, existing, evidence, opts.userId)
+  let draft = await draftCardUpdate(topic, existing, evidence, opts.userId, evidenceAt)
+  // 비슷해 보여도 다른 주제면 그 카드를 덮지 않고 새 카드로 간다.
+  // 실측(2026-10-02): 주제가 다른 제안 12건이 한 카드를 차례로 덮어써 앞의 내용이 사라졌다.
+  if (draft && target && draft.sameTopic === false) {
+    target = null
+    draft = await draftCardUpdate(topic, null, evidence, opts.userId, evidenceAt)
+  }
   if (!draft) return false
 
   const content = {
@@ -184,7 +217,7 @@ export async function proposeOne(
   const proposal = await prisma.cardProposal.create({
     data: {
       cardId: target?.id ?? null,
-      categoryId: target ? null : await defaultCategoryId(),
+      categoryId: target ? null : category.id,
       title: draft.title,
       content: content as unknown as Prisma.InputJsonValue,
       reason: draft.reason,
@@ -219,17 +252,16 @@ async function findTargetCard(topic: KnowledgeTopic) {
 
   const card = await prisma.omnisCard.findUnique({
     where: { id: best.sourceId },
-    select: { id: true, title: true, content: true, versions: { select: { authorKind: true } } },
+    select: {
+      id: true, title: true, content: true, sourceRefs: true,
+      category: { select: { name: true } },
+      versions: { select: { authorKind: true } },
+    },
   })
+  // 분류로 거르지 않는다 — 같은 사안이 다른 분류로 뽑히는 일이 있다(실측 2026-10-02: 상표명 변경이
+  // 「지식재산권」, 그 최종 결정이 「제품·기술」로 갈라져 옛 결정 카드가 따로 남았다). 같은 주제인지는 초안 단계가 판단한다.
   if (!card) return null
   return { ...card, humanEdited: card.versions.some((v) => v.authorKind === "HUMAN") }
-}
-
-async function defaultCategoryId(): Promise<string | null> {
-  const cat =
-    (await prisma.omnisCategory.findFirst({ where: { name: "기업정보" }, select: { id: true } })) ??
-    (await prisma.omnisCategory.findFirst({ orderBy: { sortOrder: "asc" }, select: { id: true } }))
-  return cat?.id ?? null
 }
 
 // ─── 판단 ───────────────────────────────────────────────────────
@@ -250,7 +282,7 @@ export async function applyProposal(
     let id: string
     let version: number
     if (p.cardId) {
-      const cur = await tx.omnisCard.findUnique({ where: { id: p.cardId }, select: { version: true } })
+      const cur = await tx.omnisCard.findUnique({ where: { id: p.cardId }, select: { version: true, sourceRefs: true } })
       if (!cur) throw new Error("카드가 사라졌습니다")
       version = cur.version + 1
       await tx.omnisCard.update({
@@ -260,7 +292,7 @@ export async function applyProposal(
           content,
           version,
           updatedById: opts.userId ?? null,
-          sourceRefs: p.sourceRefs as Prisma.InputJsonValue,
+          sourceRefs: mergeSourceRefs(cur.sourceRefs, p.sourceRefs as unknown as SourceRef[]) as unknown as Prisma.InputJsonValue,
           aiUpdatedAt: new Date(),
         },
       })

@@ -9,6 +9,7 @@ import {
   estimateGeminiTokens,
   recordGeminiUsage,
 } from "@/lib/gemini-usage"
+import { KNOWLEDGE_CATEGORIES, matchCategory } from "@/lib/knowledge-categories"
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -842,12 +843,12 @@ export async function runGeminiToolLoop(
 // 배경: mydocs/plans/2026-09-10-ai-maintained-cards.md
 
 /** 카드에 담는 것은 "읽는 것" 이다. 행이 쌓이는 자료(연혁·지원사업·재고)는 모델이 따로 맡는다. */
-const KNOWLEDGE_SCOPE = `카드에 담는 것은 **회사에 계속 남는 서술**이다:
-- 제품·기술 설명, 실험 프로토콜, 사양
-- 표기·브랜드 규칙 (제품명을 어떻게 쓰는지, 로고 사용)
-- 사내 규정·절차 (파일을 어디 두는지, 어떤 순서로 승인하는지)
-- 거래·협업 조건 중 반복 적용되는 것
-- 어떤 방식을 왜 그렇게 정했는지 (배경과 근거)
+/** 분류 목록은 lib/knowledge-categories.ts 하나에서 온다 — 엄격 모드라 목록 밖은 카드가 되지 않는다 */
+const KNOWLEDGE_SCOPE = `카드에 담는 것은 **회사에 계속 남는 서술**이고, 아래 분류 중 하나에 들어가야 한다.
+어느 분류에도 맞지 않으면 카드로 만들지 않는다 (「기타」는 없다):
+${KNOWLEDGE_CATEGORIES.map((c) => `- ${c.name}: ${c.scope}`).join("\n")}
+
+어느 분류든 "어떤 방식을 왜 그렇게 정했는지 (배경과 근거)" 는 함께 담는다.
 
 담지 않는 것:
 - 이 업무에서만 쓰는 일정·담당·진행 상황 (업무 카드가 맡는다)
@@ -864,6 +865,8 @@ export interface KnowledgeTopic {
   title: string
   /** 무엇이 확정됐나 (한두 문장) */
   summary: string
+  /** KNOWLEDGE_CATEGORIES 의 이름. 목록 밖이면 detectKnowledge 가 버린다 */
+  category: string
 }
 
 /**
@@ -890,16 +893,20 @@ ${taskName}
 ${text}
 
 남길 것이 없으면 빈 배열을 반환하세요. 대부분의 업무에는 없습니다 — 없는데 억지로 만들지 마세요.
-있으면 주제마다 카드 제목과 확정된 내용을 적으세요. 최대 2개.
+있으면 주제마다 분류, 카드 제목, 확정된 내용을 적으세요. 최대 2개.
+분류는 위 목록의 이름 그대로 씁니다. 목록에 맞는 분류가 없는 주제는 빼세요.
 
-반드시 JSON만: {"topics": [{"title": "카드 제목", "summary": "무엇이 확정됐나"}]}`
+반드시 JSON만: {"topics": [{"category": "분류 이름", "title": "카드 제목", "summary": "무엇이 확정됐나"}]}`
 
   try {
     const raw = await callGemini(prompt, "cardDetect", userId, 0, { model: LITE_MODEL })
     const m = raw.match(/\{[\s\S]*\}/)
     if (!m) return []
-    const parsed = JSON.parse(m[0]) as { topics?: KnowledgeTopic[] }
-    return (parsed.topics ?? []).filter((t) => t?.title && t?.summary).slice(0, 2)
+    const parsed = JSON.parse(m[0]) as { topics?: (Omit<KnowledgeTopic, "category"> & { category?: unknown })[] }
+    return (parsed.topics ?? [])
+      .map((t) => ({ title: t?.title, summary: t?.summary, category: matchCategory(t?.category) }))
+      .filter((t): t is KnowledgeTopic => Boolean(t.title && t.summary && t.category))
+      .slice(0, 2)
   } catch (err) {
     console.error("[ai/detectKnowledge] 판정 실패", { taskName, err })
     return []
@@ -912,6 +919,8 @@ export interface CardDraft {
   sections: { type: "text"; title: string; body: string }[]
   /** 왜 이렇게 바꾸는지 한 줄 */
   reason: string
+  /** 지금 카드와 같은 주제인가. 기존 카드가 없으면 undefined. false 면 호출부가 새 카드로 다시 만든다 */
+  sameTopic?: boolean
 }
 
 /**
@@ -922,15 +931,29 @@ export interface CardDraft {
  */
 export async function draftCardUpdate(
   topic: KnowledgeTopic,
-  existing: { title: string; body: string; humanEdited: boolean } | null,
+  existing: { title: string; body: string; humanEdited: boolean; evidenceUntil?: string | null } | null,
   evidence: string,
-  userId?: string
+  userId?: string,
+  /** 이번 근거의 가장 늦은 날짜 */
+  evidenceAt?: string | null
 ): Promise<CardDraft | null> {
+  // 날짜로 판단한다 — 옛 근거가 나중에 처리돼도 최신 결론을 덮지 않게.
+  // 실측(2026-10-02): 「Neurogel 로 변경」(2025-10) 업무가 늦게 처리되며 「애드힐 확정」(2026-08) 카드를 덮었다.
+  const older = !!(existing?.evidenceUntil && evidenceAt && evidenceAt < existing.evidenceUntil)
   const existingBlock = existing
-    ? `## 지금 카드
+    ? `## 지금 카드 (${existing.evidenceUntil ? `${existing.evidenceUntil} 까지의 자료로 쓴 것` : "근거 날짜 모름"})
 제목: ${existing.title}
 ${existing.body}
-${existing.humanEdited ? "\n**이 카드는 사람이 직접 고친 적이 있다. 기존 문장을 지우지 말고, 새로 확정된 것만 보태거나 그 부분만 고쳐라.**" : ""}`
+${existing.humanEdited ? "\n**이 카드는 사람이 직접 고친 적이 있다. 기존 문장을 지우지 말고, 새로 확정된 것만 보태거나 그 부분만 고쳐라.**" : ""}
+
+먼저 판단하세요: 이번 주제가 지금 카드와 **같은 주제**인가? 같은 제품·같은 규칙·같은 절차를 다루면 같은 주제다.
+비슷한 말이 나와도 대상이 다르면(예: 로고 규칙 카드에 메일 표기 규칙) 다른 주제다. 다른 주제면 sameTopic 을 false 로 두고 나머지는 비워도 된다.
+
+같은 주제면:
+- 이번 주제와 관계없는 기존 섹션은 글자 그대로 둔다. 지우지 않는다.
+${older
+  ? `- **이번 근거(${evidenceAt} 까지)는 지금 카드보다 오래됐다.** 지금 카드와 부딪히는 내용은 지금 카드를 따른다. 부딪히지 않는 새 사실만 보탠다.`
+  : `- 이번 근거${evidenceAt ? `(${evidenceAt} 까지)` : ""}가 지금 카드보다 새롭다. 부딪히면 이번 근거를 따르고, 바뀐 것은 「바뀐 결정」 섹션에 "이전: … → 지금: …" 한 줄로 남긴다.`}`
     : "## 지금 카드\n(없다. 새로 만든다)"
 
   const prompt = `당신은 HADD Science 사내 지식 카드를 관리합니다.
@@ -952,8 +975,10 @@ ${evidence.slice(0, 12_000)}
 - 섹션은 2~4개, 각 섹션은 문단이나 짧은 목록으로. 표는 쓰지 마세요.
 - 한국어로, 회사 안에서 읽을 문장으로 씁니다.
 
+- 근거 안에서도 같은 사안에 말이 바뀌었으면 날짜가 늦은 말이 최종이다.
+
 반드시 JSON만:
-{"title": "카드 제목", "sections": [{"type":"text","title":"섹션 제목","body":"본문"}], "reason": "무엇을 왜 바꿨는지 한 줄"}`
+{${existing ? '"sameTopic": true|false, ' : ""}"title": "카드 제목", "sections": [{"type":"text","title":"섹션 제목","body":"본문"}], "reason": "무엇을 왜 바꿨는지 한 줄"}`
 
   try {
     const raw = await callGemini(prompt, "cardDraft", userId, 0.2, {
@@ -962,8 +987,10 @@ ${evidence.slice(0, 12_000)}
     const m = raw.match(/\{[\s\S]*\}/)
     if (!m) return null
     const parsed = JSON.parse(m[0]) as CardDraft
+    if (existing && parsed?.sameTopic === false) return { title: "", reason: "", sections: [], sameTopic: false }
     if (!parsed?.title || !Array.isArray(parsed.sections) || parsed.sections.length === 0) return null
     return {
+      sameTopic: existing ? true : undefined,
       title: parsed.title,
       reason: parsed.reason ?? "",
       sections: parsed.sections

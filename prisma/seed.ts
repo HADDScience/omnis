@@ -55,6 +55,9 @@ async function main() {
     { name: "기업정보", icon: "🏢", sortOrder: 1 },
     { name: "인력현황", icon: "👥", sortOrder: 2 },
     { name: "지식재산권", icon: "📜", sortOrder: 3 },
+    { name: "회사 연혁·실적", icon: "🏆", sortOrder: 4 },
+    { name: "제품·기술", icon: "🧪", sortOrder: 5 },
+    { name: "업무 절차", icon: "🗂️", sortOrder: 6 },
   ]
 
   for (const c of categories) {
