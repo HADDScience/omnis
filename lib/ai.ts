@@ -919,6 +919,8 @@ export interface CardDraft {
   sections: { type: "text"; title: string; body: string }[]
   /** 왜 이렇게 바꾸는지 한 줄 */
   reason: string
+  /** 지금 카드와 같은 주제인가. 기존 카드가 없으면 undefined. false 면 호출부가 새 카드로 다시 만든다 */
+  sameTopic?: boolean
 }
 
 /**
@@ -929,15 +931,29 @@ export interface CardDraft {
  */
 export async function draftCardUpdate(
   topic: KnowledgeTopic,
-  existing: { title: string; body: string; humanEdited: boolean } | null,
+  existing: { title: string; body: string; humanEdited: boolean; evidenceUntil?: string | null } | null,
   evidence: string,
-  userId?: string
+  userId?: string,
+  /** 이번 근거의 가장 늦은 날짜 */
+  evidenceAt?: string | null
 ): Promise<CardDraft | null> {
+  // 날짜로 판단한다 — 옛 근거가 나중에 처리돼도 최신 결론을 덮지 않게.
+  // 실측(2026-10-02): 「Neurogel 로 변경」(2025-10) 업무가 늦게 처리되며 「애드힐 확정」(2026-08) 카드를 덮었다.
+  const older = !!(existing?.evidenceUntil && evidenceAt && evidenceAt < existing.evidenceUntil)
   const existingBlock = existing
-    ? `## 지금 카드
+    ? `## 지금 카드 (${existing.evidenceUntil ? `${existing.evidenceUntil} 까지의 자료로 쓴 것` : "근거 날짜 모름"})
 제목: ${existing.title}
 ${existing.body}
-${existing.humanEdited ? "\n**이 카드는 사람이 직접 고친 적이 있다. 기존 문장을 지우지 말고, 새로 확정된 것만 보태거나 그 부분만 고쳐라.**" : ""}`
+${existing.humanEdited ? "\n**이 카드는 사람이 직접 고친 적이 있다. 기존 문장을 지우지 말고, 새로 확정된 것만 보태거나 그 부분만 고쳐라.**" : ""}
+
+먼저 판단하세요: 이번 주제가 지금 카드와 **같은 주제**인가? 같은 제품·같은 규칙·같은 절차를 다루면 같은 주제다.
+비슷한 말이 나와도 대상이 다르면(예: 로고 규칙 카드에 메일 표기 규칙) 다른 주제다. 다른 주제면 sameTopic 을 false 로 두고 나머지는 비워도 된다.
+
+같은 주제면:
+- 이번 주제와 관계없는 기존 섹션은 글자 그대로 둔다. 지우지 않는다.
+${older
+  ? `- **이번 근거(${evidenceAt} 까지)는 지금 카드보다 오래됐다.** 지금 카드와 부딪히는 내용은 지금 카드를 따른다. 부딪히지 않는 새 사실만 보탠다.`
+  : `- 이번 근거${evidenceAt ? `(${evidenceAt} 까지)` : ""}가 지금 카드보다 새롭다. 부딪히면 이번 근거를 따르고, 바뀐 것은 「바뀐 결정」 섹션에 "이전: … → 지금: …" 한 줄로 남긴다.`}`
     : "## 지금 카드\n(없다. 새로 만든다)"
 
   const prompt = `당신은 HADD Science 사내 지식 카드를 관리합니다.
@@ -959,8 +975,10 @@ ${evidence.slice(0, 12_000)}
 - 섹션은 2~4개, 각 섹션은 문단이나 짧은 목록으로. 표는 쓰지 마세요.
 - 한국어로, 회사 안에서 읽을 문장으로 씁니다.
 
+- 근거 안에서도 같은 사안에 말이 바뀌었으면 날짜가 늦은 말이 최종이다.
+
 반드시 JSON만:
-{"title": "카드 제목", "sections": [{"type":"text","title":"섹션 제목","body":"본문"}], "reason": "무엇을 왜 바꿨는지 한 줄"}`
+{${existing ? '"sameTopic": true|false, ' : ""}"title": "카드 제목", "sections": [{"type":"text","title":"섹션 제목","body":"본문"}], "reason": "무엇을 왜 바꿨는지 한 줄"}`
 
   try {
     const raw = await callGemini(prompt, "cardDraft", userId, 0.2, {
@@ -969,8 +987,10 @@ ${evidence.slice(0, 12_000)}
     const m = raw.match(/\{[\s\S]*\}/)
     if (!m) return null
     const parsed = JSON.parse(m[0]) as CardDraft
+    if (existing && parsed?.sameTopic === false) return { title: "", reason: "", sections: [], sameTopic: false }
     if (!parsed?.title || !Array.isArray(parsed.sections) || parsed.sections.length === 0) return null
     return {
+      sameTopic: existing ? true : undefined,
       title: parsed.title,
       reason: parsed.reason ?? "",
       sections: parsed.sections
