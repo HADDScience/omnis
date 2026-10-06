@@ -41,6 +41,8 @@ interface ChatPanelProps {
   /** 검색창 — 여는 버튼은 패널 머리(right-panel)에 있다 */
   searchOpen?: boolean
   onSearchOpenChange?: (open: boolean) => void
+  /** 단축키(⌘⇧F)를 누를 때마다 오른다 — 검색칸을 다시 고른다 */
+  searchFocus?: number
 }
 
 export function ChatPanel({
@@ -52,6 +54,7 @@ export function ChatPanel({
   filterTaskId,
   searchOpen = false,
   onSearchOpenChange,
+  searchFocus = 0,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
@@ -482,6 +485,7 @@ export function ChatPanel({
           roomId={roomId}
           taskId={filterTaskId ?? null}
           users={users}
+          focusSignal={searchFocus}
           onClose={() => onSearchOpenChange?.(false)}
           onGo={(id) => void jumpTo(id)}
           onGoDate={(at) => void loadAround({ at })}

@@ -63,7 +63,7 @@ interface Message {
 /** 말풍선 안에서 검색어가 걸린 자리들. 링크 · 칩 경계를 넘는 일치는 잡지 않는다 */
 function findTextRanges(body: HTMLElement, query: string): Range[] {
   const needle = query.trim().toLowerCase()
-  if (needle.length < 2) return []
+  if (!needle) return []
   const ranges: Range[] = []
   const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT)
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -215,7 +215,7 @@ export function MessageList({
     if (!registry || typeof Highlight === "undefined") return
     const root = scrollRef.current
     const needle = searchText.trim().toLowerCase()
-    if (!root || needle.length < 2) return
+    if (!root || !needle) return
     const hits: Range[] = []
     const current: Range[] = []
     root.querySelectorAll<HTMLElement>("[data-message-body]").forEach((body) => {
