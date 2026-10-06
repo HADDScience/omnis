@@ -65,6 +65,23 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
     if (!open || view !== "all") setSearchOpen(false)
   }, [open, view])
 
+  // ⌘⇧F (윈도우는 Ctrl+Shift+F) — 어디서든 패널을 열고 전체 채팅 검색 줄로 간다. 이미 열려 있으면 검색칸을 다시 고른다.
+  // 입력칸 안에서도 받는다 — 글을 쓰다가 바로 찾는 게 단축키의 쓸모다
+  const [searchFocus, setSearchFocus] = useState(0)
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return
+      if (e.code !== "KeyF" && e.key.toLowerCase() !== "f") return
+      e.preventDefault()
+      setOpen(true)
+      setView("all")
+      setSearchOpen(true)
+      setSearchFocus((n) => n + 1)
+    }
+    window.addEventListener("keydown", handleKey)
+    return () => window.removeEventListener("keydown", handleKey)
+  }, [setOpen])
+
   // 업무 화면으로 들어오면 그 업무 스레드로, 떠나면 전체로 되돌린다
   useEffect(() => {
     setView(task ? "task" : "all")
@@ -179,7 +196,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
               className="touch-target"
               aria-label="채팅 검색"
               aria-pressed={searchOpen}
-              title="채팅 검색"
+              title="채팅 검색 (⌘⇧F)"
               onClick={() => setSearchOpen((v) => !v)}
             >
               <HugeiconsIcon icon={Search01Icon} size={15} aria-hidden />
@@ -244,6 +261,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
                   filterTaskId={urlTaskId}
                   searchOpen={searchOpen}
                   onSearchOpenChange={setSearchOpen}
+                  searchFocus={searchFocus}
                   onSlashTaskCommand={(raw) => {
                     setTaskModalRaw(raw)
                     setTaskModalOpen(true)

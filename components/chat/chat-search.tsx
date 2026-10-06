@@ -39,9 +39,12 @@ interface ChatSearchProps {
   onGoDate: (atIso: string) => void
   /** 말풍선 안 표시에 쓸 검색어 — 결과가 돌아온 검색어만 넘긴다 */
   onSearchTextChange: (text: string) => void
+  /** 바뀔 때마다 검색칸을 고르고 글자를 전부 선택한다(⌘⇧F 를 다시 눌렀을 때) */
+  focusSignal?: number
 }
 
-const MIN_QUERY = 2
+// 한 글자도 찾는다 — 「넵」 처럼 짧은 답장을 찾는 일이 많다(2026-10-06 작업지시자)
+const MIN_QUERY = 1
 
 /**
  * 채팅 검색 줄 — 카톡 PC 검색처럼 (2026-10-06, mydocs/plans/archives/2026-10-06-chat-search-inline.md).
@@ -49,7 +52,16 @@ const MIN_QUERY = 2
  * 대화를 덮지 않고 패널 위에 붙는다. 검색하면 가장 최근 결과로 바로 가고,
  * ▲ 는 더 옛 결과 · ▼ 는 더 최근 결과. 결과 id 는 20건씩 필요할 때 더 받는다.
  */
-export function ChatSearch({ roomId, taskId, users, onClose, onGo, onGoDate, onSearchTextChange }: ChatSearchProps) {
+export function ChatSearch({
+  roomId,
+  taskId,
+  users,
+  onClose,
+  onGo,
+  onGoDate,
+  onSearchTextChange,
+  focusSignal = 0,
+}: ChatSearchProps) {
   const [query, setQuery] = useState("")
   const [author, setAuthor] = useState<{ id: string; name: string } | null>(null)
   const [ids, setIds] = useState<string[]>([])
@@ -69,7 +81,8 @@ export function ChatSearch({ roomId, taskId, users, onClose, onGo, onGoDate, onS
 
   useEffect(() => {
     inputRef.current?.focus()
-  }, [])
+    inputRef.current?.select()
+  }, [focusSignal])
 
   const q = query.trim()
   const active = q.length >= MIN_QUERY || !!author

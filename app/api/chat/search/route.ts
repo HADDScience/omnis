@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
   // 보낸 사람으로 찾기 — 검색어 없이도 된다. 함께 주면 둘 다 맞는 글
   const authorId = searchParams.get("authorId")
   if (!roomId) return NextResponse.json({ error: "roomId 필수" }, { status: 400 })
-  if (q.length < 2 && !authorId) return NextResponse.json({ results: [], hasMore: false, total: 0 })
-  const text = q.length >= 2 ? q : null
+  if (!q && !authorId) return NextResponse.json({ results: [], hasMore: false, total: 0 })
+  const text = q || null
 
   const startedAt = Date.now()
   // 시스템 표식은 코드에서 거른다 — Prisma 의 startsWith: "__" 는 LIKE '__%' 가 되어 두 글자 이상인 글을 전부 거른다.
