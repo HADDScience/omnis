@@ -3,6 +3,7 @@ import { basename } from "path"
 import {
   ROOMS, mergeRawMessages, parseKakaoCsv, saveSessions, sessionize, type RawRow, type RawSession,
 } from "../kakao-common"
+import { EXCLUDE_FILE, dropExcluded, loadExclude } from "../redaction"
 
 export interface IngestResult { sessions: RawSession[]; added: number; rooms: Map<string, number> }
 
@@ -19,7 +20,8 @@ export function ingest(csvPaths: string[]): IngestResult {
     console.log(`  ${room}: ${n}건${mark}`)
   }
   const { all, added } = mergeRawMessages(incoming)
-  const sessions = sessionize(all)
+  const { sessions, dropped } = dropExcluded(sessionize(all), loadExclude())
+  if (dropped > 0) console.log(`  제외 목록(${EXCLUDE_FILE})의 ${dropped}줄은 넣지 않는다`)
   saveSessions(sessions)
   const target = sessions.filter((s) => ROOMS[s.room])
   console.log(`  마스터 ${all.length}건 (새로 ${added}건) → 세션 ${sessions.length}개 · 이식 대상 ${target.length}개`)
