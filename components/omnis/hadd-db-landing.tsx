@@ -275,7 +275,7 @@ export function HaddDbLanding({
           />
         </Link>
 
-        {/* AI 카드 제안 진입 — 업무에서 뽑은 지식을 사람이 확인한다 */}
+        {/* AI 제안 진입 — 업무·채팅에서 뽑은 지식 카드 · 연혁 후보를 사람이 확인한다 */}
         <Link
           href="/omnis/proposals"
           className="mt-3.5 flex items-center gap-3 rounded-lg border bg-card px-5 py-3.5 transition-colors hover:border-border-strong hover:bg-muted/40"
@@ -284,9 +284,9 @@ export function HaddDbLanding({
             <HugeiconsIcon icon={SparklesIcon} size={19} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-semibold">AI 카드 제안</div>
+            <div className="text-[13.5px] font-semibold">AI 제안</div>
             <div className="truncate text-[11.5px] text-muted-foreground">
-              업무가 끝나면 AI 가 찾아낸 회사 지식을 확인하고 카드에 반영해요
+              AI 가 업무·채팅에서 찾은 지식 카드와 연혁 후보를 확인해요
             </div>
           </div>
           <HugeiconsIcon icon={ArrowRight02Icon} size={16} className="shrink-0 text-muted-foreground" aria-hidden />

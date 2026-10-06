@@ -9,6 +9,16 @@ import { loadNeighborhood, searchContext, NODE_TYPE_LABEL, type ContextNode } fr
 import { CompanyRecordSchema } from "@/lib/schemas/company"
 import { recordData, recordDedupeKey } from "@/lib/company-edit"
 import { writeActivity } from "@/lib/api"
+import {
+  AUTO_MIN_DECIDED,
+  AUTO_MIN_RATE,
+  AUTO_STREAK,
+  acceptRecordProposal,
+  loadTypeStats,
+  rejectRecordProposal,
+  revertRecordProposal,
+  type ProposalEdits,
+} from "@/lib/record-proposals"
 import type { Prisma, RecordKind } from "@/generated/prisma/client"
 
 const money = (v: bigint | number | null | undefined) => (v === null || v === undefined ? "—" : `${Number(v).toLocaleString("ko-KR")}원`)
@@ -342,4 +352,63 @@ export async function deleteCompanyRecordText(
     metadata: { via: "mcp", startsOn: row.startsOn?.toISOString().slice(0, 10) ?? null },
   })
   return { text: `지웠습니다 — [${RECORD_KIND_LABEL[row.kind]}] ${row.title} · ${row.periodRaw ?? "기간 없음"}` }
+}
+
+// ─── 연혁 제안 (2026-10-06) ──────────────────────────────
+
+const GRADE_LABEL = { MAJOR: "주요", GENERAL: "일반" } as const
+
+/** 연혁 후보 목록 — 근거 인용을 함께 줘야 대화창에서 바로 판단할 수 있다 */
+export async function recordProposalsText(status: "PENDING" | "decided"): Promise<string> {
+  const [rows, stats] = await Promise.all([
+    prisma.recordProposal.findMany({
+      where: status === "decided" ? { status: { in: ["ACCEPTED", "REJECTED", "AUTO_APPLIED"] } } : { status: "PENDING" },
+      orderBy: status === "decided" ? { decidedAt: "desc" } : [{ occurredOn: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
+      take: 40,
+    }),
+    loadTypeStats(),
+  ])
+  const lines = rows.map((p) => {
+    const refs = (p.sourceRefs as { kind: string; label: string; quote?: string }[]).filter((r) => r.kind === "message").slice(0, 2)
+    return [
+      `- ${p.occurredOn?.toISOString().slice(0, 10) ?? p.periodRaw ?? "날짜 모름"} [${RECORD_KIND_LABEL[p.kind]} · ${GRADE_LABEL[p.grade]}]${p.confidential ? " ⚠대외비" : ""} ${p.title}`,
+      `  확신 ${Math.round(p.confidence * 100)}% · ${p.reason}${status === "decided" ? ` · ${p.status}${p.edited ? "(수정)" : ""}${p.revertedAt ? "(되돌림)" : ""}` : ""} · id ${p.id}`,
+      ...refs.map((r) => `  > ${r.label}: ${(r.quote ?? "").replace(/\s+/g, " ").slice(0, 120)}`),
+    ].join("\n")
+  })
+  const statLines = stats.map(
+    (s) => `- ${RECORD_KIND_LABEL[s.kind]} · ${GRADE_LABEL[s.grade]}: 판단 ${s.decided} · 원안 채택 ${s.matched}${s.rate === null ? "" : ` (${Math.round(s.rate * 100)}%)`} · 연속 ${s.streak}${s.auto ? " → 자동 등록 중" : ""}`
+  )
+  return [
+    rows.length ? `${status === "decided" ? "처리한" : "확인 대기"} 연혁 후보 ${rows.length}건:\n${lines.join("\n")}` : status === "decided" ? "처리한 연혁 후보가 없습니다." : "확인 대기 중인 연혁 후보가 없습니다.",
+    statLines.length ? `\n정확도 (자동 등록 기준: 일반 등급 · ${AUTO_MIN_DECIDED}건 이상 · ${Math.round(AUTO_MIN_RATE * 100)}% 이상 · 최근 ${AUTO_STREAK}건 연속):\n${statLines.join("\n")}` : "",
+  ].join("\n")
+}
+
+export async function decideRecordProposalText(
+  args: Record<string, unknown>,
+  caller: { userId: string }
+): Promise<{ text: string } | { error: string }> {
+  const id = typeof args.proposal === "string" ? args.proposal.trim() : ""
+  if (!id) return { error: "proposal 이 필요합니다 — list_record_proposals 의 id" }
+  const action = args.action
+  if (action === "reject") {
+    const r = await rejectRecordProposal(id, caller.userId)
+    return "error" in r ? r : { text: "제외했습니다." }
+  }
+  if (action === "revert") {
+    const r = await revertRecordProposal(id, caller.userId)
+    return "error" in r ? r : { text: "되돌렸습니다 — 만든 연혁을 지웠습니다." }
+  }
+  if (action !== "accept") return { error: "action 은 accept · reject · revert 중 하나입니다" }
+  const edits: ProposalEdits = {}
+  if (typeof args.title === "string") edits.title = args.title
+  if (typeof args.occurred_on === "string") edits.occurredOn = args.occurred_on
+  if (typeof args.kind === "string") edits.kind = args.kind as ProposalEdits["kind"]
+  if (args.grade === "MAJOR" || args.grade === "GENERAL") edits.grade = args.grade
+  if (typeof args.confidential === "boolean") edits.confidential = args.confidential
+  if (typeof args.organizer === "string") edits.organizer = args.organizer
+  const r = await acceptRecordProposal(id, { userId: caller.userId, edits })
+  if ("error" in r) return r
+  return { text: `채택했습니다 — 연혁 id ${r.recordId}${Object.keys(edits).length ? " (고쳐서 채택)" : ""}` }
 }

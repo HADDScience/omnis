@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/flush-visits",
       "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/record-proposals",
+      "schedule": "10 19 * * *"
     }
   ]
 }
