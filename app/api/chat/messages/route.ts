@@ -62,13 +62,30 @@ export async function GET(req: NextRequest) {
   const before = searchParams.get("before")
   const taskId = searchParams.get("taskId")
   const around = searchParams.get("around")
+  // 날짜로 가기 — 그 시각 이후 첫 글(없으면 마지막 글) 주변
+  const at = searchParams.get("at")
   const takeParam = Number(searchParams.get("take"))
 
-  if (around) {
-    const target = await prisma.chatMessage.findFirst({
-      where: { id: around, roomId, ...(taskId ? { taskId } : {}) },
-      include: MESSAGE_INCLUDE,
-    })
+  if (around || at) {
+    const scope = { roomId, ...(taskId ? { taskId } : {}) }
+    let target: MessageRow | null = null
+    if (around) {
+      target = await prisma.chatMessage.findFirst({ where: { id: around, ...scope }, include: MESSAGE_INCLUDE })
+    } else {
+      const when = new Date(at!)
+      if (Number.isNaN(when.getTime())) return NextResponse.json({ error: "at 이 날짜가 아닙니다" }, { status: 400 })
+      target =
+        (await prisma.chatMessage.findFirst({
+          where: { ...scope, createdAt: { gte: when } },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          include: MESSAGE_INCLUDE,
+        })) ??
+        (await prisma.chatMessage.findFirst({
+          where: scope,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          include: MESSAGE_INCLUDE,
+        }))
+    }
     if (!target) return NextResponse.json({ error: "메시지를 찾을 수 없습니다" }, { status: 404 })
     // 카톡 이식분은 초 단위라 같은 시각이 흔하다 — 시각이 같으면 id 로 앞뒤를 가른다
     const base = { roomId, ...(taskId ? { taskId } : {}) }
@@ -88,6 +105,7 @@ export async function GET(req: NextRequest) {
       }),
     ])
     return NextResponse.json({
+      targetId: target.id,
       messages: [...older.reverse(), target, ...newer].map(shape),
       hasMoreOlder: older.length === AROUND_SIZE,
       hasMoreNewer: newer.length === AROUND_SIZE,
