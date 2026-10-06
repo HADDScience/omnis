@@ -166,6 +166,8 @@ async function buildChatMessageChunks(
     include: { author: { select: { name: true } }, task: { select: { name: true } } },
   })
   if (!msg) return null
+  // 지운 글은 본문이 남아 있어도 색인하지 않는다 — 백필이 다시 실으면 지운 말이 검색에 되살아난다.
+  if (msg.deletedAt) return null
 
   const text = msg.content.trim()
   // 시스템 메시지·플레이스홀더·짧은 잡담 제외
