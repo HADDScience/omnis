@@ -11,7 +11,8 @@ export const prisma = new PrismaClient()
 export const DATA_DIR = process.env.KAKAO_DATA_DIR ?? `${process.env.HOME}/work/omnis-import`
 
 export interface RawMessage { t: string; u: string; m: string }
-export interface RawRow extends RawMessage { room: string }
+/** src 가 "mobile" 이면 휴대폰 「대화 내보내기」 txt 에서 온 줄이다 — 시각이 분 단위라 초는 :00 이다. */
+export interface RawRow extends RawMessage { room: string; src?: "mobile" }
 export interface RawSession { id: string; room: string; start: string; end: string; n: number; msgs: RawMessage[] }
 export interface Classified {
   id: string; label: string; topic: string; project: string | null
@@ -101,6 +102,48 @@ export function parseKakaoCsv(path: string): RawRow[] {
 
 export const rowKey = (r: RawRow) => `${r.room}|${r.t}|${r.u}|${r.m}`
 
+/** 휴대폰 txt 와 PC CSV 를 견줄 때의 키 — 휴대폰은 분 단위라 초를 버리고, 줄바꿈·공백 차이를 접는다. */
+export const minuteKey = (r: RawRow) => `${r.room}|${r.t.slice(0, 16)}|${r.u}|${r.m.replace(/\s+/g, " ").trim()}`
+
+// ─── 휴대폰 「대화 내보내기」 txt ───────────────────────────
+//
+// PC CSV 는 PC 앱이 동기화하지 못한 기록을 빠뜨린다(수원대 기준 71건 — 2026-08-28 하루치 등, 2026-10-06 실측).
+// 휴대폰 txt 는 빠짐이 없지만 시각이 분 단위이고 자리표시가 한국어다. CSV 의 말로 바꿔 둔다
+// (같은 사람·같은 분의 줄을 맞대어 본 실측: 사진 ⇄ Photo 803 · 사진 N장 ⇄ N photos 156 · 이모티콘 ⇄ Emoticon 22 · 동영상 ⇄ Video 20).
+
+const MOBILE_HEAD = /^(\d{4})\. (\d{1,2})\. (\d{1,2})\. (\d{1,2}):(\d{2}), (.+?) : ([\s\S]*)$/
+const MOBILE_SYSTEM = /^\d{4}\. \d{1,2}\. \d{1,2}\. \d{1,2}:\d{2}: /
+const MOBILE_DAY = /^\d{4}년 \d{1,2}월 \d{1,2}일 .요일$/
+
+function mobileToCsvWords(m: string): string {
+  const deleted = m.match(/^([\s\S]*?)\s*메시지가 삭제되었습니다\.?$/)
+  if (deleted) return `${mobileToCsvWords(deleted[1])} The message has been deleted.`.trim()
+  if (m === "사진") return "Photo"
+  const n = m.match(/^사진 (\d+)장$/)
+  if (n) return `${n[1]} photos`
+  if (m === "동영상") return "Video"
+  if (m.trim() === "이모티콘") return "Emoticon"
+  if (m.startsWith("파일: ")) return `File: ${m.slice(4)}`
+  return m
+}
+
+/** 휴대폰 txt 한 파일을 메시지 배열로. 방 이름은 파일에 없어 받아야 한다. 시스템 알림(초대·퇴장)은 넣지 않는다. */
+export function parseKakaoMobileTxt(path: string, room: string): RawRow[] {
+  const text = readFileSync(path, "utf8").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n")
+  const out: RawRow[] = []
+  let open = false
+  for (const line of text.split("\n").slice(1)) {
+    const h = line.match(MOBILE_HEAD)
+    if (h) {
+      const t = `${h[1]}-${h[2].padStart(2, "0")}-${h[3].padStart(2, "0")} ${h[4].padStart(2, "0")}:${h[5]}:00`
+      out.push({ room, t, u: h[6], m: h[7], src: "mobile" })
+      open = true
+    } else if (MOBILE_SYSTEM.test(line) || MOBILE_DAY.test(line) || line.startsWith("저장한 날짜")) open = false
+    else if (open) out[out.length - 1].m += "\n" + line
+  }
+  return out.map((r) => ({ ...r, m: mobileToCsvWords(r.m.replace(/\n+$/, "")) }))
+}
+
 /** 원본 메시지 마스터. 지금까지 받은 모든 CSV 의 합집합이다. */
 const RAW_PATH = `${DATA_DIR}/raw/messages.json`
 
@@ -112,19 +155,84 @@ export function loadRawMessages(): RawRow[] {
   return rows
 }
 
-/** 새 CSV 를 마스터에 합친다. 이미 있는 메시지는 건너뛴다. */
-export function mergeRawMessages(incoming: RawRow[]): { all: RawRow[]; added: number } {
+/** 견주기 전에 지우는 것 — 삭제 표시, 멘션(휴대폰은 프로필 이름 · PC 는 방 이름이라 다르게 찍힌다), 공백. */
+function forCompare(m: string): string {
+  return m
+    .replace(/\s*(The message has been deleted\.|메시지가 삭제되었습니다\.?)\s*$/, "")
+    .replace(/@\S+(?: \([^)]*\))?/g, "")
+    .replace(/\s+/g, "")
+}
+function bigrams(s: string): Map<string, number> {
+  const out = new Map<string, number>()
+  for (let i = 0; i < s.length - 1; i++) { const b = s.slice(i, i + 2); out.set(b, (out.get(b) ?? 0) + 1) }
+  return out
+}
+
+/**
+ * 휴대폰 줄과 PC 줄이 같은 메시지인가 — 같은 사람 · ±1분 안이라는 전제에서 본문만 본다.
+ * 같은 메시지인데 글자가 다른 경우(2026-10-06 실측): 멘션 표기, 한쪽에만 붙은 삭제 표시, 나중에 고친 글.
+ * 삭제 표시·멘션·공백을 걷어낸 뒤 같거나, 8자 이상이 한쪽에 통째로 들어 있거나, 글자쌍 겹침(Dice)이 0.6 이상이면 같다.
+ * `Photo` 와 글처럼 전혀 다른 것은 같지 않다 — PC 가 빠뜨린 사진 옆 글은 그대로 들어온다.
+ */
+const PLACEHOLDER = /^(Photo|\d+ photos|Video|Emoticon|File: [\s\S]*)$/
+
+export function sameMessage(a: string, b: string): boolean {
+  const x = forCompare(a), y = forCompare(b)
+  if (x === y) return true
+  // 자리표시는 글자가 짧고 서로 닮아(Photo ⇄ 3 photos 의 Dice 가 0.6) 비슷함으로 견주면 연달아 보낸 사진이 하나로 합쳐진다.
+  if (PLACEHOLDER.test(a.trim()) || PLACEHOLDER.test(b.trim())) return false
+  if (x.length >= 8 && y.length >= 8 && (x.includes(y) || y.includes(x))) return true
+  if (x.length < 4 || y.length < 4) return false
+  const A = bigrams(x), B = bigrams(y)
+  let common = 0
+  for (const [k, n] of A) common += Math.min(n, B.get(k) ?? 0)
+  return (2 * common) / (x.length - 1 + y.length - 1) >= 0.6
+}
+
+/**
+ * 새 CSV · 휴대폰 txt 를 마스터에 합친다. 이미 있는 메시지는 건너뛴다.
+ *
+ * 휴대폰 줄은 분 단위라 키(rowKey)가 PC 줄과 다르다. 그래서 같은 방·분·사람·본문(minuteKey)의 개수로 먼저 견주고,
+ * 남은 것은 같은 사람 · ±1분 안에서 sameMessage 로 한 번 더 견준다. 한 줄은 한 번만 짝으로 쓴다.
+ *   - 휴대폰 줄: 마스터에 짝이 있으면 넣지 않는다 → PC 에 빠진 줄만 들어간다
+ *   - PC 줄: 마스터의 휴대폰 줄 중 짝이 남아 있으면 그 줄로 보고 넣지 않는다
+ *     → 휴대폰으로 먼저 채운 줄이 나중 PC CSV 에 초까지 붙어 와도 두 번 들어가지 않는다
+ */
+export function mergeRawMessages(incoming: RawRow[]): { all: RawRow[]; added: number; sameAsMobile: number } {
   const all = loadRawMessages()
   const seen = new Set(all.map(rowKey))
-  let added = 0
+  // 같은 방·사람의 줄을 minuteKey 와 분 단위로 묶어 둔다. used 는 이미 짝으로 쓴 마스터 줄 — 한 줄은 한 번만 짝이 된다.
+  const byMinute = new Map<string, RawRow[]>()
+  const bucket = new Map<string, RawRow[]>()
+  const bucketKey = (r: RawRow, shiftMin = 0) => {
+    const t = new Date(`${r.t.slice(0, 16).replace(" ", "T")}:00+09:00`).getTime() + shiftMin * 60000
+    return `${r.room}|${r.u}|${t}`
+  }
+  for (const r of all) {
+    const mk = minuteKey(r); byMinute.set(mk, [...(byMinute.get(mk) ?? []), r])
+    const bk = bucketKey(r); bucket.set(bk, [...(bucket.get(bk) ?? []), r])
+  }
+  const used = new Set<RawRow>()
+  const claim = (r: RawRow, want: (x: RawRow) => boolean) => {
+    const exact = (byMinute.get(minuteKey(r)) ?? []).find((x) => !used.has(x) && want(x))
+    if (exact) { used.add(exact); return true }
+    for (const d of [0, -1, 1]) for (const x of bucket.get(bucketKey(r, d)) ?? []) {
+      if (!used.has(x) && want(x) && sameMessage(r.m, x.m)) { used.add(x); return true }
+    }
+    return false
+  }
+  let added = 0, sameAsMobile = 0
   for (const r of incoming) {
     const k = rowKey(r)
     if (seen.has(k)) continue
+    if (r.src === "mobile") {
+      if (claim(r, () => true)) continue
+    } else if (claim(r, (x) => x.src === "mobile")) { sameAsMobile++; continue }
     seen.add(k); all.push(r); added++
   }
   all.sort((a, b) => (a.room === b.room ? a.t.localeCompare(b.t) : a.room.localeCompare(b.room)))
   writeJson(RAW_PATH, all)
-  return { all, added }
+  return { all, added, sameAsMobile }
 }
 
 /** 한 시간 넘게 조용하면 세션이 끊긴 것으로 본다 (처음 분석 때 정한 기준). */
