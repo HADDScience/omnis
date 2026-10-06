@@ -14,6 +14,7 @@ npx tsx bench/ledger.ts                                       # 전 run 합계
 npx tsx bench/retrieval-eval.ts --questions <파일> --retrievers R0-hybrid,R1a-trgm,R1b-bm25,R2-query,R3-rerank   # WeKnora 이식 검색기
 npx tsx bench/run.ts --models gemini-3.8-flash@low --methods wk-r3 --limit 1  # 이식 검색기 + 단발 생성
 npx tsx bench/run.ts --models gemini-3.8-flash@low --methods wk-agent,native --ids v4-mh-01,v4-un-01  # ReAct 에이전트 vs 현행, 문항 id 로 고르기
+npx tsx bench/run.ts --models gemini-3.8-flash@low --methods weknora-rag,weknora-agent --ids v4-mh-01  # 실물 WeKnora (wk-real/README.md 로 먼저 띄운다)
 ```
 
 | 파일 | 역할 |
@@ -32,6 +33,7 @@ npx tsx bench/run.ts --models gemini-3.8-flash@low --methods wk-agent,native --i
 | `wk/keyword.ts` · `wk/llm.ts` | 키워드 점수(pg_trgm · BM25 근사) · 검색 단계 flash-lite 호출(재작성 · 리랭크) |
 | `wk/setup.sql` | **로컬 실험 DB 전용** trigram GIN 인덱스. Prisma 마이그레이션이 아니다. 운영에 돌리지 않는다 |
 | `agent/` | WeKnora 식 ReAct 에이전트 `wk-agent` — `loop.ts`(최대 20회 · 결과 6천 자 자르기 · 6만 토큰 넘으면 오래된 결과 한 줄 압축) · `tools.ts`(search_knowledge=R2 · grep_chunks · read_document · list_documents · todo_write + Omnis 읽기 도구 허용 목록) · `prompt.ts` · `stats.ts`(반복·도구·재검색·한도 — native·route 도 같은 식). `WK_AGENT_MAX_ITER` · `WK_AGENT_SEARCH=r1a\|r2\|r3` 로 덮는다 |
+| `wk-real/` | **실물 WeKnora**(로컬 Docker v0.8.2) 대조 — `setup.ts`(계정·모델·KB·API 키) · `export.ts`(omnis_wklab → Markdown 말뭉치, Omnis 색인과 같은 범위) · `ingest.ts`(적재·폴링·ledger `wk-real-ingest`) · `bench.ts`(방법 `weknora-rag`·`weknora-agent`, 검색기 `WK-real`·`WK-real-chunk`). 띄우기·지우기 절차는 [`wk-real/README.md`](wk-real/README.md) |
 | `ledger.ts` | `results/ledger.jsonl` 비용 장부 (run · 검색 평가 원가 누적). `npx tsx bench/ledger.ts` 로 합계 |
 
 키: `.env` 의 `GEMINI_API_KEY`(있음). Anthropic 은 `ANTHROPIC_API_KEY`, OpenAI 호환은

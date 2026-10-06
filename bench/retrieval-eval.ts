@@ -17,6 +17,7 @@ import { loadQuestions, DEFAULT_TYPE, type GoldRef } from "./questions"
 import { appendLedger } from "./ledger"
 import { now } from "./providers"
 import { wkRetrieve, type WkLevel } from "./wk/search"
+import { wkSearch, resultSources } from "./wk-real/bench"
 
 export interface Hit { source: string; sourceId: string; score?: number }
 /** 검색 단계에 LLM 을 쓰는 검색기(R2~)는 원가와 단계별 ms 를 함께 돌려준다 */
@@ -44,6 +45,24 @@ export const retrievers: Record<string, Retriever> = {
   "R2-query": wk("r2"),
   "R3-rerank": wk("r3"),
   "R4-parent": wk("r4"),
+  // 실물 WeKnora (로컬 Docker v0.8.2, bench/wk-real/). POST /knowledge-search 상위 FETCH 청크 → 문서 메타로 (source, sourceId)
+  "WK-real": wkReal("doc"),
+  "WK-real-chunk": wkReal("chunk"),
+}
+
+/**
+ * 실물 WeKnora 검색기. 질문 임베딩은 WeKnora 안에서 만들어져 위의 fetch 캐시·토큰 집계에 안 잡힌다 —
+ * 원가는 질문 글자 수/4 × 임베딩 단가로 추정해 costUsd 로 돌려준다 — 요약표의 "LLM 원/문항" 칸에 들어가지만 LLM 이 아니라 WeKnora 쪽 질문 임베딩 추정이다.
+ */
+function wkReal(mode: "doc" | "chunk"): Retriever {
+  return async (q) => {
+    const r = await wkSearch(q, FETCH)
+    // stageMs 는 넣지 않는다 — 단계별 표는 이식 검색기(wk/)의 단계 이름이라 WeKnora 내부 단계와 맞지 않는다
+    return {
+      hits: r.results.flatMap((x) => resultSources(x, mode).map((s) => ({ ...s, score: x.score }))),
+      costUsd: (Math.ceil(q.length / 4) * EMBEDDING_PRICE_USD_PER_M) / 1_000_000,
+    }
+  }
 }
 
 function wk(level: WkLevel): Retriever {
@@ -55,6 +74,8 @@ function wk(level: WkLevel): Retriever {
 
 /** summary 에 검색기 이름과 함께 적을 말 */
 const RETRIEVER_NOTES: Record<string, string> = {
+  "WK-real": "실물 WeKnora knowledge-search 상위 10 청크. 한 문서가 여러 소스를 담으면(업무 스레드 = TASK + 그 업무의 CHAT_MESSAGE, 채팅 묶음 = 방·날짜의 CHAT_MESSAGE) 문서의 대표 소스와 포함 소스 전부를 그 청크 순위에 차례로 펼친다(문서 단위). 펼친 뒤 중복을 합쳐 앞 10 소스로 잰다 — 메시지가 많은 문서 하나가 순위 칸을 여럿 차지한다. 요약 청크도 같은 문서로 본다. rerank 모델 없음 — 융합(RRF) 순서 그대로.",
+  "WK-real-chunk": "WK-real 과 같은 검색 결과를 청크 단위로 펼친다 — 청크 본문에 줄 앞머리가 보이는 메시지만 + 문서 대표 소스. 요약 청크는 문서 단위처럼 펼친다. 같은 호출을 한 번 더 한다(원가는 임베딩뿐).",
   "R4-parent": "순위는 R3 와 같음 — 부모 확장은 본문만 늘리므로 생성 방법(wk-r4)에서만 의미가 있다. ms 차이가 확장 비용이다",
 }
 

@@ -8,6 +8,7 @@
 //   native    프로덕션 askOmnisRoute 그대로 — Gemini 네이티브 함수 호출 + 하이브리드 검색 (Gemini 모델만)
 //   wk-r1a…r4 WeKnora 검색 기법 이식(bench/wk/search.ts) top-8 + hybrid 와 같은 단발 생성
 //   wk-agent  WeKnora 식 ReAct 에이전트 — 최대 20회, search_knowledge(R2)·grep_chunks·read_document·list_documents·todo_write (bench/agent/)
+//   weknora-rag · weknora-agent  실물 WeKnora(로컬 Docker v0.8.2)의 빠른 답변 · 스마트 추론을 API 로 (bench/wk-real/bench.ts)
 //
 // 결과에는 답변·사용량·단계별 시간·호출 수·(route 면) 도구 호출 자취가 남는다.
 import { buildOmnisAnswerPrompt } from "@/lib/ai"
@@ -20,6 +21,7 @@ import { wkRetrieve, type WkLevel } from "./wk/search"
 import { routeSystemPrompt, parseRouteReply, runBenchTool } from "./tools"
 import { runWkAgent } from "./agent/loop"
 import { agentStats, type AgentStats } from "./agent/stats"
+import { runWeknora } from "./wk-real/bench"
 
 export interface Timings {
   /** 임베딩 호출 + pgvector (검색 방법론만) */
@@ -262,5 +264,7 @@ export async function runMethod(name: MethodName, model: ModelSpec, question: st
     case "wk-r3": return wk("r3", model, question, onStep)
     case "wk-r4": return wk("r4", model, question, onStep)
     case "wk-agent": return wkAgent(model, question, caller, onStep)
+    case "weknora-rag": return runWeknora("rag", model, question, onStep)
+    case "weknora-agent": return runWeknora("agent", model, question, onStep)
   }
 }
