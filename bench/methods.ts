@@ -61,6 +61,9 @@ const AGENT_EVIDENCE_MAX = 12_000
 
 const today = () => new Date().toISOString().slice(0, 10)
 
+/** 도구·검색 단계를 시작할 때 알린다 — A/B 화면(/lab/ab)의 진행 표시용. 벤치 결과에는 영향이 없다 */
+export type OnStep = (tool: string, args: Record<string, unknown>) => void
+
 async function answerFrom(model: ModelSpec, question: string, refs: RefChunk[], overview: string | undefined, t: { retrieval: number; context: number }, t0: number): Promise<MethodResult> {
   if (refs.length === 0 && !overview) {
     // 프로덕션은 이 경우 모델을 부르지 않는다 (answerWithOmnis 첫 줄).
@@ -104,8 +107,10 @@ async function hybrid(model: ModelSpec, question: string): Promise<MethodResult>
 }
 
 /** WeKnora 이식 검색기 top-8 → hybrid 와 같은 프롬프트(answerFrom)로 단발 생성 */
-async function wk(level: WkLevel, model: ModelSpec, question: string): Promise<MethodResult> {
+async function wk(level: WkLevel, model: ModelSpec, question: string, onStep?: OnStep): Promise<MethodResult> {
   const t0 = now()
+  // 인자는 비운다 — 질문을 그대로 보이면 단발 검색 팔이라는 게 A/B 화면에서 드러난다
+  onStep?.(`wk-${level}`, {})
   const search = await wkRetrieve(level, question, 8)
   const s = search.stats
   const retrievalMs = now() - t0
@@ -202,10 +207,10 @@ async function replayEvidence(trace: { tool: string; args: Record<string, unknow
   return parts.join("\n\n").slice(0, AGENT_EVIDENCE_MAX)
 }
 
-async function native(model: ModelSpec, question: string, caller: Caller): Promise<MethodResult> {
+async function native(model: ModelSpec, question: string, caller: Caller, onStep?: OnStep): Promise<MethodResult> {
   if (model.provider !== "gemini" || model.id.startsWith("gemma")) throw new Error(`native 는 Gemini 함수 호출 모델만 (${model.key})`)
   const t0 = now()
-  const r = await askOmnisRoute(question, caller.userId, { model: model.id, thinking: model.thinking ?? (model.id.startsWith("gemini-2.5") ? { budget: 0 } : { level: "low" }), dryRun: true })
+  const r = await askOmnisRoute(question, caller.userId, { model: model.id, thinking: model.thinking ?? (model.id.startsWith("gemini-2.5") ? { budget: 0 } : { level: "low" }), dryRun: true, onTool: onStep })
   const m = r.meta
   return {
     answer: r.answer,
@@ -223,9 +228,9 @@ async function native(model: ModelSpec, question: string, caller: Caller): Promi
   }
 }
 
-async function wkAgent(model: ModelSpec, question: string, caller: Caller): Promise<MethodResult> {
+async function wkAgent(model: ModelSpec, question: string, caller: Caller, onStep?: OnStep): Promise<MethodResult> {
   const t0 = now()
-  const r = await runWkAgent(model, question, caller)
+  const r = await runWkAgent(model, question, caller, onStep)
   return {
     answer: r.answer,
     usage: r.usage,
@@ -243,19 +248,19 @@ async function wkAgent(model: ModelSpec, question: string, caller: Caller): Prom
   }
 }
 
-export async function runMethod(name: MethodName, model: ModelSpec, question: string, caller: Caller): Promise<MethodResult> {
+export async function runMethod(name: MethodName, model: ModelSpec, question: string, caller: Caller, onStep?: OnStep): Promise<MethodResult> {
   switch (name) {
-    case "native": return native(model, question, caller)
+    case "native": return native(model, question, caller, onStep)
     case "baseline": return baseline(model, question)
     case "vector": return vector(model, question)
     case "hybrid": return hybrid(model, question)
     case "stuff": return stuff(model, question)
     case "route": return route(model, question, caller)
-    case "wk-r1a": return wk("r1a", model, question)
-    case "wk-r1b": return wk("r1b", model, question)
-    case "wk-r2": return wk("r2", model, question)
-    case "wk-r3": return wk("r3", model, question)
-    case "wk-r4": return wk("r4", model, question)
-    case "wk-agent": return wkAgent(model, question, caller)
+    case "wk-r1a": return wk("r1a", model, question, onStep)
+    case "wk-r1b": return wk("r1b", model, question, onStep)
+    case "wk-r2": return wk("r2", model, question, onStep)
+    case "wk-r3": return wk("r3", model, question, onStep)
+    case "wk-r4": return wk("r4", model, question, onStep)
+    case "wk-agent": return wkAgent(model, question, caller, onStep)
   }
 }

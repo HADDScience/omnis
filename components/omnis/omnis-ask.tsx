@@ -488,6 +488,20 @@ function SkeletonAnswer({ caption }: { caption?: string }) {
   )
 }
 
+/** 옴니스 답변 본문만 — 출처 없이 같은 규칙(줄바꿈 · 각주 · 표)으로 그린다. 실험 화면(/lab/ab)이 쓴다 */
+export function OmnisMarkdown({ text }: { text: string }) {
+  const components = useMemo(() => buildMarkdownComponents([]), [])
+  return (
+    <TooltipProvider delay={150}>
+      <div className="omnis-md">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+          {keepLineBreaks(text)}
+        </ReactMarkdown>
+      </div>
+    </TooltipProvider>
+  )
+}
+
 function AnswerBlock({ qa }: { qa: QA }) {
   const time = relativeTime(qa.createdAt)
   const components = useMemo(

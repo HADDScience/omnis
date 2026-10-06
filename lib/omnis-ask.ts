@@ -259,6 +259,8 @@ export interface RouteOptions {
   thinking?: { budget?: number; level?: "minimal" | "low" | "medium" | "high" }
   /** 기록(OmnisQuery·활동) 없이 답만 — 벤치용 */
   dryRun?: boolean
+  /** 도구를 부르기 직전에 알린다 — 실험 화면(/lab/ab)의 진행 단계 표시용. 답에는 영향이 없다 */
+  onTool?: (name: string, args: Record<string, unknown>) => void
 }
 
 /** 질문 한 번 — 검색·생성·기록까지. 실패는 그대로 던진다(호출자가 응답 형식을 정한다). */
@@ -331,6 +333,7 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
 
   const found = new Map<string, RetrievedChunk>()
   const runOne = async (call: { name: string; args: Record<string, unknown> }): Promise<string> => {
+    opts.onTool?.(call.name, call.args)
     if (call.name === "search_knowledge") {
       const q = typeof call.args.query === "string" ? call.args.query : question
       const sources = Array.isArray(call.args.sources)

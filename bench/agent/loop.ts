@@ -114,7 +114,8 @@ function compact(contents: Content[]): boolean {
   return changed
 }
 
-export async function runWkAgent(model: ModelSpec, question: string, caller: Caller): Promise<AgentRun> {
+/** onTool: 도구를 부르기 직전에 알린다 (A/B 화면의 진행 단계 표시용) */
+export async function runWkAgent(model: ModelSpec, question: string, caller: Caller, onTool?: (name: string, args: Record<string, unknown>) => void): Promise<AgentRun> {
   if (model.provider !== "gemini" || model.id.startsWith("gemma")) throw new Error(`wk-agent 는 Gemini 함수 호출 모델만 (${model.key})`)
   const system = agentSystemPrompt(new Date().toISOString().slice(0, 10), caller.name, MAX_ITER)
   const ctx: ToolContext = { caller, cite: new Map(), seen: new Set(), extraCostUsd: 0 }
@@ -159,6 +160,7 @@ export async function runWkAgent(model: ModelSpec, question: string, caller: Cal
       r.fcalls.map(async (p) => {
         const name = p.functionCall!.name
         const args = p.functionCall!.args ?? {}
+        onTool?.(name, args)
         const t0 = now()
         let text: string
         try {
