@@ -16,9 +16,12 @@ import { EMBEDDING_PRICE_USD_PER_M, KRW_PER_USD, usdToKrw } from "./config"
 import { loadQuestions, DEFAULT_TYPE, type GoldRef } from "./questions"
 import { appendLedger } from "./ledger"
 import { now } from "./providers"
+import { wkRetrieve, type WkLevel } from "./wk/search"
 
 export interface Hit { source: string; sourceId: string; score?: number }
-export type Retriever = (q: string) => Promise<Hit[]>
+/** 검색 단계에 LLM 을 쓰는 검색기(R2~)는 원가와 단계별 ms 를 함께 돌려준다 */
+export interface RetrieverOutput { hits: Hit[]; costUsd?: number; stageMs?: Record<string, number> }
+export type Retriever = (q: string) => Promise<Hit[] | RetrieverOutput>
 
 /** 한 번에 가져오는 청크 수. NDCG@10 을 재려면 10 개가 필요하다 (프로덕션 top-8 은 이 중 앞 8 개와 같다) */
 const FETCH = 10
@@ -35,6 +38,24 @@ export const retrievers: Record<string, Retriever> = {
   // 벡터만. bench/context.ts 의 vectorSearch 가 부르는 retrieveContext 를 sourceId 를 살려 직접 부른다.
   // minSimilarity 0 — 컷오프로 순위가 잘리면 지표가 검색기 비교가 아니라 임계값 비교가 된다.
   vector: async (q) => (await retrieveContext(q, { limit: FETCH, minSimilarity: 0 })).map((c) => ({ source: c.source, sourceId: c.sourceId, score: c.similarity })),
+  // WeKnora 이식 (bench/wk/search.ts). 누적 ablation — 뒤로 갈수록 앞 단계를 포함한다
+  "R1a-trgm": wk("r1a"),
+  "R1b-bm25": wk("r1b"),
+  "R2-query": wk("r2"),
+  "R3-rerank": wk("r3"),
+  "R4-parent": wk("r4"),
+}
+
+function wk(level: WkLevel): Retriever {
+  return async (q) => {
+    const r = await wkRetrieve(level, q, FETCH)
+    return { hits: r.chunks.map((c) => ({ source: c.source, sourceId: c.sourceId, score: c.score })), costUsd: r.stats.costUsd, stageMs: { ...r.stats.ms } }
+  }
+}
+
+/** summary 에 검색기 이름과 함께 적을 말 */
+const RETRIEVER_NOTES: Record<string, string> = {
+  "R4-parent": "순위는 R3 와 같음 — 부모 확장은 본문만 늘리므로 생성 방법(wk-r4)에서만 의미가 있다. ms 차이가 확장 비용이다",
 }
 
 // ─── 지표 ──────────────────────────────────────────────────────
@@ -114,6 +135,10 @@ export interface EvalRow {
   ms: number
   /** 질문 임베딩을 캐시에서 받았는가 — true 면 ms 에 임베딩 호출이 없다 */
   cached: boolean
+  /** 검색 단계 LLM 원가 (원). 임베딩은 빼고 run 합계로 따로 센다 */
+  llmKrw?: number
+  /** 단계별 ms (wk 검색기만): rewrite · vector · keyword · expand · rerank · parent */
+  stageMs?: Record<string, number>
   error?: string
   at: string
 }
@@ -146,6 +171,7 @@ async function main() {
   console.log(`retrieval ${runId} · DB ${dbHost} · 검색기 ${names.join(", ")} · 질문 ${questions.length}개 (gold 없음 ${skipped}개 건너뜀) × 반복 ${repeat}`)
 
   const rows: EvalRow[] = []
+  let llmUsd = 0
   for (let rep = 1; rep <= repeat; rep++) {
     for (const name of names) {
       for (const q of questions) {
@@ -154,36 +180,60 @@ async function main() {
         const t0 = now()
         let ranked: Hit[] = []
         let error: string | undefined
-        try { ranked = dedupeHits(await retrievers[name](q.q)).slice(0, K_NDCG) } catch (err) { error = String(err).slice(0, 300) }
+        let out: RetrieverOutput = { hits: [] }
+        try {
+          const r = await retrievers[name](q.q)
+          out = Array.isArray(r) ? { hits: r } : r
+          ranked = dedupeHits(out.hits).slice(0, K_NDCG)
+        } catch (err) { error = String(err).slice(0, 300) }
+        llmUsd += out.costUsd ?? 0
         const ms = Math.round(now() - t0)
         const m = error ? { recall8: 0, mrr: 0, ndcg10: 0 } : metrics(ranked, q.gold!)
         const row: EvalRow = {
           runId, retriever: name, qid: q.id, type: q.type ?? DEFAULT_TYPE, question: q.q, repeat: rep, goldN: new Set(q.gold!.map(keyOf)).size,
-          ranked, ...m, ms, cached: embedStat.calls > 0 && embedStat.hits === embedStat.calls, error, at: new Date().toISOString(),
+          ranked, ...m, ms, cached: embedStat.calls > 0 && embedStat.hits === embedStat.calls,
+          llmKrw: out.costUsd !== undefined ? usdToKrw(out.costUsd) : undefined, stageMs: out.stageMs && Object.fromEntries(Object.entries(out.stageMs).map(([k, v]) => [k, Math.round(v)])),
+          error, at: new Date().toISOString(),
         }
         rows.push(row)
         appendFileSync(outFile, JSON.stringify(row) + "\n")
-        console.log(`[${rep}/${repeat}] ${name.padEnd(10)} ${q.id.padEnd(4)} R@8 ${f3(m.recall8)} MRR ${f3(m.mrr)} NDCG ${f3(m.ndcg10)}  ${ms}ms${row.cached ? " (임베딩 캐시)" : ""}${error ? `  ✗ ${error.slice(0, 80)}` : ""}`)
+        console.log(`[${rep}/${repeat}] ${name.padEnd(10)} ${q.id.padEnd(4)} R@8 ${f3(m.recall8)} MRR ${f3(m.mrr)} NDCG ${f3(m.ndcg10)}  ${ms}ms${row.cached ? " (임베딩 캐시)" : ""}${row.llmKrw ? `  LLM ${row.llmKrw}원` : ""}${error ? `  ✗ ${error.slice(0, 80)}` : ""}`)
       }
     }
   }
 
   const krw = usdToKrw((embedStat.tokens * EMBEDDING_PRICE_USD_PER_M) / 1_000_000)
-  appendLedger({ kind: "retrieval", runId: `retrieval-${runId}`, krw, note: `임베딩 ${embedStat.tokens} tok @ $${EMBEDDING_PRICE_USD_PER_M}/1M (추정)` })
-  writeFileSync(join(dir, "retrieval-summary.md"), summarize({ runId, dbHost, qFile, names, repeat, total: all.length, skipped, rows, tokens: embedStat.tokens, krw }))
-  console.log(`\n임베딩 ${embedStat.tokens} tok ≈ ${krw}원 (ledger 기록)\n결과: ${join(dir, "retrieval-summary.md")}`)
+  const llmKrw = usdToKrw(llmUsd)
+  appendLedger({ kind: "retrieval", runId: `retrieval-${runId}`, krw: Math.round((krw + llmKrw) * 100) / 100, note: `임베딩 ${embedStat.tokens} tok @ $${EMBEDDING_PRICE_USD_PER_M}/1M (추정) ${krw}원 + 검색 LLM ${llmKrw}원` })
+  writeFileSync(join(dir, "retrieval-summary.md"), summarize({ runId, dbHost, qFile, names, repeat, total: all.length, skipped, rows, tokens: embedStat.tokens, krw, llmKrw }))
+  console.log(`\n임베딩 ${embedStat.tokens} tok ≈ ${krw}원 + 검색 LLM ${llmKrw}원 (ledger 기록)\n결과: ${join(dir, "retrieval-summary.md")}`)
 }
 
-interface SummaryInput { runId: string; dbHost: string; qFile: string; names: string[]; repeat: number; total: number; skipped: number; rows: EvalRow[]; tokens: number; krw: number }
+interface SummaryInput { runId: string; dbHost: string; qFile: string; names: string[]; repeat: number; total: number; skipped: number; rows: EvalRow[]; tokens: number; krw: number; llmKrw: number }
 
 function summarize(s: SummaryInput): string {
   const ok = s.rows.filter((r) => !r.error)
   const line = (label: string, rs: EvalRow[]) => {
     const warm = rs.filter((r) => !r.cached)
     const cold = rs.filter((r) => r.cached)
-    return `| ${label} | ${new Set(rs.map((r) => r.qid)).size} | **${f3(avg(rs.map((r) => r.recall8)))}** | ${f3(avg(rs.map((r) => r.mrr)))} | ${f3(avg(rs.map((r) => r.ndcg10)))} | ${warm.length ? Math.round(avg(warm.map((r) => r.ms))) : "-"} | ${cold.length ? Math.round(avg(cold.map((r) => r.ms))) : "-"} |`
+    const llm = rs.filter((r) => r.llmKrw !== undefined)
+    return `| ${label} | ${new Set(rs.map((r) => r.qid)).size} | **${f3(avg(rs.map((r) => r.recall8)))}** | ${f3(avg(rs.map((r) => r.mrr)))} | ${f3(avg(rs.map((r) => r.ndcg10)))} | ${warm.length ? Math.round(avg(warm.map((r) => r.ms))) : "-"} | ${cold.length ? Math.round(avg(cold.map((r) => r.ms))) : "-"} | ${llm.length ? avg(llm.map((r) => r.llmKrw!)).toFixed(3) : "-"} |`
   }
-  const head = ["| 검색기 · 유형 | 문항 | Recall@8 | MRR | NDCG@10 | ms (임베딩 포함) | ms (임베딩 캐시) |", "|---|--:|--:|--:|--:|--:|--:|"]
+  const head = ["| 검색기 · 유형 | 문항 | Recall@8 | MRR | NDCG@10 | ms (임베딩 포함) | ms (임베딩 캐시) | LLM 원/문항 |", "|---|--:|--:|--:|--:|--:|--:|--:|"]
+  // 단계별 평균 ms — wk 검색기만. 단계 합이 전체 ms 보다 작은 건 withFollowUps · RRF 가 빠져서다
+  const STAGES = ["rewrite", "vector", "keyword", "expand", "rerank", "parent"]
+  const staged = s.names.filter((n) => ok.some((r) => r.retriever === n && r.stageMs))
+  const stageTable = staged.length === 0 ? [] : [
+    "단계별 평균 ms (wk 검색기, 반복 전체). vector 는 임베딩 호출 포함, expand 는 확장이 일어난 문항만 0 이 아니다.",
+    "",
+    `| 검색기 | ${STAGES.join(" | ")} | 전체 |`, `|---|${STAGES.map(() => "--:").join("|")}|--:|`,
+    ...staged.map((n) => {
+      const rs = ok.filter((r) => r.retriever === n && r.stageMs)
+      return `| ${n} | ${STAGES.map((k) => Math.round(avg(rs.map((r) => r.stageMs![k] ?? 0)))).join(" | ")} | ${Math.round(avg(rs.map((r) => r.ms)))} |`
+    }),
+    "",
+  ]
+  const notes = s.names.filter((n) => RETRIEVER_NOTES[n]).map((n) => `- **${n}**: ${RETRIEVER_NOTES[n]}`)
   const types = [...new Set(ok.map((r) => r.type))].sort()
   const body = s.names.flatMap((n) => {
     const mine = ok.filter((r) => r.retriever === n)
@@ -200,7 +250,10 @@ function summarize(s: SummaryInput): string {
     "",
     ...head, ...body,
     "",
+    ...(notes.length ? [...notes, ""] : []),
+    ...stageTable,
     `임베딩 비용(추정): ${s.tokens.toLocaleString()} tok × $${EMBEDDING_PRICE_USD_PER_M}/1M × ${KRW_PER_USD}원/$ ≈ ${s.krw}원. 단가는 확인 필요 (config.ts).`,
+    `검색 단계 LLM 비용(gemini-3.5-flash-lite, config.ts 요금표): ${s.llmKrw}원. ledger 에는 둘을 합쳐 한 줄로 적는다.`,
     "",
   ].join("\n")
 }

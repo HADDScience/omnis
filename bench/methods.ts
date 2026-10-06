@@ -6,6 +6,7 @@
 //   stuff     검색 없이 요약 + 카드 전문 + 최근 60일 채팅 통째
 //   route     도구 호출 루프 (JSON 프로토콜, 최대 5단계)
 //   native    프로덕션 askOmnisRoute 그대로 — Gemini 네이티브 함수 호출 + 하이브리드 검색 (Gemini 모델만)
+//   wk-r1a…r4 WeKnora 검색 기법 이식(bench/wk/search.ts) top-8 + hybrid 와 같은 단발 생성
 //
 // 결과에는 답변·사용량·단계별 시간·호출 수·(route 면) 도구 호출 자취가 남는다.
 import { buildOmnisAnswerPrompt } from "@/lib/ai"
@@ -13,7 +14,8 @@ import { askOmnisRoute } from "@/lib/omnis-ask"
 import type { Caller } from "@/lib/omnis-mcp"
 import { type ModelSpec, type MethodName } from "./config"
 import { chat, complete, addUsage, now, ZERO_USAGE, type Usage, type ChatMessage } from "./providers"
-import { vectorSearch, hybridSearch, overviews, stuffCorpus, type RefChunk } from "./context"
+import { vectorSearch, hybridSearch, overviews, stuffCorpus, toRef, type RefChunk } from "./context"
+import { wkRetrieve, type WkLevel } from "./wk/search"
 import { routeSystemPrompt, parseRouteReply, runBenchTool } from "./tools"
 
 export interface Timings {
@@ -42,6 +44,8 @@ export interface MethodResult {
   error?: string
   /** 심판이 환각을 가려낼 때 볼 자료 — 모델이 실제로 본 청크·도구 결과 (앞 8천 자) */
   evidence: string
+  /** 검색 단계 LLM 원가 (USD, wk-r2~). 생성 모델과 요금표가 달라 usage 에 합치지 않고 run.ts 가 더한다 */
+  extraCostUsd?: number
 }
 
 const EVIDENCE_MAX = 8_000
@@ -87,6 +91,23 @@ async function hybrid(model: ModelSpec, question: string): Promise<MethodResult>
   const search = await hybridSearch(question, 8)
   const r = await answerFrom(model, question, search.value, undefined, { retrieval: search.ms, context: 0 }, t0)
   r.trace = [{ step: 0, tool: "keywords", args: { keywords: search.keywords }, resultChars: 0, ms: 0 }]
+  return r
+}
+
+/** WeKnora 이식 검색기 top-8 → hybrid 와 같은 프롬프트(answerFrom)로 단발 생성 */
+async function wk(level: WkLevel, model: ModelSpec, question: string): Promise<MethodResult> {
+  const t0 = now()
+  const search = await wkRetrieve(level, question, 8)
+  const s = search.stats
+  const retrievalMs = now() - t0
+  // context 칸에는 부모 확장(R4) 시간만 — 나머지 검색 단계는 retrieval 에 든다
+  const r = await answerFrom(model, question, search.chunks.map(toRef), undefined, { retrieval: retrievalMs - s.ms.parent, context: s.ms.parent }, t0)
+  r.extraCostUsd = s.costUsd
+  r.trace = [{
+    step: 0, tool: `wk-${level}`,
+    args: { query: s.query, intent: s.intent, keywords: s.keywords, expanded: s.expanded, topVector: Math.round(s.topVector * 1000) / 1000, llmCalls: s.llmCalls, rerankParsed: s.rerankParsed, stageMs: Object.fromEntries(Object.entries(s.ms).map(([k, v]) => [k, Math.round(v)])) },
+    resultChars: search.chunks.reduce((a, c) => a + c.content.length, 0), ms: Math.round(retrievalMs),
+  }]
   return r
 }
 
@@ -181,5 +202,10 @@ export async function runMethod(name: MethodName, model: ModelSpec, question: st
     case "hybrid": return hybrid(model, question)
     case "stuff": return stuff(model, question)
     case "route": return route(model, question, caller)
+    case "wk-r1a": return wk("r1a", model, question)
+    case "wk-r1b": return wk("r1b", model, question)
+    case "wk-r2": return wk("r2", model, question)
+    case "wk-r3": return wk("r3", model, question)
+    case "wk-r4": return wk("r4", model, question)
   }
 }

@@ -62,7 +62,8 @@ export const MODELS: ModelSpec[] = [
   // { key: "groq-gemma", provider: "openai-compat", id: "gemma2-9b-it", price: { input: 0.20, output: 0.20 } },
 ]
 
-export const METHODS = ["baseline", "vector", "hybrid", "stuff", "route", "native"] as const
+// wk-* : WeKnora 검색 기법 이식 R1a~R4 (bench/wk/search.ts) + hybrid 와 같은 단발 생성
+export const METHODS = ["baseline", "vector", "hybrid", "stuff", "route", "native", "wk-r1a", "wk-r1b", "wk-r2", "wk-r3", "wk-r4"] as const
 export type MethodName = (typeof METHODS)[number]
 
 /**

@@ -167,7 +167,8 @@ async function runOne(runId: string, model: ModelSpec, method: MethodName, q: Qu
   } catch (err) {
     return { ...base, answer: "", hits: [], judge: null, usage: { input: 0, output: 0, thinking: 0, cached: 0 }, costUsd: 0, costKrw: 0, timings: { retrieval: 0, context: 0, llm: 0, total: 0 }, calls: 0, promptChars: 0, refs: [], error: String(err).slice(0, 500) }
   }
-  const usd = costUsd(r.usage, model.price)
+  // wk-* 는 검색 단계 LLM(flash-lite) 원가가 따로 온다
+  const usd = costUsd(r.usage, model.price) + (r.extraCostUsd ?? 0)
   let j: ResultRow["judge"] = null
   if (doJudge && !r.answer && !r.error) {
     j = { score: 0, hallucination: false, reason: "빈 답변", costUsd: 0 }
