@@ -1,7 +1,7 @@
 ---
 kind: decision
 status: active
-canonical: mydocs/plans/2026-10-06-chat-search.md
+canonical: mydocs/plans/archives/2026-10-06-chat-search.md
 last_verified: 2026-10-06
 ---
 

@@ -8,7 +8,7 @@ const PAGE = 20
 const SNIPPET_PAD = 40
 
 /**
- * 채팅 글자 포함 검색 (2026-10-06, mydocs/plans/2026-10-06-chat-search.md).
+ * 채팅 글자 포함 검색 (2026-10-06, mydocs/plans/archives/2026-10-06-chat-search.md).
  *
  * 의미 검색이 아니라 본문에 입력한 글자가 들어 있는지만 본다. 한국어는 `to_tsvector('simple')` 이
  * 어절째로 잘라 「견적」 으로 「견적서」 를 못 찾는다 — ILIKE 가 기대와 맞는다.

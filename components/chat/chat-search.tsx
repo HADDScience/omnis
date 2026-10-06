@@ -34,7 +34,7 @@ interface ChatSearchProps {
 const MIN_QUERY = 2
 
 /**
- * 채팅 패널 안 검색 (2026-10-06, mydocs/plans/2026-10-06-chat-search.md).
+ * 채팅 패널 안 검색 (2026-10-06, mydocs/plans/archives/2026-10-06-chat-search.md).
  *
  * 목록 · 입력창 자리를 통째로 덮는다 — 380px 패널에 결과와 대화를 나란히 둘 폭이 없다.
  * 고르면 닫히고 패널이 그 글 앞뒤를 불러와 강조한다.
