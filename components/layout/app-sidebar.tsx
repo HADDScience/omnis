@@ -54,6 +54,7 @@ import { useRightPanel } from "@/components/layout/right-panel-context"
 import { useOnboarding } from "@/components/onboarding/onboarding-provider"
 import { ShineBorder } from "@/components/magicui/shine-border"
 import { OmnisMark } from "@/components/brand/omnis-mark"
+import { InstallAppCard } from "@/components/layout/install-app-card"
 /**
  * 사이드바 메뉴.
  *
@@ -219,6 +220,8 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <InstallAppCard />
       </SidebarContent>
 
       <SidebarFooter className="border-t p-1.5">
