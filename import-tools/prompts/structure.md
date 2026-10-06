@@ -4,7 +4,7 @@
 - `context.projects` — 기존 프로젝트 목록 `{id, name, productName}`. **이 회사에서 프로젝트는 과제 단위다**(정부지원과제·교육프로그램·행사 등).
 - `context.products` — 제품 목록 `{id, name}`
 - `context.members` — 팀원 정식 이름 배열
-- `context.priorTasks` — 앞선 라운드에서 이미 만든 업무 `{name, project, date}`. 같은 업무의 연속인지 판단할 때 참고한다.
+- `context.priorTasks` — 이미 있는 업무 `{name, project, date}`. 앞선 이식 라운드에서 만든 것과 옴니스에서 직접 만든 것 모두다. 같은 업무의 연속인지 판단할 때 쓴다 (규칙 8).
 - `context.omnisCards` — 옴니스 지식 카드 제목 (비어 있을 수 있다)
 - `sessions` — 시간순 세션 배열 `{id, start, messages:[{t,u,m}]}`
 
@@ -25,7 +25,8 @@
   "ownerHints": ["정우창", "박소정"],
   "deadlineHint": "2026-03-14" 또는 null,
   "status": "TODO" | "IN_PROGRESS" | "DONE",
-  "confidence": "high" | "low"
+  "confidence": "high" | "low",
+  "continuesTask": "<이어지는 업무의 name 그대로>" 또는 null
 }
 ```
 
@@ -44,6 +45,8 @@
 6. **checklist**: 대화에서 실제 요구된 행동만 2~5개. 없는 절차를 지어내지 마라. **담당자별로 쪼개지 마라** — 한 업무에 하나의 목록이다.
 
 7. **priority**: 긴급·중요 표현이 있으면 HIGH, 통상은 NORMAL.
+
+8. **continuesTask**: 이 세션이 **이미 있는 업무의 연속**이면(같은 일에 대한 후속 지시·진행 보고·수정 요청) 그 업무의 이름을 적는다. `context.priorTasks` 의 name, 또는 이 입력에서 앞서 처리한 세션의 name 을 **글자 그대로** 옮겨라. 그러면 새 카드를 만들지 않고 이 대화를 그 업무에 붙인다. 같은 프로젝트의 다른 일이면 연속이 아니다. 새 업무이거나 확신이 없으면 null. continuesTask 를 채워도 나머지 필드는 평소처럼 채운다.
 
 주의:
 - `Photo`, `File:` 은 첨부 표시일 뿐 내용이 없다. 이를 근거로 완료를 판정하지 마라.

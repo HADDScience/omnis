@@ -3,6 +3,7 @@
 // 멱등: sourceId 유니크 제약으로 이미 넣은 메시지는 건너뛴다. 중간에 끊겨도 다시 돌리면 이어진다.
 // 부수효과 없음: AI·알림을 타지 않는다. 1년 전 대화 때문에 오늘 알림이 오면 안 된다.
 import { prisma, ROOMS, messageSourceId, parseKst, resolveUsers, type RawSession } from "../kakao-common"
+import { matchHandCopies } from "../hand-copies"
 
 export async function importMessages(sessions: RawSession[], opts: { dry: boolean }): Promise<{ inserted: number; total: number }> {
   const userBySpeaker = await resolveUsers()
@@ -22,7 +23,26 @@ export async function importMessages(sessions: RawSession[], opts: { dry: boolea
   for (const [u, n] of unknownSpeakers) console.log(`  ⚠ 매핑 없는 발화자: ${u} ${n}건 — kakao-common.ts 의 SPEAKER_TO_USER 에 추가해야 들어간다`)
 
   const unique = new Map(rows.map((r) => [r.sourceId, r]))
-  const list = [...unique.values()].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+  const sorted = [...unique.values()].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+
+  // 사람이 손으로 옮겨 둔 사본이 있는 메시지는 넣지 않는다 — 같은 말이 두 번 보인다.
+  const copies = sorted.length === 0 ? [] : await prisma.chatMessage.findMany({
+    where: {
+      sourceId: null, kind: "NORMAL", deletedAt: null,
+      createdAt: { gte: sorted[0].createdAt, lte: new Date(sorted[sorted.length - 1].createdAt.getTime() + 3 * 86400000) },
+    },
+    select: { id: true, authorId: true, content: true, createdAt: true },
+  })
+  const { skip, unmatched } = matchHandCopies(sorted, copies)
+  const list = sorted.filter((r) => !skip.has(r.sourceId))
+  if (copies.length > 0) {
+    console.log(`  손으로 옮긴 사본 ${copies.length}건 중 카톡 원본과 짝이 맞은 ${skip.size}건 → 그 원본은 넣지 않는다`)
+    const names = new Map((await prisma.user.findMany({ select: { id: true, name: true } })).map((u) => [u.id, u.name]))
+    for (const c of unmatched) {
+      const kst = new Date(c.createdAt.getTime() + 9 * 3600000).toISOString().slice(5, 16).replace("T", " ")
+      console.log(`    · 짝 없음 ${kst} ${names.get(c.authorId) ?? "?"}: ${c.content.replace(/\s+/g, " ").slice(0, 60)}`)
+    }
+  }
 
   const existing = await prisma.chatMessage.count({ where: { sourceId: { in: list.map((r) => r.sourceId) } } })
   console.log(`  대상 ${list.length}건 · 이미 있음 ${existing}건 · 새로 넣을 것 ${list.length - existing}건`)
