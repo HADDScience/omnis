@@ -356,7 +356,8 @@ export async function deleteCompanyRecordText(
 
 // ─── 연혁 제안 (2026-10-06) ──────────────────────────────
 
-const GRADE_LABEL = { MAJOR: "주요", GENERAL: "일반" } as const
+// 종류 「주요」(MILESTONE)와 겹쳐 읽히지 않게 등급은 쓰임새로 부른다
+const GRADE_LABEL = { MAJOR: "주요 등급(기업현황카드 후보)", GENERAL: "일반 등급(상세 연혁)" } as const
 
 /** 연혁 후보 목록 — 근거 인용을 함께 줘야 대화창에서 바로 판단할 수 있다 */
 export async function recordProposalsText(status: "PENDING" | "decided"): Promise<string> {

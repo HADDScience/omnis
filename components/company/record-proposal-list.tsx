@@ -61,7 +61,8 @@ interface TypeStat {
   auto: boolean
 }
 
-const GRADE_LABEL: Record<Grade, string> = { MAJOR: "주요", GENERAL: "일반" }
+// 종류 「주요」(MILESTONE)와 겹쳐 읽히지 않게 등급은 쓰임새로 부른다
+const GRADE_LABEL: Record<Grade, string> = { MAJOR: "기업현황카드 후보", GENERAL: "상세 연혁" }
 const STATUS_LABEL: Record<Proposal["status"], string> = {
   PENDING: "확인 대기",
   ACCEPTED: "채택",
@@ -158,8 +159,8 @@ function StatsBox({ stats }: { stats: TypeStat[] }) {
   return (
     <div className="rounded-xl border bg-card p-4 text-[12px] leading-relaxed text-muted-foreground">
       <p>
-        원안 그대로 채택한 비율을 종류 × 등급별로 셉니다. <b className="text-foreground">일반 등급</b>은 판단 20건 이상 · 90% 이상 ·
-        최근 3건 연속이면 그 유형만 자동 등록으로 넘어갑니다. <b className="text-foreground">주요 등급과 대외비는 계속 사람이 확인합니다.</b>
+        원안 그대로 채택한 비율을 종류 × 등급별로 셉니다. <b className="text-foreground">상세 연혁</b>은 판단 20건 이상 · 90% 이상 ·
+        최근 3건 연속이면 그 유형만 자동 등록으로 넘어갑니다. <b className="text-foreground">기업현황카드 후보와 대외비는 계속 사람이 확인합니다.</b>
       </p>
       {stats.length > 0 && (
         <ul className="mt-2.5 flex flex-wrap gap-1.5">
@@ -272,8 +273,8 @@ function ProposalCard({
               onChange={(e) => setForm({ ...form, grade: e.target.value as Grade })}
               className="h-9 w-full rounded-md border bg-background px-2 text-[13px]"
             >
-              <option value="MAJOR">주요 — 기업현황카드 후보</option>
-              <option value="GENERAL">일반 — 상세 연혁만</option>
+              <option value="MAJOR">기업현황카드 후보 — 기관 확정 성과</option>
+              <option value="GENERAL">상세 연혁 — 참석 · 발표 · 교육</option>
             </select>
           </div>
           <label className="touch-target flex items-center gap-2 text-[12.5px] sm:col-span-2">
@@ -287,22 +288,22 @@ function ProposalCard({
         {p.status === "PENDING" ? (
           editing ? (
             <>
-              <Button size="sm" disabled={busy || !form.title.trim()} onClick={() => onDecide(p.id, "accept", { ...form, occurredOn: form.occurredOn || null })}>
+              <Button size="sm" className="touch-target" disabled={busy || !form.title.trim()} onClick={() => onDecide(p.id, "accept", { ...form, occurredOn: form.occurredOn || null })}>
                 {busy && <Spinner />} 고친 대로 넣기
               </Button>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>
+              <Button size="sm" className="touch-target" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>
                 취소
               </Button>
             </>
           ) : (
             <>
-              <Button size="sm" disabled={busy} onClick={() => onDecide(p.id, "accept")}>
+              <Button size="sm" className="touch-target" disabled={busy} onClick={() => onDecide(p.id, "accept")}>
                 {busy && <Spinner />} 채택
               </Button>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(true)}>
+              <Button size="sm" className="touch-target" variant="outline" disabled={busy} onClick={() => setEditing(true)}>
                 고쳐서 채택
               </Button>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => onDecide(p.id, "reject")}>
+              <Button size="sm" className="touch-target" variant="ghost" disabled={busy} onClick={() => onDecide(p.id, "reject")}>
                 제외
               </Button>
             </>
@@ -315,7 +316,7 @@ function ProposalCard({
               </Link>
             )}
             {(p.status === "ACCEPTED" || p.status === "AUTO_APPLIED") && !p.revertedAt && (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => onDecide(p.id, "revert")}>
+              <Button size="sm" className="touch-target" variant="ghost" disabled={busy} onClick={() => onDecide(p.id, "revert")}>
                 {busy && <Spinner />} 되돌리기
               </Button>
             )}
