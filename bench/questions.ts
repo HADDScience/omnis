@@ -25,14 +25,17 @@ export interface Question {
   stale?: string[]
   /** DB 에 없는 사실을 묻는 문항. "모른다"가 정답 */
   unanswerable?: boolean
+  /** 출제 메모 — 무엇을 이어야 답이 되는지. 심판의 과정 점수에 준다 */
+  note?: string
 }
 
 export const DEFAULT_TYPE = "regression"
 
 export function loadQuestions(file: string): Question[] {
-  const raw = JSON.parse(readFileSync(file, "utf8")) as { ask: Omit<Question, "id">[] }
+  // 문항에 id 가 있으면(v4: "v4-mh-01") 그대로, 없으면(옛 파일) 순번 A1, A2 …
+  const raw = JSON.parse(readFileSync(file, "utf8")) as { ask: (Omit<Question, "id"> & { id?: string })[] }
   return raw.ask.map((a, i) => ({
-    id: `A${i + 1}`, q: a.q, expect: a.expect ?? [],
-    type: a.type, gold: a.gold, minSteps: a.minSteps, stale: a.stale, unanswerable: a.unanswerable,
+    id: a.id ?? `A${i + 1}`, q: a.q, expect: a.expect ?? [],
+    type: a.type, gold: a.gold, minSteps: a.minSteps, stale: a.stale, unanswerable: a.unanswerable, note: a.note,
   }))
 }

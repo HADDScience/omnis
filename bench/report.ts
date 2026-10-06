@@ -18,6 +18,13 @@ const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.le
 const r1 = (x: number) => Math.round(x * 10) / 10
 const r2 = (x: number) => Math.round(x * 100) / 100
 
+/** 과정 점수 평균. 옛 행·단발 방법처럼 매기지 않은 행은 빼고, 하나도 없으면 null */
+function processAvg(rows: ResultRow[]): number | null {
+  const xs = rows.map((r) => r.judge?.process).filter((p): p is 0 | 1 | 2 => typeof p === "number")
+  return xs.length ? r2(avg(xs)) : null
+}
+const showProcess = (p: number | null) => (p === null ? "" : String(p))
+
 export interface Cell {
   model: string
   method: string
@@ -27,6 +34,8 @@ export interface Cell {
   judgeAvg: number
   judgeFull: number
   hallucinations: number
+  /** 과정 점수 평균 — 매긴 행이 없으면 null (빈칸) */
+  processAvg: number | null
   hitRate: number
   p50: number
   p90: number
@@ -72,6 +81,7 @@ export function aggregate(allRows: ResultRow[]): Cell[] {
       judgeAvg: r2(avg(judged.map((r) => r.judge!.score))),
       judgeFull: judged.filter((r) => r.judge!.score === 2).length,
       hallucinations: judged.filter((r) => r.judge!.hallucination).length,
+      processAvg: processAvg(judged),
       hitRate: r2(ok.reduce((a, r) => a + r.hits.length, 0) / Math.max(ok.reduce((a, r) => a + r.hitTotal, 0), 1)),
       p50: pct(ok.map((r) => r.timings.total), 0.5), p90: pct(ok.map((r) => r.timings.total), 0.9),
       retrieval: Math.round(avg(ok.map((r) => r.timings.retrieval))), context: Math.round(avg(ok.map((r) => r.timings.context))), llm: Math.round(avg(ok.map((r) => r.timings.llm))),
@@ -85,7 +95,7 @@ export function aggregate(allRows: ResultRow[]): Cell[] {
   return cells.sort((a, b) => b.judgeAvg - a.judgeAvg || b.hitRate - a.hitRate || a.krw - b.krw)
 }
 
-export interface TypeCell { model: string; method: string; type: string; n: number; judgeAvg: number; judgeFull: number; hallucinations: number; hitRate: number; krw: number }
+export interface TypeCell { model: string; method: string; type: string; n: number; judgeAvg: number; judgeFull: number; hallucinations: number; processAvg: number | null; hitRate: number; krw: number }
 
 /** 모델 × 방법 × 질문 유형. type 이 없는 행(옛 결과·옛 질문 파일)은 "regression" */
 export function aggregateByType(allRows: ResultRow[]): TypeCell[] {
@@ -104,11 +114,42 @@ export function aggregateByType(allRows: ResultRow[]): TypeCell[] {
       judgeAvg: r2(avg(judged.map((r) => r.judge!.score))),
       judgeFull: judged.filter((r) => r.judge!.score === 2).length,
       hallucinations: judged.filter((r) => r.judge!.hallucination).length,
+      processAvg: processAvg(judged),
       hitRate: r2(ok.reduce((a, r) => a + r.hits.length, 0) / Math.max(ok.reduce((a, r) => a + r.hitTotal, 0), 1)),
       krw: r2(avg(ok.map((r) => r.costKrw))),
     })
   }
   return cells.sort((a, b) => a.type.localeCompare(b.type) || a.model.localeCompare(b.model) || a.method.localeCompare(b.method))
+}
+
+export interface AgenticCell {
+  model: string; method: string; n: number
+  iterations: number; toolCalls: number; toolKinds: number
+  /** 비율 0~1 */
+  requery: number; hitLimit: number
+  compactions: number
+  processAvg: number | null
+}
+
+/** 도구 루프 지표가 있는 행(native · route · wk-agent)만 모델 × 방법으로 묶는다 */
+export function aggregateAgentic(allRows: ResultRow[]): AgenticCell[] {
+  const groups = new Map<string, ResultRow[]>()
+  for (const r of dedupe(allRows)) {
+    if (r.error || !r.agent) continue
+    const k = `${r.model}|${r.method}`
+    groups.set(k, [...(groups.get(k) ?? []), r])
+  }
+  return [...groups].map(([k, rs]) => {
+    const [model, method] = k.split("|")
+    const a = rs.map((r) => r.agent!)
+    return {
+      model, method, n: rs.length,
+      iterations: r1(avg(a.map((x) => x.iterations))), toolCalls: r1(avg(a.map((x) => x.toolCalls))), toolKinds: r1(avg(a.map((x) => x.toolKinds))),
+      requery: r2(a.filter((x) => x.requery).length / rs.length), hitLimit: r2(a.filter((x) => x.hitLimit).length / rs.length),
+      compactions: a.reduce((s, x) => s + x.compactions, 0),
+      processAvg: processAvg(rs.filter((r) => r.judge)),
+    }
+  })
 }
 
 export async function writeReport(dir: string) {
@@ -118,15 +159,21 @@ export async function writeReport(dir: string) {
   const meta = existsSync(join(dir, "meta.json")) ? JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) : {}
   const cells = aggregate(rows)
 
-  const header = "| 모델 | 방법 | n | 심판 평균(0~2) | 만점 | 환각 | 근거 적중 | p50 | p90 | 검색 | 조립 | 생성 | 호출 | 입력 tok | 출력 tok | thinking | 질문당 원 | 월(50/일) |"
-  const sep = "|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
+  const header = "| 모델 | 방법 | n | 심판 평균(0~2) | 만점 | 환각 | 과정(0~2) | 근거 적중 | p50 | p90 | 검색 | 조립 | 생성 | 호출 | 입력 tok | 출력 tok | thinking | 질문당 원 | 월(50/일) |"
+  const sep = "|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
   const line = (c: Cell) =>
-    `| ${c.model} | ${c.method} | ${c.n}${c.errors ? ` (✗${c.errors})` : ""}${c.notes ? ` (산문 ${c.notes})` : ""} | **${c.judgeAvg}** | ${c.judgeFull} | ${c.hallucinations} | ${Math.round(c.hitRate * 100)}% | ${(c.p50 / 1000).toFixed(1)}s | ${(c.p90 / 1000).toFixed(1)}s | ${c.retrieval} | ${c.context} | ${c.llm} | ${c.calls} | ${c.inTok.toLocaleString()} | ${c.outTok.toLocaleString()} | ${c.thinkTok.toLocaleString()} | ${c.krw} | ${c.krwMonth50.toLocaleString()} |`
+    `| ${c.model} | ${c.method} | ${c.n}${c.errors ? ` (✗${c.errors})` : ""}${c.notes ? ` (산문 ${c.notes})` : ""} | **${c.judgeAvg}** | ${c.judgeFull} | ${c.hallucinations} | ${showProcess(c.processAvg)} | ${Math.round(c.hitRate * 100)}% | ${(c.p50 / 1000).toFixed(1)}s | ${(c.p90 / 1000).toFixed(1)}s | ${c.retrieval} | ${c.context} | ${c.llm} | ${c.calls} | ${c.inTok.toLocaleString()} | ${c.outTok.toLocaleString()} | ${c.thinkTok.toLocaleString()} | ${c.krw} | ${c.krwMonth50.toLocaleString()} |`
 
-  const typeHeader = "| 유형 | 모델 | 방법 | n | 심판 평균(0~2) | 만점 | 환각 | 근거 적중 | 질문당 원 |"
-  const typeSep = "|---|---|---|--:|--:|--:|--:|--:|--:|"
+  const typeHeader = "| 유형 | 모델 | 방법 | n | 심판 평균(0~2) | 만점 | 환각 | 과정(0~2) | 근거 적중 | 질문당 원 |"
+  const typeSep = "|---|---|---|--:|--:|--:|--:|--:|--:|--:|"
   const typeLine = (c: TypeCell) =>
-    `| ${c.type} | ${c.model} | ${c.method} | ${c.n} | **${c.judgeAvg}** | ${c.judgeFull} | ${c.hallucinations} | ${Math.round(c.hitRate * 100)}% | ${c.krw} |`
+    `| ${c.type} | ${c.model} | ${c.method} | ${c.n} | **${c.judgeAvg}** | ${c.judgeFull} | ${c.hallucinations} | ${showProcess(c.processAvg)} | ${Math.round(c.hitRate * 100)}% | ${c.krw} |`
+
+  const agentic = aggregateAgentic(rows)
+  const agenticHeader = "| 모델 | 방법 | n | 평균 반복 | 도구 호출 | 도구 종류 | 재검색 | 한도 도달 | 압축(합) | 과정(0~2) |"
+  const agenticSep = "|---|---|--:|--:|--:|--:|--:|--:|--:|--:|"
+  const agenticLine = (c: AgenticCell) =>
+    `| ${c.model} | ${c.method} | ${c.n} | ${c.iterations} | ${c.toolCalls} | ${c.toolKinds} | ${Math.round(c.requery * 100)}% | ${Math.round(c.hitLimit * 100)}% | ${c.compactions} | ${showProcess(c.processAvg)} |`
 
   const byMethod = new Map<string, Cell[]>()
   for (const c of cells) byMethod.set(c.method, [...(byMethod.get(c.method) ?? []), c])
@@ -146,22 +193,30 @@ export async function writeReport(dir: string) {
     "",
     typeHeader, typeSep, ...aggregateByType(rows).map(typeLine),
     "",
+    ...(agentic.length ? [
+      "## Agentic (도구 루프 방법만)",
+      "",
+      "반복 = 모델 호출 수. 재검색 = 검색류 도구를 뒤 단계에서 다른 인자로 다시 부른 문항 비율. 한도 도달 = 반복 한도에 닿은 비율 (native·route 6단계, wk-agent 20회).",
+      "",
+      agenticHeader, agenticSep, ...agentic.map(agenticLine), "",
+    ] : []),
     ...[...byMethod.entries()].flatMap(([m, cs]) => [`## 방법 ${m}`, "", header, sep, ...cs.map(line), ""]),
     "## 답변별",
     "",
     ...rows.map((r) =>
       `### ${r.model} · ${r.method} · ${r.qid}${r.error ? " · ✗" : ""}\n` +
       `${r.question}\n\n` +
-      `근거 ${r.hits.length}/${r.hitTotal}${r.judge ? ` · 심판 ${r.judge.score}${r.judge.hallucination ? " (환각)" : ""} — ${r.judge.reason}` : ""} · ${(r.timings.total / 1000).toFixed(1)}s · ${r.costKrw}원 · 호출 ${r.calls}` +
+      `근거 ${r.hits.length}/${r.hitTotal}${r.judge ? ` · 심판 ${r.judge.score}${r.judge.hallucination ? " (환각)" : ""} — ${r.judge.reason}` : ""}${typeof r.judge?.process === "number" ? ` · 과정 ${r.judge.process} — ${r.judge.processReason ?? ""}` : ""} · ${(r.timings.total / 1000).toFixed(1)}s · ${r.costKrw}원 · 호출 ${r.calls}` +
       (r.trace?.length ? `\n\n도구: ${r.trace.map((t) => `${t.tool}(${JSON.stringify(t.args)}) → ${t.resultChars}자 ${t.ms}ms`).join(" → ")}` : "") +
+      (r.agent ? `\n\n루프: 반복 ${r.agent.iterations} · 도구 ${r.agent.toolCalls}회 ${r.agent.toolKinds}종${r.agent.requery ? " · 재검색" : ""}${r.agent.hitLimit ? " · 한도 도달" : ""}${r.agent.compactions ? ` · 압축 ${r.agent.compactions}` : ""}` : "") +
       (r.note ? `\n\n비고: ${r.note}` : "") + (r.error ? `\n\n오류: ${r.error}` : "") +
       `\n\n${(r.answer || "(빈 답변)").split("\n").map((l) => `> ${l}`).join("\n")}\n`
     ),
   ].join("\n")
   writeFileSync(join(dir, "summary.md"), md)
 
-  const csvHead = "model,method,n,errors,judge_avg,judge_full,hallucinations,hit_rate,p50_ms,p90_ms,retrieval_ms,context_ms,llm_ms,calls,in_tok,out_tok,think_tok,krw_per_q,krw_month_50,judge_krw"
-  const csv = [csvHead, ...cells.map((c) => [c.model, c.method, c.n, c.errors, c.judgeAvg, c.judgeFull, c.hallucinations, c.hitRate, c.p50, c.p90, c.retrieval, c.context, c.llm, c.calls, c.inTok, c.outTok, c.thinkTok, c.krw, c.krwMonth50, c.judgeKrw].join(","))].join("\n")
+  const csvHead = "model,method,n,errors,judge_avg,judge_full,hallucinations,process_avg,hit_rate,p50_ms,p90_ms,retrieval_ms,context_ms,llm_ms,calls,in_tok,out_tok,think_tok,krw_per_q,krw_month_50,judge_krw"
+  const csv = [csvHead, ...cells.map((c) => [c.model, c.method, c.n, c.errors, c.judgeAvg, c.judgeFull, c.hallucinations, c.processAvg ?? "", c.hitRate, c.p50, c.p90, c.retrieval, c.context, c.llm, c.calls, c.inTok, c.outTok, c.thinkTok, c.krw, c.krwMonth50, c.judgeKrw].join(","))].join("\n")
   writeFileSync(join(dir, "summary.csv"), csv)
   return cells
 }

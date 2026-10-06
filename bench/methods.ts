@@ -7,6 +7,7 @@
 //   route     도구 호출 루프 (JSON 프로토콜, 최대 5단계)
 //   native    프로덕션 askOmnisRoute 그대로 — Gemini 네이티브 함수 호출 + 하이브리드 검색 (Gemini 모델만)
 //   wk-r1a…r4 WeKnora 검색 기법 이식(bench/wk/search.ts) top-8 + hybrid 와 같은 단발 생성
+//   wk-agent  WeKnora 식 ReAct 에이전트 — 최대 20회, search_knowledge(R2)·grep_chunks·read_document·list_documents·todo_write (bench/agent/)
 //
 // 결과에는 답변·사용량·단계별 시간·호출 수·(route 면) 도구 호출 자취가 남는다.
 import { buildOmnisAnswerPrompt } from "@/lib/ai"
@@ -17,6 +18,8 @@ import { chat, complete, addUsage, now, ZERO_USAGE, type Usage, type ChatMessage
 import { vectorSearch, hybridSearch, overviews, stuffCorpus, toRef, type RefChunk } from "./context"
 import { wkRetrieve, type WkLevel } from "./wk/search"
 import { routeSystemPrompt, parseRouteReply, runBenchTool } from "./tools"
+import { runWkAgent } from "./agent/loop"
+import { agentStats, type AgentStats } from "./agent/stats"
 
 export interface Timings {
   /** 임베딩 호출 + pgvector (검색 방법론만) */
@@ -46,9 +49,15 @@ export interface MethodResult {
   evidence: string
   /** 검색 단계 LLM 원가 (USD, wk-r2~). 생성 모델과 요금표가 달라 usage 에 합치지 않고 run.ts 가 더한다 */
   extraCostUsd?: number
+  /** 도구 루프 지표 (native · route · wk-agent) */
+  agent?: AgentStats
+  /** 모델이 본 문서 "SOURCE:sourceId" — 심판이 질문 gold 와 맞춰 본다 (native · wk-agent) */
+  seen?: string[]
 }
 
 const EVIDENCE_MAX = 8_000
+/** wk-agent 는 도구 결과가 여러 개라 8천 자로는 뒤 결과가 잘린다 (bench/agent/loop.ts EVIDENCE_PER_RESULT 주석) */
+const AGENT_EVIDENCE_MAX = 12_000
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -138,7 +147,7 @@ async function route(model: ModelSpec, question: string, caller: Caller): Promis
   const evidence: string[] = []
   const done = (answer: string, extra: Partial<MethodResult> = {}): MethodResult => ({
     answer, usage, timings: { retrieval: 0, context: toolMs, llm, total: now() - t0 }, calls, promptChars, refs, trace,
-    evidence: evidence.join("\n\n").slice(0, EVIDENCE_MAX), ...extra,
+    evidence: evidence.join("\n\n").slice(0, EVIDENCE_MAX), agent: agentStats(trace, calls, !!extra.error), ...extra,
   })
 
   for (let step = 1; step <= 6; step++) {
@@ -191,6 +200,29 @@ async function native(model: ModelSpec, question: string, caller: Caller): Promi
     trace: m.trace,
     evidence: m.trace.map((t) => `[도구 ${t.tool} ${JSON.stringify(t.args)}] (${t.resultChars}자)`).join("\n"),
     error: r.answer.startsWith("답을 정리하지 못했습니다") ? r.answer : undefined,
+    // askOmnisRoute 의 한도(6단계)에 닿으면 답 없이 "답을 정리하지 못했습니다" 가 온다
+    agent: agentStats(m.trace, m.calls, r.answer.startsWith("답을 정리하지 못했습니다")),
+    seen: r.sources.map((s) => `${s.source}:${s.sourceId}`),
+  }
+}
+
+async function wkAgent(model: ModelSpec, question: string, caller: Caller): Promise<MethodResult> {
+  const t0 = now()
+  const r = await runWkAgent(model, question, caller)
+  return {
+    answer: r.answer,
+    usage: r.usage,
+    timings: { retrieval: 0, context: r.toolMs, llm: r.llmMs, total: now() - t0 },
+    calls: r.stats.iterations,
+    promptChars: 0,
+    refs: [...r.ctx.cite.values()].map((c) => ({ source: c.source, title: c.title, similarity: Math.round(c.similarity * 100) })),
+    trace: r.trace,
+    finish: r.finish,
+    error: r.error,
+    evidence: r.evidence.slice(0, AGENT_EVIDENCE_MAX),
+    extraCostUsd: r.ctx.extraCostUsd,
+    agent: r.stats,
+    seen: [...r.ctx.seen],
   }
 }
 
@@ -207,5 +239,6 @@ export async function runMethod(name: MethodName, model: ModelSpec, question: st
     case "wk-r2": return wk("r2", model, question)
     case "wk-r3": return wk("r3", model, question)
     case "wk-r4": return wk("r4", model, question)
+    case "wk-agent": return wkAgent(model, question, caller)
   }
 }

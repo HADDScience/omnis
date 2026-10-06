@@ -63,7 +63,8 @@ export const MODELS: ModelSpec[] = [
 ]
 
 // wk-* : WeKnora 검색 기법 이식 R1a~R4 (bench/wk/search.ts) + hybrid 와 같은 단발 생성
-export const METHODS = ["baseline", "vector", "hybrid", "stuff", "route", "native", "wk-r1a", "wk-r1b", "wk-r2", "wk-r3", "wk-r4"] as const
+// wk-agent : WeKnora 식 ReAct 에이전트 (bench/agent/)
+export const METHODS = ["baseline", "vector", "hybrid", "stuff", "route", "native", "wk-r1a", "wk-r1b", "wk-r2", "wk-r3", "wk-r4", "wk-agent"] as const
 export type MethodName = (typeof METHODS)[number]
 
 /**

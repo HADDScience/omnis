@@ -1,7 +1,7 @@
 // 그리드 실행 — 모델 × 방법론 × 질문을 한 줄씩 results.jsonl 에 쌓는다.
 //
 //   npx tsx bench/run.ts [--models a,b] [--methods baseline,route] [--questions <파일>]
-//                        [--limit N] [--run <이전 run 폴더명>] [--no-judge] [--user 정우창] [--list]
+//                        [--limit N] [--ids v4-mh-01,v4-ag-01] [--run <이전 run 폴더명>] [--no-judge] [--user 정우창] [--list]
 //
 // BENCH_BUDGET_KRW=<원> 을 주면 한 run 폴더의 누적 원가(답변 + 심판)가 상한에 닿는 순간 다음 호출 전에 멈춘다.
 // 재개(--run)하면 기존 results.jsonl 합계부터 센다. 질문마다의 원가는 results/ledger.jsonl 에도 쌓인다 (ledger.ts).
@@ -46,6 +46,8 @@ export interface ResultRow {
   promptChars: number
   refs: MethodResult["refs"]
   trace?: MethodResult["trace"]
+  /** 도구 루프 지표 (native · route · wk-agent). 옛 행에는 없다 */
+  agent?: MethodResult["agent"]
   finish?: string
   note?: string
   error?: string
@@ -81,7 +83,12 @@ async function main() {
   const qFile = opt("--questions") ?? process.env.BENCH_QUESTIONS ?? `${process.env.KAKAO_DATA_DIR ?? `${process.env.HOME}/work/omnis-import`}/eval/scenarios-260907.json`
   const limit = Number(opt("--limit") ?? 0)
   const doJudge = !flag("--no-judge")
-  const questions = loadQuestions(qFile).slice(0, limit > 0 ? limit : undefined)
+  // --ids 는 질문 파일의 id(없으면 A1, A2 …)로 고른다. --limit 보다 먼저 건다
+  const ids = opt("--ids")?.split(",").map((s) => s.trim()).filter(Boolean)
+  const all = loadQuestions(qFile)
+  const missingIds = (ids ?? []).filter((id) => !all.some((q) => q.id === id))
+  if (missingIds.length) throw new Error(`질문 파일에 없는 id: ${missingIds.join(", ")}`)
+  const questions = (ids ? all.filter((q) => ids.includes(q.id)) : all).slice(0, limit > 0 ? limit : undefined)
 
   if (flag("--list")) {
     for (const m of MODELS) { const a = modelAvailable(m); console.log(`${a.ok ? "○" : "×"} ${m.key.padEnd(28)} ${m.id.padEnd(26)} $${m.price.input}/${m.price.output}${a.ok ? "" : `   (${a.why})`}`) }
@@ -174,8 +181,12 @@ async function runOne(runId: string, model: ModelSpec, method: MethodName, q: Qu
     j = { score: 0, hallucination: false, reason: "빈 답변", costUsd: 0 }
   } else if (doJudge && r.answer) {
     try {
-      const res = await judge(q.q, q.expect, r.answer, r.evidence)
-      j = { score: res.score, hallucination: res.hallucination, reason: res.reason, costUsd: res.costUsd }
+      const res = await judge(q.q, q.expect, r.answer, r.evidence, {
+        type: q.type, stale: q.stale, unanswerable: q.unanswerable, minSteps: q.minSteps, gold: q.gold, note: q.note,
+        // 과정 점수는 도구 루프 방법만 — 단발 방법의 trace 는 검색 기록 한 줄이라 과정이라 할 게 없다
+        trace: r.agent ? r.trace : undefined, seen: r.seen,
+      })
+      j = { score: res.score, hallucination: res.hallucination, reason: res.reason, process: res.process, processReason: res.processReason, costUsd: res.costUsd }
     } catch (err) {
       j = { score: 0, hallucination: false, reason: `심판 실패: ${String(err).slice(0, 120)}`, costUsd: 0 }
     }
@@ -184,7 +195,7 @@ async function runOne(runId: string, model: ModelSpec, method: MethodName, q: Qu
     ...base,
     answer: r.answer, hits: expectHits(r.answer, q.expect), judge: j,
     usage: r.usage, costUsd: usd, costKrw: usdToKrw(usd),
-    timings: { retrieval: Math.round(r.timings.retrieval), context: Math.round(r.timings.context), llm: Math.round(r.timings.llm), total: Math.round(r.timings.total) }, calls: r.calls, promptChars: r.promptChars, refs: r.refs, trace: r.trace, finish: r.finish, note: r.note, error: r.error,
+    timings: { retrieval: Math.round(r.timings.retrieval), context: Math.round(r.timings.context), llm: Math.round(r.timings.llm), total: Math.round(r.timings.total) }, calls: r.calls, promptChars: r.promptChars, refs: r.refs, trace: r.trace, agent: r.agent, finish: r.finish, note: r.note, error: r.error,
   }
 }
 

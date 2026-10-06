@@ -58,7 +58,7 @@ async function throttle(m: ModelSpec) {
   lastCallAt.set(m.key, now())
 }
 
-async function fetchWithRetry(url: string, init: RequestInit, label: string, maxAttempts = 6): Promise<Response> {
+export async function fetchWithRetry(url: string, init: RequestInit, label: string, maxAttempts = 6): Promise<Response> {
   let lastErr = ""
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let res: Response
