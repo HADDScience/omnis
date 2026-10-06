@@ -16,7 +16,7 @@ last_verified: 2026-10-06
 |---|---|
 | `RecordProposal` 표 · `CompanyRecord.visibility`(PUBLIC/INTERNAL) · 기존 대외비 1건 백필 | `prisma/migrations/20261006000000_record_proposals` |
 | 추출 · 중복 대조 · 대외비 신호 · 정확도 · 자동 전환 · 채택/제외/되돌리기 | `lib/record-proposals.ts` |
-| 업무 완료 시 · 매일 19:10 UTC 전날 26시간 채팅 | `lib/task-update.ts` · `lib/notifications.ts` · `app/api/cron/record-proposals` · `vercel.json` |
+| 업무 완료 시 · 매일 한 번 전날 26시간 채팅 — 방문 기록 옮기기와 한 크론(`/api/cron/daily`)으로 묶어 Neon 을 하루 한 번만 깨운다 | `lib/task-update.ts` · `lib/notifications.ts` · `app/api/cron/daily` · `vercel.json` |
 | 확인 화면 — AI 제안 「연혁」 탭 | `components/company/record-proposal-list.tsx` · `app/(main)/omnis/proposals` |
 | MCP `list_record_proposals` · `decide_record_proposal`, `save_company_record` 에 visibility | `lib/omnis-mcp.ts` · `lib/company-tools.ts` |
 | 연혁 편집 창 공개범위 · 목록 「대외비」 표시 · MCP 목록 ⚠ 표시 | `components/company/record-editors.tsx` · `app/(main)/omnis/records` |

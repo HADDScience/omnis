@@ -3,12 +3,8 @@
   "regions": ["icn1"],
   "crons": [
     {
-      "path": "/api/cron/flush-visits",
+      "path": "/api/cron/daily",
       "schedule": "0 19 * * *"
-    },
-    {
-      "path": "/api/cron/record-proposals",
-      "schedule": "10 19 * * *"
     }
   ]
 }
