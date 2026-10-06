@@ -7,7 +7,7 @@ last_verified: 2026-10-06
 
 # 채팅 검색 카톡식 검색 줄 — 검증
 
-계획: [`plans/2026-10-06-chat-search-inline.md`](../plans/2026-10-06-chat-search-inline.md). 로컬 스냅샷 DB · `next dev` 기준.
+계획: [`plans/archives/2026-10-06-chat-search-inline.md`](../plans/archives/2026-10-06-chat-search-inline.md). 로컬 스냅샷 DB · `next dev` 기준.
 
 ## 품질 게이트
 

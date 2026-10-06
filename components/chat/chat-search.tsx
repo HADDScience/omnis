@@ -44,7 +44,7 @@ interface ChatSearchProps {
 const MIN_QUERY = 2
 
 /**
- * 채팅 검색 줄 — 카톡 PC 검색처럼 (2026-10-06, mydocs/plans/2026-10-06-chat-search-inline.md).
+ * 채팅 검색 줄 — 카톡 PC 검색처럼 (2026-10-06, mydocs/plans/archives/2026-10-06-chat-search-inline.md).
  *
  * 대화를 덮지 않고 패널 위에 붙는다. 검색하면 가장 최근 결과로 바로 가고,
  * ▲ 는 더 옛 결과 · ▼ 는 더 최근 결과. 결과 id 는 20건씩 필요할 때 더 받는다.

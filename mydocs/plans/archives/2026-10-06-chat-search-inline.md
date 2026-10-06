@@ -1,14 +1,14 @@
 ---
 kind: decision
 status: active
-canonical: mydocs/plans/2026-10-06-chat-search-inline.md
+canonical: mydocs/plans/archives/2026-10-06-chat-search-inline.md
 last_verified: 2026-10-06
 ---
 
 # 채팅 검색 — 카톡식 검색 줄
 
 상태: **승인 (2026-10-06).** 작업지시자가 카톡 PC 검색 화면을 주고 범위를 골랐다.
-앞선 계획: [`archives/2026-10-06-chat-search.md`](archives/2026-10-06-chat-search.md) (PR #82).
+앞선 계획: [`archives/2026-10-06-chat-search.md`](2026-10-06-chat-search.md) (PR #82).
 
 ## 바뀌는 것
 
