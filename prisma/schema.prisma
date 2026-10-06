@@ -33,6 +33,7 @@ model User {
   omnisUpdates     OmnisCard[]
   omnisVersions    OmnisCardVersion[]
   cardDecisions    CardProposal[]
+  recordDecisions  RecordProposal[]   @relation("RecordProposalDecider")
   omnisQueries     OmnisQuery[]
   notifications    Notification[]
   pushSubscriptions PushSubscription[]
@@ -184,6 +185,7 @@ model Task {
   messages      ChatMessage[]
   files         File[]
   cardProposals CardProposal[]
+  recordProposals RecordProposal[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -1243,11 +1245,80 @@ model CompanyRecord {
   source       String
   projectId    String?
   project      Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  /// 공개범위. INTERNAL 은 대외비 — 외부 자료(기업현황카드 · IR · 홈페이지)에 쓰지 않는다.
+  /// 이 칸이 생기기 전에는 제목 앞 [내부용·대외비] 와 비고로만 갈랐다 (2026-10-06)
+  visibility   RecordVisibility @default(PUBLIC)
+  /// 이 줄을 만든 AI 제안 (채택 · 자동 등록)
+  proposals    RecordProposal[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   @@index([kind, startsOn])
   @@index([startsOn])
+}
+
+enum RecordVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+/// 연혁 제안의 등급. 「제외」는 저장하지 않는다 — 제안 단계에서 버린다
+enum RecordGrade {
+  /// 외부에 내세울 기관 확정 성과 (선정 · 수상 · 협약/MOU · 출원/등록 · 인증 · 기관 위촉) → 기업현황카드 후보
+  MAJOR
+  /// Omnis 상세 연혁만 (행사 참석 · 부스 · 발표 · 교육 · 현장점검 · 실사)
+  GENERAL
+}
+
+/// AI 가 채팅 · 업무에서 찾은 연혁 후보. 사람이 채택 · 수정 · 제외로 확정한다.
+///
+/// 확정 결과가 곧 정확도다 — 원안 그대로 채택한 비율을 종류 × 등급별로 센다.
+/// 기준을 넘은 유형(일반 등급 · 대외비 아님)만 자동 등록으로 넘어간다 — lib/record-proposals.ts.
+///
+/// 배경: mydocs/plans/2026-09-30-record-proposals-and-card-categories.md
+model RecordProposal {
+  id           String             @id @default(uuid())
+  status       CardProposalStatus @default(PENDING)
+
+  kind         RecordKind
+  grade        RecordGrade
+  confidential Boolean            @default(false)
+  title        String
+  organizer    String?
+  occurredOn   DateTime?
+  /// 원문 기간 표기 (예: 2026.12.02~12.05)
+  periodRaw    String?
+  /// 0~1. 모델이 매긴 확신
+  confidence   Float
+  /// 왜 연혁인지 한 줄
+  reason       String
+  /// 근거 [{ kind: "task"|"message", id, label, at, quote }]. 비어 있으면 만들지 않는다
+  sourceRefs   Json
+  /// AI 원안 { kind, grade, confidential, title, occurredOn, organizer } — 사람이 고쳐도 남긴다
+  original     Json
+  /// 사람이 고쳐서 채택했다. 정확도에서는 「원안과 다름」으로 센다
+  edited       Boolean            @default(false)
+
+  /// 무엇이 이 제안을 불렀나 — task_done · chat_daily · manual
+  trigger       String
+  triggerTaskId String?
+  triggerTask   Task?   @relation(fields: [triggerTaskId], references: [id], onDelete: SetNull)
+
+  /// 채택 · 자동 등록으로 생긴 연혁. 연혁이 지워져도 제안(판단 기록)은 남는다
+  recordId String?
+  record   CompanyRecord? @relation(fields: [recordId], references: [id], onDelete: SetNull)
+
+  decidedById String?
+  decidedBy   User?     @relation("RecordProposalDecider", fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+  /// 자동 등록을 사람이 되돌린 시각. 정확도에 「원안과 다름」으로 들어간다
+  revertedAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+  @@index([kind, grade, status])
+  @@index([triggerTaskId])
 }
 
 enum TaxInvoiceDirection {

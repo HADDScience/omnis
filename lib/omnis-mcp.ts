@@ -467,6 +467,7 @@ export const OMNIS_TOOLS = [
         grant_no: { type: "string", description: "과제번호" },
         funding_krw: { type: "string", description: "지원금(원). 숫자" },
         note: { type: "string", description: "비고 — 근거가 된 메일·문서를 적어 둔다" },
+        visibility: { type: "string", enum: ["PUBLIC", "INTERNAL"], description: "공개범위. INTERNAL 은 대외비 — 외부 자료에 쓰지 않는다. 비우면 PUBLIC" },
       },
     },
   },

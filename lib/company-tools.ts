@@ -99,6 +99,8 @@ export async function companyRecordsText(args: Record<string, unknown>): Promise
       r.grantNo && `과제번호 ${r.grantNo}`,
       r.venue,
       r.partner && `대리점 ${r.partner}`,
+      // 대외비는 외부 자료에 쓰면 안 된다 — 이 목록으로 외부 문서를 쓰는 AI 가 보게 한다
+      r.visibility === "INTERNAL" && "⚠ 대외비 · 외부 자료 사용 금지",
     ].filter(Boolean)
     // id 를 함께 준다 — 이게 없으면 고칠 줄을 get_context 로 한 건씩 캐야 한다(2026-09-16)
     return `- ${bits.join(" · ")} · id ${r.id}`
@@ -275,6 +277,7 @@ export async function saveCompanyRecordText(
         venue: before.venue,
         partner: before.partner,
         category: before.category,
+        visibility: before.visibility,
       }
     : {}
 

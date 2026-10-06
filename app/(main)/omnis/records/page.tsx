@@ -36,6 +36,7 @@ function recordForm(r: CompanyRecord): RecordForm {
     venue: r.venue ?? "",
     partner: r.partner ?? "",
     category: r.category ?? "",
+    visibility: r.visibility,
   }
 }
 
@@ -189,6 +190,7 @@ export default async function RecordsPage({ searchParams }: Props) {
                       <Badge variant="outline">{RECORD_KIND_LABEL[r.kind]}</Badge>
                       <span className="min-w-0 break-words text-[13.5px] font-medium">{r.title}</span>
                       {r.status && <Badge variant={r.status === "진행중" || r.status === "계획" ? "default" : "secondary"}>{r.status}</Badge>}
+                      {r.visibility === "INTERNAL" && <Badge variant="destructive">대외비</Badge>}
                       <span className="ml-auto text-[11.5px] tabular-nums text-muted-foreground">{periodText(r)}</span>
                       {signedIn && <RecordEditButton initial={recordForm(r)} />}
                     </div>
