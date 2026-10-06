@@ -110,7 +110,7 @@ async function main() {
     }
   }
 
-  const dbHost = (process.env.DATABASE_URL ?? "").replace(/.*@/, "").replace(/\/.*/, "")
+  const dbHost = (process.env.DATABASE_URL ?? "").replace(/.*@/, "").replace(/\?.*/, "") // host:port/db — 어느 DB 를 쟀는지 남긴다
   const caller = await resolveCaller(opt("--user") ?? "정우창")
   writeFileSync(join(dir, "meta.json"), JSON.stringify({
     runId, startedAt: new Date().toISOString(), dbHost, caller: caller.name, krwPerUsd: KRW_PER_USD,

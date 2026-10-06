@@ -46,15 +46,24 @@ export async function trgmSearch(keywords: string[]): Promise<KwRow[]> {
 // (대소문자 무시, 문자열 길이 차로 센다). df = 키워드가 든 청크 수. BM25 의 "단어" 가 여기선 부분 문자열이라
 // "애드젤" 은 "애드젤의" 안에서도 센다.
 
-const K1 = 1.2
-const B = 0.75
+/**
+ * BM25 의 "문서" = 제목 + 본문. 처음엔 본문만 셌는데, 업무 청크는 사건번호·사업번호가 제목에만 있어
+ * 후보에는 들고(ILIKE 는 title 도 본다) 점수는 0 이 됐다 (2026-10-06, 정확 문자열 3문항이 20위 밖).
+ */
+const DOC = `(coalesce("title", '') || ' ' || "content")`
+
+const K1 = Number(process.env.WK_BM25_K1 ?? 1.2)
+/** 길이 정규화. 길이가 글자 수라 0.75 면 긴 업무 청크(1천 자+)가 짧은 잡담에 밀린다 (2026-10-06 실측) — env 로 덮어 잰다 */
+const B = Number(process.env.WK_BM25_B ?? 0.3)
+/** df/N 이 이 비율을 넘는 키워드는 불용어로 보고 점수에서 뺀다. "무슨"·"어디" 같은 질문 말이 extractKeywords 에 남는다. 1 이면 끔 */
+const STOP_DF = Number(process.env.WK_BM25_STOP_DF ?? 1)
 
 let corpus: Promise<{ n: number; avgdl: number }> | null = null
 
 /** 전체 청크 수와 평균 길이. 실행 동안 한 번만 센다 */
 function corpusStats() {
   corpus ??= prisma
-    .$queryRawUnsafe<{ n: number; avgdl: number }[]>(`SELECT count(*)::int AS n, avg(length("content"))::float8 AS avgdl FROM "EmbeddingChunk"`)
+    .$queryRawUnsafe<{ n: number; avgdl: number }[]>(`SELECT count(*)::int AS n, avg(length(${DOC}))::float8 AS avgdl FROM "EmbeddingChunk"`)
     .then((r) => r[0])
   return corpus
 }
@@ -66,19 +75,22 @@ export async function bm25Search(keywords: string[]): Promise<KwRow[]> {
   const [{ n: N, avgdl }, [dfRow]] = await Promise.all([
     corpusStats(),
     prisma.$queryRawUnsafe<Record<string, number>[]>(
-      `SELECT ${pats.map((_, i) => `count(*) FILTER (WHERE "content" ILIKE $${i + 1})::int AS d${i}`).join(", ")}
-       FROM "EmbeddingChunk" WHERE ${Array.from({ length: n }, (_, i) => `"content" ILIKE $${i + 1}`).join(" OR ")}`,
+      `SELECT ${pats.map((_, i) => `count(*) FILTER (WHERE ${DOC} ILIKE $${i + 1})::int AS d${i}`).join(", ")}
+       FROM "EmbeddingChunk" WHERE ${Array.from({ length: n }, (_, i) => `${DOC} ILIKE $${i + 1}`).join(" OR ")}`,
       ...pats
     ),
   ])
-  const idf = keywords.map((_, i) => { const df = dfRow[`d${i}`] ?? 0; return Math.log(1 + (N - df + 0.5) / (df + 0.5)) })
+  const idf = keywords.map((_, i) => {
+    const df = dfRow[`d${i}`] ?? 0
+    return df / N > STOP_DF ? 0 : Math.log(1 + (N - df + 0.5) / (df + 0.5))
+  })
   // tf_i 를 서브쿼리에서 한 번 계산하고 바깥에서 BM25 항으로 합친다. idf·avgdl 은 계산된 숫자라 리터럴로 넣는다.
-  const tf = (i: number) => `((length(lower("content")) - length(replace(lower("content"), lower($${n + i + 1}), ''))) / length($${n + i + 1}))::float8 AS tf${i}`
+  const tf = (i: number) => `((length(lower(${DOC})) - length(replace(lower(${DOC}), lower($${n + i + 1}), ''))) / length($${n + i + 1}))::float8 AS tf${i}`
   const term = (i: number) => `${idf[i]} * tf${i} * ${K1 + 1} / (tf${i} + ${K1} * (1 - ${B} + ${B} * dl / ${avgdl}))`
   return prisma.$queryRawUnsafe<KwRow[]>(
     `SELECT "id","source","sourceId","chunkIndex","title","content", (${keywords.map((_, i) => term(i)).join(" + ")})::float8 AS score
      FROM (
-       SELECT "id","source","sourceId","chunkIndex","title","content","updatedAt", length("content")::float8 AS dl, ${keywords.map((_, i) => tf(i)).join(", ")}
+       SELECT "id","source","sourceId","chunkIndex","title","content","updatedAt", length(${DOC})::float8 AS dl, ${keywords.map((_, i) => tf(i)).join(", ")}
        FROM "EmbeddingChunk"
        WHERE ${candidateWhere(n)}
      ) t

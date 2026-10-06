@@ -1,6 +1,6 @@
 // WeKnora 검색 기법을 누적으로 얹은 검색기 — R1a · R1b · R2 · R3 · R4.
 //
-//   R1a  벡터 20 + 키워드 20(pg_trgm 점수) → 가중 RRF(k=60, 벡터 0.7 / 키워드 0.3)
+//   R1a  벡터 20 + 키워드 20(pg_trgm 점수) → 가중 RRF(k=60). 기본 0.5/0.5 — WeKnora 기본 0.7/0.3 은 env 로 (아래 W_VECTOR)
 //   R1b  같은 구조, 키워드 점수만 BM25 근사
 //   R2   R1(R_BEST_KEYWORD) + 질의 이해(재작성·의도) + 벡터 유사도가 낮을 때만 키워드 쪽 확장
 //   R3   R2 + 상위 30 LLM 리랭크 + MMR(λ=0.7) → top-k
@@ -19,13 +19,18 @@ import { understandQuery, llmRerank, type Intent } from "./llm"
 export const WK_LEVELS = ["r1a", "r1b", "r2", "r3", "r4"] as const
 export type WkLevel = (typeof WK_LEVELS)[number]
 
-/** R2 이상이 쓰는 키워드 점수. R1a · R1b 검색 지표를 본 뒤 고른다 */
-export const R_BEST_KEYWORD: KeywordScorer = "bm25"
+/** R2 이상이 쓰는 키워드 점수. R1a · R1b 검색 지표를 본 뒤 고른다 (WK_KEYWORD=trgm|bm25 로 덮는다) */
+export const R_BEST_KEYWORD: KeywordScorer = process.env.WK_KEYWORD === "bm25" ? "bm25" : "trgm"
 
-/** WeKnora 기본값 (types/retrieval_config.go GetEffectiveRRFK · GetEffectiveRRFWeights) */
+/**
+ * WeKnora 기본값 (types/retrieval_config.go GetEffectiveRRFK · GetEffectiveRRFWeights).
+ * 0.7 / 0.3 이면 키워드로만 잡힌 1위(0.3/61)가 벡터 8위(0.7/68)보다 낮아 상위 8 에 못 든다 —
+ * 정확 문자열 문항에서 Recall 이 벡터만과 같아진 원인(2026-10-06 실측). 가중치를 떼어 재려고 env 로 덮는다.
+ */
 const RRF_K = 60
-const W_VECTOR = 0.7
-const W_KEYWORD = 0.3
+// 기본값은 실측 최선(동일 가중). WeKnora 기본을 재려면 WK_W_VECTOR=0.7 WK_W_KEYWORD=0.3.
+const W_VECTOR = Number(process.env.WK_W_VECTOR ?? 0.5)
+const W_KEYWORD = Number(process.env.WK_W_KEYWORD ?? 0.5)
 
 /** 1차 벡터 검색 1위 유사도가 이보다 낮으면 recall 이 낮다고 보고 키워드 쪽만 확장한다 */
 export const EXPAND_BELOW = 0.55

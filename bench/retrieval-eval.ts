@@ -158,7 +158,7 @@ async function main() {
   const repeat = Math.max(1, Number(opt("--repeat") ?? 1))
   installEmbedCache()
 
-  const dbHost = (process.env.DATABASE_URL ?? "").replace(/.*@/, "").replace(/\/.*/, "")
+  const dbHost = (process.env.DATABASE_URL ?? "").replace(/.*@/, "").replace(/\?.*/, "") // host:port/db — 어느 DB 를 쟀는지 남긴다
   const runId = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "").replace(/(\d{8})(\d{4})/, "$1-$2")
   const dir = opt("--out") ?? join("bench/results", `retrieval-${runId}`)
   mkdirSync(dir, { recursive: true })
