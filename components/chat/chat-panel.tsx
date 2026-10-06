@@ -163,16 +163,24 @@ export function ChatPanel({
   }, [endJump, fetchMessages])
 
   /** 검색 결과로 간다 — 그 글 앞뒤만 불러와 목록을 갈아 끼운다(방 전체는 1만 건이 넘는다) */
-  const jumpTo = useCallback(
-    async (messageId: string) => {
-      const params = new URLSearchParams({ roomId, around: messageId })
+  // 이미 불러온 자리 안이면 다시 받지 않는다 — ▲▼ 로 이웃한 결과를 넘길 때 목록이 출렁이지 않게
+  const messagesRef = useRef(messages)
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
+  /** 주변 불러오기(around=id 또는 at=시각)로 목록을 갈아 끼우고 대상을 강조한다 */
+  const loadAround = useCallback(
+    async (query: { around: string } | { at: string }) => {
+      const params = new URLSearchParams({ roomId, ...query })
       if (filterTaskId) params.set("taskId", filterTaskId)
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`)).catch(() => null)
       if (!res?.ok) {
         toast.error("그 메시지를 불러오지 못했습니다")
         return
       }
-      const data: { messages: Message[]; hasMoreOlder: boolean; hasMoreNewer: boolean } = await res.json()
+      const data: { targetId: string; messages: Message[]; hasMoreOlder: boolean; hasMoreNewer: boolean } =
+        await res.json()
       // 뒤가 더 없으면 최신까지 다 받은 것이다 — 평소 목록과 같으니 폴링을 그대로 둔다
       jumpedRef.current = data.hasMoreNewer
       setJumped(data.hasMoreNewer)
@@ -180,10 +188,33 @@ export function ChatPanel({
       setHasMoreOlder(data.hasMoreOlder)
       setMessages(data.messages)
       if (data.messages.length > 0) lastFetchedAt.current = data.messages[data.messages.length - 1].createdAt
-      setHighlight((prev) => ({ id: messageId, n: (prev?.n ?? 0) + 1 }))
+      setHighlight((prev) => ({ id: data.targetId, n: (prev?.n ?? 0) + 1 }))
     },
     [roomId, filterTaskId],
   )
+
+  const jumpTo = useCallback(
+    async (messageId: string) => {
+      if (messagesRef.current.some((m) => m.id === messageId)) {
+        setHighlight((prev) => ({ id: messageId, n: (prev?.n ?? 0) + 1 }))
+        return
+      }
+      await loadAround({ around: messageId })
+    },
+    [loadAround],
+  )
+
+  // 검색 줄을 닫으면 최신 목록으로 돌아간다. 옛 자리에 머물면 새 글이 안 들어온다(폴링이 멈춰 있다)
+  const [searchText, setSearchText] = useState("")
+  const wasSearchOpen = useRef(searchOpen)
+  useEffect(() => {
+    if (wasSearchOpen.current && !searchOpen) {
+      setSearchText("")
+      setHighlight(null)
+      if (jumpedRef.current) backToLatest()
+    }
+    wasSearchOpen.current = searchOpen
+  }, [searchOpen, backToLatest])
 
   // 검색 결과 보기에서 아래로 — 한 페이지씩 붙이고, 다 따라잡으면 평소 목록(폴링)으로 돌아간다
   const loadNewer = useCallback(async () => {
@@ -445,18 +476,17 @@ export function ChatPanel({
     : messages
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      {jumped && (
-        <div className="flex shrink-0 items-center gap-2 border-b bg-amber-50 px-3 py-1 text-[11px] text-amber-900 dark:bg-amber-400/10 dark:text-amber-200">
-          <span className="min-w-0 flex-1 truncate">검색 결과 자리를 보고 있습니다</span>
-          <button
-            type="button"
-            onClick={backToLatest}
-            className="touch-target shrink-0 rounded px-1.5 py-0.5 font-medium underline-offset-2 hover:underline"
-          >
-            최신으로
-          </button>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {searchOpen && (
+        <ChatSearch
+          roomId={roomId}
+          taskId={filterTaskId ?? null}
+          users={users}
+          onClose={() => onSearchOpenChange?.(false)}
+          onGo={(id) => void jumpTo(id)}
+          onGoDate={(at) => void loadAround({ at })}
+          onSearchTextChange={setSearchText}
+        />
       )}
       <MessageList
         messages={visibleMessages}
@@ -474,6 +504,7 @@ export function ChatPanel({
         onLoadNewer={loadNewer}
         hasMoreNewer={hasMoreNewer}
         loadingNewer={loadingNewer}
+        searchText={searchOpen ? searchText : ""}
       />
 
       <div className="shrink-0 border-t">
@@ -494,18 +525,6 @@ export function ChatPanel({
         )}
         <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
       </div>
-
-      {searchOpen && (
-        <ChatSearch
-          roomId={roomId}
-          taskId={filterTaskId ?? null}
-          onClose={() => onSearchOpenChange?.(false)}
-          onPick={(id) => {
-            onSearchOpenChange?.(false)
-            void jumpTo(id)
-          }}
-        />
-      )}
 
     </div>
   )

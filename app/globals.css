@@ -604,3 +604,14 @@ body {
 /* Magic UI Shine Border — shared by the MCP menu and its introduction. */
 @theme inline { --animate-shine: shine var(--duration) infinite linear; }
 @keyframes shine { 0%, 100% { background-position: 0% 0%; } 50% { background-position: 100% 100%; } }
+
+/* 채팅 검색 — 말풍선 안 걸린 글자 (components/chat/message-list.tsx, CSS Custom Highlight).
+   내 말풍선은 흰 글자라 글자색도 함께 정한다 */
+::highlight(chat-search-hit) {
+  background-color: rgb(253 224 71 / 0.6);
+  color: #1c1917;
+}
+::highlight(chat-search-current) {
+  background-color: rgb(251 146 60);
+  color: #1c1917;
+}

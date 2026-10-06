@@ -60,6 +60,24 @@ interface Message {
   replyTo?: { id: string; authorName: string; content: string } | null
 }
 
+/** 말풍선 안에서 검색어가 걸린 자리들. 링크 · 칩 경계를 넘는 일치는 잡지 않는다 */
+function findTextRanges(body: HTMLElement, query: string): Range[] {
+  const needle = query.trim().toLowerCase()
+  if (needle.length < 2) return []
+  const ranges: Range[] = []
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const lower = (node.textContent ?? "").toLowerCase()
+    for (let at = lower.indexOf(needle); at >= 0; at = lower.indexOf(needle, at + needle.length)) {
+      const range = new Range()
+      range.setStart(node, at)
+      range.setEnd(node, at + needle.length)
+      ranges.push(range)
+    }
+  }
+  return ranges
+}
+
 /** 새 메시지가 아래에서 살짝 떠오른다. 움직임 줄이기 설정이면 멈춘다 */
 export const MESSAGE_ENTER = "animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ease-out motion-reduce:animate-none"
 
@@ -96,6 +114,8 @@ interface MessageListProps {
   onLoadNewer?: () => void
   hasMoreNewer?: boolean
   loadingNewer?: boolean
+  /** 검색어 — 말풍선 안 걸린 글자에 표시한다(CSS Custom Highlight). 지금 결과(highlight)는 더 진하게 */
+  searchText?: string
 }
 
 export function MessageList({
@@ -117,6 +137,7 @@ export function MessageList({
   onLoadNewer,
   hasMoreNewer = false,
   loadingNewer = false,
+  searchText = "",
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   // 고치는 중인 글은 한 번에 하나다 — 여러 줄을 동시에 열면 무엇을 저장하는지 흐려진다
@@ -171,9 +192,45 @@ export function MessageList({
     const target = scrollRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(highlight.id)}"]`)
     if (!target) return
     scrolledHighlightRef.current = highlight.n
-    target.scrollIntoView({ block: "center" })
+    // 검색어가 있으면 말풍선이 아니라 걸린 글자를 가운데로 — 긴 글에서 말풍선 가운데는 걸린 자리가 아닐 수 있다.
+    // 글자 표시가 되는 브라우저면 말풍선 전체를 번쩍이지 않는다(카톡처럼 글자만 진하게)
+    const body = target.querySelector<HTMLElement>("[data-message-body]")
+    const first = body ? findTextRanges(body, searchText)[0] : undefined
+    const el = scrollRef.current
+    if (first && el) {
+      const r = first.getBoundingClientRect()
+      const box = el.getBoundingClientRect()
+      el.scrollTop += r.top - box.top - box.height / 2 + r.height / 2
+      if (typeof CSS !== "undefined" && CSS.highlights) return
+    } else {
+      target.scrollIntoView({ block: "center" })
+    }
     setFlashId(highlight.id)
-  }, [highlight, messages])
+  }, [highlight, messages, searchText])
+
+  // 걸린 글자 표시. DOM 위에 범위만 거는 방식이라 링크 · 칩으로 쪼갠 렌더를 건드리지 않는다.
+  // 지원하지 않는 브라우저(Firefox 140 미만)는 표시 없이 지금 결과 말풍선 강조만 남는다
+  useEffect(() => {
+    const registry = typeof CSS !== "undefined" ? CSS.highlights : undefined
+    if (!registry || typeof Highlight === "undefined") return
+    const root = scrollRef.current
+    const needle = searchText.trim().toLowerCase()
+    if (!root || needle.length < 2) return
+    const hits: Range[] = []
+    const current: Range[] = []
+    root.querySelectorAll<HTMLElement>("[data-message-body]").forEach((body) => {
+      const isCurrent = body.closest("[data-message-id]")?.getAttribute("data-message-id") === highlight?.id
+      ;(isCurrent ? current : hits).push(...findTextRanges(body, needle))
+    })
+    registry.set("chat-search-hit", new Highlight(...hits))
+    const now = new Highlight(...current)
+    now.priority = 1
+    registry.set("chat-search-current", now)
+    return () => {
+      registry.delete("chat-search-hit")
+      registry.delete("chat-search-current")
+    }
+  }, [messages, searchText, highlight, editingId])
 
   useEffect(() => {
     if (!flashId) return
@@ -306,6 +363,7 @@ export function MessageList({
                 )}
                 <div className={`flex items-end gap-1 ${mine ? "flex-row-reverse" : ""}`}>
                   <div
+                    data-message-body
                     className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] ${
                       mine ? "bg-primary text-primary-foreground" : "bg-muted"
                     } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md" : ""} ${
