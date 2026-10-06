@@ -4,11 +4,10 @@
 // **순차성**이다. N 라운드는 1..N-1 이 만든 프로젝트·업무를 모두 보고 판단한다.
 // 그래야 3월에 생긴 프로젝트에 5월 업무가 붙는다 — 병렬로 돌리면 같은 프로젝트가
 // 이름만 다르게 흩어진다.
-import { createHash } from "crypto"
 import { Prisma } from "../../generated/prisma"
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "fs"
 import {
-  prisma, DATA_DIR, ROOMS, SPEAKER_TO_USER, askClaude, loadClassified, normalizeProjectName,
+  prisma, DATA_DIR, ROOMS, SPEAKER_TO_USER, askClaude, loadClassified, messageSourceId, normalizeProjectName,
   parseJsonArray, parseKst, resolveUsers, pad2, type RawSession,
 } from "../kakao-common"
 
@@ -24,6 +23,8 @@ interface Draft {
   productId?: string | null; priority?: "LOW" | "NORMAL" | "HIGH"
   ownerHints?: string[]; deadlineHint?: string | null
   status?: "TODO" | "IN_PROGRESS" | "DONE"; confidence?: "high" | "low"
+  /** 이미 있는 업무의 연속이면 그 업무 이름. 새 카드를 만들지 않고 메시지를 그 업무에 붙인다. */
+  continuesTask?: string | null
   /** 그 라운드 입력에서 projectId 가 가리키던 이름. 다른 DB(프로덕션)에서 id 가 달라도 이름으로 되짚는다. */
   projectName?: string | null
   round?: number
@@ -83,15 +84,26 @@ function nextRoundNumber(): number {
   return Math.max(0, ...nums) + 1
 }
 
-/** 아직 업무 카드가 없는 업무·실행가능 세션. 시간순. */
+const sessionMessageIds = (s: RawSession) => s.msgs.map((m) => messageSourceId(s.room, m))
+
+/**
+ * 아직 업무 카드가 없는 업무·실행가능 세션. 시간순.
+ * 자기 카드가 있거나, 메시지가 이미 다른 업무에 붙어 있으면(기존 업무의 연속) 끝난 세션이다.
+ */
 export async function pendingForStructure(sessions: RawSession[]): Promise<RawSession[]> {
   const classified = loadClassified()
   const done = new Set(
     (await prisma.task.findMany({ where: { sourceId: { startsWith: "kakao-task:" } }, select: { sourceId: true } }))
       .map((t) => t.sourceId!.slice("kakao-task:".length)),
   )
-  return sessions
+  const candidates = sessions
     .filter((s) => ROOMS[s.room] && classified.get(s.id)?.label === "업무" && classified.get(s.id)?.actionable === true && !done.has(s.id))
+  const linked = new Set(
+    (await prisma.chatMessage.findMany({ where: { sourceId: { in: candidates.flatMap(sessionMessageIds) }, taskId: { not: null } }, select: { sourceId: true } }))
+      .map((m) => m.sourceId),
+  )
+  return candidates
+    .filter((s) => !sessionMessageIds(s).some((id) => linked.has(id)))
     .sort((a, b) => a.start.localeCompare(b.start))
 }
 
@@ -101,9 +113,9 @@ async function buildPayload(round: number, totalRounds: number, chunk: RawSessio
     prisma.product.findMany({ select: { id: true, name: true } }),
     prisma.user.findMany({ select: { name: true }, orderBy: { name: "asc" } }),
     prisma.omnisCard.findMany({ select: { title: true, category: { select: { name: true } } }, take: 60 }),
-    // 앞 라운드까지 만들어진 업무. 이어지는 업무인지, 새 업무인지 판단하는 근거다.
+    // 이미 있는 업무. 이어지는 업무인지, 새 업무인지 판단하는 근거다.
+    // 이식으로 만든 것만이 아니라 옴니스에서 직접 만든 것도 넣는다 — 빼면 같은 일로 카드가 한 장 더 생긴다.
     prisma.task.findMany({
-      where: { sourceId: { startsWith: "kakao-task:" } },
       select: { name: true, createdAt: true, project: { select: { name: true } } },
       orderBy: { createdAt: "desc" }, take: 80,
     }),
@@ -133,7 +145,7 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
     create: { id: "project-misc", name: MISC_PROJECT, status: "진행 중", purpose: "과제에 속하지 않는 상시·일상 업무" },
     select: { id: true },
   })
-  const stats = { created: 0, skipped: 0, matched: 0, misc: 0, newProj: 0, noAssignee: 0, deadline: 0, dropped: 0 }
+  const stats = { created: 0, continued: 0, skipped: 0, matched: 0, misc: 0, newProj: 0, noAssignee: 0, deadline: 0, dropped: 0 }
   const createdIds: string[] = []
 
   for (const d of drafts) {
@@ -141,6 +153,17 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
     if (!s) { stats.skipped++; continue }
     const sourceId = `kakao-task:${d.id}`
     if (await prisma.task.findUnique({ where: { sourceId }, select: { id: true } })) { stats.skipped++; continue }
+
+    // 기존 업무의 연속이면 새 카드 대신 그 업무 스레드에 메시지를 붙인다. 이름이 같은 업무가 여럿이면 가장 최근 것.
+    // 이름을 못 찾으면 새 카드로 간다 — 붙일 곳을 지어내지 않는다.
+    const target = d.continuesTask?.trim()
+      ? await prisma.task.findFirst({ where: { name: d.continuesTask.trim() }, orderBy: { createdAt: "desc" }, select: { id: true } })
+      : null
+    if (target) {
+      await prisma.chatMessage.updateMany({ where: { sourceId: { in: sessionMessageIds(s) }, taskId: null }, data: { taskId: target.id } })
+      stats.continued++
+      continue
+    }
 
     // 프로젝트: 기존 매칭 → 신규 제안 → 둘 다 없으면 기타
     const all = await prisma.project.findMany({ where: { archived: false }, select: { id: true, name: true } })
@@ -199,8 +222,7 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
       select: { id: true },
     })
     // 이 세션의 메시지를 업무에 연결한다 — 스레드에서 원문이 보이게.
-    const ids = s.msgs.map((m) => `kakao:${createHash("sha1").update(`${s.room}|${m.t}|${m.u}|${m.m}`).digest("hex")}`)
-    await prisma.chatMessage.updateMany({ where: { sourceId: { in: ids }, taskId: null }, data: { taskId: task.id } })
+    await prisma.chatMessage.updateMany({ where: { sourceId: { in: sessionMessageIds(s) }, taskId: null }, data: { taskId: task.id } })
     createdIds.push(task.id)
     stats.created++
   }
@@ -263,7 +285,7 @@ export async function structure(sessions: RawSession[], opts: { model: string; d
     const drafts = chunk.map((s) => cache.get(s.id)).filter((d): d is Draft => !!d)
     const st = await applyDrafts(drafts, chunk)
     created += st.created
-    console.log(`  적용 — 생성 ${st.created} · 건너뜀 ${st.skipped} · 과제 매칭 ${st.matched} (신규 ${st.newProj}) · 기타 ${st.misc} · 담당자 없음 ${st.noAssignee} · 마감 ${st.deadline} (버림 ${st.dropped})`)
+    console.log(`  적용 — 생성 ${st.created} · 기존 업무에 붙임 ${st.continued} · 건너뜀 ${st.skipped} · 과제 매칭 ${st.matched} (신규 ${st.newProj}) · 기타 ${st.misc} · 담당자 없음 ${st.noAssignee} · 마감 ${st.deadline} (버림 ${st.dropped})`)
   }
   return { created }
 }
