@@ -1,6 +1,6 @@
 "use client"
 
-import { useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -88,6 +88,14 @@ interface MessageListProps {
   /** 내 글 고치기. 저장이 끝나면 목록을 다시 읽는 것은 부모가 한다 */
   onEdit?: (id: string, content: string) => Promise<void>
   onDelete?: (id: string) => Promise<void>
+  /** 검색 결과로 갈 때 — 이 글을 가운데로 가져와 잠깐 강조한다. n 은 같은 글을 다시 눌렀을 때 다시 움직이게 */
+  highlight?: { id: string; n: number } | null
+  /** 검색 결과 보기 중 — 최신이 아닌 자리를 보고 있다. 뒤를 붙여도 맨 아래로 끌어내리지 않는다 */
+  jumped?: boolean
+  /** 아래로 스크롤 시 뒤 메시지 로드 요청 (검색 결과 보기 중에만) */
+  onLoadNewer?: () => void
+  hasMoreNewer?: boolean
+  loadingNewer?: boolean
 }
 
 export function MessageList({
@@ -104,6 +112,11 @@ export function MessageList({
   onReply,
   onEdit,
   onDelete,
+  highlight = null,
+  jumped = false,
+  onLoadNewer,
+  hasMoreNewer = false,
+  loadingNewer = false,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   // 고치는 중인 글은 한 번에 하나다 — 여러 줄을 동시에 열면 무엇을 저장하는지 흐려진다
@@ -114,6 +127,16 @@ export function MessageList({
   const [mountedAt] = useState(() => Date.now())
   const prevFirstIdRef = useRef<string | null>(null)
   const anchorRef = useRef<{ height: number; top: number } | null>(null)
+  // 아래 레이아웃 효과는 messages 가 바뀔 때만 돈다 — jumped · highlight 는 ref 로 읽어 deps 에 넣지 않는다
+  const jumpedRef = useRef(jumped)
+  const highlightRef = useRef(highlight)
+  // 아래 효과보다 먼저 선언해 같은 커밋에서 먼저 돈다
+  useLayoutEffect(() => {
+    jumpedRef.current = jumped
+    highlightRef.current = highlight
+  })
+  const scrolledHighlightRef = useRef<number | null>(null)
+  const [flashId, setFlashId] = useState<string | null>(null)
 
   // 이전 메시지(prepend)면 스크롤 위치 유지, 그 외(새 메시지·초기 로드)는 맨 아래로
   useLayoutEffect(() => {
@@ -131,6 +154,8 @@ export function MessageList({
       el.scrollTop =
         el.scrollHeight - anchorRef.current.height + anchorRef.current.top
       anchorRef.current = null
+    } else if (jumpedRef.current || (highlightRef.current && highlightRef.current.n !== scrolledHighlightRef.current)) {
+      // 검색 결과 보기 — 자리는 아래 강조 효과가 잡는다. 뒤를 붙일 때도 보던 자리에 둔다
     } else if (prevFirstId != null) {
       // 새 메시지 — 부드럽게 따라 내려간다
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
@@ -140,9 +165,29 @@ export function MessageList({
     prevFirstIdRef.current = firstId
   }, [messages])
 
+  // 검색 결과로 온 글을 가운데로 — 위 효과 뒤에 돈다(선언 순서)
+  useLayoutEffect(() => {
+    if (!highlight || highlight.n === scrolledHighlightRef.current) return
+    const target = scrollRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(highlight.id)}"]`)
+    if (!target) return
+    scrolledHighlightRef.current = highlight.n
+    target.scrollIntoView({ block: "center" })
+    setFlashId(highlight.id)
+  }, [highlight, messages])
+
+  useEffect(() => {
+    if (!flashId) return
+    const timer = setTimeout(() => setFlashId(null), 2000)
+    return () => clearTimeout(timer)
+  }, [flashId, highlight])
+
   function handleScroll() {
     const el = scrollRef.current
-    if (!el || !onLoadOlder) return
+    if (!el) return
+    if (onLoadNewer && hasMoreNewer && !loadingNewer && el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
+      onLoadNewer()
+    }
+    if (!onLoadOlder) return
     if (el.scrollTop < 80 && hasMoreOlder && !loadingOlder) {
       // prepend 직전 스크롤 상태를 기록 → useLayoutEffect에서 위치 복원
       anchorRef.current = { height: el.scrollHeight, top: el.scrollTop }
@@ -219,14 +264,16 @@ export function MessageList({
           }
 
           const mine = isMe && !selectionMode
+          const flashing = flashId === msg.id
           const pending = msg.id.startsWith("temp-")
           const fresh = !msg._settled && new Date(msg.createdAt).getTime() > mountedAt
           return (
             <div
               key={msg.id}
-              className={`group/msg flex gap-2.5 ${mine ? "flex-row-reverse" : ""} ${
+              data-message-id={msg.id}
+              className={`group/msg flex gap-2.5 rounded-lg transition-colors duration-700 motion-reduce:transition-none ${mine ? "flex-row-reverse" : ""} ${
                 row.groupStart ? "mt-3" : "mt-0.5"
-              } ${fresh ? MESSAGE_ENTER : ""} ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "rounded-lg bg-primary/5 ring-1 ring-primary/20 p-1" : ""}`}
+              } ${fresh ? MESSAGE_ENTER : ""} ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "bg-primary/5 ring-1 ring-primary/20 p-1" : ""} ${flashing ? "bg-amber-200/50 ring-2 ring-amber-400/60 dark:bg-amber-400/15" : ""}`}
               onClick={selectionMode ? () => onToggleSelect?.(msg.id) : undefined}
             >
               {selectionMode && (
@@ -384,6 +431,11 @@ export function MessageList({
             </div>
           )
         })}
+        {loadingNewer && (
+          <div className="flex justify-center py-1">
+            <Spinner className="h-4 w-4" />
+          </div>
+        )}
         {processingSlug && (
           <div className="flex items-center gap-2 rounded-lg bg-primary/5 border border-primary/10 px-3 py-2 animate-pulse">
             <div className="h-2 w-2 rounded-full bg-primary animate-bounce" />

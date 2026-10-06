@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Cancel01Icon } from "@hugeicons/core-free-icons"
+import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { ChatPanel } from "@/components/chat/chat-panel"
 import { TaskCmdModal } from "@/components/chat/task-cmd-modal"
@@ -58,6 +58,12 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
   const [recentThreads, setRecentThreads] = useState<RecentThread[]>([])
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [taskModalRaw, setTaskModalRaw] = useState("")
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  // 검색창은 전체 채팅에만 있다 — 탭을 옮기거나 패널을 닫으면 접는다
+  useEffect(() => {
+    if (!open || view !== "all") setSearchOpen(false)
+  }, [open, view])
 
   // 업무 화면으로 들어오면 그 업무 스레드로, 떠나면 전체로 되돌린다
   useEffect(() => {
@@ -166,6 +172,19 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
               </button>
             ))}
           </div>
+          {view === "all" && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="touch-target"
+              aria-label="채팅 검색"
+              aria-pressed={searchOpen}
+              title="채팅 검색"
+              onClick={() => setSearchOpen((v) => !v)}
+            >
+              <HugeiconsIcon icon={Search01Icon} size={15} aria-hidden />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -223,6 +242,8 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
                   currentUserId={currentUserId}
                   onTaskUpdated={onTaskUpdated}
                   filterTaskId={urlTaskId}
+                  searchOpen={searchOpen}
+                  onSearchOpenChange={setSearchOpen}
                   onSlashTaskCommand={(raw) => {
                     setTaskModalRaw(raw)
                     setTaskModalOpen(true)
