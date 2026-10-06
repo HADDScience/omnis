@@ -59,19 +59,69 @@ export function titleSimilarity(a: string, b: string): number {
   return inter / (A.size + B.size - inter)
 }
 
+/** 날짜가 멀어도 같은 사건으로 보는 폭 — 협약일 · 시상일 · 기사일처럼 한 사건에 날짜가 여럿이다 */
+export const DUP_WIDE_DAYS = 45
+
 /**
- * 같은 사건인가. 날짜가 둘 다 있으면 ±7일 안이고 제목이 0.3 이상 겹칠 때.
- * 한쪽 날짜가 없으면 제목만으로 보되 더 엄하게(0.6) — 날짜 없는 옛 연혁이 새 사건을 다 막지 않게.
+ * 같은 사건인가.
+ * - ±7일: 같은 종류면 제목 겹침 0.2, 종류가 다르거나 모르면 0.3
+ * - ±45일: 같은 종류이고 제목이 0.45 이상 겹칠 때 (같은 수상의 발표일 · 시상일 같은 경우)
+ * - 날짜를 모르면 근거 대화 날짜(proxy)로 대신 잰다. 그것도 없으면 제목만으로 엄하게(0.6)
+ *
+ * 기준은 6개월치 실측(2026-10-06)의 중복 · 비중복 쌍에서 잡았다 — scripts/verify-record-proposals.ts
  */
 export function isSameEvent(
-  a: { title: string; date: Date | null },
-  b: { title: string; date: Date | null }
+  a: { title: string; date: Date | null; kind?: string | null; proxy?: Date | null },
+  b: { title: string; date: Date | null; kind?: string | null; proxy?: Date | null }
 ): boolean {
   const sim = titleSimilarity(a.title, b.title)
-  if (a.date && b.date) {
-    return Math.abs(a.date.getTime() - b.date.getTime()) <= DUP_WINDOW_DAYS * DAY_MS && sim >= 0.3
+  const da = a.date ?? a.proxy ?? null
+  const db = b.date ?? b.proxy ?? null
+  if (!da || !db) return sim >= 0.6
+  const days = Math.abs(da.getTime() - db.getTime()) / DAY_MS
+  const sameKind = !!a.kind && a.kind === b.kind
+  if (days <= DUP_WINDOW_DAYS) return sim >= (sameKind ? 0.2 : 0.3)
+  if (days <= DUP_WIDE_DAYS) return sameKind && sim >= 0.45
+  return false
+}
+
+// ─── 대외비 신호 (결정적) ─────────────────────────────────────────
+
+/** 비밀 표시. 「비밀번호」 「영업비밀」 같은 말은 사건의 공개 여부가 아니다 */
+const SECRET_RE = /(대외비|아직\s*비밀|비밀로|비공개|공개\s*(하지|금지|x|X|안\s*됨)|외부에\s*(말|알리)|보안\s*유지)/
+const SECRET_NOT_RE = /(비밀번호|영업비밀|대외비\s*자료)/
+
+export function isSecretSignal(text: string): boolean {
+  return SECRET_RE.test(text) && !SECRET_NOT_RE.test(text)
+}
+
+/** 사건을 가리키는 고유한 낱말. 일반명사(협약 · 참석 · 준비 …)는 뺀다 — 이것끼리 겹쳐서는 같은 사안이 아니다 */
+const GENERIC = new Set(
+  "업무협약 협약 체결 준비 방문 화면 서류 참석 참가 행사 사업 지원사업 과제 발표 회의 미팅 하드사이언스 회사 연혁 대표 기념 관련 진행 확정 선정 수상 등록 출원 운영 부스 교육 세미나 포럼 2025 2026 2027 mou".split(" ")
+)
+export function distinctiveTokens(...texts: string[]): string[] {
+  const out = new Set<string>()
+  for (const t of texts)
+    for (const w of normalizeTitle(t).split(" "))
+      if (w.length >= 3 && !GENERIC.has(w) && !/^\d+$/.test(w)) out.add(w)
+  return [...out]
+}
+
+/**
+ * 근처 대화에 이 사건을 가리키는 비밀 표시가 있나. 비밀 표시는 사건 당일이 아니라 며칠 앞서 나오는 일이 많다
+ * (인비트로큐 MOU: 8/14 「아직비밀」 → 8/18 협약). 그래서 하루치 묶음만 보는 모델이 놓친다.
+ */
+export function confidentialFromSignals(
+  candidate: { title: string; organizer?: string | null; tasks: string[] },
+  signals: { text: string; task: string | null }[]
+): { text: string } | null {
+  const keys = distinctiveTokens(candidate.title, candidate.organizer ?? "", ...candidate.tasks)
+  if (keys.length === 0) return null
+  for (const s of signals) {
+    const hay = normalizeTitle(`${s.task ?? ""} ${s.text}`)
+    if (keys.some((k) => hay.includes(k))) return s
   }
-  return sim >= 0.6
+  return null
 }
 
 // ─── 정확도 · 자동 전환 (결정적) ───────────────────────────────────
@@ -220,27 +270,32 @@ interface RawCandidate {
 
 const kst = (d: Date) => d.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16)
 
-function extractionPrompt(msgs: Msg[], context: string, existing: string): string {
+export function extractionPrompt(msgs: Msg[], context: string, existing: string, secrets = ""): string {
   const lines = msgs.map((m, i) => `[${i + 1}] ${kst(m.at)} ${m.author}${m.task ? ` (업무: ${m.task})` : ""}: ${m.content.slice(0, 600)}`)
   return `당신은 HADD Science 의 회사 연혁을 관리합니다. 아래 사내 대화에서 **회사 연혁에 남길 사건**을 찾으세요.
 오늘은 ${kst(new Date()).slice(0, 10)} 입니다. ${context}
 
 ## 종류 (kind)
 ${RECORD_KINDS.map((k) => `- ${k}: ${RECORD_KIND_LABEL[k]}`).join("\n")}
-(GRANT 지원사업 선정 · AWARD 수상 · EXHIBITION 학회·전시·부스 · FORUM 포럼·세미나 참석/발표 · EDUCATION 교육 · NETWORKING 네트워킹·기관 방문 · INTERNAL 내부행사·입주·워크샵 · MILESTONE 협약/MOU·출원/등록·인증·위촉·설립 같은 주요 사건)
+(GRANT 지원사업 선정 · AWARD 수상 · EXHIBITION 학회·전시·부스 · FORUM 포럼·세미나·웨비나 참석/발표 · EDUCATION 교육 수강 · NETWORKING 네트워킹·교류회·멘토 위촉 · INTERNAL 내부행사·입주·현장점검·실사 · MILESTONE 협약/MOU·인증·기관 위촉·설립 같은 주요 사건)
 
 ## 등급 (grade)
-- MAJOR 주요: 외부에 내세울 **기관 확정 성과** — 선정 · 수상 · 협약/MOU · 출원/등록 · 인증 · 기관 위촉
-- GENERAL 일반: 상세 연혁에만 — 행사 참석 · 부스 · 발표 · 교육 · 현장점검 · 실사
+- MAJOR 주요: 외부에 내세울 **기관 확정 성과** — 선정 · 수상 · 협약/MOU · 인증 · 기관 위촉
+- GENERAL 일반: 상세 연혁에만. 다음은 **포함**한다
+  - 행사 · 학회 · 세미나 · 웨비나 · 교류회 참석, 부스 운영, 발표, 현장점검 · 실사
+  - 직원이 업무로 외부 교육을 수강 · 이수한 것
+  - 기관이 회사 대표 · 직원을 멘토 · 위원 · 심사위원으로 위촉 · 확정한 것 (대표 자격의 대외 활동)
+  - 참가가 확정된(신청 완료 · 등록 완료) 앞날의 전시 · 행사 — date 는 행사 날짜
 - EXCLUDE 제외: 다음은 연혁이 아니다
-  - 개인 활동 (대표·직원의 사적인 멘토링 · 강의 등 회사 명의가 아닌 것)
-  - 비공개 영업 미팅 (특정 기업 방문 · 줌 미팅)
-  - 결과가 없는 「신청」 (선정 전까지는 연혁이 아니다 — 선정되면 그때 GRANT)
-  - 계획만 있고 확정되지 않은 일, 내부 업무 처리 (서류 작성 · 견적 · 발주)
+  - 회사와 관계없는 사적 활동 (개인 봉사 · 친분으로 하는 멘토링 등)
+  - 비공개 영업 미팅 (특정 기업 방문 · 줌 미팅 · 고객 상담)
+  - 결과가 없는 지원사업 「신청」 (선정 전까지는 연혁이 아니다 — 선정되면 그때 GRANT)
+  - 특허 · 상표 출원 · 등록 (지식재산권 표가 정본이라 연혁에 두지 않는다)
+  - 확정되지 않은 계획, 내부 업무 처리 (서류 작성 · 견적 · 발주 · 사전 준비)
 
 ## 대외비 (confidential)
 대화에 「비밀」「대외비」「아직 공개 X」「외부에 말하지 말 것」 같은 말이 그 사건에 걸려 있으면 true.
-
+${secrets ? `최근 대화에 이런 비밀 표시가 있었다 — 같은 상대 · 같은 사안이면 true:\n${secrets}\n` : ""}
 ## 이미 있는 연혁 (같은 사건이면 내지 마세요)
 ${existing || "(없음)"}
 
@@ -259,7 +314,7 @@ ${lines.join("\n")}
 {"candidates": [{"kind": "AWARD", "grade": "MAJOR|GENERAL|EXCLUDE", "confidential": false, "title": "…", "date": "YYYY-MM-DD", "period": null, "organizer": "주관 기관", "evidence": [3, 5], "reason": "한 줄", "confidence": 0.0~1.0}]}`
 }
 
-async function existingNearby(msgs: Msg[]): Promise<{ title: string; date: Date | null }[]> {
+async function existingNearby(msgs: Msg[]): Promise<{ title: string; date: Date | null; kind: string }[]> {
   const first = msgs[0]?.at ?? new Date()
   const last = msgs.at(-1)?.at ?? new Date()
   // 사건 날짜는 대화 날짜와 다를 수 있다(지난 수상을 오늘 이야기한다) — 넉넉히 1년 앞뒤를 본다
@@ -270,9 +325,28 @@ async function existingNearby(msgs: Msg[]): Promise<{ title: string; date: Date 
         { startsOn: null },
       ],
     },
-    select: { title: true, startsOn: true },
+    select: { title: true, startsOn: true, kind: true },
   })
-  return rows.map((r) => ({ title: r.title, date: r.startsOn }))
+  return rows.map((r) => ({ title: r.title, date: r.startsOn, kind: r.kind }))
+}
+
+/** 앞 45일 · 뒤 7일 안의 비밀 표시. 사건보다 며칠 앞서 나오는 일이 많다 */
+async function secretSignals(msgs: Msg[]): Promise<{ text: string; task: string | null; at: Date }[]> {
+  const first = msgs[0]?.at ?? new Date()
+  const last = msgs.at(-1)?.at ?? new Date()
+  const rows = await prisma.chatMessage.findMany({
+    where: {
+      createdAt: { gte: new Date(first.getTime() - 45 * DAY_MS), lte: new Date(last.getTime() + 7 * DAY_MS) },
+      kind: "NORMAL",
+      deletedAt: null,
+      OR: ["대외비", "비밀", "비공개", "공개하지", "공개 X", "공개x", "외부에"].map((w) => ({ content: { contains: w } })),
+    },
+    take: 200,
+    select: { content: true, createdAt: true, task: { select: { name: true } } },
+  })
+  return rows
+    .filter((r) => isSecretSignal(r.content))
+    .map((r) => ({ text: r.content.slice(0, 300), task: r.task?.name ?? null, at: r.createdAt }))
 }
 
 /** 대화 묶음 하나에서 후보를 뽑아 제안으로 남긴다. 반환: 만든 수 · 버린 이유별 수 */
@@ -284,17 +358,29 @@ export async function proposeFromMessages(
   const skip = (why: string) => (skipped[why] = (skipped[why] ?? 0) + 1)
   if (msgs.length === 0) return { created: 0, skipped: { "대화 없음": 1 } }
 
-  const nearby = await existingNearby(msgs)
-  const existingText = nearby
-    .filter((r) => r.date)
-    .sort((a, b) => b.date!.getTime() - a.date!.getTime())
-    .slice(0, 80)
-    .map((r) => `- ${r.date!.toISOString().slice(0, 10)} ${r.title}`)
+  const [nearby, signals, pending] = await Promise.all([
+    existingNearby(msgs),
+    secretSignals(msgs),
+    prisma.recordProposal.findMany({
+      where: { status: { in: ["PENDING", "ACCEPTED", "REJECTED", "AUTO_APPLIED"] } },
+      select: { title: true, occurredOn: true, kind: true, createdAt: true },
+    }),
+  ])
+  // 이미 올린 후보도 함께 준다 — 모델이 같은 사건을 다른 말로 다시 내지 않게
+  const listed = [
+    ...nearby.filter((r) => r.date).map((r) => ({ date: r.date!, title: r.title })),
+    ...pending.filter((p) => p.occurredOn).map((p) => ({ date: p.occurredOn!, title: `${p.title} (후보)` })),
+  ]
+  const existingText = listed
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .slice(0, 120)
+    .map((r) => `- ${r.date.toISOString().slice(0, 10)} ${r.title}`)
     .join("\n")
+  const secretText = signals.map((s) => `- ${kst(s.at).slice(0, 10)}${s.task ? ` (업무: ${s.task})` : ""}: ${s.text.replace(/\s+/g, " ").slice(0, 160)}`).join("\n")
 
   let raw: string
   try {
-    raw = await callGemini(extractionPrompt(msgs, opts.context ?? "", existingText), "recordPropose", opts.userId, 0.1)
+    raw = await callGemini(extractionPrompt(msgs, opts.context ?? "", existingText, secretText), "recordPropose", opts.userId, 0.1)
   } catch (err) {
     console.error("[record-proposals] 추출 실패", err)
     return { created: 0, skipped: { "추출 실패": 1 } }
@@ -307,10 +393,6 @@ export async function proposeFromMessages(
     return { created: 0, skipped: { "응답 해석 실패": 1 } }
   }
 
-  const pending = await prisma.recordProposal.findMany({
-    where: { status: { in: ["PENDING", "ACCEPTED", "REJECTED", "AUTO_APPLIED"] } },
-    select: { title: true, occurredOn: true },
-  })
   const stats = await loadTypeStats()
 
   let created = 0
@@ -332,21 +414,28 @@ export async function proposeFromMessages(
       continue
     }
     const occurredOn = typeof c.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.date) ? new Date(`${c.date}T00:00:00Z`) : null
-    const me = { title, date: occurredOn }
+    // 날짜를 모르면 근거 대화 날짜로 대신 잰다 — 날짜 없는 후보가 같은 사건을 다시 올리지 않게
+    const me = { title, date: occurredOn, kind, proxy: evidence[0].at }
     // 이미 있는 연혁 · 이미 올린(또는 거절된) 제안과 같은 사건이면 다시 올리지 않는다
     if (nearby.some((r) => isSameEvent(me, r))) {
       skip("이미 있는 연혁")
       continue
     }
-    if (pending.some((p) => isSameEvent(me, { title: p.title, date: p.occurredOn }))) {
+    if (pending.some((p) => isSameEvent(me, { title: p.title, date: p.occurredOn, kind: p.kind, proxy: p.createdAt }))) {
       skip("이미 올린 제안")
       continue
     }
 
+    // 모델이 놓쳐도 근처 비밀 표시가 이 사건을 가리키면 대외비로 올린다 — 틀려도 사람이 풀면 되지만, 놓치면 밖으로 나간다
+    const secret = c.confidential === true ? null : confidentialFromSignals(
+      { title, organizer: typeof c.organizer === "string" ? c.organizer : null, tasks: evidence.map((e) => e.task ?? "").filter(Boolean) },
+      signals
+    )
+
     const fields: ProposalFields = {
       kind,
       grade,
-      confidential: c.confidential === true,
+      confidential: c.confidential === true || secret !== null,
       title,
       occurredOn,
       periodRaw: typeof c.period === "string" && c.period.trim() ? c.period.trim().slice(0, 100) : null,
@@ -366,14 +455,14 @@ export async function proposeFromMessages(
       data: {
         ...fields,
         confidence: Math.min(1, Math.max(0, Number(c.confidence) || 0)),
-        reason: typeof c.reason === "string" ? c.reason.slice(0, 300) : "",
+        reason: `${typeof c.reason === "string" ? c.reason.slice(0, 260) : ""}${secret ? ` · 대외비 신호: ${secret.text.replace(/\s+/g, " ").slice(0, 60)}` : ""}`,
         sourceRefs: sourceRefs as unknown as Prisma.InputJsonValue,
         original: { ...fields, occurredOn: fields.occurredOn?.toISOString().slice(0, 10) ?? null } as unknown as Prisma.InputJsonValue,
         trigger: opts.trigger,
         triggerTaskId: opts.triggerTaskId ?? null,
       },
     })
-    pending.push({ title, occurredOn })
+    pending.push({ title, occurredOn, kind, createdAt: evidence[0].at })
     created++
 
     if (canAutoApply(fields, stats)) {

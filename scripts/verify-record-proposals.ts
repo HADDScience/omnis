@@ -1,6 +1,6 @@
 // 연혁 제안의 결정적인 규칙 — 같은 사건 판별 · 정확도 · 자동 전환 · 대외비 표기.
 //   npx tsx scripts/verify-record-proposals.ts
-import { isSameEvent, typeStats, canAutoApply, recordInputFrom, type Decision } from "../lib/record-proposals"
+import { isSameEvent, typeStats, canAutoApply, recordInputFrom, isSecretSignal, confidentialFromSignals, type Decision } from "../lib/record-proposals"
 
 let fail = 0
 const check = (label: string, got: unknown, want: unknown) => {
@@ -18,6 +18,25 @@ check("대외비 접두어는 무시", isSameEvent({ title: "인비트로큐 업
 check("거부: 8일 차이", isSameEvent({ title: "GBSA 우수사례 공모전 최우수상", date: d("2026-06-17") }, { title: "GBSA 우수사례 공모전 최우수상", date: d("2026-06-25") }), false)
 check("거부: 같은 날 다른 사건", isSameEvent({ title: "AI바이오 현장점검", date: d("2026-08-25") }, { title: "발명특허대전 출품 신청", date: d("2026-08-25") }), false)
 check("거부: 날짜 없는 옛 연혁이 비슷한 정도로는 막지 않는다", isSameEvent({ title: "2026 바이오 박람회 부스 운영", date: d("2026-09-11") }, { title: "바이오 박람회 참석", date: null }), false)
+
+// 6개월치 실측(2026-10-06)에서 나온 실제 쌍
+check("같은 종류 · 하루 차 · 겹침 0.29 (GBSA 공모전 1위 / 우수사례 최우수상)", isSameEvent({ title: "경기도경제과학진흥원(GBSA) 아카데미 공모전 1위 수상", date: d("2026-05-12"), kind: "AWARD" }, { title: "경기도경제과학진흥원 업무적용 우수사례 최우수상 수상", date: d("2026-05-13"), kind: "AWARD" }), true)
+check("같은 종류 · 35일 차 · 겹침 0.50 (발표일 / 시상일)", isSameEvent({ title: "경기도경제과학진흥원 업무적용 우수사례 최우수상 수상", date: d("2026-05-13"), kind: "AWARD" }, { title: "경기도경제과학진흥원 GBSA 우수사례 공모전 최우수상 수상", date: d("2026-06-17"), kind: "AWARD" }), true)
+check("같은 날 · 같은 종류 · 겹침 0.24 (Seed 실사 두 번)", isSameEvent({ title: "Seed 사업 현장 실사 및 발표", date: d("2026-07-23"), kind: "GRANT" }, { title: "SEED 수요기업 실사", date: d("2026-07-23"), kind: "GRANT" }), true)
+check("날짜 없는 후보는 근거 날짜로 잰다 (진로박람회)", isSameEvent({ title: "제14회 수원청소년진로박람회 부스 운영", date: null, kind: "EXHIBITION", proxy: d("2026-09-10") }, { title: "2026 청소년 진로박람회 부스 운영", date: d("2026-09-11"), kind: "EDUCATION" }), true)
+check("거부: 같은 종류 · 6일 차 · 겹침 0.16 (메디바이오 협약 / 바이오아이코어 협약)", isSameEvent({ title: "메디바이오 협약 (2건)", date: d("2026-04-24"), kind: "MILESTONE" }, { title: "바이오아이코어 협약 및 킥오프 행사", date: d("2026-04-30"), kind: "MILESTONE" }), false)
+check("거부: 35일 차는 종류가 다르면 같은 사건이 아니다", isSameEvent({ title: "경기도경제과학진흥원 업무적용 우수사례 최우수상", date: d("2026-05-13"), kind: "AWARD" }, { title: "경기도경제과학진흥원 GBSA 우수사례 공모전 최우수상", date: d("2026-06-17"), kind: "FORUM" }), false)
+check("거부: 46일 차는 겹쳐도 다른 사건", isSameEvent({ title: "G-Bio Week 참석", date: d("2026-09-16"), kind: "FORUM" }, { title: "G-Bio Week 참석", date: d("2025-08-01"), kind: "FORUM" }), false)
+
+console.log("── 대외비 신호")
+check("아직비밀", isSecretSignal("저희 (전략적투자검토중_아직비밀)이라 잘 많은걸 보여드릴수있게"), true)
+check("대외비라서", isSecretSignal("대외비라서 내부에서만 봅니다."), true)
+check("거부: 비밀번호", isSecretSignal("아이디 : 이름 비밀번호 : haddscience"), false)
+check("거부: 영업비밀", isSecretSignal("영업비밀 원본증명서비스 활용"), false)
+check("거부: 남의 대외비 자료", isSecretSignal("아직 논문/특허로 안나온 대외비자료 주신다셔서요"), false)
+const ivq = [{ text: "화요일날 IVQ 광교방문 신경써서 준비해주세요 (전략적투자검토중_아직비밀)", task: "인비트로큐 광교 방문 준비" }]
+check("다른 업무라도 고유 낱말(인비트로큐)이 같으면 대외비", confidentialFromSignals({ title: "인비트로큐 업무협약(MOU) 체결", tasks: ["인비트로큐 MOU 화면·서류 준비"] }, ivq) !== null, true)
+check("거부: 일반 낱말(협약 · 체결 · 준비)만 겹치면 아니다", confidentialFromSignals({ title: "코아스템켐온 업무협약 체결", tasks: ["MOU 서류 준비"] }, ivq), null)
 
 console.log("── 정확도 · 자동 전환")
 const many = (n: number, x: Partial<Decision>): Decision[] =>
