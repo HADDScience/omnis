@@ -185,6 +185,23 @@ async function route(model: ModelSpec, question: string, caller: Caller): Promis
   throw new Error("unreachable")
 }
 
+/**
+ * native 의 심판 근거. askOmnisRoute 는 도구 결과 본문을 돌려주지 않아(이름·글자 수만) 심판이 사실을 대조할 수 없었다 —
+ * wk-agent 는 결과 본문을 주는데 native 는 안 주면 같은 답에 다른 환각 판정이 나온다. 같은 DB 에 같은 인자로
+ * 읽기 도구를 다시 불러 본문을 만든다(결과마다 3천 자, 전체 AGENT_EVIDENCE_MAX — wk-agent 와 같은 조건).
+ * search_knowledge 는 MCP 판으로 다시 부르므로 프로덕션 내부 검색과 순위가 조금 다를 수 있다.
+ */
+async function replayEvidence(trace: { tool: string; args: Record<string, unknown> }[], caller: Caller): Promise<string> {
+  const parts = await Promise.all(
+    trace.map(async (t) => {
+      const r = await runBenchTool(t.tool, t.args, caller).catch((e: unknown) => ({ error: String(e) }))
+      const text = "text" in r && r.text ? r.text : `(오류) ${"error" in r ? r.error : ""}`
+      return `[도구 ${t.tool} ${JSON.stringify(t.args)}]\n${text.slice(0, 3_000)}`
+    })
+  )
+  return parts.join("\n\n").slice(0, AGENT_EVIDENCE_MAX)
+}
+
 async function native(model: ModelSpec, question: string, caller: Caller): Promise<MethodResult> {
   if (model.provider !== "gemini" || model.id.startsWith("gemma")) throw new Error(`native 는 Gemini 함수 호출 모델만 (${model.key})`)
   const t0 = now()
@@ -198,7 +215,7 @@ async function native(model: ModelSpec, question: string, caller: Caller): Promi
     promptChars: 0,
     refs: r.sources.map((s) => ({ source: s.source, title: s.title, similarity: s.similarity })),
     trace: m.trace,
-    evidence: m.trace.map((t) => `[도구 ${t.tool} ${JSON.stringify(t.args)}] (${t.resultChars}자)`).join("\n"),
+    evidence: await replayEvidence(m.trace, caller),
     error: r.answer.startsWith("답을 정리하지 못했습니다") ? r.answer : undefined,
     // askOmnisRoute 의 한도(6단계)에 닿으면 답 없이 "답을 정리하지 못했습니다" 가 온다
     agent: agentStats(m.trace, m.calls, r.answer.startsWith("답을 정리하지 못했습니다")),
