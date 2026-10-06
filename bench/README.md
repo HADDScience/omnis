@@ -8,6 +8,9 @@ npx tsx bench/run.ts --models gemini-2.5-flash --methods baseline --limit 2   # 
 npx tsx bench/run.ts                                          # 전부
 npx tsx bench/run.ts --run 20260909-1030                      # 중단한 것 이어서
 npx tsx bench/report.ts bench/results/20260909-1030           # 표만 다시
+npx tsx bench/retrieval-eval.ts --questions <파일> --retrievers R0-hybrid,vector --repeat 1   # 검색만, 생성 호출 없음
+BENCH_BUDGET_KRW=2000 npx tsx bench/run.ts                    # 한 run 누적 원가가 2000원에 닿으면 다음 호출 전에 멈춤
+npx tsx bench/ledger.ts                                       # 전 run 합계
 ```
 
 | 파일 | 역할 |
@@ -19,7 +22,10 @@ npx tsx bench/report.ts bench/results/20260909-1030           # 표만 다시
 | `methods.ts` | baseline · vector · hybrid · stuff · route |
 | `judge.ts` | 근거 적중 + 심판 모델 0·1·2 점 |
 | `run.ts` | 그리드 실행, `results/<run>/results.jsonl` (재개 가능) |
-| `report.ts` | `summary.md` · `summary.csv` |
+| `report.ts` | `summary.md` · `summary.csv` (유형별 표 포함. `type` 없는 문항은 regression) |
+| `questions.ts` | 질문 파일 읽기. 선택 필드 `type` · `gold` · `minSteps` · `stale` · `unanswerable` |
+| `retrieval-eval.ts` | 생성 없이 검색만 평가 — 검색기 레지스트리, Recall@8 · MRR · NDCG@10 · ms → `retrieval.jsonl` · `retrieval-summary.md` |
+| `ledger.ts` | `results/ledger.jsonl` 비용 장부 (run · 검색 평가 원가 누적). `npx tsx bench/ledger.ts` 로 합계 |
 
 키: `.env` 의 `GEMINI_API_KEY`(있음). Anthropic 은 `ANTHROPIC_API_KEY`, OpenAI 호환은
 `OPENAI_COMPAT_BASE_URL` + `OPENAI_COMPAT_API_KEY`. 없는 벤더는 자동으로 건너뛴다.
@@ -28,3 +34,8 @@ DB 는 `DATABASE_URL`. 벤치는 읽기만 하지만, 검색이 질문 임베딩
 `results/` 는 git 에 넣지 않는다 (답변 본문에 사내 대화가 그대로 들어간다). 질문 파일도 같은 이유로
 저장소 밖 `~/work/omnis-import/eval/scenarios-260907.json` 이 기본이다 (`--questions` · `BENCH_QUESTIONS`).
 형식: `{ "ask": [{ "q": "질문", "expect": ["기대 문자열", …] }] }`.
+v4 선택 필드: `type`(유형), `gold`(`[{source, sourceId}]` — 검색 지표의 정답 근거), `minSteps`, `stale`(옛 결정 문자열), `unanswerable`.
+`gold` 의 `CHAT_MESSAGE` sourceId 는 메시지 ID 다. 없는 필드는 무시되므로 기존 파일이 그대로 돈다.
+
+`BENCH_BUDGET_KRW` 는 `results.jsonl` 합계(답변 + 심판)부터 센다. 재개해도 이어서 센다. 판단은 질문 1건 단위라
+상한을 넘는 마지막 1건(답변 + 심판)은 나간다. 임베딩 단가는 `config.ts` 의 `EMBEDDING_PRICE_USD_PER_M` (확인 필요).

@@ -7,6 +7,7 @@
 import { readFileSync, writeFileSync, existsSync } from "fs"
 import { join } from "path"
 import type { ResultRow } from "./run"
+import { DEFAULT_TYPE } from "./questions"
 
 function pct(xs: number[], p: number): number {
   if (xs.length === 0) return 0
@@ -84,6 +85,32 @@ export function aggregate(allRows: ResultRow[]): Cell[] {
   return cells.sort((a, b) => b.judgeAvg - a.judgeAvg || b.hitRate - a.hitRate || a.krw - b.krw)
 }
 
+export interface TypeCell { model: string; method: string; type: string; n: number; judgeAvg: number; judgeFull: number; hallucinations: number; hitRate: number; krw: number }
+
+/** 모델 × 방법 × 질문 유형. type 이 없는 행(옛 결과·옛 질문 파일)은 "regression" */
+export function aggregateByType(allRows: ResultRow[]): TypeCell[] {
+  const groups = new Map<string, ResultRow[]>()
+  for (const r of dedupe(allRows)) {
+    const k = `${r.model}|${r.method}|${r.type ?? DEFAULT_TYPE}`
+    groups.set(k, [...(groups.get(k) ?? []), r])
+  }
+  const cells: TypeCell[] = []
+  for (const [k, rs] of groups) {
+    const [model, method, type] = k.split("|")
+    const ok = rs.filter((r) => !r.error)
+    const judged = ok.filter((r) => r.judge)
+    cells.push({
+      model, method, type, n: rs.length,
+      judgeAvg: r2(avg(judged.map((r) => r.judge!.score))),
+      judgeFull: judged.filter((r) => r.judge!.score === 2).length,
+      hallucinations: judged.filter((r) => r.judge!.hallucination).length,
+      hitRate: r2(ok.reduce((a, r) => a + r.hits.length, 0) / Math.max(ok.reduce((a, r) => a + r.hitTotal, 0), 1)),
+      krw: r2(avg(ok.map((r) => r.costKrw))),
+    })
+  }
+  return cells.sort((a, b) => a.type.localeCompare(b.type) || a.model.localeCompare(b.model) || a.method.localeCompare(b.method))
+}
+
 export async function writeReport(dir: string) {
   const file = join(dir, "results.jsonl")
   if (!existsSync(file)) throw new Error(`${file} 없음`)
@@ -95,6 +122,11 @@ export async function writeReport(dir: string) {
   const sep = "|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
   const line = (c: Cell) =>
     `| ${c.model} | ${c.method} | ${c.n}${c.errors ? ` (✗${c.errors})` : ""}${c.notes ? ` (산문 ${c.notes})` : ""} | **${c.judgeAvg}** | ${c.judgeFull} | ${c.hallucinations} | ${Math.round(c.hitRate * 100)}% | ${(c.p50 / 1000).toFixed(1)}s | ${(c.p90 / 1000).toFixed(1)}s | ${c.retrieval} | ${c.context} | ${c.llm} | ${c.calls} | ${c.inTok.toLocaleString()} | ${c.outTok.toLocaleString()} | ${c.thinkTok.toLocaleString()} | ${c.krw} | ${c.krwMonth50.toLocaleString()} |`
+
+  const typeHeader = "| 유형 | 모델 | 방법 | n | 심판 평균(0~2) | 만점 | 환각 | 근거 적중 | 질문당 원 |"
+  const typeSep = "|---|---|---|--:|--:|--:|--:|--:|--:|"
+  const typeLine = (c: TypeCell) =>
+    `| ${c.type} | ${c.model} | ${c.method} | ${c.n} | **${c.judgeAvg}** | ${c.judgeFull} | ${c.hallucinations} | ${Math.round(c.hitRate * 100)}% | ${c.krw} |`
 
   const byMethod = new Map<string, Cell[]>()
   for (const c of cells) byMethod.set(c.method, [...(byMethod.get(c.method) ?? []), c])
@@ -109,6 +141,10 @@ export async function writeReport(dir: string) {
     "## 전체 (품질 높은 순)",
     "",
     header, sep, ...cells.map(line),
+    "",
+    "## 유형별 (질문 파일의 type · 없으면 regression)",
+    "",
+    typeHeader, typeSep, ...aggregateByType(rows).map(typeLine),
     "",
     ...[...byMethod.entries()].flatMap(([m, cs]) => [`## 방법 ${m}`, "", header, sep, ...cs.map(line), ""]),
     "## 답변별",

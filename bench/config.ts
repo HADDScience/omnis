@@ -80,6 +80,12 @@ const judgeName = process.env.BENCH_JUDGE ?? "gemini-2.5-pro"
 if (!JUDGES[judgeName]) throw new Error(`BENCH_JUDGE 는 ${Object.keys(JUDGES).join(" · ")} 중 하나`)
 export const JUDGE_MODEL: ModelSpec = JUDGES[judgeName]
 
+/**
+ * 임베딩 단가 — gemini-embedding-001, 입력 100만 토큰당 USD.
+ * 확인 필요: 2026 공식 단가를 확인하지 못해 0.15 로 둔다. 비용 장부(ledger.ts)의 추정치에만 쓴다.
+ */
+export const EMBEDDING_PRICE_USD_PER_M = 0.15
+
 export const KRW_PER_USD = Number(process.env.BENCH_KRW_PER_USD ?? 1380)
 
 export function usdToKrw(usd: number): number {

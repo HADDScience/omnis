@@ -3,6 +3,9 @@
 //   npx tsx bench/run.ts [--models a,b] [--methods baseline,route] [--questions <파일>]
 //                        [--limit N] [--run <이전 run 폴더명>] [--no-judge] [--user 정우창] [--list]
 //
+// BENCH_BUDGET_KRW=<원> 을 주면 한 run 폴더의 누적 원가(답변 + 심판)가 상한에 닿는 순간 다음 호출 전에 멈춘다.
+// 재개(--run)하면 기존 results.jsonl 합계부터 센다. 질문마다의 원가는 results/ledger.jsonl 에도 쌓인다 (ledger.ts).
+//
 // 중단하고 같은 --run 으로 다시 돌리면 이미 있는 (모델·방법·질문) 은 건너뛴다.
 // 끝나면 report.ts 를 불러 summary.md · summary.csv 를 만든다.
 // 계획: mydocs/plans/2026-09-09-model-method-benchmark.md
@@ -16,8 +19,10 @@ import { runMethod, type MethodResult } from "./methods"
 import { judge, expectHits, type JudgeResult } from "./judge"
 import { costUsd } from "./providers"
 import { writeReport } from "./report"
+import { loadQuestions, DEFAULT_TYPE, type Question } from "./questions"
+import { appendLedger } from "./ledger"
 
-export interface Question { id: string; q: string; expect: string[] }
+export type { Question }
 
 export interface ResultRow {
   runId: string
@@ -25,6 +30,8 @@ export interface ResultRow {
   modelId: string
   method: MethodName
   qid: string
+  /** 질문 유형. 질문 파일에 type 이 없으면 "regression" */
+  type: string
   question: string
   expect: string[]
   answer: string
@@ -49,10 +56,8 @@ const args = process.argv.slice(2)
 const opt = (k: string): string | undefined => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined }
 const flag = (k: string) => args.includes(k)
 
-function loadQuestions(file: string): Question[] {
-  const raw = JSON.parse(readFileSync(file, "utf8")) as { ask: { q: string; expect: string[] }[] }
-  return raw.ask.map((a, i) => ({ id: `A${i + 1}`, q: a.q, expect: a.expect }))
-}
+/** 한 행의 원가(원) — 답변 + 심판 */
+const rowKrw = (r: Pick<ResultRow, "costKrw" | "judge">) => r.costKrw + (r.judge ? usdToKrw(r.judge.costUsd) : 0)
 
 function pick<T extends { key?: string } | string>(all: readonly T[], csv: string | undefined, name: (t: T) => string): T[] {
   if (!csv) return [...all]
@@ -94,9 +99,13 @@ async function main() {
   mkdirSync(dir, { recursive: true })
   const outFile = join(dir, "results.jsonl")
   const done = new Set<string>()
+  // 재개하면 이미 쓴 돈(오류 행 포함 — 호출은 나갔다)부터 센다
+  const budget = Number(process.env.BENCH_BUDGET_KRW ?? 0)
+  let spent = 0
   if (existsSync(outFile)) {
     for (const line of readFileSync(outFile, "utf8").split("\n").filter(Boolean)) {
       const r = JSON.parse(line) as ResultRow
+      spent += rowKrw(r)
       if (!r.error) done.add(`${r.model}|${r.method}|${r.qid}`)
     }
   }
@@ -110,19 +119,27 @@ async function main() {
   }, null, 2))
 
   const total = usable.length * methods.length * questions.length
-  console.log(`run ${runId} · DB ${dbHost} · ${usable.length} 모델 × ${methods.length} 방법 × ${questions.length} 질문 = ${total} (이미 ${done.size})`)
+  console.log(`run ${runId} · DB ${dbHost} · ${usable.length} 모델 × ${methods.length} 방법 × ${questions.length} 질문 = ${total} (이미 ${done.size})` + (budget > 0 ? ` · 예산 ${budget}원 (사용 ${spent.toFixed(2)}원)` : ""))
 
   let n = 0
+  let overBudget = false
   const skipModel = new Set<string>()
   for (const model of usable) {
     for (const method of methods) {
-      if (skipModel.has(model.key)) break
+      if (skipModel.has(model.key) || overBudget) break
       for (const q of questions) {
         n++
         const key = `${model.key}|${method}|${q.id}`
         if (done.has(key)) continue
+        if (budget > 0 && spent >= budget) {
+          console.log(`\n⚠ 예산 상한: 누적 ${spent.toFixed(2)}원 ≥ BENCH_BUDGET_KRW ${budget}원 — [${n}/${total}] 에서 멈춤. 같은 --run ${runId} 로 상한을 올려 재개`)
+          overBudget = true
+          break
+        }
         const row = await runOne(runId, model, method, q, caller, doJudge)
         appendFileSync(outFile, JSON.stringify(row) + "\n")
+        spent += rowKrw(row)
+        appendLedger({ kind: "run", runId, krw: row.costKrw, judgeKrw: row.judge ? usdToKrw(row.judge.costUsd) : 0, note: `${model.key}|${method}|${q.id}` })
         if (row.error && /credit balance|insufficient_quota|billing/i.test(row.error)) {
           // 잔액 소진은 다음 질문도 전부 실패한다. 그 벤더의 남은 칸은 건너뛰고 나중에 --run 으로 이어 돌린다.
           console.log(`  ⚠ ${model.key}: 잔액 소진 — 이 모델의 남은 행은 건너뜀. 충전 후 같은 --run 으로 재개`)
@@ -143,7 +160,7 @@ async function main() {
 }
 
 async function runOne(runId: string, model: ModelSpec, method: MethodName, q: Question, caller: Caller, doJudge: boolean): Promise<ResultRow> {
-  const base = { runId, model: model.key, modelId: model.id, method, qid: q.id, question: q.q, expect: q.expect, hitTotal: q.expect.length, at: new Date().toISOString() }
+  const base = { runId, model: model.key, modelId: model.id, method, qid: q.id, type: q.type ?? DEFAULT_TYPE, question: q.q, expect: q.expect, hitTotal: q.expect.length, at: new Date().toISOString() }
   let r: MethodResult
   try {
     r = await runMethod(method, model, q.q, caller)
