@@ -8,6 +8,7 @@ import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { reportIncident } from "@/lib/report-client-error"
+import { ChatSearch } from "@/components/chat/chat-search"
 
 interface Message {
   id: string
@@ -37,6 +38,9 @@ interface ChatPanelProps {
   onSlashTaskCommand?: (raw: string) => void
   /** ?taskId= URL 필터 — 해당 업무 관련 메시지만 노출 */
   filterTaskId?: string | null
+  /** 검색창 — 여는 버튼은 패널 머리(right-panel)에 있다 */
+  searchOpen?: boolean
+  onSearchOpenChange?: (open: boolean) => void
 }
 
 export function ChatPanel({
@@ -46,6 +50,8 @@ export function ChatPanel({
   onTaskUpdated,
   onSlashTaskCommand,
   filterTaskId,
+  searchOpen = false,
+  onSearchOpenChange,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
@@ -59,13 +65,19 @@ export function ChatPanel({
   // 답장 대상 — 입력창 위에 한 줄로 물고 있다가 보낼 때 함께 넘긴다
   const [replyTo, setReplyTo] = useState<{ id: string; authorName: string; content: string } | null>(null)
   const pausePolling = useRef(false)
+  // 검색 결과 보기 — 최신이 아닌 자리를 보고 있다. 폴링을 멈추고, 아래로 스크롤하면 뒤를 이어 붙인다
+  const [jumped, setJumped] = useState(false)
+  const jumpedRef = useRef(false)
+  const [hasMoreNewer, setHasMoreNewer] = useState(false)
+  const [loadingNewer, setLoadingNewer] = useState(false)
+  const [highlight, setHighlight] = useState<{ id: string; n: number } | null>(null)
 
   const lastFetchedAt = useRef(
     initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : ""
   )
 
   const fetchMessages = useCallback(async () => {
-    if (pausePolling.current) return
+    if (pausePolling.current || jumpedRef.current) return
     try {
       const params = new URLSearchParams({ roomId })
       if (lastFetchedAt.current) params.set("after", lastFetchedAt.current)
@@ -126,12 +138,78 @@ export function ChatPanel({
   // 안 보이는 탭은 멈추고, 돌아오면 바로 한 번 읽는다 — 켜 둔 탭의 폴링이 요청 한도를 채웠다(2026-09-15)
   useVisibleInterval(fetchMessages, 3000)
 
+  const endJump = useCallback(() => {
+    jumpedRef.current = false
+    setJumped(false)
+    setHasMoreNewer(false)
+  }, [])
+
   useEffect(() => {
+    endJump()
     lastFetchedAt.current = ""
     setMessages([])
     setHasMoreOlder(true)
     fetchMessages()
-  }, [filterTaskId, fetchMessages])
+  }, [filterTaskId, fetchMessages, endJump])
+
+  /** 「최신으로」 — 검색 결과 보기를 끝내고 최신 한 페이지부터 다시 */
+  const backToLatest = useCallback(() => {
+    endJump()
+    setHighlight(null)
+    lastFetchedAt.current = ""
+    setMessages([])
+    setHasMoreOlder(true)
+    fetchMessages()
+  }, [endJump, fetchMessages])
+
+  /** 검색 결과로 간다 — 그 글 앞뒤만 불러와 목록을 갈아 끼운다(방 전체는 1만 건이 넘는다) */
+  const jumpTo = useCallback(
+    async (messageId: string) => {
+      const params = new URLSearchParams({ roomId, around: messageId })
+      if (filterTaskId) params.set("taskId", filterTaskId)
+      const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`)).catch(() => null)
+      if (!res?.ok) {
+        toast.error("그 메시지를 불러오지 못했습니다")
+        return
+      }
+      const data: { messages: Message[]; hasMoreOlder: boolean; hasMoreNewer: boolean } = await res.json()
+      // 뒤가 더 없으면 최신까지 다 받은 것이다 — 평소 목록과 같으니 폴링을 그대로 둔다
+      jumpedRef.current = data.hasMoreNewer
+      setJumped(data.hasMoreNewer)
+      setHasMoreNewer(data.hasMoreNewer)
+      setHasMoreOlder(data.hasMoreOlder)
+      setMessages(data.messages)
+      if (data.messages.length > 0) lastFetchedAt.current = data.messages[data.messages.length - 1].createdAt
+      setHighlight((prev) => ({ id: messageId, n: (prev?.n ?? 0) + 1 }))
+    },
+    [roomId, filterTaskId],
+  )
+
+  // 검색 결과 보기에서 아래로 — 한 페이지씩 붙이고, 다 따라잡으면 평소 목록(폴링)으로 돌아간다
+  const loadNewer = useCallback(async () => {
+    if (loadingNewer || !hasMoreNewer || !lastFetchedAt.current) return
+    setLoadingNewer(true)
+    try {
+      const params = new URLSearchParams({ roomId, after: lastFetchedAt.current, take: String(CHAT_PAGE_SIZE) })
+      if (filterTaskId) params.set("taskId", filterTaskId)
+      const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
+      if (!res.ok) return
+      const newer: Message[] = await res.json()
+      if (newer.length > 0) {
+        setMessages((prev) => {
+          const ids = new Set(prev.map((m) => m.id))
+          const fresh = newer.filter((m) => !ids.has(m.id))
+          return fresh.length > 0 ? [...prev, ...fresh] : prev
+        })
+        lastFetchedAt.current = newer[newer.length - 1].createdAt
+      }
+      if (newer.length < CHAT_PAGE_SIZE) endJump()
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingNewer(false)
+    }
+  }, [loadingNewer, hasMoreNewer, roomId, filterTaskId, endJump])
 
   useEffect(() => {
     fetch(apiUrl("/api/users"))
@@ -186,6 +264,15 @@ export function ChatPanel({
       if (content.trim().startsWith("/업무") && onSlashTaskCommand) {
         onSlashTaskCommand(content.trim())
         return
+      }
+      // 옛 자리를 보다가 보내면 새 글이 엉뚱한 자리에 붙는다 — 최신 목록으로 돌아가서 보낸다.
+      // 폴링은 보내는 동안 멈춰 있다가, 끝나면 lastFetchedAt 이 비어 있어 최신 한 페이지로 갈아 끼운다
+      if (jumpedRef.current) {
+        endJump()
+        setHighlight(null)
+        lastFetchedAt.current = ""
+        setMessages([])
+        setHasMoreOlder(true)
       }
       pausePolling.current = true
 
@@ -294,7 +381,7 @@ export function ChatPanel({
       if (!queued) setProcessing(null)
       pausePolling.current = false
     },
-    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild, replyTo, stopSending]
+    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild, replyTo, stopSending, endJump]
   )
 
   /**
@@ -358,7 +445,19 @@ export function ChatPanel({
     : messages
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {jumped && (
+        <div className="flex shrink-0 items-center gap-2 border-b bg-amber-50 px-3 py-1 text-[11px] text-amber-900 dark:bg-amber-400/10 dark:text-amber-200">
+          <span className="min-w-0 flex-1 truncate">검색 결과 자리를 보고 있습니다</span>
+          <button
+            type="button"
+            onClick={backToLatest}
+            className="touch-target shrink-0 rounded px-1.5 py-0.5 font-medium underline-offset-2 hover:underline"
+          >
+            최신으로
+          </button>
+        </div>
+      )}
       <MessageList
         messages={visibleMessages}
         currentUserId={currentUserId}
@@ -370,6 +469,11 @@ export function ChatPanel({
         onReply={setReplyTo}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        highlight={highlight}
+        jumped={jumped}
+        onLoadNewer={loadNewer}
+        hasMoreNewer={hasMoreNewer}
+        loadingNewer={loadingNewer}
       />
 
       <div className="shrink-0 border-t">
@@ -390,6 +494,18 @@ export function ChatPanel({
         )}
         <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
       </div>
+
+      {searchOpen && (
+        <ChatSearch
+          roomId={roomId}
+          taskId={filterTaskId ?? null}
+          onClose={() => onSearchOpenChange?.(false)}
+          onPick={(id) => {
+            onSearchOpenChange?.(false)
+            void jumpTo(id)
+          }}
+        />
+      )}
 
     </div>
   )
