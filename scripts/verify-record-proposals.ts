@@ -33,6 +33,7 @@ check("아직비밀", isSecretSignal("저희 (전략적투자검토중_아직비
 check("대외비라서", isSecretSignal("대외비라서 내부에서만 봅니다."), true)
 check("거부: 비밀번호", isSecretSignal("아이디 : 이름 비밀번호 : haddscience"), false)
 check("거부: 영업비밀", isSecretSignal("영업비밀 원본증명서비스 활용"), false)
+check("거부: 연혁 정리 대화의 대외비 표기는 다른 사건에 번지지 않는다", isSecretSignal("#옴니스-및-연혁-업데이트 9/30 마무리 보고입니다. ■ 오늘 반영 · 인비트로큐 MOU(2026-08-18): 회사 내부 연혁으로만 등록 — 제목 앞 [내부용·대외비], 비고에 '기업현황카드·홈페이지·신청서 등 외부 자료 사용 금지'"), false)
 check("거부: 남의 대외비 자료", isSecretSignal("아직 논문/특허로 안나온 대외비자료 주신다셔서요"), false)
 const ivq = [{ text: "화요일날 IVQ 광교방문 신경써서 준비해주세요 (전략적투자검토중_아직비밀)", task: "인비트로큐 광교 방문 준비" }]
 check("다른 업무라도 고유 낱말(인비트로큐)이 같으면 대외비", confidentialFromSignals({ title: "인비트로큐 업무협약(MOU) 체결", tasks: ["인비트로큐 MOU 화면·서류 준비"] }, ivq) !== null, true)

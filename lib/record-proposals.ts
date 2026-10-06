@@ -87,9 +87,13 @@ export function isSameEvent(
 
 // ─── 대외비 신호 (결정적) ─────────────────────────────────────────
 
-/** 비밀 표시. 「비밀번호」 「영업비밀」 같은 말은 사건의 공개 여부가 아니다 */
+/**
+ * 비밀 표시. 「비밀번호」 「영업비밀」 같은 말은 사건의 공개 여부가 아니다.
+ * 연혁을 정리하는 대화(「연혁 업데이트 … [내부용·대외비]」)도 뺀다 — 여러 사건을 한꺼번에 적어
+ * 그 안의 한 건에 붙은 대외비가 나머지에 번진다(실측 2026-10-06: 홈페이지 오픈 · 인턴십 협약이 대외비로 잡혔다).
+ */
 const SECRET_RE = /(대외비|아직\s*비밀|비밀로|비공개|공개\s*(하지|금지|x|X|안\s*됨)|외부에\s*(말|알리)|보안\s*유지)/
-const SECRET_NOT_RE = /(비밀번호|영업비밀|대외비\s*자료)/
+const SECRET_NOT_RE = /(비밀번호|영업비밀|대외비\s*자료|연혁)/
 
 export function isSecretSignal(text: string): boolean {
   return SECRET_RE.test(text) && !SECRET_NOT_RE.test(text)
@@ -330,6 +334,12 @@ async function existingNearby(msgs: Msg[]): Promise<{ title: string; date: Date 
   return rows.map((r) => ({ title: r.title, date: r.startsOn, kind: r.kind }))
 }
 
+/** 제안의 근거 대화 날짜 — 날짜 없는 후보끼리 비교할 때 쓴다(만든 시각은 크론이 돈 시각이라 쓸모없다) */
+function proxyOf(refs: unknown): Date | null {
+  const at = Array.isArray(refs) ? (refs as { at?: string }[]).find((r) => typeof r?.at === "string")?.at : undefined
+  return at ? new Date(`${at}T00:00:00Z`) : null
+}
+
 /** 앞 45일 · 뒤 7일 안의 비밀 표시. 사건보다 며칠 앞서 나오는 일이 많다 */
 async function secretSignals(msgs: Msg[]): Promise<{ text: string; task: string | null; at: Date }[]> {
   const first = msgs[0]?.at ?? new Date()
@@ -363,7 +373,7 @@ export async function proposeFromMessages(
     secretSignals(msgs),
     prisma.recordProposal.findMany({
       where: { status: { in: ["PENDING", "ACCEPTED", "REJECTED", "AUTO_APPLIED"] } },
-      select: { title: true, occurredOn: true, kind: true, createdAt: true },
+      select: { title: true, occurredOn: true, kind: true, sourceRefs: true },
     }),
   ])
   // 이미 올린 후보도 함께 준다 — 모델이 같은 사건을 다른 말로 다시 내지 않게
@@ -421,7 +431,7 @@ export async function proposeFromMessages(
       skip("이미 있는 연혁")
       continue
     }
-    if (pending.some((p) => isSameEvent(me, { title: p.title, date: p.occurredOn, kind: p.kind, proxy: p.createdAt }))) {
+    if (pending.some((p) => isSameEvent(me, { title: p.title, date: p.occurredOn, kind: p.kind, proxy: proxyOf(p.sourceRefs) }))) {
       skip("이미 올린 제안")
       continue
     }
@@ -462,7 +472,7 @@ export async function proposeFromMessages(
         triggerTaskId: opts.triggerTaskId ?? null,
       },
     })
-    pending.push({ title, occurredOn, kind, createdAt: evidence[0].at })
+    pending.push({ title, occurredOn, kind, sourceRefs: [{ at: evidence[0].at.toISOString().slice(0, 10) }] })
     created++
 
     if (canAutoApply(fields, stats)) {
