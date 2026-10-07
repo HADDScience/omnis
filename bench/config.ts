@@ -4,7 +4,7 @@
 // 요금은 2026-09-08 공식 페이지(ai.google.dev/gemini-api/docs/pricing · claude.com/pricing) 기준,
 // USD / 100만 토큰. 바뀌면 여기만 고친다. 계획: mydocs/plans/2026-09-09-model-method-benchmark.md
 
-export type Provider = "gemini" | "anthropic" | "openai-compat"
+export type Provider = "gemini" | "anthropic" | "openai-compat" | "claude-cli"
 
 export interface Price {
   /** 입력 100만 토큰당 USD */
@@ -78,10 +78,17 @@ const JUDGES: Record<string, ModelSpec> = {
   "gemini-2.5-pro": { key: "judge:gemini-2.5-pro", provider: "gemini", id: "gemini-2.5-pro", price: { input: 1.25, output: 10.00 }, maxOutputTokens: 2048, thinking: { budget: 1024 } },
   "gemini-3.8-flash": { key: "judge:gemini-3.8-flash", provider: "gemini", id: "gemini-3.8-flash", price: { input: 0.75, output: 3.75 }, maxOutputTokens: 2048 },
   "claude-sonnet-5": { key: "judge:claude-sonnet-5", provider: "anthropic", id: "claude-sonnet-5", price: { input: 2.00, output: 10.00 }, maxOutputTokens: 2048 },
+  // 작업지시자의 Claude 구독 — Claude Code 헤드리스 `claude -p` (bench/claude-cli.ts). id 는 --model 값.
+  // 청구가 없어 요금은 0. API 요금표 환산액(total_cost_usd)은 결과 행 judgeNotionalUsd 에 따로 남긴다.
+  // 문항 BENCH_JUDGE_BATCH(기본 10)개를 한 호출로 묶어 채점한다 (judge.ts judgeMany).
+  "claude-sonnet-cli": { key: "judge:claude-sonnet-cli", provider: "claude-cli", id: "sonnet", price: { input: 0, output: 0, note: "Claude 구독 (claude -p)" } },
+  "claude-haiku-cli": { key: "judge:claude-haiku-cli", provider: "claude-cli", id: "haiku", price: { input: 0, output: 0, note: "Claude 구독 (claude -p)" } },
 }
 const judgeName = process.env.BENCH_JUDGE ?? "gemini-2.5-pro"
 if (!JUDGES[judgeName]) throw new Error(`BENCH_JUDGE 는 ${Object.keys(JUDGES).join(" · ")} 중 하나`)
 export const JUDGE_MODEL: ModelSpec = JUDGES[judgeName]
+/** 결과 행 judgeModel · meta.judge 에 남기는 심판 이름. 구독 심판은 "claude-cli:sonnet" 처럼 앞에 붙여 API 심판과 구별한다 */
+export const JUDGE_LABEL = JUDGE_MODEL.provider === "claude-cli" ? `claude-cli:${JUDGE_MODEL.id}` : JUDGE_MODEL.id
 
 /**
  * 임베딩 단가 — gemini-embedding-001, 입력 100만 토큰당 USD.
@@ -105,5 +112,8 @@ export function modelAvailable(m: ModelSpec): { ok: boolean; why?: string } {
       return process.env.OPENAI_COMPAT_BASE_URL && process.env.OPENAI_COMPAT_API_KEY
         ? { ok: true }
         : { ok: false, why: "OPENAI_COMPAT_BASE_URL · OPENAI_COMPAT_API_KEY 없음" }
+    case "claude-cli":
+      // 키가 아니라 로그인된 claude CLI 를 쓴다. 로그인이 안 됐으면 첫 호출이 오류로 알려 준다
+      return { ok: true }
   }
 }

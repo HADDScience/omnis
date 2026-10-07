@@ -15,6 +15,8 @@ npx tsx bench/retrieval-eval.ts --questions <파일> --retrievers R0-hybrid,R1a-
 npx tsx bench/run.ts --models gemini-3.8-flash@low --methods wk-r3 --limit 1  # 이식 검색기 + 단발 생성
 npx tsx bench/run.ts --models gemini-3.8-flash@low --methods wk-agent,native --ids v4-mh-01,v4-un-01  # ReAct 에이전트 vs 현행, 문항 id 로 고르기
 npx tsx bench/run.ts --models gemini-3.8-flash@low --methods weknora-rag,weknora-agent --ids v4-mh-01  # 실물 WeKnora (wk-real/README.md 로 먼저 띄운다)
+BENCH_JUDGE=claude-sonnet-cli npx tsx bench/run.ts --models gemini-3.8-flash@low --methods wk-agent --limit 10  # 심판을 Claude 구독으로
+npx tsx bench/rejudge.ts bench/results/<run> --judge claude-sonnet-cli [--methods a,b] [--limit N] [--out <폴더>]  # 저장된 근거로 다시 채점
 ```
 
 | 파일 | 역할 |
@@ -24,7 +26,9 @@ npx tsx bench/run.ts --models gemini-3.8-flash@low --methods weknora-rag,weknora
 | `context.ts` | 벡터/하이브리드 검색 · 현황 요약 · 통째 말뭉치 (프로덕션 함수 재사용, 시간 측정) |
 | `tools.ts` | route 용 도구 (MCP 읽기 도구 + ip_overview) · JSON 프로토콜 |
 | `methods.ts` | baseline · vector · hybrid · stuff · route |
-| `judge.ts` | 근거 적중 + 심판 모델 0·1·2 점 |
+| `judge.ts` | 근거 적중 + 심판 모델 0·1·2 점. `judgeMany` 는 구독 심판이면 문항을 묶어 한 호출로 채점 |
+| `claude-cli.ts` | 구독 심판 호출 — `claude -p` 헤드리스, ANTHROPIC_API_KEY 를 지워 구독 인증 강제 |
+| `rejudge.ts` | 결과 행에 저장된 `evidence` · `judgeInput` 으로 다른 심판에게 다시 채점 → `<run>-rejudge-<judge>/` (원본 그대로) |
 | `run.ts` | 그리드 실행, `results/<run>/results.jsonl` (재개 가능) |
 | `report.ts` | `summary.md` · `summary.csv` (유형별 표 포함. `type` 없는 문항은 regression) |
 | `questions.ts` | 질문 파일 읽기. 선택 필드 `type` · `gold` · `minSteps` · `stale` · `unanswerable` |
@@ -57,3 +61,15 @@ ledger 의 retrieval 줄에, 생성 평가에선 행의 `costKrw` 에 더해진�
 심판(`judge.ts`)은 도구 루프 방법(native · route · wk-agent)에 **과정 점수 0~2** 를 더 매긴다 — 도구 순서·`minSteps`·`gold`(본 것/못 본 것)·`note` 를 주고
 필요한 근거를 다 찾아 이었는지 본다. 같은 호출이라 심판 호출 수는 그대로다. 유형 규칙: `unanswerable` 은 없다/모른다면 2 · 지어내면 0(환각),
 `stale` 은 옛 값을 현재 값으로 말하면 0, `ambiguous` 는 되묻거나 가정을 밝히면 2. 과정 점수가 없는 옛 행은 표에서 빈칸이다.
+
+**심판 선택** — `BENCH_JUDGE` 로 고른다: `gemini-2.5-pro`(기본) · `gemini-3.8-flash` · `claude-sonnet-5`(API 키, 과금) ·
+`claude-sonnet-cli` · `claude-haiku-cli`. 뒤 둘은 작업지시자의 Claude 구독으로 Claude Code 헤드리스(`claude -p`)를 부른다 —
+청구가 없어 심판 원가는 0 으로 적고, API 요금표 환산액은 행의 `judgeNotionalUsd` 와 summary 상단 줄에 따로 남긴다.
+생성 모델(Gemini)과 다른 계열로 채점하려는 목적도 있다. 문항 `BENCH_JUDGE_BATCH`(기본 10)개를 한 호출로 묶고
+`BENCH_JUDGE_CONCURRENCY`(기본 2)개 묶음을 동시에 보낸다. `.env` 의 `ANTHROPIC_API_KEY` 는 호출 직전에 env 에서 지운다 —
+남아 있으면 claude 가 그 키로 API 를 불러 과금된다. 매 호출의 `apiKeySource` 가 `none` 이 아니면 오류로 멈춘다.
+**구독 사용량은 평소 Claude Code 쓰는 한도와 같은 통을 쓴다** (5시간 창). 큰 재채점을 돌리면 그 창 안에서
+대화형 작업이 막힐 수 있고, 반대로 한도에 걸리면 채점이 멈춘다 — 그때는 채점한 행을 남기고 멈추므로 한도가 풀린 뒤
+같은 명령(run 은 같은 `--run`, rejudge 는 같은 인자)으로 이어 돌린다. 행마다 `judgeModel` 을 남기고, 한 표에 심판이
+섞이면 `summary.md` 에 경고 줄이 붙는다 — 심판이 다른 점수끼리 비교하지 않는다. `evidence` · `judgeInput` 저장은
+2026-10-07 본측정 뒤부터라 그 전 행은 rejudge 가 건너뛴다.

@@ -158,12 +158,31 @@ export function aggregateAgentic(allRows: ResultRow[]): AgenticCell[] {
   })
 }
 
+/**
+ * 한 표에 서로 다른 심판의 점수가 섞였으면 경고 줄. 심판마다 점수 성향이 달라 섞어 비교하면 안 된다.
+ * judgeModel 이 없는 옛 행은 meta.judge 의 심판으로 본다.
+ */
+function judgeMixWarning(rows: ResultRow[], fallback: string): string[] {
+  const names = [...new Set(rows.filter((r) => r.judge).map((r) => r.judgeModel ?? fallback))]
+  return names.length > 1 ? [`> ⚠ 이 표에는 서로 다른 심판의 점수가 섞여 있다 (${names.join(" · ")}). 심판이 다른 점수끼리 비교하지 않는다.`, ""] : []
+}
+
+/** 구독 심판(claude -p) 행이 있으면 요약 줄. 청구는 없고 API 환산액만 적는다 */
+function cliJudgeLine(rows: ResultRow[]): string[] {
+  const cli = rows.filter((r) => r.judgeModel?.startsWith("claude-cli:"))
+  if (!cli.length) return []
+  const models = [...new Set(cli.map((r) => r.judgeModel!.slice("claude-cli:".length)))].join(" · ")
+  const usd = cli.reduce((s, r) => s + (r.judgeNotionalUsd ?? 0), 0)
+  return [`심판: Claude 구독(claude -p, ${models}) · ${cli.length}행 · API 환산 $${usd.toFixed(3)} (청구 없음 — 표의 심판 원가는 0)`, ""]
+}
+
 export async function writeReport(dir: string) {
   const file = join(dir, "results.jsonl")
   if (!existsSync(file)) throw new Error(`${file} 없음`)
   const rows = dedupe(readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as ResultRow))
   const meta = existsSync(join(dir, "meta.json")) ? JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) : {}
   const cells = aggregate(rows)
+  const fallbackJudge = String(meta.judge ?? "(기록 없음)")
 
   const header = "| 모델 | 방법 | n | 심판 평균(0~2) | 만점 | 환각 | 과정(0~2) | 근거 적중 | p50 | p90 | 검색 | 조립 | 생성 | 호출 | 입력 tok | 출력 tok | thinking | 질문당 원 | 월(50/일) |"
   const sep = "|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
@@ -189,14 +208,17 @@ export async function writeReport(dir: string) {
     "",
     `DB ${meta.dbHost ?? "?"} · 질문 ${meta.questionCount ?? "?"}개 (${meta.questions ?? "?"}) · 심판 ${meta.judge ?? "없음"} · 환율 ${meta.krwPerUsd ?? "?"}원/$ · 시작 ${meta.startedAt ?? "?"}`,
     "",
+    ...cliJudgeLine(rows),
     "시간은 ms 평균(검색 = 임베딩 호출 + pgvector · 조립 = 현황 DB 조회 또는 도구 실행 · 생성 = 모델 호출 합계). p50·p90 은 질문 전체 시간. 원은 질문 1건 평균, 심판 비용 제외.",
     "",
     "## 전체 (품질 높은 순)",
     "",
+    ...judgeMixWarning(rows, fallbackJudge),
     header, sep, ...cells.map(line),
     "",
     "## 유형별 (질문 파일의 type · 없으면 regression)",
     "",
+    ...judgeMixWarning(rows, fallbackJudge),
     typeHeader, typeSep, ...aggregateByType(rows).map(typeLine),
     "",
     ...(agentic.length ? [
@@ -204,9 +226,10 @@ export async function writeReport(dir: string) {
       "",
       "반복 = 모델 호출 수. 재검색 = 검색류 도구를 뒤 단계에서 다른 인자로 다시 부른 문항 비율. 한도 도달 = 반복 한도에 닿은 비율 (native·route 6단계, wk-agent 20회).",
       "",
+      ...judgeMixWarning(rows.filter((r) => r.agent), fallbackJudge),
       agenticHeader, agenticSep, ...agentic.map(agenticLine), "",
     ] : []),
-    ...[...byMethod.entries()].flatMap(([m, cs]) => [`## 방법 ${m}`, "", header, sep, ...cs.map(line), ""]),
+    ...[...byMethod.entries()].flatMap(([m, cs]) => [`## 방법 ${m}`, "", ...judgeMixWarning(rows.filter((r) => r.method === m), fallbackJudge), header, sep, ...cs.map(line), ""]),
     "## 답변별",
     "",
     ...rows.map((r) =>
@@ -232,5 +255,7 @@ if (process.argv[1]?.endsWith("report.ts")) {
   if (!dir) { console.error("결과 폴더를 주세요: npx tsx bench/report.ts bench/results/<run>"); process.exit(1) }
   writeReport(dir).then((cells) => {
     console.log(`${cells.length} 셀 → ${join(dir, "summary.md")}`)
+    const md = readFileSync(join(dir, "summary.md"), "utf8")
+    if (md.includes("서로 다른 심판의 점수가 섞여")) console.log("⚠ 심판이 섞인 표가 있다 — summary.md 의 경고 줄 참고")
   })
 }

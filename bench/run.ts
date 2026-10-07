@@ -8,6 +8,11 @@
 // BENCH_TOTAL_CAP_KRW=<원> 은 장부 전체(리랭크 서버 등 run 밖 지출 포함)가 상한에 닿으면 멈춘다.
 //
 // 중단하고 같은 --run 으로 다시 돌리면 이미 있는 (모델·방법·질문) 은 건너뛴다.
+// 행마다 심판에게 준 근거(evidence)와 부가 정보(judgeInput)를 남긴다 — 나중에 rejudge.ts 로 다른 심판에게 다시 채점시킨다.
+//
+// 구독 심판(BENCH_JUDGE=claude-sonnet-cli · claude-haiku-cli)이면 답변을 BENCH_JUDGE_BATCH 개 모아 한 번에 채점한 뒤 쓴다.
+// 구독 한도에 걸리면 모은 행을 채점 대기(judgePending)로 쓰고 멈춘다. 같은 --run 으로 재개하면 대기 행부터 채점해
+// 채점된 사본을 덧붙인다 (report 의 dedupe 가 마지막 줄을 쓴다).
 // 끝나면 report.ts 를 불러 summary.md · summary.csv 를 만든다.
 // 계획: mydocs/plans/2026-09-09-model-method-benchmark.md
 import "dotenv/config"
@@ -15,11 +20,12 @@ import { mkdirSync, existsSync, readFileSync, appendFileSync, writeFileSync } fr
 import { join } from "path"
 import { prisma } from "@/lib/db"
 import type { Caller } from "@/lib/omnis-mcp"
-import { MODELS, METHODS, JUDGE_MODEL, KRW_PER_USD, usdToKrw, modelAvailable, type MethodName, type ModelSpec } from "./config"
+import { MODELS, METHODS, JUDGE_MODEL, JUDGE_LABEL, KRW_PER_USD, usdToKrw, modelAvailable, type MethodName, type ModelSpec } from "./config"
 import { runMethod, type MethodResult } from "./methods"
-import { judge, expectHits, type JudgeResult } from "./judge"
-import { costUsd } from "./providers"
-import { writeReport } from "./report"
+import { judge, judgeMany, judgedFields, expectHits, JUDGE_BATCH, type JudgeResult, type JudgeV4, type JudgeItem } from "./judge"
+import { ClaudeLimitError } from "./claude-cli"
+import { costUsd, type Usage } from "./providers"
+import { writeReport, dedupe } from "./report"
 import { loadQuestions, DEFAULT_TYPE, type Question } from "./questions"
 import { appendLedger, overTotalCap } from "./ledger"
 
@@ -38,7 +44,23 @@ export interface ResultRow {
   answer: string
   hits: string[]
   hitTotal: number
-  judge: Omit<JudgeResult, "usage" | "ms"> | null
+  judge: Omit<JudgeResult, "usage" | "ms" | "model" | "notionalUsd"> | null
+  /** 심판에게 준 근거 문자열 그대로. 2026-10-07 본측정까지의 행에는 없다 (재채점 불가) */
+  evidence?: string
+  /** 심판이 받은 부가 정보 (type · stale · unanswerable · minSteps · gold · note · trace · seen) */
+  judgeInput?: JudgeV4
+  /** 채점한 심판 (config JUDGE_LABEL). 옛 행에는 없다 — meta.judge 를 본다 */
+  judgeModel?: string
+  /** 구독 심판만: API 요금표 환산액(USD). 청구는 없고 judge.costUsd 는 0 */
+  judgeNotionalUsd?: number
+  /** 구독 심판만: 토큰 (묶음 채점이면 호출 사용량을 문항 수로 나눈 몫) */
+  judgeUsage?: Usage
+  /** 구독 심판 묶음을 기다리다 한도로 멈춘 행. 재개 · rejudge 로 채점한다 */
+  judgePending?: boolean
+  /** 재개 때 대기 행을 채점해 덧붙인 사본 — 답변 원가는 원래 줄에서 이미 셌다 */
+  judgeOnly?: boolean
+  /** rejudge.ts 가 남기는 원래 심판의 채점 (비교용) */
+  prevJudge?: { model: string; score: number; hallucination: boolean; process?: number | null } | null
   usage: MethodResult["usage"]
   costUsd: number
   costKrw: number
@@ -113,7 +135,7 @@ async function main() {
   if (existsSync(outFile)) {
     for (const line of readFileSync(outFile, "utf8").split("\n").filter(Boolean)) {
       const r = JSON.parse(line) as ResultRow
-      spent += rowKrw(r)
+      spent += r.judgeOnly ? (r.judge ? usdToKrw(r.judge.costUsd) : 0) : rowKrw(r)
       if (!r.error) done.add(`${r.model}|${r.method}|${r.qid}`)
     }
   }
@@ -123,8 +145,42 @@ async function main() {
   writeFileSync(join(dir, "meta.json"), JSON.stringify({
     runId, startedAt: new Date().toISOString(), dbHost, caller: caller.name, krwPerUsd: KRW_PER_USD,
     models: usable.map((m) => ({ key: m.key, id: m.id, price: m.price, thinking: m.thinking ?? null })),
-    methods, questions: qFile, questionCount: questions.length, judge: doJudge ? JUDGE_MODEL.id : null,
+    methods, questions: qFile, questionCount: questions.length, judge: doJudge ? JUDGE_LABEL : null,
   }, null, 2))
+
+  // 구독 심판 묶음 — 답변을 모았다가 한 번에 채점하고 쓴다
+  let stopped = false
+  const pending: ResultRow[] = []
+  const flush = async (rows: ResultRow[], copy: boolean) => {
+    if (rows.length === 0) return
+    const byKey = new Map(rows.map((r) => [`${r.model}|${r.method}|${r.qid}`, r]))
+    const items: JudgeItem[] = rows.map((r) => ({ key: `${r.model}|${r.method}|${r.qid}`, question: r.question, expect: r.expect, answer: r.answer, evidence: r.evidence ?? "", input: r.judgeInput ?? {} }))
+    try {
+      await judgeMany(items, (key, res) => Object.assign(byKey.get(key)!, judgedFields(res)), (key, err) => console.log(`  ✗ 심판 실패 ${key}: ${err}`))
+    } catch (err) {
+      if (!(err instanceof ClaudeLimitError)) throw err
+      console.log(`\n⚠ Claude 구독 한도: ${err.message.slice(0, 160)}\n  채점 못 한 행은 judgePending 으로 남긴다. 한도가 풀리면 같은 --run ${runId} 로 재개`)
+      stopped = true
+    }
+    for (const r of rows) {
+      if (!r.judge) r.judgePending = true
+      // 재개 사본은 채점된 것만 덧붙인다 — 원래 줄이 이미 대기 상태로 남아 있다
+      if (copy && !r.judge) continue
+      appendFileSync(outFile, JSON.stringify(copy ? { ...r, judgeOnly: true } : r) + "\n")
+      if (r.judge) console.log(`  심판 ${r.judge.score}${r.judge.hallucination ? "!" : ""}${typeof r.judge.process === "number" ? ` 과정 ${r.judge.process}` : ""}  ${r.model} · ${r.method} · ${r.qid}`)
+    }
+  }
+
+  // 재개: 지난번 한도로 멈춘 대기 행부터 채점해 사본을 덧붙인다
+  if (doJudge && existsSync(outFile)) {
+    const waiting = dedupe(readFileSync(outFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as ResultRow)).filter((r) => r.judgePending && r.evidence !== undefined)
+    if (waiting.length) {
+      console.log(`채점 대기 ${waiting.length}행부터 채점 (${JUDGE_LABEL})`)
+      for (const r of waiting) delete r.judgePending
+      await flush(waiting, true)
+      if (stopped) return
+    }
+  }
 
   const total = usable.length * methods.length * questions.length
   console.log(`run ${runId} · DB ${dbHost} · ${usable.length} 모델 × ${methods.length} 방법 × ${questions.length} 질문 = ${total} (이미 ${done.size})` + (budget > 0 ? ` · 예산 ${budget}원 (사용 ${spent.toFixed(2)}원)` : ""))
@@ -151,7 +207,11 @@ async function main() {
           break
         }
         const row = await runOne(runId, model, method, q, caller, doJudge)
-        appendFileSync(outFile, JSON.stringify(row) + "\n")
+        if (row.judgePending) {
+          pending.push(row)
+        } else {
+          appendFileSync(outFile, JSON.stringify(row) + "\n")
+        }
         spent += rowKrw(row)
         appendLedger({ kind: "run", runId, krw: row.costKrw, judgeKrw: row.judge ? usdToKrw(row.judge.costUsd) : 0, note: `${model.key}|${method}|${q.id}` })
         if (row.error && /credit balance|insufficient_quota|billing/i.test(row.error)) {
@@ -160,14 +220,18 @@ async function main() {
           skipModel.add(model.key)
           break
         }
-        const j = row.judge ? ` 심판 ${row.judge.score}${row.judge.hallucination ? "!" : ""}` : ""
+        const j = row.judge ? ` 심판 ${row.judge.score}${row.judge.hallucination ? "!" : ""}` : row.judgePending ? " 심판 대기" : ""
         console.log(
           `[${String(n).padStart(3)}/${total}] ${model.key} · ${method} · ${q.id}  근거 ${row.hits.length}/${row.hitTotal}${j}  ${(row.timings.total / 1000).toFixed(1)}s  ${row.costKrw}원` +
           (row.note ? `  · ${row.note}` : "") + (row.error ? `  ✗ ${row.error.slice(0, 80)}` : "")
         )
+        if (pending.length >= JUDGE_BATCH) await flush(pending.splice(0), false)
+        if (stopped) { overBudget = true; break }
       }
     }
   }
+  // 예산 · 잔액으로 멈춘 경우에도 모은 답변은 채점해서 쓴다
+  if (!stopped) await flush(pending.splice(0), false)
 
   // 상한에 첫 호출부터 막히면 결과 행이 없다
   if (!existsSync(outFile)) return console.log(`\n결과 행 없음 — ${dir}`)
@@ -185,24 +249,27 @@ async function runOne(runId: string, model: ModelSpec, method: MethodName, q: Qu
   }
   // wk-* 는 검색 단계 LLM(flash-lite) 원가가 따로 온다
   const usd = costUsd(r.usage, model.price) + (r.extraCostUsd ?? 0)
-  let j: ResultRow["judge"] = null
+  const judgeInput: JudgeV4 = {
+    type: q.type, stale: q.stale, unanswerable: q.unanswerable, minSteps: q.minSteps, gold: q.gold, note: q.note,
+    // 과정 점수는 도구 루프 방법만 — 단발 방법의 trace 는 검색 기록 한 줄이라 과정이라 할 게 없다
+    trace: r.agent ? r.trace : undefined, seen: r.seen,
+  }
+  let j: Partial<ResultRow> = {}
   if (doJudge && !r.answer && !r.error) {
-    j = { score: 0, hallucination: false, reason: "빈 답변", costUsd: 0 }
+    j = { judge: { score: 0, hallucination: false, reason: "빈 답변", costUsd: 0 }, judgeModel: JUDGE_LABEL }
+  } else if (doJudge && r.answer && JUDGE_MODEL.provider === "claude-cli") {
+    j = { judge: null, judgePending: true } // main 이 묶어서 채점한다
   } else if (doJudge && r.answer) {
     try {
-      const res = await judge(q.q, q.expect, r.answer, r.evidence, {
-        type: q.type, stale: q.stale, unanswerable: q.unanswerable, minSteps: q.minSteps, gold: q.gold, note: q.note,
-        // 과정 점수는 도구 루프 방법만 — 단발 방법의 trace 는 검색 기록 한 줄이라 과정이라 할 게 없다
-        trace: r.agent ? r.trace : undefined, seen: r.seen,
-      })
-      j = { score: res.score, hallucination: res.hallucination, reason: res.reason, process: res.process, processReason: res.processReason, costUsd: res.costUsd }
+      j = judgedFields(await judge(q.q, q.expect, r.answer, r.evidence, judgeInput))
     } catch (err) {
-      j = { score: 0, hallucination: false, reason: `심판 실패: ${String(err).slice(0, 120)}`, costUsd: 0 }
+      j = { judge: { score: 0, hallucination: false, reason: `심판 실패: ${String(err).slice(0, 120)}`, costUsd: 0 }, judgeModel: JUDGE_LABEL }
     }
   }
   return {
     ...base,
-    answer: r.answer, hits: expectHits(r.answer, q.expect), judge: j,
+    answer: r.answer, hits: expectHits(r.answer, q.expect), judge: null, ...j,
+    evidence: r.evidence, judgeInput,
     usage: r.usage, costUsd: usd, costKrw: usdToKrw(usd),
     timings: { retrieval: Math.round(r.timings.retrieval), context: Math.round(r.timings.context), llm: Math.round(r.timings.llm), total: Math.round(r.timings.total) }, calls: r.calls, promptChars: r.promptChars, refs: r.refs, trace: r.trace, agent: r.agent, finish: r.finish, note: r.note, error: r.error,
   }

@@ -4,6 +4,7 @@
 // (요금표는 config.ts, 계산은 cost()). SDK 를 안 쓰고 fetch 로 부른다 — 의존성을 늘리지 않으려는
 // 프로덕션 코드(lib/ai.ts)와 같은 방식이다.
 import { type ModelSpec, type Price } from "./config"
+import { claudeCli } from "./claude-cli"
 
 export interface ChatMessage {
   role: "user" | "assistant"
@@ -23,6 +24,8 @@ export interface ChatResult {
   ms: number
   /** 벤더가 보고한 종료 사유. 잘림(MAX_TOKENS 등)을 보기 위해 */
   finish?: string
+  /** claude-cli 만: API 요금표 환산액(total_cost_usd). 구독이라 청구는 없다 */
+  notionalUsd?: number
 }
 
 export interface ChatOptions {
@@ -234,6 +237,12 @@ export async function chat(m: ModelSpec, system: string | undefined, messages: C
       return chatAnthropic(m, system, messages, opts)
     case "openai-compat":
       return chatOpenAiCompat(m, system, messages, opts)
+    case "claude-cli": {
+      // 심판 전용. 한 번에 프롬프트 하나만 보낸다 (대화 이력 없음). temperature · maxOutputTokens 는 CLI 에 옵션이 없어 무시된다
+      if (messages.length !== 1) throw new Error("claude-cli 는 user 메시지 하나만 받는다")
+      const r = await claudeCli(messages[0].content, { model: m.id, system: system ?? "지시를 따라 요청한 형식으로만 답한다." })
+      return { text: r.text, usage: r.usage, ms: r.ms, notionalUsd: r.notionalUsd }
+    }
   }
 }
 
