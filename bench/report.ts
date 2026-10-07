@@ -73,8 +73,12 @@ export function aggregate(allRows: ResultRow[]): Cell[] {
   for (const [k, rs] of groups) {
     const [model, method] = k.split("|")
     const ok = rs.filter((r) => !r.error)
-    const judged = ok.filter((r) => r.judge)
-    const krw = avg(ok.map((r) => r.costKrw))
+    // 오류 행이라도 심판이 채점했으면(한도 초과로 "답을 정리하지 못했습니다" 등) 품질·원가·시간에 넣는다 —
+    // 사용자에겐 실패한 답이고 돈과 시간은 나갔다. 빼면 포기한 방법이 평균에서 유리해진다 (2026-10-07 본측정에서 발견).
+    // 심판도 못 한 인프라 오류(429 등)만 뺀다.
+    const judged = rs.filter((r) => r.judge)
+    const spent = rs.filter((r) => !r.error || r.judge)
+    const krw = avg(spent.map((r) => r.costKrw))
     const krwPerUsd = ok.length && ok[0].costUsd > 0 ? ok[0].costKrw / ok[0].costUsd : 1380
     cells.push({
       model, method, n: rs.length, errors: rs.length - ok.length, notes: ok.filter((r) => r.note).length,
@@ -82,11 +86,11 @@ export function aggregate(allRows: ResultRow[]): Cell[] {
       judgeFull: judged.filter((r) => r.judge!.score === 2).length,
       hallucinations: judged.filter((r) => r.judge!.hallucination).length,
       processAvg: processAvg(judged),
-      hitRate: r2(ok.reduce((a, r) => a + r.hits.length, 0) / Math.max(ok.reduce((a, r) => a + r.hitTotal, 0), 1)),
-      p50: pct(ok.map((r) => r.timings.total), 0.5), p90: pct(ok.map((r) => r.timings.total), 0.9),
-      retrieval: Math.round(avg(ok.map((r) => r.timings.retrieval))), context: Math.round(avg(ok.map((r) => r.timings.context))), llm: Math.round(avg(ok.map((r) => r.timings.llm))),
-      calls: r1(avg(ok.map((r) => r.calls))),
-      inTok: Math.round(avg(ok.map((r) => r.usage.input))), outTok: Math.round(avg(ok.map((r) => r.usage.output))), thinkTok: Math.round(avg(ok.map((r) => r.usage.thinking))),
+      hitRate: r2(spent.reduce((a, r) => a + r.hits.length, 0) / Math.max(spent.reduce((a, r) => a + r.hitTotal, 0), 1)),
+      p50: pct(spent.map((r) => r.timings.total), 0.5), p90: pct(spent.map((r) => r.timings.total), 0.9),
+      retrieval: Math.round(avg(spent.map((r) => r.timings.retrieval))), context: Math.round(avg(spent.map((r) => r.timings.context))), llm: Math.round(avg(spent.map((r) => r.timings.llm))),
+      calls: r1(avg(spent.map((r) => r.calls))),
+      inTok: Math.round(avg(spent.map((r) => r.usage.input))), outTok: Math.round(avg(spent.map((r) => r.usage.output))), thinkTok: Math.round(avg(spent.map((r) => r.usage.thinking))),
       krw: r2(krw), krwMonth50: Math.round(krw * 50 * 30),
       judgeKrw: r2(avg(judged.map((r) => r.judge!.costUsd)) * krwPerUsd),
     })
@@ -107,8 +111,9 @@ export function aggregateByType(allRows: ResultRow[]): TypeCell[] {
   const cells: TypeCell[] = []
   for (const [k, rs] of groups) {
     const [model, method, type] = k.split("|")
-    const ok = rs.filter((r) => !r.error)
-    const judged = ok.filter((r) => r.judge)
+    // aggregate() 와 같은 규칙 — 심판이 채점한 오류 행은 실패한 답으로 넣는다
+    const judged = rs.filter((r) => r.judge)
+    const ok = rs.filter((r) => !r.error || r.judge)
     cells.push({
       model, method, type, n: rs.length,
       judgeAvg: r2(avg(judged.map((r) => r.judge!.score))),
@@ -135,7 +140,8 @@ export interface AgenticCell {
 export function aggregateAgentic(allRows: ResultRow[]): AgenticCell[] {
   const groups = new Map<string, ResultRow[]>()
   for (const r of dedupe(allRows)) {
-    if (r.error || !r.agent) continue
+    // 한도 초과로 끝난 행도 넣는다 — 빼면 "한도 도달" 비율이 늘 0 이 된다. 심판도 못 한 인프라 오류만 뺀다
+    if (!r.agent || (r.error && !r.judge)) continue
     const k = `${r.model}|${r.method}`
     groups.set(k, [...(groups.get(k) ?? []), r])
   }
