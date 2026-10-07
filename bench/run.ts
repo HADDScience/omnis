@@ -5,6 +5,7 @@
 //
 // BENCH_BUDGET_KRW=<원> 을 주면 한 run 폴더의 누적 원가(답변 + 심판)가 상한에 닿는 순간 다음 호출 전에 멈춘다.
 // 재개(--run)하면 기존 results.jsonl 합계부터 센다. 질문마다의 원가는 results/ledger.jsonl 에도 쌓인다 (ledger.ts).
+// BENCH_TOTAL_CAP_KRW=<원> 은 장부 전체(리랭크 서버 등 run 밖 지출 포함)가 상한에 닿으면 멈춘다.
 //
 // 중단하고 같은 --run 으로 다시 돌리면 이미 있는 (모델·방법·질문) 은 건너뛴다.
 // 끝나면 report.ts 를 불러 summary.md · summary.csv 를 만든다.
@@ -20,7 +21,7 @@ import { judge, expectHits, type JudgeResult } from "./judge"
 import { costUsd } from "./providers"
 import { writeReport } from "./report"
 import { loadQuestions, DEFAULT_TYPE, type Question } from "./questions"
-import { appendLedger } from "./ledger"
+import { appendLedger, overTotalCap } from "./ledger"
 
 export type { Question }
 
@@ -143,6 +144,12 @@ async function main() {
           overBudget = true
           break
         }
+        const capHit = overTotalCap()
+        if (capHit) {
+          console.log(`\n⚠ 실험 전체 상한: ${capHit} — [${n}/${total}] 에서 멈춤`)
+          overBudget = true
+          break
+        }
         const row = await runOne(runId, model, method, q, caller, doJudge)
         appendFileSync(outFile, JSON.stringify(row) + "\n")
         spent += rowKrw(row)
@@ -162,6 +169,8 @@ async function main() {
     }
   }
 
+  // 상한에 첫 호출부터 막히면 결과 행이 없다
+  if (!existsSync(outFile)) return console.log(`\n결과 행 없음 — ${dir}`)
   await writeReport(dir)
   console.log(`\n결과: ${dir}/summary.md`)
 }

@@ -31,6 +31,22 @@ export function readLedger(): LedgerRow[] {
   return readFileSync(LEDGER_FILE, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as LedgerRow)
 }
 
+/** 장부 전체 합계(원). 리랭크 서버처럼 run 폴더 밖에서 나간 돈까지 포함한다 */
+export function ledgerTotal(): number {
+  return readLedger().reduce((s, r) => s + r.krw + (r.judgeKrw ?? 0), 0)
+}
+
+/**
+ * 실험 전체 상한 BENCH_TOTAL_CAP_KRW. BENCH_BUDGET_KRW 는 run 폴더 안의 원가만 세서
+ * 리랭크 서버(wk-real-rerank) 원가를 못 봤다 (2026-10-07, 400원 상한 run 의 실제 지출 459원).
+ */
+export function overTotalCap(): string | null {
+  const cap = Number(process.env.BENCH_TOTAL_CAP_KRW ?? 0)
+  if (cap <= 0) return null
+  const total = ledgerTotal()
+  return total >= cap ? `장부 전체 ${total.toFixed(0)}원 ≥ BENCH_TOTAL_CAP_KRW ${cap}원` : null
+}
+
 if (process.argv[1]?.endsWith("ledger.ts")) {
   const rows = readLedger()
   if (rows.length === 0) { console.log(`${LEDGER_FILE} 에 기록이 없습니다`); process.exit(0) }
