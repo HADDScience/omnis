@@ -34,6 +34,8 @@ const EMBED_MODEL = "gemini-embedding-001"
 const EMBED_DIM = 768
 const KB_NAME = "omnis-wklab"
 const API_KEY_NAME = "omnis-bench"
+/** 스마트 추론 최대 반복 — A1(bench/agent, 최대 20회)과 같게 */
+const AGENT_MAX_ITER = 20
 const RERANK_NAME = "gemini-3.5-flash-lite-listwise"
 const RERANK_BASE = `http://host.docker.internal:${process.env.WK_RERANK_PORT ?? 8583}`
 
@@ -135,11 +137,15 @@ async function main() {
   }
 
   // ── 내장 에이전트 ── 빠른 답변·스마트 추론은 model_id 가 비어 있으면 "chat model is not configured" 로 거절한다.
-  // 바꾸는 것은 model_id · rerank_model_id · web_search_enabled=false 뿐이다. 나머지 설정(임계값·반복 한도·도구·프롬프트)은 내장값 그대로
+  // 바꾸는 것은 model_id · rerank_model_id · web_search_enabled=false, 스마트 추론의 max_iterations=20 뿐이다.
+  // 나머지 설정(임계값·도구·프롬프트)은 내장값 그대로.
+  // max_iterations: 내장값 50 → 20. A1(wk-agent, 최대 20회)과 같은 한도로 맞춘다 (작업지시자 결정 2026-10-07).
+  // 50 으로 두면 v4-mh-01 에서 search_knowledge 만 20번 넘게 되풀이해 한 문항에 164원이 나왔다.
   const agentSettings: Record<string, unknown> = {}
   for (const id of ["builtin-quick-answer", "builtin-smart-reasoning"]) {
     const a = (await wkJson<{ data: { name: string; config: Record<string, unknown> } }>("GET", `/agents/${id}`, auth)).data
-    const want = { model_id: chat.id, web_search_enabled: false, ...(rerankId ? { rerank_model_id: rerankId } : {}) }
+    const want = { model_id: chat.id, web_search_enabled: false, ...(rerankId ? { rerank_model_id: rerankId } : {}), ...(id === "builtin-smart-reasoning" ? { max_iterations: AGENT_MAX_ITER } : {}) }
+    if (id === "builtin-smart-reasoning") console.log(`에이전트 ${id}: max_iterations 설정 전 ${String(a.config.max_iterations)}`)
     if (Object.entries(want).some(([k, v]) => a.config[k] !== v)) {
       await wkJson("PUT", `/agents/${id}`, auth, { config: { ...a.config, ...want } })
       console.log(`에이전트 ${id}: ${Object.keys(want).join(" · ")} 설정`)

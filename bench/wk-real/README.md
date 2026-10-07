@@ -135,8 +135,9 @@ BENCH_BUDGET_KRW=300 npx tsx bench/run.ts --models gemini-3.8-flash@low --method
 - `weknora-agent`: `POST /agent-chat`. 내장 스마트 추론(`builtin-smart-reasoning`, ReAct)이 돈다.
   v0.8.2 는 `search_knowledge` 도구를 쓰는 에이전트에 rerank 모델을 반드시 요구한다
   (`session_agent_qa.go`: `rerank model is not configured`). 그래서 리랭크 서버가 떠 있어야 돈다.
-- 내장 에이전트 두 개에는 `model_id`(채팅 모델) · `rerank_model_id` · `web_search_enabled=false` 만 넣었다(setup.ts). 모델이 비어 있으면 「chat model is not configured」로 거절한다.
-  나머지(임계값·반복 한도 50·도구·프롬프트)는 내장값 그대로다.
+- 내장 에이전트 두 개에는 `model_id`(채팅 모델) · `rerank_model_id` · `web_search_enabled=false` 를 넣었다(setup.ts). 모델이 비어 있으면 「chat model is not configured」로 거절한다.
+  스마트 추론의 `max_iterations` 는 내장값 50 → **20** 으로 바꿨다. A1(wk-agent)과 같은 한도다(작업지시자 결정 2026-10-07).
+  나머지(임계값·도구·프롬프트)는 내장값 그대로다.
 - 두 방법 모두 이 KB 만 쓰고 `web_search_enabled=false` 로 부른다. 웹검색 공급자도 등록하지 않았다.
 - WeKnora 프롬프트는 그대로 둔다. 실물을 대조하는 것이기 때문이다.
   그래서 답 형식(인용 표기·머리말·길이)이 Omnis 팔과 다르다. 블라인드 A/B 에서 이 차이로 팔이 드러날 수 있다.
@@ -179,6 +180,7 @@ BENCH_BUDGET_KRW=300 npx tsx bench/run.ts --models gemini-3.8-flash@low --method
 | 요청 헤더 | 없음 | `Accept-Language: ko-KR` | 요약·프롬프트 언어 |
 | 내장 에이전트 `builtin-quick-answer` · `builtin-smart-reasoning` | `model_id`·`rerank_model_id` 없음 · `web_search_enabled: true` | 채팅 모델 · 리랭크 모델 · `false` | 모델이 없으면 거절. 웹검색 끔 |
 | 테넌트 검색 설정 `rerank_model_id` | 없음 | 리랭크 모델 | knowledge-search 의 리랭크 |
+| 내장 스마트 추론 `max_iterations` | 50 | 20 | A1 과 같은 반복 한도 |
 
 외부 통신 제한은 **앱 수준 검사**다. WeKnora 가 URL 을 쓰는 경로(모델 base_url, URL 가져오기, 웹 가져오기, MCP 등)에서
 화이트리스트 밖 호스트를 DNS 조회 전에 거절한다. 컨테이너의 네트워크 자체를 막지는 않는다. 리랭크 서버(호스트 127.0.0.1)에 닿는 것도 화이트리스트에 host.docker.internal 을 넣었기 때문이다.

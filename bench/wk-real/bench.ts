@@ -102,7 +102,7 @@ function toUsage(u: WkUsage): Usage {
  * 빠른 답변은 SSE·DB 어디에도 사용량을 남기지 않는다(v0.8.2 실측: messages.usage 가 NULL). 로그에는 질의 재작성(query_rewrite)과
  * 답변(knowledge_qa)이 따로 찍힌다 — 그래서 로그가 한 턴의 모든 LLM 호출을 담는 유일한 곳이다. 임베딩 호출은 로그에 없다.
  */
-export function usageFromLogs(sessionId: string, sinceIso: string): { usage: WkUsage; calls: number; purposes: Record<string, number> } | null {
+export function usageFromLogs(sessionId: string, sinceIso: string): { usage: WkUsage; calls: number; purposes: Record<string, number>; hitLimit: boolean } | null {
   let out = ""
   try {
     out = execFileSync("docker", ["logs", "--since", sinceIso, "WeKnora-app"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] })
@@ -113,8 +113,13 @@ export function usageFromLogs(sessionId: string, sinceIso: string): { usage: WkU
   const u: WkUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cache_read_tokens: 0 }
   const purposes: Record<string, number> = {}
   let calls = 0
-  for (const line of out.split("\n")) {
+  const lines = out.split("\n")
+  // 로그 줄의 두 번째 [..] 가 요청 id 다. 반복 한도 도달 줄("max_iterations_reached")에는 세션 id 가 없어 요청 id 로 잇는다
+  const reqIds = new Set<string>()
+  for (const line of lines) {
     if (!line.includes("[LLM Usage]") || !line.includes(`session_id=${sessionId}`)) continue
+    const rid = line.match(/^\S+\s*\[[^\]]*\]\s*\[([^\]]+)\]/)?.[1]
+    if (rid) reqIds.add(rid)
     const num = (k: string) => Number(line.match(new RegExp(`${k}=(\\d+)`))?.[1] ?? 0)
     u.prompt_tokens! += num("prompt_tokens")
     u.completion_tokens! += num("completion_tokens")
@@ -125,7 +130,8 @@ export function usageFromLogs(sessionId: string, sinceIso: string): { usage: WkU
     purposes[purpose] = (purposes[purpose] ?? 0) + 1
     calls++
   }
-  return calls ? { usage: u, calls, purposes } : null
+  const hitLimit = lines.some((l) => l.includes("max_iterations_reached") && [...reqIds].some((r) => l.includes(`[${r}]`)))
+  return calls ? { usage: u, calls, purposes, hitLimit } : null
 }
 
 /** SSE 에 usage 가 없을 때 WeKnora DB 의 messages.usage 를 본다 (assistant 메시지 id) */
@@ -164,6 +170,7 @@ export async function runWeknora(mode: WkMode, model: ModelSpec, question: strin
   const refs: WkSearchResult[] = []
   const trace: NonNullable<MethodResult["trace"]> = []
   const open = new Map<string, { step: number; at: number; idx: number }>()
+  const seenCall = new Map<string, number>()
   let assistantMessageId: string | undefined
   let usage: WkUsage | undefined
   let finish: string | undefined
@@ -183,23 +190,29 @@ export async function runWeknora(mode: WkMode, model: ModelSpec, question: strin
         refs.push(...(e.knowledge_references ?? []))
         break
       case "tool_call": {
-        for (const c of e.tool_calls ?? []) {
-          const name = c.function?.name ?? "?"
+        // v0.8.2 는 도구 호출 하나를 두 번 보낸다 — 인자가 비어 있는 시작 알림, 그다음 인자가 찬 알림(2026-10-07 실측).
+        // 같은 호출 id 면(없으면 바로 앞의 결과 없는 같은 도구·빈 인자 항목이면) 새 항목을 만들지 않고 인자만 채운다
+        const calls = e.tool_calls?.length
+          ? e.tool_calls.map((c) => ({ id: c.id ?? (e.data?.tool_call_id as string | undefined), name: c.function?.name ?? "?", raw: c.function?.arguments }))
+          : e.data?.tool_name ? [{ id: e.data.tool_call_id as string | undefined, name: String(e.data.tool_name), raw: e.data.arguments as unknown }] : []
+        for (const c of calls) {
           let args: Record<string, unknown> = {}
-          try { args = JSON.parse(c.function?.arguments || "{}") as Record<string, unknown> } catch { args = { raw: c.function?.arguments } }
+          if (typeof c.raw === "string") { try { args = JSON.parse(c.raw || "{}") as Record<string, unknown> } catch { args = { raw: c.raw } } }
+          else if (c.raw && typeof c.raw === "object") args = c.raw as Record<string, unknown>
+          const last = trace[trace.length - 1]
+          const prevIdx = c.id && seenCall.has(c.id) ? seenCall.get(c.id)!
+            : last && last.tool === c.name && Object.keys(last.args).length === 0 && last.resultChars === 0 ? trace.length - 1 : -1
+          if (prevIdx >= 0) {
+            if (Object.keys(args).length) trace[prevIdx].args = args
+            if (c.id) { seenCall.set(c.id, prevIdx); if (![...open.values()].some((o) => o.idx === prevIdx)) open.set(c.id, { step: prevIdx + 1, at: now(), idx: prevIdx }) }
+            continue
+          }
           const step = trace.length + 1
-          trace.push({ step, tool: name, args, resultChars: 0, ms: 0 })
-          open.set(c.id ?? `${name}#${step}`, { step, at: now(), idx: trace.length - 1 })
-          onStep?.(name, args)
-        }
-        // tool_calls 가 비어 있고 data 에 도구 이름이 오는 버전도 있다
-        if (!e.tool_calls?.length && e.data?.tool_name) {
-          const name = String(e.data.tool_name)
-          const args = (e.data.arguments as Record<string, unknown>) ?? {}
-          const step = trace.length + 1
-          trace.push({ step, tool: name, args, resultChars: 0, ms: 0 })
-          open.set(String(e.data.tool_call_id ?? `${name}#${step}`), { step, at: now(), idx: trace.length - 1 })
-          onStep?.(name, args)
+          trace.push({ step, tool: c.name, args, resultChars: 0, ms: 0 })
+          const key = c.id ?? `${c.name}#${step}`
+          seenCall.set(key, trace.length - 1)
+          open.set(key, { step, at: now(), idx: trace.length - 1 })
+          onStep?.(c.name, args)
         }
         break
       }
@@ -207,9 +220,10 @@ export async function runWeknora(mode: WkMode, model: ModelSpec, question: strin
         const id = String(e.data?.tool_call_id ?? "")
         const o = open.get(id) ?? [...open.values()].pop()
         if (o) {
-          trace[o.idx].resultChars = (e.content ?? "").length
+          // content 는 한 줄 요약일 때가 있어 data 쪽 본문 길이와 큰 쪽을 쓴다
+          trace[o.idx].resultChars = Math.max((e.content ?? "").length, e.data ? JSON.stringify(e.data).length : 0)
           trace[o.idx].ms = Math.round(now() - o.at)
-          open.delete(id)
+          for (const [k, v] of open) if (v.idx === o.idx) open.delete(k)
         }
         break
       }
@@ -231,10 +245,12 @@ export async function runWeknora(mode: WkMode, model: ModelSpec, question: strin
   // 사용량: 앱 로그(세션의 모든 LLM 호출) → SSE complete.usage → WeKnora DB messages.usage → 글자 수/4 추정. 어느 쪽인지 note 에 적는다
   let usageSrc = "SSE complete.usage"
   let llmCalls = 0
+  let hitLimit = false
   const logged = usageFromLogs(session.id, sinceIso)
   if (logged) {
     usage = logged.usage
     llmCalls = logged.calls
+    hitLimit = logged.hitLimit
     usageSrc = `WeKnora 앱 로그 [LLM Usage] ${Object.entries(logged.purposes).map(([k, v]) => `${k}×${v}`).join(" ")} (질문 임베딩 제외)`
   } else if (!usage || !(usage.total_tokens || usage.prompt_tokens)) {
     const db = usageFromDb(assistantMessageId, session.id)
@@ -254,7 +270,7 @@ export async function runWeknora(mode: WkMode, model: ModelSpec, question: strin
     answer,
     usage: u,
     timings: { retrieval: retrievalMs, context: 0, llm: total - retrievalMs, total },
-    calls: llmCalls || (mode === "agent" ? Math.max(totalSteps, trace.length + 1) : 1),
+    calls: llmCalls || (mode === "agent" ? totalSteps || trace.length + 1 : 1),
     promptChars: 0,
     refs: uniq.map((r) => {
       const d = docOf(r)
@@ -265,7 +281,8 @@ export async function runWeknora(mode: WkMode, model: ModelSpec, question: strin
     note: `usage: ${usageSrc}`,
     error,
     evidence,
-    agent: mode === "agent" ? agentStats(trace, Math.max(totalSteps, trace.length + 1), false) : undefined,
+    // 반복 수 = 앱 로그의 LLM 호출 수(한도에 닿으면 마지막 답 호출 1회 포함). 로그가 없으면 SSE 의 total_steps
+    agent: mode === "agent" ? agentStats(trace, llmCalls || totalSteps || trace.length + 1, hitLimit) : undefined,
     seen: seenKeys,
   }
 }
