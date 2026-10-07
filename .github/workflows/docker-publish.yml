@@ -1,9 +1,11 @@
 name: Build and Publish Docker Image
 
+# 수동 실행만 받는다(2026-10-07). 운영은 Vercel 이고 이 이미지를 쓰는 곳은 NAS 자체 호스팅용
+# docker-compose.synology.yml 뿐인데, 지금 그 구성은 돌지 않는다. main 푸시마다 빌드하던 것은
+# 9/21 pnpm 전환 뒤로 매번 실패했다 — Dockerfile 의 `node_modules/.bin/esbuild` 가 없다
+# (pnpm 은 직접 선언한 패키지만 .bin 에 올린다). 다시 쓸 때는 esbuild 를 devDependency 로
+# 넣고 돌린다.
 on:
-  push:
-    branches: [main]
-    tags: ["v*.*.*"]
   workflow_dispatch:
 
 env:
