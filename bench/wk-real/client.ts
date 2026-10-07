@@ -26,6 +26,7 @@ export interface WkState {
   tenantId: number
   chatModelId?: string
   embeddingModelId?: string
+  rerankModelId?: string
   kbId?: string
   apiKey?: string
   /** 설정 때 기록한 값 — 보고서용 */

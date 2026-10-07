@@ -120,7 +120,8 @@ export function usageFromLogs(sessionId: string, sinceIso: string): { usage: WkU
     u.completion_tokens! += num("completion_tokens")
     u.total_tokens! += num("total_tokens")
     u.cache_read_tokens! += num("cache_read_tokens")
-    const purpose = line.match(/purpose=([^,]+)/)?.[1] ?? "?"
+    // 빈 purpose 로 찍히는 호출이 있다 (빠른 답변 v4-ag-01 실측 — 어떤 단계인지 로그로는 알 수 없다)
+    const purpose = line.match(/purpose=([^,]*)/)?.[1] || "purpose없음"
     purposes[purpose] = (purposes[purpose] ?? 0) + 1
     calls++
   }

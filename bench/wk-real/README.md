@@ -54,7 +54,23 @@ Markdown 은 docreader 를 거치지 않는다. 확장자 md 는 Go 안의 simpl
 KB 설정에도 `parser_engine_rules: md → simple` 로 못박았다. 이번 말뭉치에는 영향이 없다.
 2단계(첨부 PDF·hwpx)에서 WeKnora 로 첨부를 파싱하려면 docreader 가 필요하다. 그때는 디스크를 늘려야 한다.
 
-## 2. 설정
+## 2. 리랭크 서버 (실험 중에만 켠다)
+
+```bash
+npx tsx bench/wk-real/rerank-server.ts      # 127.0.0.1:8583 — 끄면 WeKnora 검색·답변이 리랭크 실패로 召回 순서로 돌아가거나 에이전트가 실패한다
+```
+
+- `POST /rerank {model, query, documents[], top_n}` → `{results:[{index, relevance_score}]}` (WeKnora generic 공급자의 cohere-rerank 형식).
+  안에서 `bench/wk/llm.ts` 의 `llmRerank`(gemini-3.5-flash-lite, 0~10 정수, 후보 본문 400 자)를 부르고 ÷10 해서 0~1 로 돌려준다.
+  후보가 40 개를 넘으면 나눠 부른다. WeKnora 가 보내는 문서는 「제목 + 본문」 한 덩어리라 R3(제목 따로)와 달리 제목이 400 자 안에 든다.
+- 바인드는 **127.0.0.1 만**. colima(lima) 는 VM 의 192.168.5.2 를 호스트 루프백으로 넘겨서, 컨테이너의 `host.docker.internal:8583` 에서 닿는다(2026-10-07 실측).
+  외부 인터페이스에는 열리지 않는다. `Authorization: Bearer <$WK_LAB_DIR/rerank-token>` 이 아니면 401.
+- WeKnora `.env` 의 `SSRF_WHITELIST` 에 `host.docker.internal` 하나를 더했다 (그 뒤 `docker compose up -d --no-deps app`).
+- 원가는 호출마다 bench ledger 에 run `wk-real-rerank` 로 한 줄씩, `$WK_LAB_DIR/rerank.log` 에도 남는다.
+  `BENCH_BUDGET_KRW` 는 이 원가를 보지 못한다(run 폴더 밖에서 나가는 돈이다).
+- 리랭크 없이 다시 설정하려면 `WK_RERANK=off npx tsx bench/wk-real/setup.ts` (이미 연결된 rerank_model_id 는 그대로 남으니 UI·API 에서 지운다).
+
+## 3. 설정
 
 ```bash
 npx tsx bench/wk-real/setup.ts
@@ -64,7 +80,7 @@ npx tsx bench/wk-real/setup.ts
 |---|---|---|
 | 채팅 | `gemini-3.8-flash` (gemini 공급자, 네이티브 generateContent) | 생각 수준은 요청마다 `reasoning_effort` 로 준다. bench 의 `@low` → `low` |
 | 임베딩 | `gemini-embedding-001` **768 차원** | 공급자 `openai` + base_url `…/v1beta/openai`. 이유는 아래 |
-| 리랭크 | **없음** | WeKnora 의 Gemini 공급자는 KnowledgeQA·Embedding 만 지원한다. 다른 벤더를 붙이지 않았다. 검색은 rerank 없이 융합(RRF) 순서 그대로 온다 (v0.8.2 응답에는 `meta.rerank` 가 없다) |
+| 리랭크 | `gemini-3.5-flash-lite-listwise` — 호스트의 `rerank-server.ts` | WeKnora 의 Gemini 공급자에는 rerank 모델이 없다. 다른 벤더는 붙이지 않고 R3 와 같은 flash-lite listwise 리랭크를 cohere 형식 서버로 감쌌다(작업지시자 결정 2026-10-07). generic 공급자 · `score_scale: probability`. 테넌트 검색 설정·내장 에이전트 두 개의 `rerank_model_id` 로 연결 |
 | KB | `omnis-wklab`, document | 하이브리드(벡터+키워드) 기본값, 청킹 `strategy: auto` · 512 / 80, md → simple, 요약 생성 기본값(켬, 요약 모델 = 채팅 모델) |
 | API 키 | full_access 1개 (`omnis-bench`) | 평문은 `state.json` 에만 있다 |
 
@@ -86,7 +102,7 @@ Gemini API 는 이 자리를 무시하고 3072 차원을 돌려준다. base_url 
 **언어.** 요청 헤더가 없으면 요약이 중국어로 나왔다. 서버 기본 언어가 zh-CN 이기 때문이다.
 그래서 클라이언트가 모든 요청에 `Accept-Language: ko-KR` 을 붙인다. 서버의 `WEKNORA_LANGUAGE` 는 건드리지 않았다.
 
-## 3. 말뭉치 내보내기 · 넣기
+## 4. 말뭉치 내보내기 · 넣기
 
 ```bash
 npx tsx bench/wk-real/export.ts     # → $WK_CORPUS_DIR
@@ -106,7 +122,7 @@ npx tsx bench/wk-real/ingest.ts     # 이어서 돌리면 이미 올린 문서�
   글자 수/4 로 추정한다. 둘을 합쳐 ledger 에 run `wk-real-ingest` 로 적는다.
   처음에는 요약도 글자 수/4 로 추정했다(출력 3.7만 토큰, 1,104원). 로그로 실측하니 출력이 41만 토큰, 합계 3,289원이었다. 요약 출력에 생각 토큰과 프로필 JSON 이 든다.
 
-## 4. bench
+## 5. bench
 
 ```bash
 npx tsx bench/retrieval-eval.ts --questions <v4 파일> --retrievers R0-hybrid,WK-real --repeat 1
@@ -117,9 +133,9 @@ BENCH_BUDGET_KRW=300 npx tsx bench/run.ts --models gemini-3.8-flash@low --method
 
 - `weknora-rag`: `POST /knowledge-chat`. 내장 빠른 답변(`builtin-quick-answer`)이 질의 재작성·확장, 검색, 생성까지 한다.
 - `weknora-agent`: `POST /agent-chat`. 내장 스마트 추론(`builtin-smart-reasoning`, ReAct)이 돈다.
-  **지금은 돌지 않는다.** v0.8.2 는 `search_knowledge` 도구를 쓰는 에이전트에 rerank 모델을 반드시 요구한다
-  (`session_agent_qa.go`: `rerank model is not configured: please set rerank_model_id on the agent`). Gemini 계열 rerank 모델이 없어 막혔다.
-- 내장 에이전트 두 개에는 `model_id`(채팅 모델)와 `web_search_enabled=false` 만 넣었다(setup.ts). 비어 있으면 「chat model is not configured」로 거절한다.
+  v0.8.2 는 `search_knowledge` 도구를 쓰는 에이전트에 rerank 모델을 반드시 요구한다
+  (`session_agent_qa.go`: `rerank model is not configured`). 그래서 리랭크 서버가 떠 있어야 돈다.
+- 내장 에이전트 두 개에는 `model_id`(채팅 모델) · `rerank_model_id` · `web_search_enabled=false` 만 넣었다(setup.ts). 모델이 비어 있으면 「chat model is not configured」로 거절한다.
   나머지(임계값·반복 한도 50·도구·프롬프트)는 내장값 그대로다.
 - 두 방법 모두 이 KB 만 쓰고 `web_search_enabled=false` 로 부른다. 웹검색 공급자도 등록하지 않았다.
 - WeKnora 프롬프트는 그대로 둔다. 실물을 대조하는 것이기 때문이다.
@@ -140,6 +156,8 @@ BENCH_BUDGET_KRW=300 npx tsx bench/run.ts --models gemini-3.8-flash@low --method
 **검색기**
 
 - `WK-real`: `POST /knowledge-search` 상위 10 청크를 문서 단위로 펼친다. 대표 소스와 포함 소스 전부를 그 순위에 넣는다.
+  리랭크 서버가 켜져 있으면 knowledge-search 가 상위 50 후보를 리랭크하고 임계값 0.3 을 넘은 것만 돌려준다(10 개보다 적을 수 있다).
+  결과 `metadata.model_score` 가 있으면 리랭크를 거친 것이다.
 - `WK-real-chunk`: 같은 결과를 청크 단위로 펼친다. 청크 본문에 줄 앞머리가 보이는 메시지만 넣는다.
 
 ## 원본과 다른 설정
@@ -153,16 +171,17 @@ BENCH_BUDGET_KRW=300 npx tsx bench/run.ts --models gemini-3.8-flash@low --method
 | `.env` `TZ` · `LOG_LEVEL` | Asia/Shanghai · debug | Asia/Seoul · info | — |
 | `.env` `LANGFUSE_*` | 예시 키가 들어 있음(자동 활성 시도) | 빈 값 + `LANGFUSE_ENABLED=false` | 텔레메트리 끔. 다른 텔레메트리 설정은 없다 |
 | `.env` `SSRF_DNS_WHITELIST_ONLY` | false | **true** | 외부 통신 제한 |
-| `.env` `SSRF_WHITELIST` | 빈값 | `generativelanguage.googleapis.com` | Gemini 만 |
+| `.env` `SSRF_WHITELIST` | 빈값 | `generativelanguage.googleapis.com,host.docker.internal` | Gemini 와 호스트의 리랭크 서버만 |
 | `.env` `SSRF_WHITELIST_EXTRA` | searxng,qdrant,milvus,weaviate,doris-fe,doris-be,minio | `docreader` | 내부 서비스만 |
 | `docker-compose.override.yml` | `./config/config.yaml` 바인드 | 바인드 없음 → 이미지 안의 v0.8.2 config 사용 | colima 는 /Users 만 VM 에 공유한다. 클론이 /private/tmp 에 있어 바인드가 실패했다 |
 | 서비스 | docreader 포함 | docreader 없음 (`--no-deps`) | 디스크. 위 1절 |
-| 임베딩 모델 행 | gemini 공급자 | openai 공급자 + Gemini OpenAI 호환 URL | 768 차원. 위 2절 |
+| 임베딩 모델 행 | gemini 공급자 | openai 공급자 + Gemini OpenAI 호환 URL | 768 차원. 위 3절 |
 | 요청 헤더 | 없음 | `Accept-Language: ko-KR` | 요약·프롬프트 언어 |
-| 내장 에이전트 `builtin-quick-answer` · `builtin-smart-reasoning` | `model_id` 없음 · `web_search_enabled: true` | 채팅 모델 id · `false` | 모델이 없으면 거절. 웹검색 끔 |
+| 내장 에이전트 `builtin-quick-answer` · `builtin-smart-reasoning` | `model_id`·`rerank_model_id` 없음 · `web_search_enabled: true` | 채팅 모델 · 리랭크 모델 · `false` | 모델이 없으면 거절. 웹검색 끔 |
+| 테넌트 검색 설정 `rerank_model_id` | 없음 | 리랭크 모델 | knowledge-search 의 리랭크 |
 
 외부 통신 제한은 **앱 수준 검사**다. WeKnora 가 URL 을 쓰는 경로(모델 base_url, URL 가져오기, 웹 가져오기, MCP 등)에서
-화이트리스트 밖 호스트를 DNS 조회 전에 거절한다. 컨테이너의 네트워크 자체를 막지는 않는다.
+화이트리스트 밖 호스트를 DNS 조회 전에 거절한다. 컨테이너의 네트워크 자체를 막지는 않는다. 리랭크 서버(호스트 127.0.0.1)에 닿는 것도 화이트리스트에 host.docker.internal 을 넣었기 때문이다.
 2026-10-06 확인 결과는 아래와 같다.
 
 | 시도 | 결과 |

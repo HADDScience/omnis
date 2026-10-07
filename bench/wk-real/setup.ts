@@ -15,13 +15,17 @@
 //         무시해 3072 가 온다. 2026-10-06 실측 — Gemini 직접 호출: embedContentConfig → 3072, 요청 최상위
 //         outputDimensionality → 768, OpenAI 호환 dimensions → 768. WeKnora 색인: gemini 공급자 → 3072 (네이티브·/openai 둘 다),
 //         generic 공급자 → 400 (truncate_prompt_tokens 를 Gemini 가 거부), openai 공급자 → 768.
-//   리랭크 없음 — WeKnora 카탈로그의 Gemini 공급자는 KnowledgeQA·Embedding 만 지원한다. 다른 벤더를 붙이지 않는다
+//   리랭크 bench/wk-real/rerank-server.ts (호스트 127.0.0.1:8583 → 컨테이너에서 host.docker.internal:8583) — gemini-3.5-flash-lite
+//         listwise 리랭크(R3 와 같은 llmRerank)를 cohere 형식으로 감싼 것. WeKnora 의 Gemini 공급자에는 rerank 모델이 없고,
+//         v0.8.2 스마트 추론은 rerank 모델을 반드시 요구한다. 다른 벤더는 붙이지 않는다 (작업지시자 결정 2026-10-07).
+//         WK_RERANK=off 로 돌리면 리랭크를 등록·연결하지 않는다
 //   KB    document · 하이브리드(벡터+키워드, 기본값) · 청킹 strategy=auto 512/80 · md 는 Go simple 파서 · 요약 생성 기본값(켬)
 import "dotenv/config"
 import { existsSync, readFileSync } from "fs"
 import { join } from "path"
 import { randomBytes } from "crypto"
 import { wkJson, login, labDir, writeState, type WkState, type Auth } from "./client"
+import { rerankToken } from "./rerank-server"
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 const GEMINI_OPENAI_BASE = `${GEMINI_BASE}/openai`
@@ -30,6 +34,8 @@ const EMBED_MODEL = "gemini-embedding-001"
 const EMBED_DIM = 768
 const KB_NAME = "omnis-wklab"
 const API_KEY_NAME = "omnis-bench"
+const RERANK_NAME = "gemini-3.5-flash-lite-listwise"
+const RERANK_BASE = `http://host.docker.internal:${process.env.WK_RERANK_PORT ?? 8583}`
 
 interface Model { id: string; name: string; type: string; is_default?: boolean; parameters?: Record<string, unknown> }
 interface KB { id: string; name: string; embedding_model_id?: string; summary_model_id?: string; chunking_config?: unknown; indexing_strategy?: unknown }
@@ -77,6 +83,27 @@ async function main() {
   state.chatModelId = chat.id
   state.embeddingModelId = embed.id
 
+  // 리랭크 — 호스트의 rerank-server.ts. 토큰은 $WK_LAB_DIR/rerank-token (WeKnora 가 Bearer 로 보낸다)
+  let rerankId: string | undefined
+  if (process.env.WK_RERANK !== "off") {
+    let rr = models.find((m) => m.type === "Rerank" && m.name === RERANK_NAME)
+    if (!rr) {
+      rr = (await wkJson<{ data: Model }>("POST", "/models", auth, {
+        name: RERANK_NAME, display_name: "Gemini flash-lite listwise rerank (bench/wk-real/rerank-server.ts)", type: "Rerank", source: "remote",
+        parameters: { provider: "generic", base_url: RERANK_BASE, api_key: rerankToken(), extra_config: { score_scale: "probability" } },
+      })).data
+      console.log(`리랭크 모델 등록 ${rr.id}`)
+    }
+    rerankId = rr.id
+    state.rerankModelId = rr.id
+    // knowledge-search 는 테넌트 검색 설정의 rerank_model_id 를 쓴다 (없으면 첫 rerank 모델). 명시해 둔다
+    const rc = (await wkJson<{ data: Record<string, unknown> }>("GET", "/tenants/kv/retrieval-config", auth)).data ?? {}
+    if (rc.rerank_model_id !== rr.id) {
+      await wkJson("PUT", "/tenants/kv/retrieval-config", auth, { ...rc, rerank_model_id: rr.id })
+      console.log("테넌트 검색 설정 rerank_model_id 설정")
+    }
+  }
+
   // 연결 확인 — 임베딩 한 번 불러 본다 (원가 무시할 수준)
   const dbg = await debugModel(auth, embed.id, "연결 확인")
   console.log(`임베딩 debug ok=${dbg.ok} 차원=${dbg.dim ?? "?"}${dbg.error ? ` 오류=${dbg.error}` : ""}`)
@@ -101,18 +128,21 @@ async function main() {
   state.kbId = kb.id
   const kbFull = (await wkJson<{ data: KB }>("GET", `/knowledge-bases/${kb.id}`, auth)).data
   state.settings = {
-    chatModel: CHAT_MODEL, embeddingModel: EMBED_MODEL, embeddingDim: EMBED_DIM, rerank: "없음 (Gemini 공급자에 rerank 모델 유형 없음)",
+    chatModel: CHAT_MODEL, embeddingModel: EMBED_MODEL, embeddingDim: EMBED_DIM,
+    rerank: rerankId ? `${RERANK_NAME} @ ${RERANK_BASE} (bench/wk-real/rerank-server.ts)` : "없음",
+    retrievalConfig: (await wkJson<{ data: unknown }>("GET", "/tenants/kv/retrieval-config", auth)).data,
     kb: { chunking_config: kbFull.chunking_config, indexing_strategy: kbFull.indexing_strategy, summary_model_id: kbFull.summary_model_id },
   }
 
   // ── 내장 에이전트 ── 빠른 답변·스마트 추론은 model_id 가 비어 있으면 "chat model is not configured" 로 거절한다.
-  // 바꾸는 것은 model_id 와 web_search_enabled=false 둘뿐이다. 나머지 설정(임계값·반복 한도·도구·프롬프트)은 내장값 그대로
+  // 바꾸는 것은 model_id · rerank_model_id · web_search_enabled=false 뿐이다. 나머지 설정(임계값·반복 한도·도구·프롬프트)은 내장값 그대로
   const agentSettings: Record<string, unknown> = {}
   for (const id of ["builtin-quick-answer", "builtin-smart-reasoning"]) {
     const a = (await wkJson<{ data: { name: string; config: Record<string, unknown> } }>("GET", `/agents/${id}`, auth)).data
-    if (a.config.model_id !== chat.id || a.config.web_search_enabled !== false) {
-      await wkJson("PUT", `/agents/${id}`, auth, { config: { ...a.config, model_id: chat.id, web_search_enabled: false } })
-      console.log(`에이전트 ${id}: model_id · web_search_enabled=false 설정`)
+    const want = { model_id: chat.id, web_search_enabled: false, ...(rerankId ? { rerank_model_id: rerankId } : {}) }
+    if (Object.entries(want).some(([k, v]) => a.config[k] !== v)) {
+      await wkJson("PUT", `/agents/${id}`, auth, { config: { ...a.config, ...want } })
+      console.log(`에이전트 ${id}: ${Object.keys(want).join(" · ")} 설정`)
     }
     const c = (await wkJson<{ data: { config: Record<string, unknown> } }>("GET", `/agents/${id}`, auth)).data.config
     agentSettings[id] = Object.fromEntries(Object.entries(c).filter(([k]) => !/prompt/i.test(k)))
