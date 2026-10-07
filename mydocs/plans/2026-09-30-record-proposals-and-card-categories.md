@@ -1,13 +1,15 @@
 ---
 kind: decision
-status: draft
+status: active
 canonical: mydocs/plans/2026-09-30-record-proposals-and-card-categories.md
 last_verified: 2026-09-30
 ---
 
 # 연혁 제안 · 지식카드 분류
 
-상태: **초안 — 작업지시자 승인 전.** 요청은 hadd-history-37 세션(연혁 업무)이 사용자 지시라며 넘겼다.
+상태: 2026-09-30 작업지시자 승인. 요청은 hadd-history-37 세션(연혁 업무)이 사용자 지시라며 넘겼다.
+- ② 지식카드 분류 — 2026-10-02 운영 반영 (PR #80)
+- ① 연혁 제안 — 2026-10-06 구현 · 실측 끝, 운영 반영 대기. 결과: [`../working/2026-10-06-record-proposals.md`](../working/2026-10-06-record-proposals.md)
 스키마 변경 · 운영 마이그레이션 · 배포가 들어가 AGENTS.md 타스크 사이클 2단계(승인)를 거친다.
 
 ## 요청과 지금 코드의 차이 (2026-09-30 실측)

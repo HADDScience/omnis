@@ -30,7 +30,7 @@ import { createNotification } from "@/lib/notifications"
 import { getMembership, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
-import { companyProfileText, companyRecordsText, contextText, deleteCompanyRecordText, marketCompaniesText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
+import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
@@ -467,6 +467,7 @@ export const OMNIS_TOOLS = [
         grant_no: { type: "string", description: "과제번호" },
         funding_krw: { type: "string", description: "지원금(원). 숫자" },
         note: { type: "string", description: "비고 — 근거가 된 메일·문서를 적어 둔다" },
+        visibility: { type: "string", enum: ["PUBLIC", "INTERNAL"], description: "공개범위. INTERNAL 은 대외비 — 외부 자료에 쓰지 않는다. 비우면 PUBLIC" },
       },
     },
   },
@@ -478,6 +479,34 @@ export const OMNIS_TOOLS = [
       type: "object",
       properties: { record_id: { type: "string", description: "지울 연혁 id (list_company_records 가 줄 끝에 함께 준다)" } },
       required: ["record_id"],
+    },
+  },
+  {
+    name: "list_record_proposals",
+    description:
+      "AI 가 채팅·업무에서 찾은 연혁 후보(확인 대기)와 종류×등급별 정확도. 각 후보에 근거 대화 인용이 붙는다. 판단은 decide_record_proposal.",
+    inputSchema: {
+      type: "object",
+      properties: { status: { type: "string", enum: ["PENDING", "decided"], description: "기본 PENDING(확인 대기)" } },
+    },
+  },
+  {
+    name: "decide_record_proposal",
+    description:
+      "연혁 후보를 채택하거나 제외한다. 사용자가 판단을 말했을 때만 부른다. 고칠 칸(title·occurred_on·kind·grade·confidential·organizer)을 주면 고쳐서 채택한다 — 정확도에서는 원안과 다름으로 센다. 채택하면 연혁 표에 한 줄이 생긴다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        proposal: { type: "string", description: "후보 id (list_record_proposals 가 준다)" },
+        action: { type: "string", enum: ["accept", "reject", "revert"], description: "accept 채택 · reject 제외 · revert 채택·자동 등록 되돌리기(만든 연혁을 지운다)" },
+        title: { type: "string" },
+        occurred_on: { type: "string", description: "YYYY-MM-DD" },
+        kind: { type: "string", enum: ["GRANT", "AWARD", "EXHIBITION", "FORUM", "EDUCATION", "NETWORKING", "INTERNAL", "MILESTONE"] },
+        grade: { type: "string", enum: ["MAJOR", "GENERAL"], description: "MAJOR 주요(기업현황카드 후보) · GENERAL 일반" },
+        confidential: { type: "boolean", description: "대외비" },
+        organizer: { type: "string" },
+      },
+      required: ["proposal", "action"],
     },
   },
   {
@@ -1420,6 +1449,10 @@ export async function runTool(
     }
     case "delete_company_record":
       return deleteCompanyRecordText(args, caller)
+    case "list_record_proposals":
+      return { text: await recordProposalsText(str(args.status) === "decided" ? "decided" : "PENDING") }
+    case "decide_record_proposal":
+      return decideRecordProposalText(args, caller)
     case "list_tax_invoices":
       return { text: await taxInvoicesText(args) }
     case "list_staff":

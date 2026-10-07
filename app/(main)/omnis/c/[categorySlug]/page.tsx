@@ -82,6 +82,17 @@ export default async function OmnisCategoryPage({ params }: Props) {
             <p className="mt-1 text-[13px] text-muted-foreground">
               {cards.length}개 카드
             </p>
+            {/* 연혁 자체는 연혁 표가 정본이다 — 이 분류의 카드는 맥락 서술만 담는다 */}
+            {category.name === "회사 연혁·실적" && (
+              <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
+                <Link href="/omnis/records" className="touch-target inline-flex items-center underline underline-offset-2">
+                  연혁·실적 표 보기
+                </Link>
+                <Link href="/omnis/proposals?tab=records" className="touch-target inline-flex items-center underline underline-offset-2">
+                  AI 연혁 후보 확인
+                </Link>
+              </p>
+            )}
           </header>
 
           {cards.length === 0 ? (

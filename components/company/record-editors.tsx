@@ -18,6 +18,8 @@ import {
   RECORD_KINDS,
   RECORD_KIND_LABEL,
   RECORD_STATUSES,
+  RECORD_VISIBILITIES,
+  RECORD_VISIBILITY_LABEL,
   type RecordForm,
 } from "@/lib/schemas/company"
 
@@ -178,6 +180,21 @@ export function RecordDialog({ initial, trigger }: { initial: RecordForm; trigge
               />
             </Field>
           ))}
+
+          <Field id="rec-visibility" label={RECORD_FIELD_LABEL.visibility} hint="대외비는 기업현황카드 · 홈페이지 · 신청서에 쓰지 않습니다">
+            <select
+              id="rec-visibility"
+              value={form.visibility}
+              onChange={set("visibility")}
+              className="h-9 w-full rounded-md border bg-background px-2 text-[13px]"
+            >
+              {RECORD_VISIBILITIES.map((v) => (
+                <option key={v} value={v}>
+                  {RECORD_VISIBILITY_LABEL[v]}
+                </option>
+              ))}
+            </select>
+          </Field>
 
           <Field id="rec-note" label={RECORD_FIELD_LABEL.note} wide>
             <Textarea id="rec-note" rows={3} value={form.note} onChange={set("note")} />

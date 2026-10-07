@@ -8,6 +8,7 @@ import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { syncEmbeddingsSafe } from "@/lib/embeddings"
 import { writeActivity } from "@/lib/api"
 import { proposeFromTaskSafe } from "@/lib/card-proposals"
+import { proposeRecordsFromTaskSafe } from "@/lib/record-proposals"
 import type { Prisma, Priority, TaskStatus } from "@/generated/prisma/client"
 
 export interface UpdateTaskInput {
@@ -105,6 +106,8 @@ export async function updateTask(
     // 업무가 끝나면 그 대화에서 회사 지식을 뽑아 카드 갱신을 제안한다 (실패해도 완료는 그대로).
     // 화면과 MCP(update_task)가 모두 여기를 지난다.
     proposeFromTaskSafe(taskId, { trigger: "task_done", userId })
+    // 같은 자리에서 연혁 후보도 찾는다 — 수상 · 선정 · 협약은 대개 업무 대화 끝에 확정된다
+    proposeRecordsFromTaskSafe(taskId, { userId })
   }
 
   // 새로 담당이 된 사람에게만 알린다 — 빠진 사람에게 "당신은 빠졌다"를 보내지 않는다.

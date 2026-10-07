@@ -67,6 +67,7 @@ export function recordData(d: CompanyRecordInput) {
     venue: d.venue,
     partner: d.partner,
     category: d.category,
+    visibility: d.visibility,
   }
 }
 

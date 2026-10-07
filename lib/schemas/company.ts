@@ -127,6 +127,13 @@ export const RECORD_KIND_LABEL: Record<(typeof RECORD_KINDS)[number], string> = 
   MILESTONE: "주요",
 }
 
+/** 공개범위. INTERNAL 은 대외비 — 외부 자료에 쓰지 않는다 (2026-10-06) */
+export const RECORD_VISIBILITIES = ["PUBLIC", "INTERNAL"] as const
+export const RECORD_VISIBILITY_LABEL: Record<(typeof RECORD_VISIBILITIES)[number], string> = {
+  PUBLIC: "외부 공개 가능",
+  INTERNAL: "내부용 · 대외비",
+}
+
 export const CompanyRecordSchema = z
   .object({
     kind: z.enum(RECORD_KINDS, { message: "종류를 고르세요" }),
@@ -148,6 +155,7 @@ export const CompanyRecordSchema = z
     venue: optText(200, "장소"),
     partner: optText(100, "대리점"),
     category: optText(50, "분류"),
+    visibility: z.enum(RECORD_VISIBILITIES, { message: "공개범위를 고르세요" }).default("PUBLIC"),
   })
   .refine((d) => !(d.startsOn && d.endsOn) || d.startsOn <= d.endsOn, {
     message: "종료일이 시작일보다 앞섭니다",
@@ -178,6 +186,7 @@ export const EMPTY_RECORD_FORM: RecordForm = {
   venue: "",
   partner: "",
   category: "",
+  visibility: "PUBLIC",
 }
 
 export const RECORD_FIELD_LABEL: Record<keyof CompanyRecordInput, string> = {
@@ -199,6 +208,7 @@ export const RECORD_FIELD_LABEL: Record<keyof CompanyRecordInput, string> = {
   venue: "장소",
   partner: "대리점",
   category: "분류",
+  visibility: "공개범위",
 }
 
 /** 상태 칸에 자주 들어가는 값 — 자유 입력이되 고르기 쉽게 */
