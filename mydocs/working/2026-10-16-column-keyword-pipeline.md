@@ -112,7 +112,7 @@ Gemini 토큰(GeminiUsage, `columnKeywords`): 1회 약 **1.3만 입력 + 0.4만 
 
 - 키워드 요약 끝의 평가 문장 금지 — 프롬프트에 사실 2문장만, 「~가 부각된다·주목된다·기대된다」류로 끝내지 말 것을 명시.
   다시 수집한 결과 예: 「정부가 국가통합바이오빅데이터 구축사업의 참여 범위를 확대했다. 기존 건강검진 수검자 외에 일반 국민 누구나 사업에 참여할 수 있게 됐다.」
-- 근거별 빼기 — `PATCH /api/website/column/keywords/:id {action:"removeSource", url}`. 근거가 하나 남으면 뺄 수 없다(키워드를 버린다).
+- 근거별 빼기 — `POST /api/website/column/keywords/:id {action:"removeSource", url}` (PATCH 는 websiteCors 허용 메서드에 없어 POST). 근거가 하나 남으면 뺄 수 없다(키워드를 버린다).
 
 ## 3·4단계 — 관리 화면 칼럼 탭 · 초안 흐름
 
