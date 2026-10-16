@@ -34,6 +34,7 @@ import { companyProfileText, companyRecordsText, contextText, decideRecordPropos
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
+import { recordTaskEvents } from "@/lib/task-events"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import * as XLSX from "xlsx"
 import {
@@ -1066,7 +1067,7 @@ export async function runTool(
       }
       if (Object.keys(input).length === 0) return { error: "바꿀 필드를 하나 이상 주세요." }
 
-      const r = await updateTask(found.id, caller.userId, input)
+      const r = await updateTask(found.id, caller.userId, input, "mcp")
       if ("error" in r) return r
       const t = r.task
       return {
@@ -1113,12 +1114,12 @@ export async function runTool(
       if (bad.length) return { error: `항목을 못 찾았습니다: ${bad.join(", ")}. get_task 로 체크리스트를 확인하세요. 아무것도 바꾸지 않았습니다.` }
 
       // 화면과 같은 함수로 하나씩 — 색인·활동 기록이 같이 남는다.
-      for (const it of removeItems as Item[]) await deleteChecklistItem(it.id, caller.userId)
+      for (const it of removeItems as Item[]) await deleteChecklistItem(it.id, caller.userId, "mcp")
       const created: Item[] = []
-      for (const name of add) created.push(await addChecklistItem(found.id, name, caller.userId))
+      for (const name of add) created.push(await addChecklistItem(found.id, name, caller.userId, "mcp"))
       const pool = [...items.filter((c) => !removedIds.has(c.id)), ...created]
       for (const [refs, done] of [[check, true], [uncheck, false]] as const) {
-        for (const ref of refs) await updateChecklistItem((resolveRef(ref, pool) as Item).id, { done }, caller.userId)
+        for (const ref of refs) await updateChecklistItem((resolveRef(ref, pool) as Item).id, { done }, caller.userId, "mcp")
       }
 
       const after = await prisma.checklist.findMany({
@@ -1176,6 +1177,9 @@ export async function runTool(
         }
       }
       if (!task) return { error: "업무를 만들지 못했습니다." }
+      await recordTaskEvents(task.id, caller.userId, "mcp", [
+        { field: "created", before: null, after: { status: "TODO", assignees: [...assigneeIds].sort(), deadline: deadline?.toISOString() ?? null } },
+      ])
 
       // 담당자 전원에게 수락 알림 — 화면에서 만든 것과 같다.
       for (const userId of assigneeIds.filter((id) => id !== caller.userId)) {

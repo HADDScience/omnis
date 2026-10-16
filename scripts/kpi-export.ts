@@ -1,0 +1,43 @@
+// 운영 KPI 내보내기 — 대시보드에 올릴 JSON. 읽기만 한다.
+//   npx tsx --env-file=<환경 파일> scripts/kpi-export.ts --from 2026-09-02 [--to 2026-10-15] --out kpi.json [--compute]
+//
+// 기본은 쌓인 KpiDaily 를 읽는다. --compute 는 원본 표에서 바로 계산한다(쓰지 않는다) — KpiDaily 가 아직 없는
+// DB(마이그레이션 전 운영)에서 숫자를 보거나, 쌓인 값과 대조할 때 쓴다. 이 경우 「지금 열린 업무」 같은 상태는
+// 마지막 날에만 넣는다(계산하는 순간의 상태라서).
+import { writeFileSync } from "node:fs"
+
+const { computeDailyKpis, eventsSince, kstDay } = await import("../lib/kpi")
+const { prisma } = await import("../lib/db")
+
+const arg = (k: string) => {
+  const i = process.argv.indexOf(k)
+  return i > 0 ? process.argv[i + 1] : undefined
+}
+const from = arg("--from")
+const to = arg("--to") ?? kstDay(new Date(Date.now() - 86_400_000))
+const out = arg("--out")
+if (!from || !out) throw new Error("--from YYYY-MM-DD --out <파일> 이 필요하다")
+
+type Row = { day: string; key: string; value: number; detail: unknown }
+const rows: Row[] = []
+const next = (d: string) => kstDay(new Date(new Date(`${d}T12:00:00+09:00`).getTime() + 86_400_000))
+
+if (process.argv.includes("--compute")) {
+  // 이력 표가 없는 DB(마이그레이션 전)면 이력 지표는 건너뛴다
+  const since = await eventsSince().catch(() => null)
+  for (let d = from; d <= to; d = next(d)) {
+    const kpis = await computeDailyKpis(d, { withEvents: since !== null && d >= since, withSnapshot: d === to })
+    for (const r of kpis) rows.push({ day: d, key: r.key, value: r.value, detail: r.detail ?? null })
+  }
+} else {
+  const kept = await prisma.kpiDaily.findMany({
+    where: { day: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
+    orderBy: [{ day: "asc" }, { key: "asc" }],
+  })
+  for (const r of kept) rows.push({ day: r.day.toISOString().slice(0, 10), key: r.key, value: r.value, detail: r.detail })
+}
+
+writeFileSync(out, JSON.stringify(rows))
+console.log(`${rows.length}칸 · ${new Set(rows.map((r) => r.day)).size}일 → ${out}`)
+await prisma.$disconnect()
+export {}

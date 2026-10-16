@@ -9,6 +9,8 @@ import { syncEmbeddingsSafe } from "@/lib/embeddings"
 import { writeActivity } from "@/lib/api"
 import { proposeFromTaskSafe } from "@/lib/card-proposals"
 import { proposeRecordsFromTaskSafe } from "@/lib/record-proposals"
+import { recordTaskEvents } from "@/lib/task-events"
+import type { TaskEventVia } from "@/lib/schemas/task-event"
 import type { Prisma, Priority, TaskStatus } from "@/generated/prisma/client"
 
 export interface UpdateTaskInput {
@@ -40,7 +42,8 @@ export type UpdatedTask = Prisma.TaskGetPayload<{ include: typeof TASK_INCLUDE }
 export async function updateTask(
   taskId: string,
   userId: string,
-  body: UpdateTaskInput
+  body: UpdateTaskInput,
+  via: TaskEventVia = "web"
 ): Promise<{ error: string } | { task: UpdatedTask }> {
   // categoryId는 #12에서 폐기 (UI/AI 미사용). DB 컬럼은 Phase 4 drop 예정.
   const { status, name, priority, deadline, archived, background, expectedResult, projectId, productId, assigneeIds, instructorId } = body
@@ -60,18 +63,17 @@ export async function updateTask(
   if (projectId !== undefined) data.projectId = projectId
   if (productId !== undefined) data.productId = productId
 
+  // 바꾸기 전 값 — 변경 이력(TaskEvent)이 「무엇에서 무엇으로」를 남기려면 먼저 읽어야 한다
+  const before = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { status: true, deadline: true, archived: true, assignees: { select: { userId: true } } },
+  })
+  if (!before) return { error: "업무를 찾을 수 없습니다" }
+
   // 사람 바꾸기 — 지시자와 담당자를 반대로 넣어도 고칠 길이 없었다(2026-09-16).
   // 담당자는 통째로 갈아끼운다. 부분 추가·삭제를 따로 두면 화면이 두 가지 요청을 조립해야 한다.
   let nextAssigneeIds: string[] = []
-  let previousAssigneeIds: string[] = []
-  if (assigneeIds !== undefined || instructorId !== undefined) {
-    const before = await prisma.task.findUnique({
-      where: { id: taskId },
-      select: { assignees: { select: { userId: true } } },
-    })
-    if (!before) return { error: "업무를 찾을 수 없습니다" }
-    previousAssigneeIds = before.assignees.map((a) => a.userId)
-  }
+  const previousAssigneeIds = before.assignees.map((a) => a.userId)
 
   if (assigneeIds !== undefined) {
     // 🤖 시스템 계정은 사람이 아니다 — 담당자 후보에서 뺀다(구조화 AI 와 같은 규칙).
@@ -98,6 +100,13 @@ export async function updateTask(
     data,
     include: TASK_INCLUDE,
   })
+
+  await recordTaskEvents(task.id, userId, via, [
+    { field: "status", before: before.status, after: task.status },
+    { field: "deadline", before: before.deadline, after: task.deadline },
+    { field: "archived", before: before.archived, after: task.archived },
+    { field: "assignees", before: previousAssigneeIds, after: task.assignees.map((a) => a.user.id) },
+  ])
 
   // 담당자가 알림을 거치지 않고 상세에서 바로 완료했다면, 떠 있는 "완료로 표시할까요?"를 거둔다.
   // 그러지 않으면 이미 끝난 업무를 알림이 계속 재촉한다.

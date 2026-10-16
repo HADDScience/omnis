@@ -186,6 +186,7 @@ model Task {
   files         File[]
   cardProposals CardProposal[]
   recordProposals RecordProposal[]
+  events        TaskEvent[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -1428,4 +1429,44 @@ model WebsiteVisit {
 
   @@index([at])
   @@index([path, at])
+}
+
+// ─── 운영 KPI (2026-10-16) ─────────────────────────────────────
+//
+// 「옴니스가 제 역할을 하는가」를 숫자로 보기 위한 재료. 설계는
+// mydocs/plans/2026-10-16-kpi-metrics.md 가 정본이다.
+
+/// 업무가 바뀐 기록 한 줄. **값이 실제로 바뀔 때만** 남는다 — 같은 상태로 다시 저장하면 없다.
+/// 상태 이력이 없어 「언제 끝났나」「AI 가 바꿨나 사람이 바꿨나」를 물을 수 없었다(2026-10-16).
+model TaskEvent {
+  id        String   @id @default(uuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// 바꾼 사람. AI·이식이 바꾸면 시스템 계정(SYSTEM_USER_ID). 사용자 삭제와 엮지 않으려 관계를 두지 않는다
+  actorId   String?
+  /// lib/schemas/task-event.ts 의 TASK_EVENT_VIA — "web" | "mcp" | "chat-ai" | "notification" | "import"
+  via       String
+  /// lib/schemas/task-event.ts 의 TASK_EVENT_FIELDS — "created" | "status" | "assignees" | "deadline" | "archived" | "checklist"
+  field     String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([field, createdAt])
+}
+
+/// 하루치 지표 한 칸. 세로 모양이라 지표를 늘려도 마이그레이션이 없다.
+/// 하루 크론(app/api/cron/daily)이 어제·오늘을 다시 계산해 덮어쓴다.
+model KpiDaily {
+  /// 한국 날짜
+  day       DateTime @db.Date
+  /// lib/kpi.ts 의 지표 이름 — "users.active", "tasks.done" …
+  key       String
+  value     Float
+  /// 내역(경로별 AI 호출 수 등). 값만으로 충분하면 null
+  detail    Json?
+  updatedAt DateTime @updatedAt
+
+  @@id([day, key])
 }
