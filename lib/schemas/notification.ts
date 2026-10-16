@@ -67,5 +67,7 @@ export function notificationHref(type: string, entityId: string | null): string 
   if (type.startsWith("task_")) return `/tasks/${entityId}?from=notification`
   // 발행 요청은 그 견적이 잡힌 채 세금계산서 등록을 연다 — 무엇을 올릴지 다시 찾지 않게
   if (type === "crm_invoice_request") return `/crm/invoices/new?quote=${entityId}`
+  // 칼럼 검토는 홈페이지 관리 화면에서 한다(Omnis 밖)
+  if (type.startsWith("column_")) return `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN ?? "https://haddscience.com"}/admin/column?draft=${entityId}`
   return null
 }
