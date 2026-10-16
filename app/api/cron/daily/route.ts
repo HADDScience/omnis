@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 
 import { flushVisits } from "@/lib/website-visits"
 import { proposeRecordsFromChat } from "@/lib/record-proposals"
+import { runDailyKpis } from "@/lib/kpi"
 
 /**
  * 하루 한 번 도는 일을 모두 여기서 차례로 한다 (`vercel.json` 의 crons 는 이것 하나).
@@ -59,6 +60,16 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("[cron/daily] 연혁 후보 실패", e)
     out.records = { ok: false }
+  }
+
+  try {
+    // 운영 KPI — 질의 몇 개라 몇 초. 따로 크론을 두지 않고 깨운 김에 한다
+    const r = await runDailyKpis()
+    console.log(`[cron/daily] KPI ${r.days.join(" · ")} — ${r.rows}칸`)
+    out.kpi = { ok: true, ...r }
+  } catch (e) {
+    console.error("[cron/daily] KPI 실패", e)
+    out.kpi = { ok: false }
   }
 
   const ok = Object.values(out).every((v) => (v as { ok: boolean }).ok)

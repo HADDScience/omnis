@@ -7,7 +7,8 @@ last_verified: 2026-10-16
 
 # 운영 KPI 수집 1단계 — 업무 변경 이력 · 일일 KPI 스냅샷
 
-상태: 2026-10-16 작성, 작업지시자 승인 대기.
+상태: 2026-10-16 작업지시자 승인(「진행해줘」). AI·이식이 바꾼 기록의 `actorId` 는 제안대로 시스템 계정.
+구현 중 바뀐 것은 아래 「구현하며 바꾼 것」.
 스키마 추가 · 운영 마이그레이션 · 배포가 들어가 AGENTS.md 타스크 사이클 2단계(승인)를 거친다.
 
 ## 왜
@@ -86,15 +87,16 @@ model KpiDaily {
 | 채택 | `messages.native` / `messages.imported` | 그날 메시지 수, 직접 입력 / 카톡 이식 | ✅ |
 | 추적 | `tasks.created.native` / `tasks.created.imported` | 그날 생긴 업무 | ✅ |
 | 추적 | `tasks.done` | 그날 완료로 바뀐 업무 (`TaskEvent`) | ❌ 반영일부터 |
+| 추적 | `tasks.reopened` | 그날 완료에서 다시 열린 업무. 채팅 AI 재구성이 완료 업무를 진행 중으로 되돌리는 길이 있다 | ❌ 반영일부터 |
 | 추적 | `tasks.leadtime.p50` | 그날 완료된 업무의 생성 → 완료 중앙값(일) | ❌ 반영일부터 |
 | 추적 | `tasks.open` · `tasks.stale30` · `tasks.doneOpenChecklist` | 그날 끝 기준 열린 업무, 30일 넘게 조용한 업무, 완료인데 체크리스트가 남은 업무 | ❌ 그날 상태만 알 수 있다 |
 | 추적 | `messages.linkedRate` | 그날 메시지 중 업무에 붙은 비율 | ✅ (지금 연결 기준) |
-| AI | `ai.statusChanges.byAi` / `.byHuman` | 상태 변경 중 AI·이식 몫과 사람 몫 | ❌ 반영일부터 |
+| AI | `tasks.statusChanges` | 상태 변경 수, `detail` 에 경로(web·mcp·notification·chat-ai·import)별 | ❌ 반영일부터 |
 | 알림 | `notifications.actionable` / `.resolved` / `.responseHours.p50` | 응답이 필요한 알림, 응답된 것, 응답까지 걸린 시간 | ✅ |
-| 비용 | `ai.calls` · `ai.tokens` · `ai.costKrw` | `GeminiUsage` 합. 비용은 모델 단가 × 토큰 추정, `detail` 에 경로별 내역 | ✅ |
+| 비용 | `ai.calls` · `ai.tokens.prompt` · `ai.tokens.output` | `GeminiUsage` 합. `detail` 에 경로별 내역 | ✅ |
 
 - 계산은 `lib/kpi.ts` 의 `computeDailyKpis(day)` 한 곳에 둔다.
-- **이미 있는 하루 크론(`app/api/cron/daily`)에 일 하나로 붙인다.** Neon 을 따로 깨우지 않는다(그 파일 머리말의 원칙). 매번 **어제와 오늘**을 다시 계산해서, 크론이 하루 빠져도 메운다.
+- **이미 있는 하루 크론(`app/api/cron/daily`)에 일 하나로 붙인다.** Neon 을 따로 깨우지 않는다(그 파일 머리말의 원칙). 매번 **그저께 · 어제(상태 포함) · 오늘**을 다시 계산해서, 크론이 하루 빠져도 메운다.
 - 백필: `scripts/kpi-backfill.ts --from 2026-09-02` 로 백필 가능한 지표만 채운다. `GeminiUsage` 기록이 9/2 부터 시작한다.
 
 ### 3. 대시보드
@@ -129,6 +131,12 @@ model KpiDaily {
 - 계산은 이미 매일 깨우는 크론에 얹어서 Neon 이 깨어 있는 시간이 몇 초 늘 뿐이다.
 - AI 호출은 늘지 않는다.
 
-## 열린 결정
+## 구현하며 바꾼 것
 
-- **AI·이식이 바꾼 것의 `actorId`**: 시스템 계정(🤖, `SYSTEM_USER_ID`)을 쓸지 null 로 둘지. 제안은 시스템 계정이다. 이미 AI 글의 작성자로 쓰고 있어서 「사람 몫 / AI 몫」을 같은 기준으로 가를 수 있다.
+- **원화 비용 환산을 뺐다.** `GeminiUsage` 에 모델이 남지 않는데, 코드가 쓰는 모델이 여러 개다(`gemini-3.8-flash` · `3.6-flash` · `3.5-flash-lite` · 임베딩 등). 그래서 단가를 곱하면 추정이 된다. 토큰을 경로별로 쌓아 두고, 환산은 2단계에서 `GeminiUsage` 에 모델 칸을 더한 뒤에 한다.
+- **AI 몫·사람 몫 두 칸 대신 경로별 내역 한 칸**(`tasks.statusChanges.detail`)으로 했다. mcp 는 사람 토큰을 쥔 에이전트라 어느 쪽으로 묶을지 미리 정하지 않는다.
+- **값이 없는 날은 칸을 만들지 않는다.** 메시지가 없는 날의 연결 비율이나 완료가 없는 날의 중앙값을 0 으로 적으면 차트가 거짓말을 한다.
+
+## 정한 것
+
+- **AI·이식이 바꾼 것의 `actorId`**: 시스템 계정(🤖, `SYSTEM_USER_ID`). 2026-10-16 승인.
