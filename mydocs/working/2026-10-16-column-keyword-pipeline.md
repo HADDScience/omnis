@@ -107,3 +107,45 @@ Gemini 토큰(GeminiUsage, `columnKeywords`): 1회 약 **1.3만 입력 + 0.4만 
 3. 사이트 칼럼 탭 · 키워드 보드
 4. 초안 생성 · 편집 · 검토 요청(대표님) · 승인 · 게시
 5. 검증 · 운영 마이그레이션(확인 뒤) · 배포(확인 뒤)
+
+## 2단계 보완 (정우창 요청, 2026-10-16)
+
+- 키워드 요약 끝의 평가 문장 금지 — 프롬프트에 사실 2문장만, 「~가 부각된다·주목된다·기대된다」류로 끝내지 말 것을 명시.
+  다시 수집한 결과 예: 「정부가 국가통합바이오빅데이터 구축사업의 참여 범위를 확대했다. 기존 건강검진 수검자 외에 일반 국민 누구나 사업에 참여할 수 있게 됐다.」
+- 근거별 빼기 — `PATCH /api/website/column/keywords/:id {action:"removeSource", url}`. 근거가 하나 남으면 뺄 수 없다(키워드를 버린다).
+
+## 3·4단계 — 관리 화면 칼럼 탭 · 초안 흐름
+
+Omnis: `lib/column/article.ts`(근거 기사 본문 읽기) · `lib/column/draft.ts`(생성·상태 전이·게시) ·
+`/api/website/column/keywords/:id` · `/api/website/column/drafts[/:id[/review|decide|publish]]`.
+사이트: `/admin/column` (`components/admin/column-screen.tsx` · `column-draft-editor.tsx` · `lib/admin-column.ts`), 관리 화면 머리에 「칼럼」 탭.
+
+- **근거 기사 본문.** Google 뉴스 RSS 링크는 원문으로 가는 중간 페이지라, 그 페이지의 서명값으로 Google 뉴스 내부 API(batchexecute)에
+  원문 주소를 묻는다. 문서화되지 않은 경로라 막히면 그 근거는 제목만으로 쓰고, 초안 맨 위에 「본문을 읽지 못한 근거」 안내 상자를 넣는다
+  (상자가 남아 있으면 검토 요청이 막힌다). 본문 추출은 `article-view-content-div` → `itemprop="articleBody"` → `<article>` 순.
+- **근거 번호.** 초안 본문 문장 끝에 [1] 을 달고 참고 기사 목록 번호와 맞춘다. 게시할 때 본문의 번호만 지운다.
+- **검토 요청 조건.** 제목 · 본문 · 사진 1장 이상 · 모든 사진에 출처(캡션 칸이 칼럼에서는 「출처 (필수)」) · 안내 상자 없음.
+- **승인은 `COLUMN_REVIEWERS`(기본 "허채정")만.** 정우창 세션으로 `decide` 를 부르면 403 `not_reviewer`, 승인 전 `publish` 는 409 `not_approved`.
+- **게시.** 초안을 만들 때 기사 id(`20261016-1111` 꼴)를 정해 두고, 편집 중 사진은 그 id 로 바로 올린다. 게시는 `savePost(category=library)` — 영문 번역 포함, 날짜는 게시일, 첫 사진이 썸네일.
+- **알림.** 검토 요청 → 대표님께 `column_review`, 결정 → 만든 사람에게 `column_decision`. 누르면 `<사이트>/admin/column?draft=<id>`.
+
+### 로컬 끝까지 확인 (2026-10-16)
+
+Omnis 작업트리 dev(:3300, 로컬 DB) + 사이트 작업트리 dev(:3124). 로그인은 이 시험에서만 쓴 임시 서명키로 두 사람(정우창·허채정) 세션을 만들어 넣었다.
+`:3000` 은 다른 프로젝트가 쓰고 있어, 브라우저 요청을 Playwright 가 중계하며 Origin 을 `website-admin-dev` 의 등록 오리진으로 바꿨다.
+
+```
+후보 수집(화면 버튼)     벽시계 24,889ms · CPU 453ms → 키워드 34건
+근거 빼기               「KIMCo재단…」 근거 7 → 6
+예약                    「예약 · 정우창」 표시
+초안 만들기(화면 버튼)   19.3초(초안 생성 16,681ms · CPU 207ms) — 근거 3건 중 1건 본문 못 읽음 → 안내 상자
+안내 상자 삭제 · 사진 추가(출처 「사진 = 하드사이언스」) · 저장 · 검토 요청 → 허채정에게 알림 1건
+허채정 세션: 승인 → 라이브러리에 게시 5.4초
+로컬 WebsitePost 20261016-1111: category=library · position 0 · date 2026.10.16 · 썸네일=첫 사진 · 영문 제목 생성 ·
+                        본문 [n] 제거(남은 [n] 3개는 참고 기사 목록 번호) · 키워드 status=used
+```
+
+품질 게이트: Omnis `pnpm run verify` 0 errors(기존 경고 43) · `next build --webpack` 통과. 사이트 `pnpm typecheck` · `pnpm lint` · `next build --webpack` 통과.
+(작업트리의 node_modules 가 심링크라 Turbopack 빌드는 거부된다 — 기본 빌드는 공용 트리에서 다시 돌린다.)
+
+남은 것: 운영 DB 마이그레이션(확인 뒤) · push·배포(확인 뒤) · 기업마당 키.

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 
 import { prisma } from "@/lib/db"
 import { collectKeywords, scoreKeyword, SIMILAR_WARN } from "@/lib/column/collect"
+import { isReviewer } from "@/lib/column/draft"
 import { requireWebsiteUser, websiteJson, websiteOptions } from "@/lib/website-auth"
 
 /**
@@ -27,7 +28,7 @@ function startOfTodayKst(now = new Date()): Date {
 async function board(viewerId: string) {
   const [keywords, lastRun] = await Promise.all([
     prisma.columnKeyword.findMany({
-      where: { status: { not: "discarded" } },
+      // 버린 키워드도 보낸다 — 보드의 「버림」 필터에서 되돌릴 수 있게
       select: {
         id: true, term: true, topic: true, summary: true, sources: true, timelyAt: true, status: true,
         reservedById: true, reservedAt: true, nearestPostId: true, nearestScore: true, createdAt: true,
@@ -69,7 +70,13 @@ async function board(viewerId: string) {
     }
   })
   rows.sort((a, b) => b.score - a.score)
-  return { keywords: rows, lastRun }
+  const lastRunBy = lastRun ? (await prisma.user.findUnique({ where: { id: lastRun.createdById }, select: { name: true } }))?.name ?? null : null
+  const viewer = await prisma.user.findUnique({ where: { id: viewerId }, select: { id: true, name: true } })
+  return {
+    keywords: rows,
+    lastRun: lastRun ? { ...lastRun, createdBy: lastRunBy } : null,
+    me: viewer ? { ...viewer, isReviewer: isReviewer(viewer.name) } : null,
+  }
 }
 
 export async function GET(req: NextRequest) {
