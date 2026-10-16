@@ -88,6 +88,8 @@ export interface CallGeminiOptions {
   model?: string
   /** 함께 보여 줄 파일 (PDF · 이미지). base64 로 인라인 전송한다 — 세금계산서 판독 등 */
   files?: { mimeType: string; data: string }[]
+  /** 응답을 JSON 으로 강제한다(responseMimeType). 긴 배열에서 문자열 안 따옴표가 깨지는 것을 막는다 */
+  json?: boolean
 }
 
 export async function callGemini(
@@ -114,13 +116,16 @@ export async function callGemini(
     generationConfig: {
       temperature,
       maxOutputTokens,
+      ...(opts.json ? { responseMimeType: "application/json" } : {}),
       // 구조화 추출은 깊은 추론이 불필요 → thinking 비활성으로 토큰 ~50%↓ + 속도↑ + 503 회피.
       // 번역은 thinking 토큰이 maxOutputTokens 를 먹어 긴 덱의 응답이 중간에 끊겼다(2026-09-08).
       // 그렇다고 0 으로 끄면 "현장" 을 "現場" 로 쓰는 오역이 고정돼, 작은 예산만 준다.
       ...(endpoint === "structureTask"
         ? { thinkingConfig: { thinkingBudget: 0 } }
-        : endpoint.startsWith("websiteTranslate")
-          ? { thinkingConfig: { thinkingBudget: 1024 } }
+        : endpoint.startsWith("websiteTranslate") || endpoint.startsWith("column")
+          ? // 칼럼 키워드는 헤드라인 200여 건을 읽고 긴 배열을 쓴다. 예산을 안 주면 생각이
+            // maxOutputTokens 를 먹어 배열이 중간에 끊겼다(2026-10-16, 3회 연속)
+            { thinkingConfig: { thinkingBudget: 1024 } }
           : {}),
     },
   })
