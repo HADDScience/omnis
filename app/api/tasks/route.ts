@@ -8,6 +8,7 @@ import { apiError, parseJson, writeActivity } from "@/lib/api"
 import { normalizeName } from "@/lib/name-match"
 import { normalizeProjectName } from "@/lib/project-name"
 import { findOrCreateProduct, findOrCreateProject } from "@/lib/project-resolve"
+import { recordTaskEvents } from "@/lib/task-events"
 import type { Prisma, Priority } from "@/generated/prisma/client"
 
 export async function GET(req: NextRequest) {
@@ -244,6 +245,9 @@ export async function POST(req: NextRequest) {
           checklists: true,
         },
       })
+      await recordTaskEvents(created.id, instructorId, "web", [
+        { field: "created", before: null, after: { status: created.status, assignees: assigneeIds, deadline: created.deadline } },
+      ], tx)
 
       return { task: created, createdProduct, createdProject }
     })

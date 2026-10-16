@@ -15,6 +15,7 @@ import { persistMentions } from "@/lib/mentions"
 import { syncEmbeddings, syncEmbeddingsSafe } from "@/lib/embeddings"
 import { getSystemUserId } from "@/lib/system-user"
 import { writeActivity } from "@/lib/api"
+import { recordTaskEvents } from "@/lib/task-events"
 
 export interface PostMessageInput {
   user: { id: string; name: string }
@@ -271,6 +272,7 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
           where: { id: task.id },
           data: { status: "TODO" },
         })
+        await recordTaskEvents(task.id, systemUserId, "chat-ai", [{ field: "status", before: task.status, after: "TODO" }])
         taskUpdate = { action: "pause", statusLabel: "할 일", summary: `#${task.slug} 업무 '할 일'로 되돌림` }
         await notifyAll(notifyUserIds, "task_status_changed", "업무 보류", `${user.name}님이 #${task.slug} 업무를 '할 일'로 되돌렸습니다.`, task.id)
 
@@ -279,6 +281,7 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
           where: { id: task.id },
           data: { status: "IN_PROGRESS", workStart: new Date() },
         })
+        await recordTaskEvents(task.id, systemUserId, "chat-ai", [{ field: "status", before: task.status, after: "IN_PROGRESS" }])
         taskUpdate = { action: "resume", statusLabel: "진행 중", summary: `#${task.slug} 업무 재개` }
         await notifyAll(notifyUserIds, "task_status_changed", "업무 재개", `${user.name}님이 #${task.slug} 업무를 재개했습니다.`, task.id)
 
@@ -313,6 +316,17 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
             })),
           })
         }
+        // 완료였던 업무도 여기서 진행 중으로 돌아간다 — 그 몫을 KPI 가 셀 수 있게 남긴다
+        await recordTaskEvents(task.id, systemUserId, "chat-ai", [
+          { field: "status", before: task.status, after: updateData.status ?? task.status },
+          ...(result.checklist && result.checklist.length > 0
+            ? [{
+                field: "checklist" as const,
+                before: checklists.map((c) => ({ name: c.name, done: c.done })),
+                after: result.checklist.map((c) => ({ name: c.name, done: c.done })),
+              }]
+            : []),
+        ])
 
         // 체크리스트가 전부 체크됐다. 자동으로 DONE으로 넘기지 않고 담당자에게 묻는다.
         // 물어볼 자리를 따로 만들지 않는 것이 요점이다 — 마지막 항목이 체크되는 그 순간이 자리다(§4-2 보고).

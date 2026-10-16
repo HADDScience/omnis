@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { sendPushToUser } from "@/lib/push"
+import { recordTaskEvents } from "@/lib/task-events"
 import {
   ALLOWED_RESPONSES,
   NotificationActionSchema,
@@ -76,6 +77,8 @@ export async function respondToAction(
         data: { done: true },
       }),
     ])
+    // 체크리스트 일괄 체크는 완료에 딸린 것이라 따로 남기지 않는다
+    await recordTaskEvents(task.id, userId, "notification", [{ field: "status", before: task.status, after: "DONE" }])
     await notifyInstructor(
       task.instructorId,
       userId,
