@@ -5,7 +5,7 @@
 // 여기 계산을 하나 더하면 된다.
 import { prisma } from "@/lib/db"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
-import type { Prisma } from "@/generated/prisma/client"
+import { Prisma } from "@/generated/prisma/client"
 
 export interface KpiRow {
   key: string
@@ -55,13 +55,17 @@ export async function computeDailyKpis(
   // 잡담은 업무에 붙지 않는 게 맞아 100% 가 목표는 아니다. 갑자기 떨어지면 연결이 새는 신호다
   if (msg.total > 0) rows.push({ key: "messages.linkedRate", value: round(msg.linked / msg.total, 4), detail: { linked: msg.linked, total: msg.total } })
 
-  // ── 채택: 그날 직접 쓴 사람 — 채팅 · 업무 변경(사람 경로) · 옴니스 질문 중 하나라도
+  // ── 채택: 그날 직접 쓴 사람 — 채팅 · 업무 변경(사람 경로) · 옴니스 질문 중 하나라도.
+  // 이력을 안 볼 때는 TaskEvent 를 읽지 않는다 — 표가 아직 없는 DB(마이그레이션 전)에서도 돌게
+  const byEvents = opts.withEvents
+    ? Prisma.sql`union select "actorId" from "TaskEvent"
+        where via in ('web', 'mcp', 'notification') and "createdAt" >= ${s} and "createdAt" < ${e}`
+    : Prisma.empty
   const active = await prisma.$queryRaw<{ name: string }[]>`
     select u.name from "User" u where u.id <> ${SYSTEM_USER_ID} and u.id in (
       select "authorId" from "ChatMessage"
         where "sourceId" is null and kind = 'NORMAL' and "deletedAt" is null and "createdAt" >= ${s} and "createdAt" < ${e}
-      union select "actorId" from "TaskEvent"
-        where via in ('web', 'mcp', 'notification') and "createdAt" >= ${s} and "createdAt" < ${e}
+      ${byEvents}
       union select "userId" from "OmnisQuery" where "createdAt" >= ${s} and "createdAt" < ${e})
     order by u.name`
   rows.push({ key: "users.active", value: active.length, detail: { names: active.map((u) => u.name) } })
