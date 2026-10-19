@@ -19,11 +19,14 @@ export const metadata: Metadata = {
 
 /**
  * viewportFit: "cover" — 폴더블·노치 기기에서 safe-area-inset-* 값을 받기 위해 필요.
- * maximumScale 은 지정하지 않는다 (사용자 확대 차단은 a11y 위반, 규칙 26).
+ * maximumScale·userScalable — 설치한 PWA 가 입력창을 누를 때마다 확대되고 손가락에 줌이
+ * 걸려 앱이 흔들렸다(2026-10-19). 확대는 막고, 글자 크기는 OS 글꼴 설정에 맡긴다(규칙 26).
  */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 }
 
@@ -53,6 +56,13 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html:
               "addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__omnisInstallPrompt=e})",
+          }}
+        />
+        {/* iOS Safari 는 userScalable: false 를 무시한다 — 두 손가락 제스처를 직접 끊는다 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "addEventListener('gesturestart',function(e){e.preventDefault()},{passive:false})",
           }}
         />
       </head>
