@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { prisma } from "@/lib/db"
 import { DraftError, generateDraft, isReviewer } from "@/lib/column/draft"
+import { GeminiQuotaError } from "@/lib/gemini-usage"
 import { requireWebsiteUser, websiteJson, websiteOptions } from "@/lib/website-auth"
 
 /**
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
     return websiteJson(result, 201, origin)
   } catch (e) {
     if (e instanceof DraftError) return websiteJson({ error: e.code, message: e.message }, e.status, origin)
+    if (e instanceof GeminiQuotaError) return websiteJson({ error: "gemini_quota", message: e.userMessage }, 429, origin)
     console.error("[column/drafts] 초안 생성 실패", e)
     return websiteJson({ error: "draft_failed", message: e instanceof Error ? e.message : String(e) }, 502, origin)
   }

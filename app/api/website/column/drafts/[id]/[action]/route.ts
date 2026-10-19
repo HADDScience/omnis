@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 
 import { DraftError, decide, publishDraft, requestReview } from "@/lib/column/draft"
+import { GeminiQuotaError } from "@/lib/gemini-usage"
 import { requireWebsiteUser, websiteJson, websiteOptions } from "@/lib/website-auth"
 
 /**
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest, { params }: Props) {
     return websiteJson({ error: "not_found" }, 404, origin)
   } catch (e) {
     if (e instanceof DraftError) return websiteJson({ error: e.code, message: e.message }, e.status, origin)
+    if (e instanceof GeminiQuotaError) return websiteJson({ error: "gemini_quota", message: e.userMessage }, 429, origin)
     console.error(`[column/drafts/${action}]`, e)
     return websiteJson({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502, origin)
   }
