@@ -3,6 +3,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { collectKeywords, scoreKeyword, SIMILAR_WARN } from "@/lib/column/collect"
 import { isReviewer } from "@/lib/column/draft"
+import { GeminiQuotaError } from "@/lib/gemini-usage"
 import { requireWebsiteUser, websiteJson, websiteOptions } from "@/lib/website-auth"
 
 /**
@@ -105,6 +106,7 @@ export async function POST(req: NextRequest) {
       origin
     )
   } catch (e) {
+    if (e instanceof GeminiQuotaError) return websiteJson({ error: "gemini_quota", message: e.userMessage }, 429, origin)
     console.error("[column/keywords] 수집 실패", e)
     return websiteJson({ error: "collect_failed", message: e instanceof Error ? e.message : String(e) }, 502, origin)
   }
