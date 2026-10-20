@@ -78,9 +78,8 @@ export function TaskCard({ task, variant = "board", className, readOnly = false 
 
   // 제품 / 프로젝트 breadcrumb (#11)
   const projectChip = task.projectName ? (
-    <span className="inline-flex items-center truncate rounded-full border bg-muted/50 px-1.5 text-[10px] font-medium leading-tight text-muted-foreground">
-      {task.productName ? <span>{task.productName} / </span> : null}
-      {task.projectName}
+    <span className="min-w-0 truncate rounded-full border bg-muted/50 px-1.5 text-[10px] font-medium leading-tight text-muted-foreground">
+      {task.productName ? `${task.productName} / ` : ""}{task.projectName}
     </span>
   ) : null
 
@@ -101,17 +100,28 @@ export function TaskCard({ task, variant = "board", className, readOnly = false 
         >
           {TASK_STATUS_LABELS[task.status] ?? task.status}
         </Badge>
-        <span
-          className={cn(
-            // 한 줄로 자르면 좁은 화면에서 제목 절반이 사라진다 — 두 줄까지 편다
-            "min-w-0 flex-1 line-clamp-2 text-[13px] font-medium",
-            isDone && "text-muted-foreground line-through",
+        {/* 프로젝트 칩을 제목 옆에 두면 긴 프로젝트명이 줄어들지 않고 제목 자리를 다 먹었다 —
+            제목 아래로 내려 한 줄로 자른다 */}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span
+            className={cn(
+              // 한 줄로 자르면 좁은 화면에서 제목 절반이 사라진다 — 두 줄까지 편다
+              "line-clamp-2 text-[13px] font-medium",
+              isDone && "text-muted-foreground line-through",
+            )}
+          >
+            {task.name}
+          </span>
+          {task.projectName && (
+            <span
+              className="truncate text-[10.5px] text-muted-foreground"
+              title={[task.productName, task.projectName].filter(Boolean).join(" / ")}
+            >
+              {task.productName ? `${task.productName} / ` : ""}{task.projectName}
+            </span>
           )}
-        >
-          {task.name}
         </span>
         {task.priority && <PriorityRating value={task.priority} disabled size={12} />}
-        {projectChip}
         {task.ownerName && (
           <Avatar className="h-6 w-6 shrink-0">
             <AvatarFallback className="text-[10px]">{task.ownerName.charAt(0)}</AvatarFallback>
