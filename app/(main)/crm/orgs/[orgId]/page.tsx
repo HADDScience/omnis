@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { Badge } from "@/components/ui/badge"
 import { quoteTotals, won, ORG_TYPE_LABEL, QUOTE_STATUS_LABEL, MEMBERSHIP_STATUS_LABEL } from "@/lib/crm"
+import { BillingOrgField } from "@/components/crm/billing-org-field"
 
 export const dynamic = "force-dynamic"
 
@@ -16,6 +17,8 @@ export default async function OrgDetailPage({
   const org = await prisma.crmOrg.findUnique({
     where: { id: orgId },
     include: {
+      billingOrg: { select: { id: true, name: true, bizRegNo: true } },
+      billedOrgs: { select: { id: true, name: true, bizRegNo: true }, orderBy: { name: "asc" } },
       contacts: { orderBy: { name: "asc" } },
       memberships: { include: { contact: true } },
       quotes: {
@@ -25,6 +28,15 @@ export default async function OrgDetailPage({
     },
   })
   if (!org) notFound()
+  // 청구처 후보 — 자기 자신과, 청구처를 따로 둔 기관(두 단계가 된다)은 뺀다
+  const candidates =
+    org.billedOrgs.length === 0
+      ? await prisma.crmOrg.findMany({
+          where: { id: { not: org.id }, billingOrgId: null },
+          select: { id: true, name: true, bizRegNo: true },
+          orderBy: { name: "asc" },
+        })
+      : []
 
   const revenue = org.quotes.reduce(
     (a, q) => a + quoteTotals(q.items, q.discountAmount, q.vatRate).total,
@@ -42,6 +54,9 @@ export default async function OrgDetailPage({
           <span className="ml-auto text-[13px] text-muted-foreground">
             견적 {org.quotes.length}건 · {won(revenue)}
           </span>
+        </div>
+        <div className="-mt-3 mb-5">
+          <BillingOrgField orgId={org.id} billingOrg={org.billingOrg} billedOrgs={org.billedOrgs} candidates={candidates} />
         </div>
 
         <section className="rounded-xl border bg-card p-4">
