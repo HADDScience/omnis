@@ -102,7 +102,8 @@ export default async function CrmInventoryPage() {
           </h2>
           <div className="overflow-hidden rounded-xl border bg-card">
             <div className="overflow-x-auto">
-              <table className="w-full text-[13px]">
+              {/* 최소 폭이 없으면 좁은 창에서 기관 칸이 한 글자 폭으로 눌린다 — 가로로 스크롤시킨다 */}
+              <table className="w-full min-w-[760px] text-[13px]">
                 <thead className="border-b bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">번호</th>
