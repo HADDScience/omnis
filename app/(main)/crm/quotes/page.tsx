@@ -40,9 +40,9 @@ export default async function CrmQuotesPage() {
         crumbs={["CRM", "견적"]}
         actions={<NewRecordButton />}
       />
-      <div className="mx-auto w-full max-w-[1100px] px-6 py-6">
+      <div className="mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6">
         <CrmNav />
-        <div className="mb-4 flex items-baseline gap-3">
+        <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-[18px] font-bold tracking-[-0.02em]">견적</h1>
           <span className="text-[13px] text-muted-foreground">
             {quotes.length}건 · 실 합계 {won(grand)}
@@ -63,9 +63,56 @@ export default async function CrmQuotesPage() {
             </Button>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border bg-card">
+          <>
+          {/* 좁은 화면: 일곱 칸 표는 기관명이 한 글자씩 세로로 쌓였다 — 견적 한 건을 카드 한 장으로 */}
+          <ul className="flex flex-col gap-2 md:hidden">
+            {quotes.map((q) => {
+              const t = quoteTotals(q.items, q.discountAmount, q.vatRate)
+              return (
+                <li key={q.id}>
+                  <Link
+                    href={`/crm/quotes/${q.id}`}
+                    className="flex flex-col gap-1.5 rounded-xl border bg-card p-3 transition-colors hover:bg-muted/40"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[12px] font-medium">{q.code}</span>
+                      <span className="text-[12px] text-muted-foreground">
+                        {q.quotedAt.toISOString().slice(0, 10)}
+                      </span>
+                      <Badge variant={STATUS_VARIANT[q.status]} className="ml-auto">
+                        {QUOTE_STATUS_LABEL[q.status]}
+                      </Badge>
+                    </div>
+                    <div className="min-w-0 text-[13px]">
+                      <span className="font-medium">{q.org.name}</span>
+                      {q.contact && (
+                        <span className="text-muted-foreground">
+                          {" · "}
+                          {q.contact.name}
+                          {q.contact.title && ` ${q.contact.title}`}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-baseline gap-2 text-[13px]">
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                        {q.items[0]?.product.name ?? "—"}
+                        {q.items.length > 1 && ` 외 ${q.items.length - 1}건`}
+                      </span>
+                      {t.discount > 0 && (
+                        <span className="shrink-0 text-[12px] text-muted-foreground">
+                          −{won(t.discount)}
+                        </span>
+                      )}
+                      <span className="shrink-0 font-semibold">{won(t.total)}</span>
+                    </div>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="hidden overflow-hidden rounded-xl border bg-card md:block">
             <div className="overflow-x-auto">
-              <table className="w-full text-[13px]">
+              <table className="w-full min-w-[760px] text-[13px]">
                 <thead className="border-b bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">견적번호</th>
@@ -128,6 +175,7 @@ export default async function CrmQuotesPage() {
               </table>
             </div>
           </div>
+          </>
         )}
       </div>
     </>
