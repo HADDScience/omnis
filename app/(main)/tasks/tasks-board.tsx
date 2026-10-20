@@ -6,9 +6,13 @@ import { useRouter } from "next/navigation"
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  pointerWithin,
+  rectIntersection,
+  TouchSensor,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
@@ -85,13 +89,12 @@ function formatDeadline(deadline: string, isDone: boolean) {
 }
 
 function TaskCard({ task }: { task: KanbanTask }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  // 끌리는 모양은 DragOverlay 가 그린다. 원본까지 transform 으로 옮기면 overflow-auto 컬럼 안에서
+  // 스크롤 영역이 늘었다 줄며 자동 스크롤이 튀었다 — 원본은 제자리에 흐리게만 남긴다.
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
     data: { status: task.status },
   })
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined
 
   const deadlineInfo = task.deadline ? formatDeadline(task.deadline, task.status === "DONE") : null
   const overdue = deadlineInfo?.overdue ?? false
@@ -99,11 +102,10 @@ function TaskCard({ task }: { task: KanbanTask }) {
   return (
     <div
       ref={setNodeRef}
-      style={style}
       {...listeners}
       {...attributes}
       className={[
-        "relative cursor-grab rounded-md border bg-card p-2.5 transition-shadow",
+        "relative cursor-grab select-none rounded-md border bg-card p-2.5 transition-shadow [-webkit-touch-callout:none]",
         isDragging ? "opacity-40 shadow-lg" : "hover:border-border-strong",
         overdue ? "ring-1 ring-destructive/30" : "",
       ].join(" ")}
@@ -161,29 +163,33 @@ function KanbanColumn({
   label,
   color,
   tasks,
+  active,
 }: {
   status: Status
   label: string
   color: string
   tasks: KanbanTask[]
+  /** 좁은 화면에서는 탭으로 고른 컬럼 하나만 보인다 */
+  active: boolean
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: status, data: { status } })
   return (
     <div
       ref={setNodeRef}
       className={[
-        "flex w-[min(260px,calc(var(--app-vw)-2.5rem))] min-w-[min(260px,calc(var(--app-vw)-2.5rem))] flex-1 snap-start flex-col rounded-lg border bg-muted/30 p-2.5 transition-colors sm:w-auto sm:min-w-[260px]",
+        "min-h-0 w-full flex-1 flex-col rounded-lg border bg-muted/30 p-2.5 transition-colors sm:flex sm:w-auto sm:min-w-[260px]",
+        active ? "flex" : "hidden",
         isOver ? "border-primary bg-primary/5" : "",
       ].join(" ")}
     >
-      <div className="mb-2 flex items-center gap-1.5 px-1">
+      <div className="mb-2 hidden items-center gap-1.5 px-1 sm:flex">
         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
         <span className="text-[11.5px] font-semibold">{label}</span>
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">
           {tasks.length}
         </span>
       </div>
-      <div className="flex flex-1 flex-col gap-1.5 overflow-auto">
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto">
         {tasks.map((t) => (
           <TaskCard key={t.id} task={t} />
         ))}
@@ -197,15 +203,72 @@ function KanbanColumn({
   )
 }
 
+/** 좁은 화면의 상태 탭. 카드를 꾹 눌러 끌어다 놓으면 그 상태로 옮겨진다. */
+function StatusTab({
+  status,
+  label,
+  color,
+  count,
+  active,
+  onSelect,
+}: {
+  status: Status
+  label: string
+  color: string
+  count: number
+  active: boolean
+  onSelect: () => void
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: `tab:${status}`, data: { status } })
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onSelect}
+      className={[
+        "flex min-w-0 flex-col items-center gap-0.5 rounded-md border px-1 py-1.5 transition-colors",
+        active ? "border-primary/40 bg-primary/10" : "bg-muted/30",
+        isOver ? "border-primary bg-primary/20" : "",
+      ].join(" ")}
+    >
+      <span className="flex items-center gap-1">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span className="truncate text-[11.5px] font-semibold">{label}</span>
+      </span>
+      <span className="font-mono text-[10.5px] text-muted-foreground">{count}</span>
+    </button>
+  )
+}
+
+// 상태 탭은 폭이 좁아, 끌리는 카드 사각형으로 겹침을 재면 손가락 아래가 아닌 옆 탭에 떨어졌다 —
+// 손가락(포인터)이 들어간 곳을 먼저 보고, 어디에도 없을 때만 사각형 겹침으로 고른다
+const pointerFirst: CollisionDetection = (args) => {
+  const hits = pointerWithin(args)
+  return hits.length > 0 ? hits : rectIntersection(args)
+}
+
 interface TasksBoardProps {
   initialTasks: KanbanTask[]
 }
 
 export function TasksBoard({ initialTasks }: TasksBoardProps) {
   const [tasks, setTasks] = useState(initialTasks)
+  // 빠른 필터(?filter=)로 서버가 새 목록을 내려도 처음 받은 목록을 계속 그리고 있었다 — 바뀌면 갈아 끼운다
+  const [prevInitial, setPrevInitial] = useState(initialTasks)
+  if (prevInitial !== initialTasks) {
+    setPrevInitial(initialTasks)
+    setTasks(initialTasks)
+  }
   const [dragging, setDragging] = useState<KanbanTask | null>(null)
+  const [activeStatus, setActiveStatus] = useState<Status>("TODO")
   const router = useRouter()
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  // 터치는 꾹 눌러야 끌린다 — 바로 잡으면 목록을 넘기려던 손가락이 카드를 옮겼다
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  )
 
   const byStatus = useMemo(() => {
     const map = new Map<Status, KanbanTask[]>()
@@ -247,9 +310,23 @@ export function TasksBoard({ initialTasks }: TasksBoardProps) {
   }
 
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      {/* 폰·폴더블: 컬럼 단위 가로 스냅 스크롤 (한 번에 한 컬럼씩 정렬) */}
-      <div className="flex h-full snap-x snap-mandatory gap-2.5 overflow-auto p-3 sm:snap-none sm:p-4">
+    <DndContext sensors={sensors} collisionDetection={pointerFirst} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      {/* 폰·좁은 창: 가로로 넘기면 한 화면에 한 컬럼 반밖에 안 보였다 — 네 상태를 탭으로 한눈에 두고
+          고른 컬럼 하나를 꽉 채워 보여 준다 */}
+      <div className="flex h-full flex-col gap-2.5 p-3 sm:flex-row sm:overflow-x-auto sm:p-4">
+        <div role="tablist" aria-label="업무 상태" className="grid shrink-0 grid-cols-4 gap-1.5 sm:hidden">
+          {COLUMNS.map((c) => (
+            <StatusTab
+              key={c.key}
+              status={c.key}
+              label={c.label}
+              color={c.color}
+              count={byStatus.get(c.key)?.length ?? 0}
+              active={activeStatus === c.key}
+              onSelect={() => setActiveStatus(c.key)}
+            />
+          ))}
+        </div>
         {COLUMNS.map((c) => (
           <KanbanColumn
             key={c.key}
@@ -257,6 +334,7 @@ export function TasksBoard({ initialTasks }: TasksBoardProps) {
             label={c.label}
             color={c.color}
             tasks={byStatus.get(c.key) ?? []}
+            active={activeStatus === c.key}
           />
         ))}
       </div>
