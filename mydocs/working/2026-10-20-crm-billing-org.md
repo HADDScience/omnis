@@ -109,5 +109,21 @@ $ curl -X PATCH localhost:3100/api/crm/orgs/x -d '{"billingOrgId":null}'
 
 - [ ] 로그인한 화면 확인: 기관 상세에서 청구처 고르기 · 되돌리기, 거부 토스트, 견적 상세의 한 줄과 후보 정렬
 - [ ] `narrow-audit` 320~200px — `/crm/orgs/<가천대 의과대학>` · `/crm/quotes/<HADD250305-005>`. 로그인 정보가 필요하다
-- [ ] 운영 반영(승인 따로): `pnpm run db:deploy` → `backfill-billing-org.ts --target prod` 찍기 → `--apply` → main 머지
+- [x] 운영 반영 (2026-10-20 작업지시자 「운영 반영해줘」) — PR #93
+
+  ```
+  $ prisma migrate status   (Neon)
+  Following migration have not yet been applied:
+  20261020000000_crm_billing_org
+  $ prisma migrate deploy
+  All migrations have been successfully applied.
+  $ npx tsx scripts/backfill-billing-org.ts --target prod
+  → 채울 것 가천대 의과대학 → 가천대학교 산학협력단
+  청구처가 채워진 기관 0 / 전체 68
+  $ npx tsx scripts/backfill-billing-org.ts --target prod --apply
+  ✓ 채움 가천대 의과대학 → 가천대학교 산학협력단
+  청구처가 채워진 기관 1 / 전체 68
+  $ gh pr checks 93
+  verify pass · e2e pass · Vercel omnis-hadd pass · omnis-demo pass
+  ```
 - [ ] 운영에서 가천대 2025-03-05 계산서를 견적 상세의 「이 세금계산서가 맞아요」로 잇기 — 사람이 한다
