@@ -174,7 +174,7 @@ async function run() {
       )
     }
 
-    const kinds = blocks.map((b) => ({ image: "I", text: "T", heading: "H", quote: "Q", links: "L" })[b.type]).join("")
+    const kinds = blocks.map((b) => ({ image: "I", text: "T", heading: "H", quote: "Q", links: "L", video: "V" })[b.type]).join("")
     console.log(
       `${String(index + 1).padStart(3)}/${entries.length} ${id} ${String(row.date).slice(0, 10)} ${ko.title.slice(0, 28)} · [${kinds}] · 사진 ${shot}${en ? " · 영문" : ""}${ko.summary ? "" : " · 부제 없음"}`
     )
