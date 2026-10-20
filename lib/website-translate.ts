@@ -24,7 +24,11 @@ import {
 
 const LANG_NAME: Record<Lang, string> = { ko: "Korean", en: "English" }
 
-/** 번역에 영향을 주는 부분만 해시한다. 이미지 경로나 날짜가 바뀌었다고 다시 번역할 이유는 없다. */
+/**
+ * 번역에 영향을 주는 부분만 해시한다. 이미지 경로나 날짜가 바뀌었다고 다시 번역할 이유는 없다.
+ * 영상 블록은 통째로 넣는다 — 이미지와 달리 언어마다 다를 이유가 없어, 원문에서 영상을 바꾸면
+ * 번역본도 다시 만들어져 같은 영상을 따라가야 한다.
+ */
 export function sourceHash(locale: PostLocale): string {
   const payload = JSON.stringify({
     title: locale.title,
@@ -85,7 +89,10 @@ export async function translateLocale(
         : b.type === "links"
           ? // 주소는 그대로 두고 보이는 이름만 번역한다("기사 원문 보기" 가 영문 페이지에 남는다).
             { type: "links", text: b.title, labels: b.items.map((it) => it.label) }
-          : b
+          : b.type === "video"
+            ? // 영상 ID·시작 위치는 보내지 않는다. 모델이 바꿀 수 있는 자리에 두지 않는다.
+              { type: "video", ...(b.title ? { text: b.title } : {}) }
+            : b
     ),
   }
   const prompt = `${SYSTEM}\n\nTranslate from ${LANG_NAME[from]} to ${LANG_NAME[to]}.\n\n${JSON.stringify(input, null, 2)}`
@@ -117,6 +124,9 @@ export async function translateLocale(
         title: t.text ?? src.title,
         items: src.items.map((it, k) => ({ label: labels ? labels[k] : it.label, href: it.href })),
       }
+    }
+    if (src.type === "video") {
+      return { ...src, ...(src.title ? { title: t.text ?? src.title } : {}) }
     }
     return { type: src.type, text: t.text ?? src.text }
   })

@@ -33,6 +33,19 @@ export const PostBlockSchema = z.discriminatedUnion("type", [
     alt: short,
     caption: short.optional(),
   }),
+  /**
+   * 유튜브 영상. 주소가 아니라 **영상 ID 만** 저장하고, 임베드 주소(youtube-nocookie)는 사이트가 만든다 —
+   * 주소를 받으면 아무 곳이나 iframe 으로 끼워 넣을 수 있게 된다. provider 는 다른 곳을 붙일 때
+   * 블록 type 을 새로 만들지 않으려고 둔 칸이다. title 만 번역되고 나머지는 원문 그대로 간다.
+   */
+  z.object({
+    type: z.literal("video"),
+    provider: z.literal("youtube"),
+    id: z.string().regex(/^[A-Za-z0-9_-]{11}$/, "유튜브 영상 ID 는 영문·숫자·-·_ 11자입니다"),
+    /** 시작 위치(초). */
+    start: z.number().int().min(0).max(86_400).optional(),
+    title: short.optional(),
+  }),
 ])
 export type PostBlock = z.infer<typeof PostBlockSchema>
 
