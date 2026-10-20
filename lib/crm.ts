@@ -94,6 +94,28 @@ export const orgCreateSchema = z.object({
   note: z.string().trim().max(2000).optional().nullable(),
 })
 
+/** 청구처는 고칠 때만 정한다 — 자기 자신 · 두 단계 연결은 API 가 DB 를 보고 막는다 */
+export const orgUpdateSchema = orgCreateSchema.partial().extend({
+  billingOrgId: z.string().uuid().nullable().optional(),
+})
+
+/**
+ * 청구처를 이렇게 정해도 되는지. 한 단계만 허용한다 — 학과 → 산학협력단 → ? 처럼 이어지면
+ * 「계산서를 누구 앞으로 끊나」 답이 둘이 된다.
+ */
+export function billingOrgProblem(
+  orgId: string,
+  target: { id: string; billingOrgId: string | null } | null,
+  /** 이 기관을 청구처로 둔 기관이 있는가 */
+  isBillingOrgOfOthers: boolean
+): string | null {
+  if (!target) return "청구처 기관을 찾을 수 없습니다"
+  if (target.id === orgId) return "자기 자신을 청구처로 둘 수 없습니다 — 비워 두면 자기 자신입니다"
+  if (target.billingOrgId) return "그 기관에도 청구처가 따로 있습니다 — 최종 청구처를 골라 주세요"
+  if (isBillingOrgOfOthers) return "이 기관은 다른 기관의 청구처입니다 — 청구처에는 청구처를 둘 수 없습니다"
+  return null
+}
+
 export const contactCreateSchema = z.object({
   orgId: z.string().uuid(),
   name: z.string().trim().min(1, "담당자명을 입력해 주세요").max(100),

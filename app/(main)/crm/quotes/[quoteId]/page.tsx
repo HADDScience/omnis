@@ -20,7 +20,7 @@ export default async function QuoteDetailPage({
   const q = await prisma.crmQuote.findUnique({
     where: { id: quoteId },
     include: {
-      org: true,
+      org: { include: { billingOrg: { select: { id: true, name: true } } } },
       contact: true,
       membership: true,
       items: { include: { product: true }, orderBy: { sortOrder: "asc" } },
@@ -34,19 +34,24 @@ export default async function QuoteDetailPage({
   const chains = q.taxInvoices.length ? await receivableChains("SALE") : []
   const chainOf = (invoiceId: string) => chains.find((c) => c.invoiceId === invoiceId)
   // 연결이 없으면 다른 기관 앞으로 나간 **같은 합계** 세금계산서를 찾아 내민다 — 대학은 견적은 학과,
-  // 세금계산서는 산학협력단이라 자동으로 못 잇는다(가천대 의과대학 ↔ 가천대학교 산학협력단)
+  // 세금계산서는 산학협력단이라 자동으로 못 잇는다(가천대 의과대학 ↔ 가천대학교 산학협력단).
+  // 청구처가 정해져 있으면 그 앞으로 나간 것을 먼저 보인다
+  const billingOrgId = q.org.billingOrg?.id ?? null
   const orphans =
     q.taxInvoices.length === 0 && q.status === "DONE"
-      ? await prisma.taxInvoice.findMany({
+      ? (await prisma.taxInvoice.findMany({
           where: {
             direction: "SALE",
             quoteId: null,
             totalKrw: BigInt(t.total),
             issuedOn: { gte: new Date(q.quotedAt.getTime() - 15 * 86_400_000), lte: new Date(q.quotedAt.getTime() + 90 * 86_400_000) },
           },
-          select: { id: true, issuedOn: true, buyerName: true, totalKrw: true },
-          take: 3,
-        })
+          select: { id: true, orgId: true, issuedOn: true, buyerName: true, totalKrw: true },
+          orderBy: { issuedOn: "asc" },
+          take: 10,
+        }))
+          .sort((a, b) => Number(b.orgId === billingOrgId && !!billingOrgId) - Number(a.orgId === billingOrgId && !!billingOrgId))
+          .slice(0, 3)
       : []
 
 
@@ -173,6 +178,15 @@ export default async function QuoteDetailPage({
               <div className="mt-0.5 text-[11px] text-muted-foreground">
                 {ORG_TYPE_LABEL[q.org.type]} · {q.org.code}
               </div>
+              {q.org.billingOrg && (
+                <div className="mt-1 text-[12px] text-muted-foreground">
+                  세금계산서는{" "}
+                  <Link href={`/crm/orgs/${q.org.billingOrg.id}`} className="text-foreground hover:underline">
+                    {q.org.billingOrg.name}
+                  </Link>{" "}
+                  앞으로
+                </div>
+              )}
               {q.contact && (
                 <div className="mt-3 border-t pt-3">
                   <div className="text-[13px] font-medium">

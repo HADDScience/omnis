@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/tech/crm.md
-last_verified: 2026-09-16
+last_verified: 2026-10-20
 ---
 
 # CRM — 기관 · 견적 · 샘플 · 출고 · 재고 · 생산
@@ -18,7 +18,8 @@ last_verified: 2026-09-16
 ## 흐름
 
 ```
-CrmOrg ─┬─ CrmContact ─────────────────────┐
+CrmOrg ─┬─ billingOrg → CrmOrg (청구처 — 세금계산서 받는 기관, 규칙 10)
+        ├─ CrmContact ─────────────────────┐
         ├─ CrmMembership (HRP, 할인 제안)   │
         │                                   ↓
         ├─ CrmQuote ── CrmQuoteItem ──→ CrmShipment ──→ CrmStockMove(OUT)
@@ -143,6 +144,18 @@ gramsPerUnit = volumeMl × concentrationPct / 100      # 1wt% = 1ml 당 0.01g
 행을 지우면 그 품목을 참조하는 견적 항목과 출고가 같이 깨진다. 2026-09-09 에
 애드젤 5ml(1ml × 5ea)와 고정제를 내렸을 때도 보관 처리했다 — 각각 견적 5건·출고 6건,
 출고 1건이 걸려 있었다.
+
+### 10. 청구처는 비어 있으면 자기 자신, 한 단계만
+
+`CrmOrg.billingOrgId` 는 세금계산서를 받는 기관이다. 대학 학과(견적) → 산학협력단(계산서)처럼
+둘이 다를 때만 채운다. 기존 기관은 전부 비어 있고, 읽는 쪽은 `billingOrg ?? 자기` 로 읽는다.
+자기 자신으로 채우지 않는다 — 기관을 만드는 경로마다 채워야 하고, 하나라도 빠지면 NULL 과 자기 참조가 섞인다.
+
+청구처의 청구처는 없다(`billingOrgProblem`). 이어지면 「누구 앞으로 끊나」 답이 둘이 된다.
+
+계산서 잇기(`loadOrgsForMatching`)는 청구처 기관에 학과 견적을 합쳐 본다. 계산서의 `orgId` 는
+청구처(산학협력단) 그대로 두고 `quoteId` 만 학과 견적을 가리킨다 — 기관별 매출은 「누구에게 청구했나」 기준이다.
+설계와 실측: [`../plans/2026-10-20-crm-billing-org.md`](../plans/2026-10-20-crm-billing-org.md)
 
 ## 화면
 

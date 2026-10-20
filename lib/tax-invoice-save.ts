@@ -17,6 +17,9 @@ export const INVOICE_MIME_EXT: Record<string, string> = {
 
 export class InvoiceSaveError extends Error {}
 
+const QUOTE_FOR_MATCHING = { id: true, code: true, quotedAt: true, discountAmount: true, vatRate: true, taxInvoicedAt: true, items: true } as const
+
+/** 기관마다 자기 견적과, 이 기관을 청구처로 둔 기관(학과)의 견적까지 */
 export function loadOrgsForMatching(): Promise<OrgWithQuotes[]> {
   return prisma.crmOrg.findMany({
     select: {
@@ -24,7 +27,8 @@ export function loadOrgsForMatching(): Promise<OrgWithQuotes[]> {
       code: true,
       name: true,
       bizRegNo: true,
-      quotes: { select: { id: true, code: true, quotedAt: true, discountAmount: true, vatRate: true, taxInvoicedAt: true, items: true } },
+      quotes: { select: QUOTE_FOR_MATCHING },
+      billedOrgs: { select: { quotes: { select: QUOTE_FOR_MATCHING } } },
     },
   })
 }

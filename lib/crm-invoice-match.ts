@@ -5,6 +5,7 @@
 //   "대구경북과학기술원부설한국뇌연구원" 에는 「대구경북 과학기술원」 과 「한국뇌연구원」 이 둘 다 들어 있다 —
 //   긴 이름을 고르면 틀린다(2026-09-14 이식 dry-run). 세금계산서의 실제 공급받는자는 「부설」 뒤다.
 // 견적: 같은 기관 · 합계 같음 · 작성일 기준 90일 전 ~ 15일 뒤. 다른 기관에 걸린 견적은 잇지 않고 알려만 준다.
+//   「같은 기관」 에는 이 기관을 청구처로 둔 기관이 들어간다 — 산학협력단 앞 계산서는 학과 견적에 잇는다(2026-10-20).
 import type { CrmOrg, CrmQuote, CrmQuoteItem } from "@/generated/prisma/client"
 import { quoteTotals } from "@/lib/crm"
 
@@ -15,7 +16,11 @@ export const orgKey = (s: string | null | undefined) =>
     .toLowerCase()
 
 type QuoteWithItems = Pick<CrmQuote, "id" | "code" | "quotedAt" | "discountAmount" | "vatRate" | "taxInvoicedAt"> & { items: CrmQuoteItem[] }
-export type OrgWithQuotes = Pick<CrmOrg, "id" | "code" | "name" | "bizRegNo"> & { quotes: QuoteWithItems[] }
+export type OrgWithQuotes = Pick<CrmOrg, "id" | "code" | "name" | "bizRegNo"> & {
+  quotes: QuoteWithItems[]
+  /** 이 기관을 청구처로 둔 기관들 — 대학 학과. 비어 있으면 자기 견적만 본다 */
+  billedOrgs?: { quotes: QuoteWithItems[] }[]
+}
 
 export type OrgMatchHow = "사업자번호" | "이름" | "부설 뒤 이름" | "포함" | "합계 맞는 견적"
 
@@ -25,7 +30,7 @@ export function matchQuote(org: OrgWithQuotes, totalKrw: number | null, issuedOn
   if (totalKrw === null || !issuedOn) return null
   const issued = new Date(`${issuedOn}T00:00:00Z`).getTime()
   return (
-    org.quotes
+    [...org.quotes, ...(org.billedOrgs ?? []).flatMap((b) => b.quotes)]
       .map((q) => ({ q, total: Math.round(quoteTotals(q.items, q.discountAmount, q.vatRate).total), gap: (issued - q.quotedAt.getTime()) / DAY }))
       .filter((x) => x.total === totalKrw && x.gap >= -15 && x.gap <= 90)
       .sort((a, b) => Math.abs(a.gap) - Math.abs(b.gap))
@@ -70,7 +75,8 @@ export function matchOrg<T extends OrgWithQuotes>(
 export function quotesElsewhere(orgs: OrgWithQuotes[], exceptOrgId: string | null, totalKrw: number | null, issuedOn: string | null) {
   return orgs
     .filter((o) => o.id !== exceptOrgId)
-    .map((o) => ({ org: o, quote: matchQuote(o, totalKrw, issuedOn) }))
+    // 자기 견적만 — 학과 견적이 산학협력단 이름으로 한 번 더 나오지 않게
+    .map((o) => ({ org: o, quote: matchQuote({ ...o, billedOrgs: [] }, totalKrw, issuedOn) }))
     .filter((x): x is { org: OrgWithQuotes; quote: { id: string; code: string } } => x.quote !== null)
     .map((x) => ({ orgName: x.org.name, quoteCode: x.quote.code }))
 }
