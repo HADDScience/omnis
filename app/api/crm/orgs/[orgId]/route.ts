@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { orgCreateSchema } from "@/lib/crm"
+import { billingOrgProblem, orgUpdateSchema } from "@/lib/crm"
 
 export const runtime = "nodejs"
 
@@ -11,12 +11,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ orgId:
   if (!session?.user?.id) return NextResponse.json({ error: "인증 필요" }, { status: 401 })
 
   const { orgId } = await params
-  const parsed = orgCreateSchema.partial().safeParse(await req.json().catch(() => null))
+  const parsed = orgUpdateSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "잘못된 입력" },
       { status: 400 }
     )
+  }
+  const { billingOrgId } = parsed.data
+  if (billingOrgId) {
+    const [target, billed] = await Promise.all([
+      prisma.crmOrg.findUnique({ where: { id: billingOrgId }, select: { id: true, billingOrgId: true } }),
+      prisma.crmOrg.count({ where: { billingOrgId: orgId } }),
+    ])
+    const problem = billingOrgProblem(orgId, target, billed > 0)
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 })
   }
   const org = await prisma.crmOrg.update({ where: { id: orgId }, data: parsed.data })
   return NextResponse.json(org)

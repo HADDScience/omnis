@@ -668,9 +668,15 @@ model CrmOrg {
   bizRegNo  String?    @unique
   address   String?
   note      String?
+  /// 세금계산서를 받는 기관. **비어 있으면 자기 자신이다** — 기존 기관은 전부 비어 있다.
+  /// 대학 학과(견적) → 산학협력단(세금계산서)처럼 둘이 다를 때만 채운다. 한 단계만 — 청구처의 청구처는 없다.
+  billingOrgId String?
+  billingOrg   CrmOrg?    @relation("BillingOrg", fields: [billingOrgId], references: [id], onDelete: SetNull)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
+  /// 이 기관을 청구처로 둔 기관들
+  billedOrgs     CrmOrg[]           @relation("BillingOrg")
   contacts       CrmContact[]
   memberships    CrmMembership[]
   quotes         CrmQuote[]
