@@ -72,6 +72,12 @@ interface Project {
 
 const STATUS_OPTIONS = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"] as const
 const PRIORITY_OPTIONS = ["LOW", "NORMAL", "HIGH"] as const
+const FEEDBACK_PREVIEW = 3
+
+/** line-clamp-6 에 잘릴 만한 글 — 펼치기 버튼을 띄울지 가늠하는 데만 쓴다 */
+function isLongMessage(m: { content: string }) {
+  return m.content.length > 300 || m.content.split("\n").length > 6
+}
 
 export function TaskDetail({
   task: initial,
@@ -91,6 +97,7 @@ export function TaskDetail({
   const [editingName, setEditingName] = useState(false)
   const [editingBackground, setEditingBackground] = useState(false)
   const [editingDeadline, setEditingDeadline] = useState(false)
+  const [showAllFeedback, setShowAllFeedback] = useState(false)
 
   // 편집 중 임시값
   const [draftName, setDraftName] = useState(task.name)
@@ -216,6 +223,9 @@ export function TaskDetail({
   const doneCount = task.checklists.filter((c) => c.done).length
   const sourceMsgs = task.sourceMessages as { author: string; content: string; createdAt: string }[] | null
   const feedbackMsgs = task.feedbackMessages.filter((m) => !m.isTaskInstruction && !m.content.startsWith("🤖"))
+  // 대화가 쌓이면 이 카드가 상세 화면을 다 덮어 완료 버튼까지 한참 내려가야 했다 — 최근 것만 펴 둔다
+  const hiddenFeedback = showAllFeedback ? 0 : Math.max(0, feedbackMsgs.length - FEEDBACK_PREVIEW)
+  const visibleFeedback = feedbackMsgs.slice(hiddenFeedback)
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
@@ -605,8 +615,19 @@ export function TaskDetail({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-2">
-              {feedbackMsgs.map((msg) => (
+            {/* 다 펼쳐도 카드 안에서만 스크롤한다 — 264건짜리 업무는 펼치면 16,000px 이 넘었다 */}
+            <div className={`flex flex-col gap-2 ${showAllFeedback ? "max-h-[60svh] overflow-y-auto pr-1" : ""}`}>
+              {!showAllFeedback && (hiddenFeedback > 0 || visibleFeedback.some(isLongMessage)) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 self-start text-xs text-muted-foreground"
+                  onClick={() => setShowAllFeedback(true)}
+                >
+                  {hiddenFeedback > 0 ? `이전 ${hiddenFeedback}개 더 보기` : "전체 펼치기"}
+                </Button>
+              )}
+              {visibleFeedback.map((msg) => (
                 <div key={msg.id} className="flex gap-2 rounded-md border p-2.5">
                   <Avatar className="h-6 w-6 shrink-0">
                     <AvatarFallback className="text-[10px]">{msg.author.name.charAt(0)}</AvatarFallback>
@@ -618,7 +639,9 @@ export function TaskDetail({
                         {format(new Date(msg.createdAt), "MM/dd HH:mm")}
                       </span>
                     </div>
-                    <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                    <p className={`text-sm whitespace-pre-wrap break-words ${showAllFeedback ? "" : "line-clamp-6"}`}>
+                      {msg.content}
+                    </p>
                   </div>
                 </div>
               ))}

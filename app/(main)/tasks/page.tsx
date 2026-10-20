@@ -96,9 +96,11 @@ export default async function TasksPage({ searchParams }: Props) {
   const activeFilterLabel = filter ? FILTER_LABEL[filter] : null
 
   return (
-    <>
+    // 바깥 스크롤러(main-with-chat)는 block 이라 flex-1 이 먹지 않아, 보드가 완료 600여 장 길이로 늘어났다.
+    // 드래그하면 그 긴 페이지 전체가 자동 스크롤돼 화면이 튀었다 — 화면 높이에 묶고 컬럼 안에서 스크롤한다
+    <div className="flex h-full flex-col">
       <Header title="업무" />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2">
           <span className="text-[12px] font-semibold">
             업무 · {tasks.length}
@@ -135,6 +137,6 @@ export default async function TasksPage({ searchParams }: Props) {
           />
         </div>
       </div>
-    </>
+    </div>
   )
 }

@@ -97,6 +97,8 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 ### 26. a11y 기본 (ui-ux-pro-max #1)
 - (R) interactive 요소가 (a) 키보드 포커스 가능, (b) `aria-label` 또는 텍스트, (c) 4.5:1 대비?
 - (E) 장식용 아이콘은 `aria-hidden`
+- (E) 화면 확대(핀치·입력창 자동 확대)는 막는다 — 설치한 PWA 가 앱처럼 고정돼야 해서다(작업지시자 결정 2026-10-19).
+  큰 글자는 OS 글꼴 크기 설정으로 받는다
 - (S) 모든 button/link/input
 - 도구: `eslint-plugin-jsx-a11y`, axe-core dev 검증
 

@@ -19,9 +19,10 @@ test.describe("tasks (칸반·상세)", () => {
   }) => {
     await page.getByRole("link", { name: "업무", exact: true }).click()
     await page.getByRole("button", { name: /보드/ }).first().click()
+    // 좁은 화면용 상태 탭도 같은 글자를 DOM 에 두고 데스크톱에서는 숨긴다 — 보이는 것만 센다
     for (const column of ["할 일", "진행 중", "리뷰", "완료"]) {
       await expect(
-        page.getByText(column, { exact: true }).first()
+        page.getByText(column, { exact: true }).filter({ visible: true }).first()
       ).toBeVisible()
     }
   })
