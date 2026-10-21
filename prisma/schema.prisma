@@ -1552,6 +1552,8 @@ model ColumnDraft {
   summary     String
   /// 사이트 PostBlock[] 그대로 — 게시 때 변환하지 않는다
   blocks      Json
+  /// 이미지 제안(검토용, 게시되지 않는다) — lib/column/image-suggest.ts. null = 제안 없이 만든 옛 초안
+  imageSuggestions Json?
   model       String
   durationMs  Int?
   cpuMs       Int?

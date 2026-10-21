@@ -17,6 +17,7 @@ import { savePost } from "@/lib/website-posts"
 
 import { readArticle } from "./article"
 import type { KeywordSource } from "./collect"
+import { IMAGE_SUGGEST_INSTRUCTIONS, toImageSuggestions, type ImageSuggestion } from "./image-suggest"
 
 const MODEL = process.env.GEMINI_COLUMN_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3.6-flash"
 
@@ -63,7 +64,8 @@ export function todayKst(now = new Date()): string {
 interface RawDraft {
   title?: unknown
   summary?: unknown
-  sections?: { heading?: unknown; paragraphs?: unknown }[]
+  leadImage?: unknown
+  sections?: { heading?: unknown; paragraphs?: unknown; image?: unknown }[]
 }
 
 function buildPrompt(k: { term: string; summary: string }, sources: { i: number; s: KeywordSource; text: string }[]): string {
@@ -85,8 +87,10 @@ function buildPrompt(k: { term: string; summary: string }, sources: { i: number;
 - 문자열 안에서 큰따옴표(")를 쓰지 않는다. 인용은 「」를 쓴다.
 - title: 40자 안팎. summary: 한 문장 부제(80자 이내).
 
+${IMAGE_SUGGEST_INSTRUCTIONS}
+
 JSON 하나만 출력한다:
-{"title":"...","summary":"...","sections":[{"heading":"...","paragraphs":["...","..."]}]}
+{"title":"...","summary":"...","leadImage":{"idea":"...","sources":["..."],"prompt":"..."},"sections":[{"heading":"...","paragraphs":["...","..."],"image":{"idea":"...","sources":["..."],"prompt":"..."}}]}
 
 근거 기사:
 ${blocks}`
@@ -125,6 +129,11 @@ export async function generateDraft(keywordId: string, userId: string) {
 
   const picked = all.slice(0, 5).map((s, n) => ({ i: n + 1, s }))
   const read = await Promise.all(picked.map(async (p) => ({ ...p, ...(await readArticle(p.s.url)) })))
+  // 출력 한도: callGemini 의 maxOutputTokens 8192 · thinkingBudget 1024(column*)를 그대로 쓴다.
+  // 제안 없던 초안 실측(로컬 GeminiUsage, 2026-10-16 3건)은 출력 730~885 토큰, 생각 0.
+  // 제안(맨 앞 1 + 소제목 3~4)은 건당 한국어 두 칸 + 영문 프롬프트 한 단락이라 약 250~300 토큰 → +1,500 안팎.
+  // 본문이 상한(2,500자)까지 가고 생각을 예산만큼 다 써도 약 4,500 토큰으로 8192 안이다.
+  // 잘리면 아래 JSON.parse 가 bad_model_output(응답 길이 포함)으로 떨어진다 — 그때 이 추정을 다시 본다.
   const raw = await callGemini(buildPrompt(k, read), "columnDraft", userId, 0.5, { model: MODEL, json: true })
   const m = raw.match(/\{[\s\S]*\}/)
   if (!m) throw new DraftError("bad_model_output", "초안 응답을 읽지 못했습니다", 502)
@@ -136,6 +145,7 @@ export async function generateDraft(keywordId: string, userId: string) {
     throw new DraftError("bad_model_output", `초안 응답이 올바른 JSON 이 아닙니다(${raw.length}자): ${e instanceof Error ? e.message : e}`, 502)
   }
   const blocks = toBlocks(parsed, read)
+  const imageSuggestions = toImageSuggestions(parsed)
   const unread = read.filter((r) => !r.text).length
   if (unread) {
     blocks.unshift({
@@ -155,6 +165,7 @@ export async function generateDraft(keywordId: string, userId: string) {
         title: typeof parsed.title === "string" ? parsed.title.trim() : k.term,
         summary: typeof parsed.summary === "string" ? parsed.summary.trim() : "",
         blocks: blocks as object,
+        imageSuggestions: imageSuggestions as object[],
         model: MODEL,
         postId,
         durationMs,
@@ -171,14 +182,29 @@ export async function generateDraft(keywordId: string, userId: string) {
 
 const EDITABLE: DraftStatus[] = ["draft", "changes_requested"]
 
-export async function updateDraft(id: string, input: { title: string; summary: string; blocks: PostBlock[] }) {
+/** `imageSuggestions` 를 안 보내면(옛 편집기) 저장된 제안을 그대로 둔다. */
+export async function updateDraft(
+  id: string,
+  input: { title: string; summary: string; blocks: PostBlock[]; imageSuggestions?: ImageSuggestion[] }
+) {
   const d = await prisma.columnDraft.findUnique({ where: { id } })
   if (!d) throw new DraftError("not_found", "초안을 찾지 못했습니다", 404)
   if (!EDITABLE.includes(d.status as DraftStatus)) throw new DraftError("not_editable", "검토 중이거나 게시된 초안은 고칠 수 없습니다", 409)
-  return prisma.columnDraft.update({ where: { id }, data: { title: input.title, summary: input.summary, blocks: input.blocks as object } })
+  return prisma.columnDraft.update({
+    where: { id },
+    data: {
+      title: input.title,
+      summary: input.summary,
+      blocks: input.blocks as object,
+      ...(input.imageSuggestions ? { imageSuggestions: input.imageSuggestions as object[] } : {}),
+    },
+  })
 }
 
-/** 검토 요청 전에 막을 것: 출처 없는 사진, 게시 전에 지우라는 안내 상자, 빈 본문 */
+/**
+ * 검토 요청 전에 막을 것: 출처 없는 사진, 게시 전에 지우라는 안내 상자, 빈 본문.
+ * 이미지 제안(`imageSuggestions`)은 보지 않는다 — 블록이 아니라서 사진으로 세지도, 막지도 않는다.
+ */
 export function reviewProblems(d: { title: string; blocks: unknown }): string[] {
   const blocks = (Array.isArray(d.blocks) ? d.blocks : []) as PostBlock[]
   const out: string[] = []
@@ -233,6 +259,23 @@ export function stripCitations(blocks: PostBlock[]): PostBlock[] {
   )
 }
 
+/**
+ * 초안 → WebsitePost 저장 요청. 제목·부제·블록만 읽는다 — 이미지 제안·검토 메모 같은
+ * 검토용 칸은 여기서 걸러져 공개 글에 닿지 않는다.
+ */
+export function publishInput(d: { title: string; summary: string; blocks: unknown }) {
+  const blocks = stripCitations(d.blocks as PostBlock[])
+  const firstImage = blocks.find((b): b is Extract<PostBlock, { type: "image" }> => b.type === "image")
+  return PostInputSchema.parse({
+    category: "library",
+    date: todayKst(),
+    sourceLang: "ko",
+    thumbnail: firstImage?.src ?? null,
+    externalHref: null,
+    content: { ko: { title: d.title, summary: d.summary, blocks } },
+  })
+}
+
 /** 승인된 초안을 라이브러리 글로 저장한다. 영문은 savePost 가 번역한다. */
 export async function publishDraft(id: string, userId: string) {
   const d = await prisma.columnDraft.findUnique({ where: { id } })
@@ -242,16 +285,7 @@ export async function publishDraft(id: string, userId: string) {
   if (await prisma.websitePost.findUnique({ where: { id: d.postId }, select: { id: true } })) {
     throw new DraftError("already_exists", "같은 id 의 기사가 이미 있습니다", 409)
   }
-  const blocks = stripCitations(d.blocks as unknown as PostBlock[])
-  const firstImage = blocks.find((b): b is Extract<PostBlock, { type: "image" }> => b.type === "image")
-  const input = PostInputSchema.parse({
-    category: "library",
-    date: todayKst(),
-    sourceLang: "ko",
-    thumbnail: firstImage?.src ?? null,
-    externalHref: null,
-    content: { ko: { title: d.title, summary: d.summary, blocks } },
-  })
+  const input = publishInput(d)
   const { post, translationFailures } = await savePost(d.postId, input, userId)
   await prisma.$transaction([
     prisma.columnDraft.update({ where: { id }, data: { status: "published" } }),
