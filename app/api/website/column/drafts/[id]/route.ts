@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { prisma } from "@/lib/db"
 import { DraftError, discardDraft, isReviewer, reviewProblems, updateDraft } from "@/lib/column/draft"
+import { ImageSuggestionsSchema } from "@/lib/column/image-suggest"
 import { PostBlockSchema } from "@/lib/schemas/website"
 import { requireWebsiteUser, websiteJson, websiteOptions } from "@/lib/website-auth"
 
@@ -37,7 +38,13 @@ export async function GET(req: NextRequest, { params }: Props) {
   )
 }
 
-const PutSchema = z.object({ title: z.string().max(2_000), summary: z.string().max(2_000), blocks: z.array(PostBlockSchema).max(500) })
+const PutSchema = z.object({
+  title: z.string().max(2_000),
+  summary: z.string().max(2_000),
+  blocks: z.array(PostBlockSchema).max(500),
+  // 옛 편집기는 이 칸을 보내지 않는다 — 그때는 저장된 제안을 그대로 둔다
+  imageSuggestions: ImageSuggestionsSchema.optional(),
+})
 
 export async function PUT(req: NextRequest, { params }: Props) {
   const origin = req.headers.get("origin")
