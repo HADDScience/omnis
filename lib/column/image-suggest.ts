@@ -42,16 +42,25 @@ export const ImageSuggestionsSchema = z.array(ImageSuggestionSchema).max(30)
 export const IMAGE_SUGGEST_INSTRUCTIONS = `이미지 제안(검토용, 게시되지 않는다):
 - leadImage 에 글 맨 앞(목록 썸네일)용 제안 하나, sections 의 각 항목 image 에 그 소제목 단락용 제안 하나를 쓴다.
 - idea: 이 단락에 어울리는 사진·그림을 한두 문장(한국어). 근거 기사에 없는 사실을 그림에 담지 않는다.
+  그림에는 글자가 들어가지 않으므로 「인포그래픽」「도표」「그래프」라고 부르지 않는다 — 「일러스트」「장면」이라고 쓴다.
 - sources: 이미지를 어디서 구할지 1~3개(한국어). 아래 같은 일반 경로만 쓴다. 특정 사진이 어딘가에 있다고 지어내지 않는다.
   · 「회사 제품 사진(NAS 61. HADD 디자인 / 09. 하드사이언스 사진)」 — 하드사이언스 제품·연구 장면이 어울릴 때만
   · 「정책브리핑·식약처 등 정부 보도자료 사진(공공누리 유형 확인)」 — 정부 발표가 근거일 때
   · 「AI 생성 이미지(아래 프롬프트) — 출처에 'AI 생성 이미지'로 표기」
   · 근거 기사 사진을 떠올렸다면 「근거 기사 [n] 의 사진은 언론사 저작물이라 쓰지 않는다」고 적는다
-- prompt: 영어로 쓴 AI 이미지 생성 프롬프트 한 단락. 하드:라이브러리 인포그래픽 스타일을 따른다:
-  16:9 landscape, clean white to pale sky-blue background, a bold navy title area left empty for text added later,
-  semi-transparent glossy blue 3D scientific illustration (cells, molecules, lab tools 등 단락 주제에 맞는 것), soft lighting, minimal and professional.
-  실존 인물·실제 로고·브랜드명·글자·숫자를 그림에 넣지 않는다(프롬프트에 "no text, no letters, no logos, no real people"을 넣는다).
-  HADD 로고는 사람이 나중에 실제 파일로 합성하므로 프롬프트에 넣지 않는다.`
+- prompt: 영어로 쓴 AI 이미지 생성 프롬프트 한 단락.
+  · idea 와 같은 장면이어야 한다. idea 에 적은 대상·배경·관계(예: 배양 용기, 계통도, 비교)를 prompt 에 빠짐없이 영어로 옮긴다.
+    사람은 idea 를 읽고 prompt 를 복사한다 — 둘이 다르면 「설명과 다른 그림」이 나온다.
+  · 대상을 실제 생김새로 묘사한다. 특히 하드사이언스가 다루는 것은 정확히:
+    오가노이드 = 속이 빈 내강(lumen)을 둘러싼 상피세포 층, 바깥으로 돋아난 출아(budding) 구조가 있는 수백 µm 크기의 3D 세포 덩어리(비눗방울 뭉치가 아니다).
+    배양 = 웰 플레이트(well plate)나 페트리 접시 안, 투명한 하이드로젤 돔(dome) 속에서 자란다.
+    계통도·분화 = 한 세포에서 갈라지는 가지 도식(lineage diagram)으로, 식물 나무 모양이 아니다.
+  · 구도는 제안마다 다르게 한다. 같은 글 안에서 반복하지 않는다:
+    leadImage 만 왼쪽 1/3 을 비운 구도("left third kept empty as clean background for a title added later"),
+    소제목 그림은 화면을 채우되 단락 성격에 맞춰 고른다 — 단면도(cross-section), 둘을 나란히 놓은 비교(side-by-side), 현미경 사진풍(microscopy-style), 실험실 장면(lab bench scene), 위에서 본 시점(top-down) 등.
+  · 공통 톤: 16:9 landscape, white to pale sky-blue background, blue and navy palette, clean scientific 3D illustration, soft lighting, professional.
+  · 실존 인물·실제 로고·브랜드명·글자·숫자를 그림에 넣지 않는다(프롬프트에 "no text, no letters, no logos, no real people"을 넣는다).
+    HADD 로고는 사람이 나중에 실제 파일로 합성하므로 프롬프트에 넣지 않는다.`
 
 interface RawImage {
   idea?: unknown
