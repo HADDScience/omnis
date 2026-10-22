@@ -166,6 +166,17 @@ export async function saveDailyKpis(day: string, rows: KpiRow[]): Promise<void> 
   )
 }
 
+/**
+ * Prisma 클라이언트가 KPI 표를 아는지. `generated/prisma` 는 gitignore 라 체크아웃마다 따로 낡는다 —
+ * 10/16 이전에 만든 클라이언트는 `kpiDaily` 가 undefined 라 원인 모를 TypeError 로 죽는다(2026-10-21).
+ */
+export function assertKpiClient(client: object = prisma): void {
+  const missing = (["kpiDaily", "taskEvent"] as const).filter((m) => !(client as Record<string, unknown>)[m])
+  if (missing.length) {
+    throw new Error(`Prisma 클라이언트에 ${missing.join(" · ")} 가 없다 — 스키마보다 낡았다. \`npx prisma generate\` 를 먼저 돌린다`)
+  }
+}
+
 /** 이력이 쌓이기 시작한 한국 날짜. 이력이 하나도 없으면 null. */
 export async function eventsSince(): Promise<string | null> {
   const first = await prisma.taskEvent.findFirst({ orderBy: { createdAt: "asc" }, select: { createdAt: true } })

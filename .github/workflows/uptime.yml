@@ -1,0 +1,38 @@
+name: uptime
+
+# 운영 가동률 장부. 30분마다 운영 주소 두 곳을 치고, 하나라도 200 이 아니면 이 실행을 실패로 끝낸다.
+# 실행 기록 자체가 측정값이다 — 가동률 · 장애 건수 · 복구 시간은 scripts/uptime-report.ts 가 센다.
+# 왜 이렇게 했는지: mydocs/plans/2026-10-22-ops-metrics.md
+#
+# - DB 를 치지 않는다. Neon 이 깨어 있던 시간이 요금이라 /api/health 는 DB 에 닿지 않는다
+# - 이슈를 열지 않는다. 저장소가 공개라 이슈도 공개다
+# - 예약 실행은 늦거나 건너뛸 수 있다. 그래서 가동률 분모는 「실제로 돈 회차」다
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 운영 주소 확인
+        env:
+          BASE: https://omnis-hadd.vercel.app
+        run: |
+          fail=0
+          for path in /login /api/health; do
+            # 콜드 스타트를 감안해 20초까지 기다리고, 일시적인 네트워크 오류는 한 번 다시 친다
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 --retry 1 --retry-delay 5 "$BASE$path" || true)
+            echo "$path $code"
+            [ "$code" = "200" ] || fail=1
+          done
+          exit $fail
