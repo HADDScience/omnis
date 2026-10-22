@@ -1,7 +1,8 @@
 // 회사 Context 를 옴니스 질문 · MCP 도구로 연다 (lib/omnis-mcp 의 runTool 이 부른다).
 //
-// 개인정보는 도구로 내보내지 않는다 — 연락처 · 이메일 · 생년월일 · 과학기술인번호 · 서명 · 직인.
-// 이것들은 인력 화면(관리자)에서만 본다. 도구 결과는 모델 공급자와 외부 MCP 커넥터로 나가기 때문이다.
+// 직원 연락처 · 이메일 · 생년월일 · 과학기술인번호는 관리자가 부를 때만 list_staff 에 싣는다.
+// 학회 가입 · 과제 서류에 쓰려고 물을 때마다 인력 화면을 열어 옮겨 적어야 했다(2026-10-22 사용자 요청).
+// 관리자의 도구 결과도 모델 공급자와 외부 MCP 커넥터로 나간다 — 그걸 감수한 결정이다. 서명 · 직인은 여전히 안 싣는다.
 // 설계: mydocs/plans/2026-09-14-company-context.md 「구현 순서 6」
 import { prisma } from "@/lib/db"
 import { BASIS_LABEL, RECORD_KIND_LABEL, invoiceRevenue, periodText, ymd } from "@/lib/company-context"
@@ -157,16 +158,22 @@ export async function taxInvoicesText(args: Record<string, unknown>): Promise<st
   return [`세금계산서 ${rows.length}장 — 매출 합은 공급가액(부가세 제외)이며 결산 매출과 몇천 원 다를 수 있다`, ...summary, "", ...lines].join("\n")
 }
 
-export async function staffText(): Promise<string> {
+export async function staffText(isAdmin: boolean): Promise<string> {
   const rows = await prisma.staffProfile.findMany({
     orderBy: [{ employment: "asc" }, { name: "asc" }],
-    select: { name: true, affiliation: true, position: true, haddRole: true, employment: true, insured: true, duties: true, education: true, major: true, joinedOn: true },
+    select: {
+      name: true, affiliation: true, position: true, haddRole: true, employment: true, insured: true, duties: true, education: true, major: true, joinedOn: true,
+      // 관리자가 아니면 읽지도 않는다
+      phone: isAdmin, email: isAdmin, birthDate: isAdmin, ntisNo: isAdmin,
+    },
   })
   const employed = rows.filter((r) => r.employment === "EMPLOYED")
   const former = rows.filter((r) => r.employment === "FORMER")
   if (employed.length === 0) return "인력 정보가 없습니다."
   return [
-    `재직 ${employed.length}명 · 하드사이언스 4대보험 가입 ${employed.filter((r) => r.insured).length}명. 연락처·생년월일·과학기술인번호·서명은 도구로 주지 않는다 — 관리자가 HADD DB 인력 화면에서 본다`,
+    `재직 ${employed.length}명 · 하드사이언스 4대보험 가입 ${employed.filter((r) => r.insured).length}명. ${
+      isAdmin ? "연락처·생년월일·과학기술인번호는 관리자에게만 보이는 개인정보다 — 요청받은 용도에만 쓴다" : "연락처·생년월일·과학기술인번호는 관리자에게만 준다"
+    }. 서명·직인은 도구로 주지 않는다`,
     ...employed.map((r) =>
       `- ${[
         r.name,
@@ -177,6 +184,10 @@ export async function staffText(): Promise<string> {
         r.duties && `담당 ${r.duties}`,
         [r.education, r.major].filter(Boolean).join(" · ") || null,
         r.joinedOn && `입사 ${ymd(r.joinedOn)}`,
+        r.birthDate && `생년월일 ${ymd(r.birthDate)}`,
+        r.phone && `휴대폰 ${r.phone}`,
+        r.email && `이메일 ${r.email}`,
+        r.ntisNo && `과학기술인번호 ${r.ntisNo}`,
       ]
         .filter(Boolean)
         .join(" · ")}`
