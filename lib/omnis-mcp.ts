@@ -517,7 +517,7 @@ export const OMNIS_TOOLS = [
   },
   {
     name: "list_staff",
-    description: "인력 — 재직자의 이름·소속·직급·하드사이언스 역할(CAO·CMO 등)·담당 업무·학력·4대보험 가입 여부. 과제 참여연구원 구성이나 직함을 물으면 쓴다. 연락처·생년월일·서명은 주지 않는다.",
+    description: "인력 — 재직자의 이름·소속·직급·하드사이언스 역할(CAO·CMO 등)·담당 업무·학력·4대보험 가입 여부. 과제 참여연구원 구성이나 직함을 물으면 쓴다. 관리자가 부르면 휴대폰·이메일·생년월일·과학기술인번호도 준다(학회 가입·과제 서류용). 서명은 주지 않는다.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -1460,7 +1460,7 @@ export async function runTool(
     case "list_tax_invoices":
       return { text: await taxInvoicesText(args) }
     case "list_staff":
-      return { text: await staffText() }
+      return { text: await staffText(caller.role === "ADMIN") }
     case "list_market_companies":
       return { text: await marketCompaniesText(args) }
     case "get_context":

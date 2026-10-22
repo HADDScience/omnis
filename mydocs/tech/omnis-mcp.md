@@ -116,7 +116,7 @@ Prisma 는 DB 소유자로 붙으므로 `lib/omnis-mcp.ts` 가 곧 권한 경계
 | `company_profile` | 회사 기본정보 · 연도별 재무(확정 · 잠정 · 계획) |
 | `list_company_records` | 연혁 · 실적 — 지원사업 · 수상 · 학회 · 전시 … |
 | `list_tax_invoices` | 세금계산서 · 연도별 매출 합 |
-| `list_staff` | 인력 — 이름 · 소속 · 직급 · 직함 · 담당 · 학력 · 4대보험 |
+| `list_staff` | 인력 — 이름 · 소속 · 직급 · 직함 · 담당 · 학력 · 4대보험. 관리자에게는 휴대폰 · 이메일 · 생년월일 · 과학기술인번호도 |
 | `list_market_companies` | 시장 · 경쟁 기업 |
 | `get_context` | 대상 하나의 외래키 · 임베딩 이웃. 인력 노드는 관리자에게만 |
 
