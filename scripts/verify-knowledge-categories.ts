@@ -19,7 +19,8 @@ for (const bad of ["기타", "미분류", "일정", "제품", "", "  ", null, un
   check(`거부: ${JSON.stringify(bad)}`, matchCategory(bad), null)
 }
 check("「기타」 같은 열린 분류가 목록에 없다", KNOWLEDGE_CATEGORIES.some((c) => /기타|미분류/.test(c.name)), false)
-check("분류는 6개", KNOWLEDGE_CATEGORIES.length, 6)
+check("띄어쓰기 차이: 외부기업·인물", matchCategory("외부기업·인물"), "외부 기업·인물")
+check("분류는 7개", KNOWLEDGE_CATEGORIES.length, 7)
 
 console.log(fail === 0 ? "\n전부 통과" : `\n${fail}건 실패`)
 process.exit(fail === 0 ? 0 : 1)
