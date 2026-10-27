@@ -67,11 +67,21 @@ const nextConfig = {
      * `/.well-known/…/omnis/api/ip-mcp` 를 찾는다. 이런 클라이언트는 redirect 를 따라가지
      * 않거나 따라가도 POST 본문을 잃는다. rewrite 면 주소가 그대로인 채 안에서 이어진다.
      * 홈페이지(haddscience.com/omnis)가 넘겨주는 요청도 여기로 들어온다.
+     *
+     * 배열로 준 rewrite 는 동적 라우트보다 먼저 걸린다. 그래서 `/omnis/:path*` 가
+     * 지식 카드 상세(`/omnis/[cardId]`)와 분류(`/omnis/c/[categorySlug]`)를 가로채
+     * `/<카드 id>` 로 보내 404 가 났다(2026-10-27). 그 두 경로를 제자리로 먼저 보낸다 —
+     * rewrite 뒤에 라우트가 잡히면 거기서 멈추므로 아래 옛 주소 규칙까지 가지 않는다.
      */
     const legacy = basePath
       ? []
       : [
           { source: "/omnis", destination: "/" },
+          {
+            source: "/omnis/:cardId([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+            destination: "/omnis/:cardId",
+          },
+          { source: "/omnis/c/:categorySlug", destination: "/omnis/c/:categorySlug" },
           { source: "/omnis/:path*", destination: "/:path*" },
           {
             source: "/.well-known/oauth-authorization-server/omnis/api/ip-mcp",
