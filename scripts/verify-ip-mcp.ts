@@ -307,7 +307,7 @@ async function main() {
   )
   check("지침 없이 쓰면 거절된다", isToolError(noGuide))
   check("거절하면서 지침 전문을 준다", toolText(noGuide).includes("HADD IP 사용 지침"))
-  check("확인 코드가 지침에 들어 있다", toolText(noGuide).includes("guide-2026-08-14-r1"))
+  check("확인 코드가 지침에 들어 있다", toolText(noGuide).includes("guide-2026-10-28-r1"))
 
   const mailNoRaw = await rpc(
     "tools/call",
@@ -321,7 +321,7 @@ async function main() {
         nextTurn: "none",
         source: "mail",
         note: "__mcp 검증__",
-        guide: "guide-2026-08-14-r1",
+        guide: "guide-2026-10-28-r1",
       },
     },
     accessToken
@@ -338,7 +338,7 @@ async function main() {
         entityId: "TM-04",
         stage: "없는단계",
         nextTurn: "none",
-        guide: "guide-2026-08-14-r1",
+        guide: "guide-2026-10-28-r1",
       },
     },
     accessToken
@@ -356,7 +356,7 @@ async function main() {
         stage: "검토의견",
         nextTurn: "none",
         note: "__mcp 검증용 기록__",
-        guide: "guide-2026-08-14-r1",
+        guide: "guide-2026-10-28-r1",
       },
     },
     accessToken
@@ -375,6 +375,34 @@ async function main() {
      ORDER BY at DESC LIMIT 1`
   check("감사 기록의 행위자가 MCP 호출자다", auditActor[0]?.actor === user.id, `actor=${auditActor[0]?.actor}`)
 
+  console.log("\n[9-1] correct_ip — 출원일·등록일")
+  const correctSchema = tools.find((t) => t.name === "correct_ip") as
+    | { inputSchema?: { properties?: Record<string, unknown> } }
+    | undefined
+  check(
+    "correct_ip 가 filedOn·registeredOn 을 받는다",
+    Boolean(correctSchema?.inputSchema?.properties?.filedOn && correctSchema.inputSchema.properties.registeredOn)
+  )
+  const badDate = await rpc(
+    "tools/call",
+    {
+      name: "correct_ip",
+      arguments: { entityId: "TM-04", filedOn: "2025.10.17", reason: "__mcp 검증용 기록__", guide: "guide-2026-10-28-r1" },
+    },
+    accessToken
+  )
+  check("형식이 틀린 날짜는 저장하지 않는다", isToolError(badDate) && toolText(badDate).includes("YYYY-MM-DD"), toolText(badDate).slice(0, 120))
+  const fixed = await rpc(
+    "tools/call",
+    {
+      name: "correct_ip",
+      arguments: { entityId: "TM-04", filedOn: "1999-03-03", reason: "__mcp 검증용 기록__", guide: "guide-2026-10-28-r1" },
+    },
+    accessToken
+  )
+  const fixedText = toolText(fixed)
+  check("출원일 정정이 목록에 반영된다", !isToolError(fixed) && fixedText.includes("1999-03-03") && fixedText.includes("filed_on"), fixedText.slice(0, 300))
+
   console.log("\n[10] viewer 는 쓰지 못한다")
   await prisma.$executeRaw`UPDATE ip.members SET role = 'viewer' WHERE user_id = ${user.id}`
   const viewerWrite = await rpc(
@@ -387,7 +415,7 @@ async function main() {
         entityId: "TM-04",
         stage: "검토의견",
         nextTurn: "none",
-        guide: "guide-2026-08-14-r1",
+        guide: "guide-2026-10-28-r1",
       },
     },
     accessToken
@@ -402,6 +430,8 @@ async function main() {
 
   // ─── 정리 ───
   await prisma.$executeRaw`DELETE FROM ip.progress_entries WHERE note = '__mcp 검증용 기록__'`
+  // 기록을 지워도 목록은 되돌아가지 않는다. 출발선부터 다시 계산해 정정 전으로 돌린다.
+  await prisma.$queryRaw`SELECT * FROM ip.rebuild_ledger()`
   await prisma.$executeRaw`DELETE FROM ip.audit_log WHERE actor = ${user.id}`
   await prisma.$executeRaw`DELETE FROM ip.oauth_tokens WHERE user_id = ${user.id}`
   await prisma.$executeRaw`DELETE FROM ip.oauth_codes WHERE user_id = ${user.id}`

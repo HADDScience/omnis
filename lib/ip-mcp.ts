@@ -16,6 +16,7 @@
 import { createHash, randomBytes } from "crypto"
 
 import { prisma } from "@/lib/db"
+import { isYmd } from "@/lib/ip-data"
 
 export const PROTOCOL_VERSION = "2025-06-18"
 export const SERVER_INFO = { name: "hadd-ip", version: "1.0.0" }
@@ -145,7 +146,7 @@ export async function currentMcpToken(userId: string): Promise<McpTokenInfo | nu
 //  모르고 옛 코드를 계속 쓰게 되고, 날짜로 만들면 대화 도중에 코드가 바뀐다.
 // ---------------------------------------------------------------------------
 
-const GUIDE_ACK = "guide-2026-08-14-r1"
+const GUIDE_ACK = "guide-2026-10-28-r1"
 
 const GUIDE_TEMPLATE = [
   "HADD IP 사용 지침 — 쓰기 전에 반드시 한 번 읽는다",
@@ -174,8 +175,9 @@ const GUIDE_TEMPLATE = [
   "받은 메일이라는 이유로 us 를 고르지 않는다. 이 값이 「밀린 IP 업무」를 만든다 — 틀리면 사람이 엉뚱한 일을 한다.",
   "",
   "■ 6. 진행과 정정을 구분한다",
-  "일이 진행된 것(출원했다·회신이 왔다)은 add_progress. 여태 잘못 적혀 있던 값(오타·엉뚱한 번호·틀린 단계)은 correct_ip.",
+  "일이 진행된 것(출원했다·회신이 왔다)은 add_progress. 여태 잘못 적혀 있던 값(오타·엉뚱한 번호·틀린 단계·틀린 출원일·등록일)은 correct_ip.",
   "정정은 「원래부터 이랬다」는 뜻이라 마지막 진행일을 움직이지 않는다.",
+  "출원일·등록일은 단계가 '출원'·'등록'으로 들어간 기록의 날짜로 한 번 채워진다. 이미 그 단계인 건에 남긴 후속 기록(회신·보고 메일)은 날짜를 건드리지 않는다. 비어 있거나 틀렸으면 correct_ip 의 filedOn·registeredOn 에 근거 문서(출원번호통지서·등록증)의 날짜를 넣는다 — 진행 기록으로 채우려 하지 않는다.",
   "",
   "■ 7. 쓰기 전에 본다",
   "list_stages 로 쓸 수 있는 단계를 확인하고, get_ip 로 같은 일이 이미 적혀 있지 않은지 본다. 날짜는 KST 이며 일이 일어난 날을 적는다(오늘이 아니다).",
@@ -186,7 +188,7 @@ const GUIDE_TEMPLATE = [
   "「뇌연구원에서 이전받았다」처럼 **주인이 바뀐 것**은 진행이 아니다. 출원→심사→등록이라는 진도가 움직인 것이 아니므로 stage 는 **지금 단계를 그대로** 적는다(get_ip 의 현재.status). 「이전」이라는 단계는 없다 — 찾지 말고 사용자에게 묻지도 않는다.",
   "add_progress: date=이전등록일 · stage=지금 단계 · counterpart=넘겨준 쪽 · nextTurn='none' · note 에 누구에게서 이전받았는지.",
   "이어서 correct_ip 로 holder(출원인·보유자)를 「{ORG}」 로 바꾼다. 이것을 빠뜨리면 목록에는 계속 남의 이름이 남는다. 우리 이름은 여기 적혀 있으니 사용자에게 묻지 않는다.",
-  "**이전일을 등록일로 만들지 않는다.** 단계가 '등록'인 건에 '등록' 기록을 남기면, 등록일이 비어 있을 때 그 날짜가 그대로 등록일이 된다. get_ip 의 현재.registered_on 을 먼저 본다 — 비어 있으면 **원 등록일(특허청 원부의 등록일)로 등록 기록을 먼저 남기고** 그다음 이전 기록을 남긴다. 원 등록일을 모르면 그것만 사용자에게 묻는다.",
+  "**이전일을 등록일로 만들지 않는다.** 이미 등록 단계인 건에서 마지막 진행일보다 늦은 기록은 등록일을 채우지 않지만, 그 전에 get_ip 의 현재.registered_on 을 먼저 본다 — 비어 있으면 correct_ip 의 registeredOn 에 **원 등록일(특허청 원부의 등록일)**을 넣는다. 원 등록일을 모르면 그것만 사용자에게 묻는다.",
   "",
   "■ 9. 쓴 뒤에 확인한다",
   "응답의 목록_반영을 읽는다. 지난 날짜로 기록하면 단계가 그대로인 것이 정상이다 — 지난 일로 현재를 되돌리지 않기 때문이다. 실패로 보고 다시 쓰면 중복 기록만 쌓인다.",
@@ -370,7 +372,7 @@ export const TOOLS = [
   {
     name: "correct_ip",
     description:
-      "이름·보유자·출원번호·등록번호·단계를 고친다. 지식재산권 목록을 직접 찌르지 않고 「값 정정」 기록 한 줄로 남기므로 무엇이 언제 왜 바뀌었는지 이력에 남는다. 일이 진행된 것(출원했다·등록됐다)은 이 도구가 아니라 add_progress 로 남긴다 — 정정은 「원래부터 이랬다」는 뜻이라 마지막 진행일을 움직이지 않는다. 값을 비우려면 빈 문자열을 넘긴다.",
+      "이름·보유자·출원번호·등록번호·출원일·등록일·단계를 고친다. 지식재산권 목록을 직접 찌르지 않고 「값 정정」 기록 한 줄로 남기므로 무엇이 언제 왜 바뀌었는지 이력에 남는다. 일이 진행된 것(출원했다·등록됐다)은 이 도구가 아니라 add_progress 로 남긴다 — 정정은 「원래부터 이랬다」는 뜻이라 마지막 진행일을 움직이지 않는다. 값을 비우려면 빈 문자열을 넘긴다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -384,6 +386,16 @@ export const TOOLS = [
         holder: { type: "string", description: "보유자 · 출원인" },
         appNo: { type: "string", description: "출원번호" },
         regNo: { type: "string", description: "등록번호" },
+        filedOn: {
+          type: "string",
+          description:
+            "출원일 YYYY-MM-DD. 출원번호통지서의 출원일을 적는다. 진행 기록의 날짜(메일 보낸 날)가 아니다. 비우려면 빈 문자열.",
+        },
+        registeredOn: {
+          type: "string",
+          description:
+            "등록일 YYYY-MM-DD. 등록증·등록원부의 등록일을 적는다. 비우려면 빈 문자열.",
+        },
         stage: {
           type: "string",
           description:
@@ -770,10 +782,10 @@ export async function runTool(
       const rows =
         kind === "trademark"
           ? await prisma.$queryRaw<Row[]>`
-              SELECT name, holder, status, ref_date, app_no, reg_no
+              SELECT name, holder, status, ref_date, app_no, reg_no, filed_on, registered_on
                 FROM ip.trademarks WHERE id = ${id}`
           : await prisma.$queryRaw<Row[]>`
-              SELECT title, applicant, status, ref_date, app_no, reg_no
+              SELECT title, applicant, status, ref_date, app_no, reg_no, filed_on, registered_on
                 FROM ip.patents WHERE id = ${id}`
       return rows[0] ?? null
     }
@@ -788,13 +800,27 @@ export async function runTool(
     // 안 넘긴 칸은 손대지 않고, 빈 문자열은 「비운다」는 뜻이다. 둘을 구분하지
     // 않으면 이름 하나 고치려다 나머지를 통째로 지운다.
     const patch = (key: string) => (args[key] === undefined ? null : String(args[key]))
-    const touched = ["name", "holder", "appNo", "regNo", "stage"].filter(
-      (k) => args[k] !== undefined
-    )
+    const touched = [
+      "name",
+      "holder",
+      "appNo",
+      "regNo",
+      "filedOn",
+      "registeredOn",
+      "stage",
+    ].filter((k) => args[k] !== undefined)
     if (touched.length === 0) {
       return {
         error:
-          "고칠 값이 하나도 없습니다. name·holder·appNo·regNo·stage 중 하나 이상을 넘기세요.",
+          "고칠 값이 하나도 없습니다. name·holder·appNo·regNo·filedOn·registeredOn·stage 중 하나 이상을 넘기세요.",
+      }
+    }
+
+    // 형식이 틀리면 DB CHECK 가 막지만, 그 오류로는 무엇이 틀렸는지 알 수 없다.
+    for (const key of ["filedOn", "registeredOn"]) {
+      const v = patch(key)
+      if (v !== null && v !== "" && !isYmd(v)) {
+        return { error: `${key} 는 YYYY-MM-DD 여야 합니다 (받은 값: ${v}).` }
       }
     }
 
@@ -811,7 +837,8 @@ export async function runTool(
       const rows = await tx.$queryRaw<Row[]>`
         INSERT INTO ip.progress_entries
           (occurred_on, entity_kind, entity_id, stage, direction, counterpart,
-           next_turn, due_on, app_no, reg_no, probability, name, holder, note, source, raw)
+           next_turn, due_on, app_no, reg_no, probability, name, holder, note, source, raw,
+           filed_on, registered_on)
         VALUES
           (${todayKst()}::date, ${kind}, ${id},
            ${(args.stage as string) ?? String(before.status)},
@@ -819,7 +846,8 @@ export async function runTool(
            ${patch("appNo")}, ${patch("regNo")}, NULL,
            ${patch("name")}, ${patch("holder")},
            ${reason || `값 정정 (${touched.join(", ")})`},
-           'edit', NULL)
+           'edit', NULL,
+           ${patch("filedOn")}, ${patch("registeredOn")})
         RETURNING id, occurred_on, stage, source`
       return rows[0]
     })
