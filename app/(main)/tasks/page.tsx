@@ -13,6 +13,7 @@ import { Cancel01Icon } from "@hugeicons/core-free-icons"
 import { loadTasksOverview } from "./overview/load-overview"
 import { TasksStatusBand } from "./overview/tasks-status-band"
 import { DashboardGeminiBadge } from "./overview/dashboard-gemini-usage"
+import { TasksFilterMenu } from "./tasks-filter-menu"
 
 export const dynamic = "force-dynamic"
 
@@ -154,6 +155,7 @@ export default async function TasksPage({ searchParams }: Props) {
                   전체
                 </Badge>
               )}
+              <TasksFilterMenu active={filter} />
             </>
           }
           toolbarEnd={
