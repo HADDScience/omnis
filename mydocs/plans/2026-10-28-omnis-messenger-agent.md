@@ -95,6 +95,13 @@ Omnis 의 정의가 「채팅 기반 사내 지식 관리 에이전트」로 바
 - 옴니스 1:1 방은 지금의 읽기 도구로 **여러 턴 대화**(방의 이전 글을 문맥으로)
 - 오른쪽 패널의 「Omnis AI」 탭은 이 방으로 옮기고 정리
 - 여기까지로 「첫 화면 = 옴니스와의 대화」는 쓸 수 있게 된다
+- **떠 있는 nav 위에 얹는다** (`feat/floating-nav`, 계획 `2026-10-28-floating-nav.md`, 머지 순서 캘린더 → nav → 채팅).
+  사이드바가 없어지고 탭은 채팅(/) · 업무 · 캘린더 · 아카이브 · 마이다
+  - 높이는 `MainWithChat` 스크롤 칸 안에서 `h-full`. 셸이 `--nav-offset-top`(PC 60px) · `--nav-offset-bottom`(폰 68px + safe-area)을
+    이미 비워 두므로 화면 안에서 nav 높이를 빼지 않는다. 화면 전체를 덮는 fixed 요소만 두 변수를 직접 뺀다
+  - 메신저가 `/` 에 들어오면 `components/layout/floating-nav.tsx` 의 `CHAT_HOME_READY` 를 true 로. 방 경로를 따로 두면 `TABS` 의 chat match 에 접두사를 더한다
+  - 온보딩 투어의 "ai" 단계는 nav 채팅 탭을 가리킨다
+  - 방 목록은 사이드바 자리가 아니라 **채팅 화면 안의 왼쪽 칸**이다
 
 ### 3. 에이전트 런타임 · 확인 흐름
 - `AgentRun` · `AgentStep` 표, 위 실행 모델, SSE 중계, 실행당 턴 · 원 상한
