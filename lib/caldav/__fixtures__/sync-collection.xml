@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:caldav="urn:ietf:params:xml:ns:caldav" xmlns:carddav="urn:ietf:params:xml:ns:carddav" xmlns:cs="http://calendarserver.org/ns/" xmlns:ical="http://apple.com/ns/ical/" xmlns:me="http://me.com/_namespace/" xmlns:navercal="http://calendar.naver.com/">
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/c_300000001_aaaaaaaa-0000-4000-8000-000000000002/20250903T045017Z-1001%40example-web-0001.ics</D:href>
+    <D:status>HTTP/1.1 404 Not Found</D:status>
+  </D:response>
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/c_300000001_aaaaaaaa-0000-4000-8000-000000000002/20250903T045017Z-1001%40example-web-0001-CMV.ics</D:href>
+    <D:propstat>
+      <D:prop><D:getetag>"2026-08-05 13:17:13"</D:getetag></D:prop>
+      <D:status>HTTP/1.1 201 Created</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/c_300000001_aaaaaaaa-0000-4000-8000-000000000002/20260909T054240Z-1002%40example-web-0002.ics</D:href>
+    <D:propstat>
+      <D:prop><D:getetag>"2026-09-09 14:42:41"</D:getetag></D:prop>
+      <D:status>HTTP/1.1 201 Created</D:status>
+    </D:propstat>
+  </D:response>
+  <D:sync-token>2026-10-27 17:16:41</D:sync-token>
+</D:multistatus>

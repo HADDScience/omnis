@@ -25,7 +25,7 @@ last_verified: 2026-10-27
 | 옴니스 → 폰·외부 캘린더 | **개인 토큰이 든 ICS 구독 피드** (2026-09-23) | 폰 위젯을 만들지 않고 OS 기본 캘린더를 쓴다. 읽기 전용 · 갱신은 저쪽 주기 |
 | 반복 일정 | **우리가 펼친다** | 서버는 마스터+RRULE 로만 주고 `C:expand` 를 무시한다 |
 | 지연 | **열람 시 갱신이 주력, 스케줄은 보조** | Vercel Hobby 의 크론은 하루 1회다 — 분 단위 크론이 없다 |
-| 옴니스 스키마 | **새 테이블은 하나(`ExternalCalendarEvent`)** | 나머지는 기존 모델의 날짜 칸을 읽는 파생 층 |
+| 옴니스 스키마 | **새 테이블은 웍스 미러 둘**(`ExternalCalendar` · `ExternalCalendarEvent`) | 나머지는 기존 모델의 날짜 칸을 읽는 파생 층 |
 
 ## 1. 웍스에서 데이터를 꺼내는 세 가지 길
 
@@ -283,37 +283,54 @@ HTTP Calendar API** — 세 길이 각각 한 방향씩만 맡고 겹치지 않�
 
 이미 날짜를 가진 모델을 공통 `CalendarItem` 모양으로 읽는 어댑터만 둔다. 집계 대상:
 
-| 모델 | 칸 | 캘린더에서 |
-|---|---|---|
-| `Task` | `deadline` / `workStart`~`workEnd` | 마감 · 작업 기간 |
-| `Project` | `startDate`~`deadline` | 기간 막대 |
-| `WeeklyReport` | `weekStart`~`weekEnd`, `submittedAt` | 주간 경계 · 제출 |
-| `CompanyRecord` | `startsOn`~`endsOn` | 연혁 · 수상 · 정부과제 |
-| `CrmQuote` | `quotedAt`, `taxInvoicedAt` | 견적 · 세금계산서 |
-| `CrmSampleRequest` | `requestedAt`, `sentAt` | 샘플 신청 · 발송 |
-| `CrmShipment` · `CrmProduction` | `shippedAt` · `producedAt` | 출고 · 생산 |
-| `TaxInvoice` · `CrmPayment` | `issuedOn` · `paidOn` | 발행 · 입금 |
+| 모델 | 칸 | 캘린더에서 | 화면 묶음 · 기본 |
+|---|---|---|---|
+| `Task` | `deadline` | 마감. 완료된 업무는 흐리게 | 업무 마감 · 켬 |
+| `Project` | `startDate`~`deadline` | 기간 막대 | 프로젝트 · 켬 |
+| `CompanyRecord` | `startsOn`~`endsOn` | 연혁 · 수상 · 정부과제 | 회사 기록 · 켬 |
+| `CrmQuote` | `quotedAt` | 견적 | CRM · 끔 |
+| `CrmSampleRequest` | `requestedAt`, `sentAt` | 샘플 신청 · 발송 | CRM · 끔 |
+| `CrmShipment` · `CrmProduction` | `shippedAt` · `producedAt` | 출고 · 생산 | CRM · 끔 |
+| `TaxInvoice` · `CrmPayment` | `issuedOn` · `paidOn` | 발행 · 입금. 금액은 싣지 않는다 | 재무 · 끔 |
+| `WeeklyReport` | `submittedAt` | 내 주간보고 제출 | 주간보고 · 끔 |
+
+2026-10-28 구현하며 고친 것:
+
+- **`Task.workStart`~`workEnd` 는 쓰지 않는다.** 처음에 「작업 기간」으로 적었는데, `workEnd` 는 계획이
+  아니라 **완료한 시각**이다 — 상태를 `DONE` 으로 바꿀 때 `new Date()` 로 찍힌다(`lib/task-update.ts`).
+  로컬 스냅샷에서 472건이 그 꼴이었다. `workStart` 는 1건뿐이다
+- `CrmQuote.taxInvoicedAt` 은 `TaxInvoice.issuedOn` 과 같은 사건이라 뺐다
+- `WeeklyReport` 의 주간 경계는 매주 같은 막대라 뺐다. 제출만 남긴다
+
+**날짜 칸의 저장 꼴이 다르다** (2026-10-28 로컬 스냅샷 실측). 업무 마감은 **서울 자정**(15:00Z) 105건 ·
+실제 시각 7건, 회사 기록 · CRM · 세금계산서 · 입금은 **UTC 자정**이다. 그래서 날짜는 한 규칙으로 정한다 —
+UTC 자정이면 UTC 날짜, 아니면 서울 날짜. 세 꼴 모두 맞는 날이 나온다(`calendarDate`, `lib/calendar/items.ts`).
+
+**권한은 넓히지 않는다.** 업무는 기본이 내가 담당 · 지시한 것(「전체」를 고르면 업무 화면과 같은 범위),
+주간보고는 내 것만, 회사 기록 · CRM · 세금계산서는 각 화면처럼 구성원 전체. 웍스 캘린더는 3.2 의 `audience`.
 
 조회는 창(`from`~`until`)을 받아 이 어댑터들과 3.2 를 **UNION 하는 read model 하나**로 둔다.
 원본 모델에 칸을 더하지 않는다 — 캘린더는 읽는 쪽이다.
 
 성능이 문제가 되면 그때 인덱스 테이블을 materialize 한다. 지금 규모(업무 수백 건대)에서는 필요 없다.
 
-### 3.2 `ExternalCalendarEvent` — 새 테이블은 이것 하나
+### 3.2 `ExternalCalendarEvent` — 새 테이블은 웍스 미러뿐
 
 옴니스 안에 집이 없는 데이터, 즉 웍스에서 미러링한 일정만 담는다.
 
 | 칸 | 왜 |
 |---|---|
-| `provider` · `externalCalendarId` · `externalId`(UID) | `(provider, externalCalendarId, externalId)` 유니크 |
+| `calendarId` · `uid` · `recurrenceId` | `(calendarId, uid, recurrenceId)` 유니크 |
 | `href` · `etag` | `calendar-multiget` 재요청 키. etag 가 같으면 본문을 다시 받지 않는다 |
-| `recurrenceId` | 예외 회차. 마스터와 같은 UID 를 갖기 때문에 UID 만으로는 유니크하지 않다 |
-| `rrule` · `exdate` | 전개는 조회 시점에 한다. 펼친 결과를 저장하지 않는다 |
-| `startAt` · `endAt` · `isAllDay` · `tzid` | `DTSTART;TZID=Asia/Seoul` 과 `VALUE=DATE` 를 구분해 담는다 |
+| `recurrenceId` | 예외 회차. 마스터와 같은 UID 를 갖기 때문에 UID 만으로는 유니크하지 않다. **마스터는 `null` 이 아니라 빈 문자열** — Postgres 유니크 키는 null 끼리의 겹침을 막지 못한다 |
+| `rrule` · `exdates` · `recurUntil` | 전개는 조회 시점에 한다. 펼친 결과를 저장하지 않는다. `recurUntil` 은 마지막 회차의 끝(끝없는 반복은 null)으로, 조회 창을 거르는 데만 쓴다 |
+| `startAt` · `endAt` · `isAllDay` · `tzid` | `DTSTART;TZID=Asia/Seoul` 과 `VALUE=DATE` 를 구분해 담는다. 종일은 서울 자정 기준 |
 | `sequence` · `lastModified` | 변경 판정 |
 | `deletedAt` | `sync-collection` 의 `404` 묘비. 지우지 않고 가린다 |
 
-캘린더별 커서는 따로 둔다 — `externalCalendarId` · `ctag` · `syncToken` · `syncedAt`.
+캘린더 하나는 `ExternalCalendar` 한 행이다 — `externalId` · `displayName` · `ctag` · `syncToken`(3초 되돌린 값) ·
+`syncedAt` · `attemptedAt` · `lastError` · **`audience`**. `audience` 는 옴니스에서 누가 보는가(`ALL` · `ADMIN`)이고
+**기본값은 `ADMIN`** 이다. 웍스에서 보이는 사람과 옴니스 구성원이 같다는 보장이 없어서다. 관리자가 캘린더 화면에서 연다.
 
 **펼친 인스턴스를 테이블에 쌓지 않는다.** 무한 반복이 있으면 끝이 없고, 규칙이 바뀔 때마다
 지우고 다시 넣어야 한다. 마스터만 저장하고 조회 창에 맞춰 그때 전개한다.
@@ -327,19 +344,53 @@ HTTP Calendar API** — 세 길이 각각 한 방향씩만 맡고 겹치지 않�
 
 ## 4. 승인 전인 것과 남은 확인
 
-- **자격증명.** 탐침은 개인 계정 앱 비밀번호로 했다. 운영에 쓸 계정을 정해야 한다 —
-  서비스 계정이 CalDAV Basic 인증에 쓰일 수 있는지 확인되지 않았다. 안 되면 전용 계정의
-  앱 비밀번호를 쓰고, 그 계정이 어느 캘린더를 구독하는지가 곧 동기화 범위가 된다.
-- **동기화 범위.** 탐침 계정에는 캘린더 5개·일정 809건이 보였고, 그중 둘에만
-  `D:write-content` 가 있었다. 어느 캘린더를 옴니스에 들일지는 사람이 정한다.
+**2026-10-28 에 정해진 둘** (계획서 [`../plans/2026-10-28-calendar-works-sync.md`](../plans/2026-10-28-calendar-works-sync.md)):
+
+- **계정** — 정우창 개인 계정의 앱 비밀번호를 쓴다. 대가는 그 앱 비밀번호가 **IMAP 도 함께
+  열린다**는 것이다 — 옴니스 서버가 회사 메일을 읽을 수 있는 열쇠를 갖고, 비밀번호를 바꾸면
+  동기화가 조용히 멈춘다. 전용 계정 교체를 후속 과제로 둔다. 서비스 계정이 CalDAV Basic
+  인증에 쓰일 수 있는지는 확인되지 않았다.
+- **범위** — 캘린더 3개: `Hadd Science`(쓰기 권한 있음) · `대표님 일정` · `바이오아이코어 2026`.
+  탐침 계정에 보인 5개 중 본인 개인 캘린더와 8월 이후 변경이 없는 하나는 뺐다. **본인 개인
+  일정은 옴니스 캘린더에 뜨지 않는다.** 동기화 범위는 「이 계정이 구독한 캘린더」이므로
+  계정에서 캘린더를 빼면 옴니스에서도 사라진다.
+- `calendarId` 를 코드에 박지 않는다 — PROPFIND 로 찾고 **표시 이름으로 걸러** 맞춘다.
+  웍스에서 캘린더를 다시 만들면 id 는 바뀌지만 이름은 유지된다.
+
+아직 사람이 정하지 않은 것:
+
 - **옴니스 → 웍스 쓰기를 할지.** 2.3 의 마지막 줄. 하지 않으면 전체가 읽기 전용 미러로 끝나고 훨씬 싸다.
 - **ICS 피드의 민감 일정 제목 가림** — 1.3. 잠금화면에 보이므로 기본값을 정해야 한다.
 - **ICS 피드를 어느 데이터까지 담을지** — `Task.deadline` 으로 시작하는 것은 정했고,
   3.1 의 나머지와 웍스 일정을 언제 더할지는 미정이다.
 - **스케줄러를 어디에 둘지** — 사내 NAS 인지 GitHub Actions 인지. Vercel Hobby 로는 안 된다.
+  2026-10-28 구현에는 넣지 않았다 — 아무도 안 볼 때의 동기화가 필요해지는 것은 알림을 붙일 때다.
 
-스키마 변경과 외부 자격증명 투입이 들어가므로 [`AGENTS.md`](../../AGENTS.md) 의 타스크 사이클
-2단계(계획서 → 승인)를 거친다. 이 문서는 그 계획서가 아니라 **그 앞의 확정 사실**이다.
+## 4a. 구현 (2026-10-28)
+
+계획 [`../plans/2026-10-28-calendar-works-sync.md`](../plans/2026-10-28-calendar-works-sync.md) ·
+실측 [`../working/2026-10-28-calendar-works-sync.md`](../working/2026-10-28-calendar-works-sync.md).
+
+| 어디 | 무엇 |
+|---|---|
+| `lib/caldav/` | 읽기 전용 클라이언트 · XML · iCalendar 파서 · 동기화(`syncWorksCalendars`) |
+| `lib/calendar/` | 시간대 · RRULE 전개 · 읽기 모델(`getCalendarItems`) · 월 칸 계산 |
+| `app/api/calendar/` | `GET` 읽기 · `POST sync` 열람 시 갱신 · `PATCH calendars/[id]` 공개범위 |
+| `app/(main)/calendar/` | 월 보기 화면 |
+| `scripts/calendar-sync.ts` | 지금 한 번 당기기 · `--force` 처음부터 |
+
+환경변수(서버 전용). **넷 중 하나라도 비면 웍스 부분이 통째로 꺼지고** 캘린더는 옴니스 날짜만으로 돈다 —
+새 테이블을 읽지도 않는다. 데모(`omnis`)에는 넣지 않는다.
+
+| 이름 | 뜻 |
+|---|---|
+| `CALDAV_HOME_URL` | 캘린더 홈. `https://caldav.worksmobile.com/rl/{테넌트}/caldav/{웍스 userId}/calendar/` |
+| `CALDAV_USERNAME` | 그 계정의 회사 메일 주소 |
+| `CALDAV_PASSWORD` | 앱 비밀번호. **IMAP 도 열리는 열쇠다** — Sensitive 로만 |
+| `CALDAV_CALENDARS` | 들일 캘린더의 표시 이름, 쉼표로. `calendarId` 는 PROPFIND 로 찾는다 |
+
+비밀번호를 바꾸면 동기화는 401 로 멈추고, 관리자에게만 「보기」 창에 오류가 보인다.
+구성원 화면은 DB 에 있던 것으로 그대로 돈다.
 
 ## 5. 실측 기록 (2026-10-27)
 

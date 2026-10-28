@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:caldav="urn:ietf:params:xml:ns:caldav" xmlns:carddav="urn:ietf:params:xml:ns:carddav" xmlns:cs="http://calendarserver.org/ns/" xmlns:ical="http://apple.com/ns/ical/" xmlns:me="http://me.com/_namespace/" xmlns:navercal="http://calendar.naver.com/">
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/c_300000001_aaaaaaaa-0000-4000-8000-000000000002/20250903T045017Z-1001%40example-web-0001-CMV.ics</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:getetag>"2025-12-10 07:42:24"</D:getetag>
+        <caldav:calendar-data><![CDATA[BEGIN:VCALENDAR
+PRODID:Naver Calendar
+VERSION:2.0
+CALSCALE:GREGORIAN
+BEGIN:VTIMEZONE
+TZID:Asia/Seoul
+LAST-MODIFIED:20260409T023504Z
+TZURL:http://tzurl.org/zoneinfo-outlook/Asia/Seoul
+X-LIC-LOCATION:Asia/Seoul
+BEGIN:STANDARD
+TZNAME:KST
+TZOFFSETFROM:+0900
+TZOFFSETTO:+0900
+DTSTART:19700101T000000
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:20250903T045017Z-1001@example-web-0001
+SEQUENCE:2
+CREATED:20250903T045017Z
+LAST-MODIFIED:20251209T224224Z
+DTSTAMP:20251209T224224Z
+X-NAVER-REGISTERER;CN="홍길동";X-WORKSMOBILE-WID=200000000000009;CUTYPE=INDIVIDUAL:example@example.com
+X-NAVER-LAST-MODIFIER;CN="홍길동";X-WORKSMOBILE-WID=200000000000009;CUTYPE=INDIVIDUAL:example@example.com
+SUMMARY:주간 연구 회의 (예시)
+DESCRIPTION:
+PRIORITY:0
+CLASS:PUBLIC
+DTSTART;TZID=Asia/Seoul:20250903T180000
+DTEND;TZID=Asia/Seoul:20250903T220000
+RRULE:FREQ=WEEKLY;UNTIL=20251209T090000Z;INTERVAL=1;BYDAY=WE
+EXDATE;TZID=Asia/Seoul:20251008T180000
+END:VEVENT
+BEGIN:VEVENT
+UID:20250903T045017Z-1001@example-web-0001
+RECURRENCE-ID;TZID=Asia/Seoul:20251126T180000
+SEQUENCE:2
+CREATED:20250903T045017Z
+LAST-MODIFIED:20251123T165410Z
+DTSTAMP:20251123T165410Z
+X-NAVER-REGISTERER;CN="홍길동";X-WORKSMOBILE-WID=200000000000009;CUTYPE=INDIVIDUAL:example@example.com
+X-NAVER-LAST-MODIFIER;CN="홍길동";X-WORKSMOBILE-WID=200000000000009;CUTYPE=INDIVIDUAL:example@example.com
+SUMMARY:주간 연구 회의 (예시) — 시간 변경
+DESCRIPTION:세미나실 B\, 2층\n간식 준비
+PRIORITY:0
+CLASS:PUBLIC
+DTSTART;TZID=Asia/Seoul:20251126T203000
+DTEND;TZID=Asia/Seoul:20251127T000000
+END:VEVENT
+END:VCALENDAR]]></caldav:calendar-data>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/c_300000001_aaaaaaaa-0000-4000-8000-000000000002/20260909T054240Z-1002%40example-web-0002.ics</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:getetag>"2026-09-09 14:42:41"</D:getetag>
+        <caldav:calendar-data><![CDATA[BEGIN:VCALENDAR
+PRODID:Naver Calendar
+VERSION:2.0
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+UID:20260909T054240Z-1002@example-web-0002
+SEQUENCE:0
+CREATED:20260909T054240Z
+LAST-MODIFIED:20260909T054240Z
+DTSTAMP:20260909T054240Z
+X-NAVER-REGISTERER;CN="홍길동";X-WORKSMOBILE-WID=200000000000009;CUTYPE=INDIVIDUAL:example@example.com
+X-NAVER-LAST-MODIFIER;CN="홍길동";X-WORKSMOBILE-WID=200000000000009;CUTYPE=INDIVIDUAL:example@example.com
+SUMMARY:창립기념일 (예시)
+CLASS:PUBLIC
+DTSTART;VALUE=DATE:20261103
+DTEND;VALUE=DATE:20261104
+LOCATION:본사
+ORGANIZER;CN="홍길동":mailto:organizer@example.com
+ATTENDEE;CN="김예시";PARTSTAT=ACCEPTED:mailto:kim@example.com
+ATTENDEE;CN="이예시, 팀장";PARTSTAT=NEEDS-ACTION:mailto:lee@example.com
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:알림 문구는 일정 설명이 아니다
+TRIGGER:-PT15M
+END:VALARM
+END:VEVENT
+END:VCALENDAR]]></caldav:calendar-data>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/c_300000001_aaaaaaaa-0000-4000-8000-000000000002/gone.ics</D:href>
+    <D:status>HTTP/1.1 404 Not Found</D:status>
+  </D:response>
+</D:multistatus>

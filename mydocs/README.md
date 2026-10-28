@@ -99,6 +99,7 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [troubleshootings/narrow-viewport-traps.md](troubleshootings/narrow-viewport-traps.md) | reference | 좁은 뷰포트·터치 타깃에서 밟은 함정 (min-w-0 · rem 축소 · coarse 측정) |
 | [troubleshootings/pr-traps-2026-09.md](troubleshootings/pr-traps-2026-09.md) | reference | PR #7~#17 에서 밟은 함정 (next start 운영 DB 사고 · zoom 좌표계 · 늦게 끝난 AI 재구성 · MCP GET 재연결 루프 · 요청 한도 · 🤖 작성자 · 외부 API 가 죽어야 통과하던 검증) |
 | [tech/calendar.md](tech/calendar.md) | canonical | 캘린더 — 옴니스 날짜 데이터 집계 · 웍스 CalDAV 실측(증분 동기화 됨 · 쓰기 막힘 · 반복은 우리가 펼친다) · 폴링 계층 · 폰으로 내보내는 ICS 구독 피드 |
+| [working/2026-10-28-calendar-works-sync.md](working/2026-10-28-calendar-works-sync.md) | snapshot | 캘린더 1~5단계 구현 실측 · 계획과 달라진 것 · 머지 전에 할 것(운영 마이그레이션 · 환경변수 넷) |
 
 작업 규약 자체는 저장소 루트의 [`AGENTS.md`](../AGENTS.md) 가 정본이다 —
 `mydocs/` 아래가 아니라 루트에 두는 이유는, 저장소를 처음 여는 도구가
