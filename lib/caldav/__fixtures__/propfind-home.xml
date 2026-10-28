@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:caldav="urn:ietf:params:xml:ns:caldav" xmlns:carddav="urn:ietf:params:xml:ns:carddav" xmlns:cs="http://calendarserver.org/ns/" xmlns:ical="http://apple.com/ns/ical/" xmlns:me="http://me.com/_namespace/" xmlns:navercal="http://calendar.naver.com/">
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype><D:collection/></D:resourcetype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+    <D:propstat>
+      <D:prop>
+        <D:displayname/>
+        <cs:getctag/>
+      </D:prop>
+      <D:status>HTTP/1.1 404 Not Found</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/c_300000001_aaaaaaaa-0000-4000-8000-000000000001/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype><D:collection/><caldav:calendar/></D:resourcetype>
+        <D:displayname>예시 개인</D:displayname>
+        <cs:getctag>2026-10-20 17:26:02</cs:getctag>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/c_300000001_aaaaaaaa-0000-4000-8000-000000000002/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype><D:collection/><caldav:calendar/></D:resourcetype>
+        <D:displayname>예시 회사 행사</D:displayname>
+        <cs:getctag>2026-10-27 15:46:13</cs:getctag>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/rl/90001/caldav/200000000000001/calendar/c_0_aaaaaaaa-0000-4000-8000-000000000003/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype><D:collection/><caldav:calendar/></D:resourcetype>
+        <D:displayname>예시 외부 미팅 &amp; 출장</D:displayname>
+        <cs:getctag>2026-08-05 13:12:00</cs:getctag>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>

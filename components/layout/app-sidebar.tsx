@@ -7,6 +7,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   DashboardSpeed02Icon,
   Task01Icon,
+  Calendar03Icon,
   BookOpen01Icon,
   FileAttachmentIcon,
   Logout01Icon,
@@ -66,6 +67,7 @@ import { InstallAppCard } from "@/components/layout/install-app-card"
 const navItems = [
   { href: "/dashboard", label: "워크스페이스", icon: DashboardSpeed02Icon },
   { href: "/tasks", label: "업무", icon: Task01Icon },
+  { href: "/calendar", label: "캘린더", icon: Calendar03Icon },
   { href: "/omnis", label: "HADD DB", icon: BookOpen01Icon },
   {
     href: "https://haddscience.github.io/ip-platform/",
