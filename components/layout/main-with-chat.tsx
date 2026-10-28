@@ -55,7 +55,7 @@ export function MainWithChat({
         <div className="flex min-h-0 flex-1 flex-col">
           {/* 떠 있는 nav 밑에 내용이 깔리지 않게 그 높이만큼 비운다. 업무 보드처럼 화면 높이에 묶인 화면도
               이 칸 안에서 높이를 재므로, 여백은 각 화면이 아니라 여기 한 곳에서 준다 */}
-          <div className="flex-1 overflow-auto pt-[var(--nav-offset-top)] pb-[var(--nav-offset-bottom)]">{children}</div>
+          <div data-main-scroll className="flex-1 overflow-auto pt-[var(--nav-offset-top)] pb-[var(--nav-offset-bottom)]">{children}</div>
         </div>
         <RightPanel
           currentUserId={currentUserId}

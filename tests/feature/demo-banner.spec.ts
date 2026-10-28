@@ -46,7 +46,8 @@ test.describe("시연용 데모 배너 + 테스트 계정 카드", () => {
       .getByRole("status", { name: "시연용 데모 사이트" })
       .first()
     const sidebarLogo = page
-      .getByRole("link", { name: "Omnis 처음으로" })
+      .getByRole("navigation", { name: "주 메뉴" })
+      .filter({ visible: true })
       .first()
 
     const [bannerBox, sidebarBox] = await Promise.all([

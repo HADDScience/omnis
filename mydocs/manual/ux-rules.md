@@ -148,14 +148,22 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 계획: [`../plans/2026-10-28-floating-nav.md`](../plans/2026-10-28-floating-nav.md)
 
 - 탭 정의는 `components/layout/floating-nav.tsx` 의 `TABS` 한 곳이다. 메뉴를 더하거나 빼면 여기만 고친다
-- PC(≥ 768px)는 상단 가운데, 폰은 하단. 두 모양은 **CSS 로만** 가른다 — JS 로 가르면 서버 첫 화면과 어긋난다.
+- PC(≥ 768px)는 페이지 제목줄 가운데에 겹쳐 뜨고, 폰은 하단. PC 제목줄(`Header`)은 가운데 `--nav-w` 칸을 비우고
+  제목은 왼쪽, 버튼은 오른쪽 칸에 둔다. md 는 아이콘만(18.75rem), lg 부터 글자까지(35rem) — 탭 폭을 바꾸면 이 값도 같이 고친다. 두 모양은 **CSS 로만** 가른다 — JS 로 가르면 서버 첫 화면과 어긋난다.
   단 알림 종처럼 두 번 그리면 일을 두 번 하는 것은 `NAV_DESKTOP_QUERY` 로 한 곳에만 그린다
-- 유리는 `globals.css` 의 `.glass` 유틸과 `--glass-*` 토큰. `backdrop-filter` 미지원 · `prefers-reduced-transparency` 에서는 불투명 판
+- 생김새는 Linear 의 리퀴드 글래스를 따른다([linear.app/now/linear-liquid-glass](https://linear.app/now/linear-liquid-glass)):
+  탭은 캡슐 하나, 동작(검색·알림)은 옆에 따로 뜬 원, 현재 탭은 캡슐 안에서 미끄러지는 한 겹 더 진한 유리(`.glass-pill`),
+  누르면 살짝 눌림, 스크롤 끝 가변 블러(`.nav-edge-*`). **굴절은 넣지 않는다** — 밀도 높은 업무 화면을 읽기 어렵게 하고 웹에서는 Chrome 전용이다
+- 유리는 `globals.css` 의 `.glass` 유틸과 `--glass-*` 토큰. 블러 바탕 + 위아래 그라데이션 + 가장자리 빛(1px 그라데이션 테두리).
+  `backdrop-filter` 미지원 · `prefers-reduced-transparency` 에서는 불투명 판, `prefers-contrast: more` 에서는 불투명 판 + 실선 테두리
+- 블러 반경은 애니메이션하지 않는다(폰에서 끊긴다). 세기는 마스크와 투명도로만 바꾼다
+- 유리는 크롬(nav · 시트 · 떠 있는 바)에만. 목록 · 카드 · 표는 평면으로 둔다
+- 섹션 하위 탭 띠는 `HeaderSubnavProvider` 로 넘기면 `Header` 가 제목줄 바로 아래에 그린다 — 레이아웃이 children 앞에 직접 두면 제목줄보다 위에 붙는다
 - **내용이 nav 밑에 깔리지 않게** 하는 일은 셸(`MainWithChat`)이 `--nav-offset-top` / `--nav-offset-bottom` 만큼 비워서 한다.
   화면 높이에 묶인 화면(업무 보드 · 채팅 · 캘린더)은 이 칸 안에서 `h-full` 로 높이를 잰다 — 화면마다 nav 높이를 빼지 않는다.
   화면 전체를 덮는 `fixed` 요소를 새로 만들면 이 두 변수를 직접 뺀다
 - 폰 키보드가 올라오면(`visualViewport` 높이가 3/4 미만) 하단 nav 를 내린다
-- 섹션 안의 하위 이동은 nav 가 아니라 화면 위 띠로 한다 — 아카이브는 `ArchiveNav`(`/omnis` · `/crm` 레이아웃), CRM 은 그 아래 `CrmNav`
+- 섹션 안의 하위 이동은 nav 가 아니라 제목줄 아래 띠로 한다 — 아카이브는 `ArchiveNav`(`/omnis` · `/crm` 레이아웃), CRM 은 그 아래 `CrmNav`
 
 ---
 
