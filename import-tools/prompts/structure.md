@@ -4,7 +4,7 @@
 - `context.projects` — 기존 프로젝트 목록 `{id, name, productName}`. **이 회사에서 프로젝트는 과제 단위다**(정부지원과제·교육프로그램·행사 등).
 - `context.products` — 제품 목록 `{id, name}`
 - `context.members` — 팀원 정식 이름 배열
-- `context.priorTasks` — 이미 있는 업무 `{name, project, date}`. 앞선 이식 라운드에서 만든 것과 옴니스에서 직접 만든 것 모두다. 같은 업무의 연속인지 판단할 때 쓴다 (규칙 8).
+- `context.priorTasks` — 이미 있는 업무 `{name, project, date, status}`. 끝나지 않은 업무 전부와 최근 끝난 업무다. 앞선 이식 라운드에서 만든 것과 옴니스에서 직접 만든 것 모두다. 같은 업무의 연속인지 판단할 때 쓴다 (규칙 8).
 - `context.omnisCards` — 옴니스 지식 카드 제목 (비어 있을 수 있다)
 - `sessions` — 시간순 세션 배열 `{id, start, messages:[{t,u,m}]}`
 
@@ -41,6 +41,7 @@
 4. **deadlineHint**: 대화에 **명시된 기한만** `start` 날짜 기준으로 절대 날짜(YYYY-MM-DD)로 환산. 없으면 반드시 null. 지어내면 화면에 잘못된 "지연"으로 표시된다.
 
 5. **status**: 완료가 명확히 확인될 때만 `DONE`. 착수 신호만 있으면 `IN_PROGRESS`. 판단이 안 서면 `TODO`.
+   continuesTask 를 채웠다면 status 는 **이 세션까지 본 그 업무의 상태**다. "완료했습니다"·"제출했습니다"·"보내드렸습니다" 같은 결과 보고에 지시자가 이의 없이 받았으면(확인·감사·다음 일로 넘어감) `DONE`. 그 값으로 기존 카드의 상태가 올라간다.
 
 6. **checklist**: 대화에서 실제 요구된 행동만 2~5개. 없는 절차를 지어내지 마라. **담당자별로 쪼개지 마라** — 한 업무에 하나의 목록이다.
 

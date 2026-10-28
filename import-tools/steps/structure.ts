@@ -64,6 +64,8 @@ function saveDraftCache(cache: Map<string, Draft>) {
 
 const PRIORITIES = new Set(["LOW", "NORMAL", "HIGH"])
 const STATUSES = new Set(["TODO", "IN_PROGRESS", "DONE"])
+/** 상태를 올리기만 할 때의 순서. REVIEW 는 사람이 옴니스에서 둔 것이라 DONE 만 그 위다. */
+const RANK: Record<string, number> = { TODO: 0, IN_PROGRESS: 1, REVIEW: 2, DONE: 3 }
 
 /** 프로젝트 이름 비교용 키. 앞의 날짜·순번 숫자는 무시한다("28 IR 피치덱" ↔ "IR 피치덱"). */
 const projectKey = (name: string) => normalizeProjectName(name).replace(/^[0-9]+\s+/, "")
@@ -115,10 +117,20 @@ async function buildPayload(round: number, totalRounds: number, chunk: RawSessio
     prisma.omnisCard.findMany({ select: { title: true, category: { select: { name: true } } }, take: 60 }),
     // 이미 있는 업무. 이어지는 업무인지, 새 업무인지 판단하는 근거다.
     // 이식으로 만든 것만이 아니라 옴니스에서 직접 만든 것도 넣는다 — 빼면 같은 일로 카드가 한 장 더 생긴다.
-    prisma.task.findMany({
-      select: { name: true, createdAt: true, project: { select: { name: true } } },
-      orderBy: { createdAt: "desc" }, take: 80,
-    }),
+    // 끝나지 않은 업무는 오래됐어도 전부 넣는다. 최근 80개만 주면 두 달 전 지시의 완료 보고가 새 카드가 되고
+    // 원래 카드는 영영 미완료로 남는다.
+    Promise.all([
+      prisma.task.findMany({
+        where: { archived: false, status: { not: "DONE" } },
+        select: { name: true, status: true, createdAt: true, project: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.task.findMany({
+        where: { status: "DONE" },
+        select: { name: true, status: true, createdAt: true, project: { select: { name: true } } },
+        orderBy: { createdAt: "desc" }, take: 40,
+      }),
+    ]).then(([open, done]) => [...open, ...done]),
   ])
   return {
     round, totalRounds,
@@ -127,7 +139,7 @@ async function buildPayload(round: number, totalRounds: number, chunk: RawSessio
       products,
       members: members.map((m) => m.name),
       omnisCards: omnisCards.map((c) => `[${c.category.name}] ${c.title}`),
-      priorTasks: priorTasks.map((t) => ({ name: t.name, project: t.project?.name ?? null, date: t.createdAt.toISOString().slice(0, 10) })),
+      priorTasks: priorTasks.map((t) => ({ name: t.name, project: t.project?.name ?? null, date: t.createdAt.toISOString().slice(0, 10), status: t.status })),
     },
     sessions: chunk.map((s) => ({
       id: s.id, start: s.start,
@@ -145,7 +157,7 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
     create: { id: "project-misc", name: MISC_PROJECT, status: "진행 중", purpose: "과제에 속하지 않는 상시·일상 업무" },
     select: { id: true },
   })
-  const stats = { created: 0, continued: 0, skipped: 0, matched: 0, misc: 0, newProj: 0, noAssignee: 0, deadline: 0, dropped: 0 }
+  const stats = { created: 0, continued: 0, promoted: 0, skipped: 0, matched: 0, misc: 0, newProj: 0, noAssignee: 0, deadline: 0, dropped: 0 }
   const createdIds: string[] = []
 
   for (const d of drafts) {
@@ -157,10 +169,17 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
     // 기존 업무의 연속이면 새 카드 대신 그 업무 스레드에 메시지를 붙인다. 이름이 같은 업무가 여럿이면 가장 최근 것.
     // 이름을 못 찾으면 새 카드로 간다 — 붙일 곳을 지어내지 않는다.
     const target = d.continuesTask?.trim()
-      ? await prisma.task.findFirst({ where: { name: d.continuesTask.trim() }, orderBy: { createdAt: "desc" }, select: { id: true } })
+      ? await prisma.task.findFirst({ where: { name: d.continuesTask.trim() }, orderBy: { createdAt: "desc" }, select: { id: true, status: true } })
       : null
     if (target) {
       await prisma.chatMessage.updateMany({ where: { sourceId: { in: sessionMessageIds(s) }, taskId: null }, data: { taskId: target.id } })
+      // 후속 세션이 완료 보고면 기존 카드를 올린다. 올리기만 한다 — 사람이 옴니스에서 바꾼 상태를 되돌리지 않게.
+      const next = d.status && STATUSES.has(d.status) ? d.status : null
+      if (next && RANK[next] > (RANK[target.status] ?? 99)) {
+        await prisma.task.update({ where: { id: target.id }, data: { status: next } })
+        if (next === "DONE") await prisma.checklist.updateMany({ where: { taskId: target.id }, data: { done: true } })
+        stats.promoted++
+      }
       stats.continued++
       continue
     }
@@ -285,7 +304,7 @@ export async function structure(sessions: RawSession[], opts: { model: string; d
     const drafts = chunk.map((s) => cache.get(s.id)).filter((d): d is Draft => !!d)
     const st = await applyDrafts(drafts, chunk)
     created += st.created
-    console.log(`  적용 — 생성 ${st.created} · 기존 업무에 붙임 ${st.continued} · 건너뜀 ${st.skipped} · 과제 매칭 ${st.matched} (신규 ${st.newProj}) · 기타 ${st.misc} · 담당자 없음 ${st.noAssignee} · 마감 ${st.deadline} (버림 ${st.dropped})`)
+    console.log(`  적용 — 생성 ${st.created} · 기존 업무에 붙임 ${st.continued} (상태 올림 ${st.promoted}) ·건너뜀 ${st.skipped} · 과제 매칭 ${st.matched} (신규 ${st.newProj}) · 기타 ${st.misc} · 담당자 없음 ${st.noAssignee} · 마감 ${st.deadline} (버림 ${st.dropped})`)
   }
   return { created }
 }

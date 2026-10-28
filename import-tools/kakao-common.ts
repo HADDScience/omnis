@@ -354,6 +354,9 @@ export function askClaude(prompt: string, opts: { model: string; timeoutMs?: num
     const env = { ...process.env }
     // 이 CLI 를 Claude Code 안에서 돌리면 CLAUDECODE 가 물려받아 중첩 실행을 막는다.
     delete env.CLAUDECODE
+    // .env 의 ANTHROPIC_API_KEY(앱용)가 넘어가면 CLI 가 로그인 대신 그 키로 과금한다 — 잔액이 떨어지면
+    // "Credit balance is too low" 로 분류·구조화가 멈췄다(2026-10-13). 이 CLI 는 claude.ai 로그인으로 돈다.
+    delete env.ANTHROPIC_API_KEY
     const child = execFile(
       "claude",
       ["-p", "--output-format", "json", "--model", opts.model],
