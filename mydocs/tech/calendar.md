@@ -283,16 +283,31 @@ HTTP Calendar API** — 세 길이 각각 한 방향씩만 맡고 겹치지 않�
 
 이미 날짜를 가진 모델을 공통 `CalendarItem` 모양으로 읽는 어댑터만 둔다. 집계 대상:
 
-| 모델 | 칸 | 캘린더에서 |
-|---|---|---|
-| `Task` | `deadline` / `workStart`~`workEnd` | 마감 · 작업 기간 |
-| `Project` | `startDate`~`deadline` | 기간 막대 |
-| `WeeklyReport` | `weekStart`~`weekEnd`, `submittedAt` | 주간 경계 · 제출 |
-| `CompanyRecord` | `startsOn`~`endsOn` | 연혁 · 수상 · 정부과제 |
-| `CrmQuote` | `quotedAt`, `taxInvoicedAt` | 견적 · 세금계산서 |
-| `CrmSampleRequest` | `requestedAt`, `sentAt` | 샘플 신청 · 발송 |
-| `CrmShipment` · `CrmProduction` | `shippedAt` · `producedAt` | 출고 · 생산 |
-| `TaxInvoice` · `CrmPayment` | `issuedOn` · `paidOn` | 발행 · 입금 |
+| 모델 | 칸 | 캘린더에서 | 화면 묶음 · 기본 |
+|---|---|---|---|
+| `Task` | `deadline` | 마감. 완료된 업무는 흐리게 | 업무 마감 · 켬 |
+| `Project` | `startDate`~`deadline` | 기간 막대 | 프로젝트 · 켬 |
+| `CompanyRecord` | `startsOn`~`endsOn` | 연혁 · 수상 · 정부과제 | 회사 기록 · 켬 |
+| `CrmQuote` | `quotedAt` | 견적 | CRM · 끔 |
+| `CrmSampleRequest` | `requestedAt`, `sentAt` | 샘플 신청 · 발송 | CRM · 끔 |
+| `CrmShipment` · `CrmProduction` | `shippedAt` · `producedAt` | 출고 · 생산 | CRM · 끔 |
+| `TaxInvoice` · `CrmPayment` | `issuedOn` · `paidOn` | 발행 · 입금. 금액은 싣지 않는다 | 재무 · 끔 |
+| `WeeklyReport` | `submittedAt` | 내 주간보고 제출 | 주간보고 · 끔 |
+
+2026-10-28 구현하며 고친 것:
+
+- **`Task.workStart`~`workEnd` 는 쓰지 않는다.** 처음에 「작업 기간」으로 적었는데, `workEnd` 는 계획이
+  아니라 **완료한 시각**이다 — 상태를 `DONE` 으로 바꿀 때 `new Date()` 로 찍힌다(`lib/task-update.ts`).
+  로컬 스냅샷에서 472건이 그 꼴이었다. `workStart` 는 1건뿐이다
+- `CrmQuote.taxInvoicedAt` 은 `TaxInvoice.issuedOn` 과 같은 사건이라 뺐다
+- `WeeklyReport` 의 주간 경계는 매주 같은 막대라 뺐다. 제출만 남긴다
+
+**날짜 칸의 저장 꼴이 다르다** (2026-10-28 로컬 스냅샷 실측). 업무 마감은 **서울 자정**(15:00Z) 105건 ·
+실제 시각 7건, 회사 기록 · CRM · 세금계산서 · 입금은 **UTC 자정**이다. 그래서 날짜는 한 규칙으로 정한다 —
+UTC 자정이면 UTC 날짜, 아니면 서울 날짜. 세 꼴 모두 맞는 날이 나온다(`calendarDate`, `lib/calendar/items.ts`).
+
+**권한은 넓히지 않는다.** 업무는 기본이 내가 담당 · 지시한 것(「전체」를 고르면 업무 화면과 같은 범위),
+주간보고는 내 것만, 회사 기록 · CRM · 세금계산서는 각 화면처럼 구성원 전체. 웍스 캘린더는 3.2 의 `audience`.
 
 조회는 창(`from`~`until`)을 받아 이 어댑터들과 3.2 를 **UNION 하는 read model 하나**로 둔다.
 원본 모델에 칸을 더하지 않는다 — 캘린더는 읽는 쪽이다.
@@ -305,15 +320,17 @@ HTTP Calendar API** — 세 길이 각각 한 방향씩만 맡고 겹치지 않�
 
 | 칸 | 왜 |
 |---|---|
-| `provider` · `externalCalendarId` · `externalId`(UID) | `(provider, externalCalendarId, externalId)` 유니크 |
+| `calendarId` · `uid` · `recurrenceId` | `(calendarId, uid, recurrenceId)` 유니크 |
 | `href` · `etag` | `calendar-multiget` 재요청 키. etag 가 같으면 본문을 다시 받지 않는다 |
-| `recurrenceId` | 예외 회차. 마스터와 같은 UID 를 갖기 때문에 UID 만으로는 유니크하지 않다 |
-| `rrule` · `exdate` | 전개는 조회 시점에 한다. 펼친 결과를 저장하지 않는다 |
-| `startAt` · `endAt` · `isAllDay` · `tzid` | `DTSTART;TZID=Asia/Seoul` 과 `VALUE=DATE` 를 구분해 담는다 |
+| `recurrenceId` | 예외 회차. 마스터와 같은 UID 를 갖기 때문에 UID 만으로는 유니크하지 않다. **마스터는 `null` 이 아니라 빈 문자열** — Postgres 유니크 키는 null 끼리의 겹침을 막지 못한다 |
+| `rrule` · `exdates` · `recurUntil` | 전개는 조회 시점에 한다. 펼친 결과를 저장하지 않는다. `recurUntil` 은 마지막 회차의 끝(끝없는 반복은 null)으로, 조회 창을 거르는 데만 쓴다 |
+| `startAt` · `endAt` · `isAllDay` · `tzid` | `DTSTART;TZID=Asia/Seoul` 과 `VALUE=DATE` 를 구분해 담는다. 종일은 서울 자정 기준 |
 | `sequence` · `lastModified` | 변경 판정 |
 | `deletedAt` | `sync-collection` 의 `404` 묘비. 지우지 않고 가린다 |
 
-캘린더별 커서는 따로 둔다 — `externalCalendarId` · `ctag` · `syncToken` · `syncedAt`.
+캘린더 하나는 `ExternalCalendar` 한 행이다 — `externalId` · `displayName` · `ctag` · `syncToken`(3초 되돌린 값) ·
+`syncedAt` · `attemptedAt` · `lastError` · **`audience`**. `audience` 는 옴니스에서 누가 보는가(`ALL` · `ADMIN`)이고
+**기본값은 `ADMIN`** 이다. 웍스에서 보이는 사람과 옴니스 구성원이 같다는 보장이 없어서다. 관리자가 캘린더 화면에서 연다.
 
 **펼친 인스턴스를 테이블에 쌓지 않는다.** 무한 반복이 있으면 끝이 없고, 규칙이 바뀔 때마다
 지우고 다시 넣어야 한다. 마스터만 저장하고 조회 창에 맞춰 그때 전개한다.
