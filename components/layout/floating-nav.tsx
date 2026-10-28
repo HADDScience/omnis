@@ -18,10 +18,10 @@ import { useRightPanel } from "./right-panel-context"
 import { NotificationBell } from "./notification-bell"
 
 /**
- * 채팅 화면(홈)이 들어오기 전에는 채팅 탭이 오른쪽 채팅 패널을 연다 — 「전체」 팀 채팅이 거기 있다.
- * 홈 세션이 `/` 를 메신저로 바꾸면 이 값을 true 로 돌린다(mydocs/plans/2026-10-28-floating-nav.md).
+ * 채팅 화면(홈)이 들어오기 전에는 채팅 탭이 오른쪽 채팅 패널을 열었다 — 「전체」 팀 채팅이 거기 있다.
+ * 메신저(/chat, mydocs/plans/2026-10-28-omnis-messenger-agent.md 2단계)가 들어와 이제 탭은 그 화면으로 간다.
  */
-const CHAT_HOME_READY = false
+const CHAT_HOME_READY = true
 
 /** nav 가 상단으로 올라가는 폭. Tailwind md 와 globals.css 의 --nav-offset-* 기준과 같다 */
 export const NAV_DESKTOP_QUERY = "(min-width: 768px)"
@@ -38,7 +38,9 @@ type Tab = {
 
 /** 탭 정의는 여기 한 곳 — 사이드바의 메뉴 목록을 대신한다. 마이(계정·설정)는 탭이 아니라 아바타(MeAvatarLink)다. */
 const TABS: readonly Tab[] = [
-  { key: "chat", href: "/", label: "채팅", match: ["/chat"], onboarding: "ai" },
+  // `/` 는 /chat 으로 보내기만 한다(app/page.tsx 는 셸 밖 랜딩) — 누를 때마다 한 번 더 돌지 않게 /chat 으로 바로 간다.
+  // 방 주소(/chat/[roomId] · /chat/task/[taskId] · /chat/new)는 접두사 /chat 이 켠다
+  { key: "chat", href: "/chat", label: "채팅", match: ["/chat"], onboarding: "ai" },
   { key: "tasks", href: "/tasks", label: "업무", match: ["/tasks"], onboarding: "tasks" },
   { key: "calendar", href: "/calendar", label: "캘린더", match: ["/calendar"] },
   // 아카이브 = 회사가 가진 것: 지식 카드 · 시놀로지 NAS · 지식재산권 · 고객·견적

@@ -68,6 +68,7 @@ async function main() {
     check("업무 카드 표식", previewText("__TASK_CREATED__:abc", "TASK_CREATED") === "업무가 생성되었습니다")
     check("🤖 접두사를 뗀다", previewText("🤖 업무를 갱신했습니다", "NORMAL") === "업무를 갱신했습니다")
     check("60자에서 자른다", previewText("가".repeat(80), "NORMAL") === `${"가".repeat(60)}…`)
+    check("마크다운 기호 · 각주를 뗀다", previewText("### 요약\n지연 **1건**입니다 [1, 2].", "NORMAL") === "요약 지연 1건입니다.", previewText("### 요약\n지연 **1건**입니다 [1, 2].", "NORMAL"))
   } finally {
     await prisma.chatMessage.deleteMany({ where: { roomId: room.id } })
     await prisma.chatRoom.delete({ where: { id: room.id } })

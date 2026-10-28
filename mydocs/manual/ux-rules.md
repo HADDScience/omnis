@@ -167,6 +167,20 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 ---
 
+## 메신저 — 첫 화면 (2026-10-28)
+
+로그인하면 `/` → `/chat`. 왼쪽 방 목록 + 가운데 대화. 계획: [`../plans/2026-10-28-omnis-messenger-agent.md`](../plans/2026-10-28-omnis-messenger-agent.md)
+
+- 방 목록은 사이드바가 아니라 **채팅 화면 안의 왼쪽 칸**(`components/messenger/messenger-shell.tsx`)이다. 순서: 옴니스 1:1 → 전사방 → 단톡방(5단계, 자리만) → 업무방(최근 글 순 30개)
+- 폰(< 768px)은 목록과 대화 중 하나만 — `/chat` 은 목록, 방 주소는 대화이고 대화 머리 ← 가 목록으로. CSS 로만 가른다
+- 주소: 옴니스 1:1 · 전사방 `/chat/[roomId]`, 업무방 `/chat/task/[taskId]`(표가 없는 가상 방), 새 대화 `/chat/new`. nav 채팅 탭은 접두사 `/chat` 으로 켜진다
+- 전사방은 오른쪽 패널 「전체」 와 같은 `ChatPanel`, 업무방은 업무 상세와 같은 `TaskThread` 를 그린다 — 따로 만들지 않는다
+- 옴니스 답 본문은 `OmnisAnswerBody`(`components/omnis/omnis-ask.tsx`) 하나로 그린다 — 각주 · 표 · 참고 자료가 질문 화면과 같다
+- 「새 대화」 는 빈 방을 만들지 않는다. 첫 글을 보낼 때 방이 생기고 그 주소로 옮긴다
+- 답을 못 받은 내 글(마지막 글이 내 질문)에는 「다시 묻기」 가 붙는다. 새로고침해도 남는다 — 상태가 아니라 방의 글에서 나온다
+- 높이는 `MainWithChat` 스크롤 칸 안에서 `h-full`. nav 높이를 화면 안에서 다시 빼지 않는다
+- 오른쪽 패널의 「Omnis AI」 탭은 없앴다. 「전체」 · 「이 업무」 는 그대로다
+
 ## 채팅 메시지 목록 (2026-09-15, PR #15 · #16)
 
 채팅 패널과 업무 스레드가 같은 규칙을 쓴다. 배치 규칙은 `lib/chat-layout.ts`(순수 함수), 조각은 `components/chat/message-parts.tsx`.

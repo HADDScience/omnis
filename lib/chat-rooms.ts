@@ -61,10 +61,15 @@ export interface RoomList {
 const TASK_ROOM_LIMIT = 30
 const PREVIEW_MAX = 60
 
-/** 목록 한 줄 미리보기. 시스템 표식은 사람이 읽을 말로 */
+/** 목록 한 줄 미리보기. 시스템 표식은 사람이 읽을 말로, 옴니스 답의 마크다운 기호(**, #, 표 칸, 각주)는 뗀다 */
 export function previewText(content: string, kind: string): string {
   if (kind === "TASK_CREATED" || content.startsWith("__TASK_CREATED__")) return "업무가 생성되었습니다"
-  const flat = content.replace(/^🤖\s*/, "").replace(/\s+/g, " ").trim()
+  const flat = content
+    .replace(/^🤖\s*/, "")
+    .replace(/\*\*|__|`|^#{1,6}\s+|\|/gm, "")
+    .replace(/\s?\[\d+(?:\s*[,，~–-]\s*\d+)*\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
   return flat.length > PREVIEW_MAX ? `${flat.slice(0, PREVIEW_MAX)}…` : flat
 }
 

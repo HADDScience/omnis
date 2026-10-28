@@ -7,7 +7,6 @@ import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { ChatPanel } from "@/components/chat/chat-panel"
 import { TaskCmdModal } from "@/components/chat/task-cmd-modal"
-import { OmnisAsk } from "@/components/omnis/omnis-ask"
 import { TaskThread } from "@/app/(main)/tasks/[taskId]/task-sidebar"
 import { useRightPanel } from "./right-panel-context"
 import { cn } from "@/lib/utils"
@@ -34,7 +33,8 @@ interface RecentThread {
   slug: string
 }
 
-type View = "task" | "all" | "ai"
+// 「Omnis AI」 탭은 메신저의 옴니스 1:1 방으로 옮겼다(2026-10-28) — 한 번 묻고 끝나던 질문이 거기서 이어지는 대화가 된다
+type View = "task" | "all"
 
 /**
  * 오른쪽에서 열리는 하나의 패널.
@@ -138,7 +138,6 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
     const list: { key: View; label: string; hint?: string }[] = []
     if (task) list.push({ key: "task", label: "이 업무", hint: task.name })
     list.push({ key: "all", label: "전체" })
-    list.push({ key: "ai", label: "Omnis AI" })
     return list
   }, [task])
 
@@ -181,8 +180,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
                   "touch-target inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] whitespace-nowrap transition-colors md:h-7",
                   view === t.key
                     ? "border-primary/30 bg-primary/10 font-medium text-primary"
-                    : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-                  t.key === "ai" && view === t.key && "ai-rainbow-border"
+                    : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
                 {t.label}
@@ -220,8 +218,6 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
           <div className="pb-safe flex min-h-0 flex-1 flex-col">
             {view === "task" && task ? (
               <TaskThread taskId={task.id} taskName={task.name} messages={task.messages} currentUserId={currentUserId} />
-            ) : view === "ai" ? (
-              <OmnisAsk variant="dock" />
             ) : (
               <>
                 {recentThreads.length > 0 && (

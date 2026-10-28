@@ -29,7 +29,7 @@ export interface PanelTaskContext {
   }[]
 }
 
-export type PanelView = "task" | "all" | "ai"
+export type PanelView = "task" | "all"
 
 interface RightPanelValue {
   open: boolean

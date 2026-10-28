@@ -52,7 +52,9 @@ const PUBLIC_ROUTES = [["/login", "로그인"]]
 const PRIVATE_ROUTES = [
   ["/tasks", "업무 목록"],
   ["/tasks/projects", "프로젝트 정리"],
-  ["/chat", "채팅"],
+  ["/chat", "채팅 — 방 목록"],
+  ["/chat/new", "채팅 — 새 대화"],
+  ["/chat/default-room", "채팅 — 전사방"],
   ["/omnis", "옴니스"],
   ["/omnis/ask", "옴니스 질문"],
   ["/reports", "주간보고"],
@@ -168,7 +170,8 @@ async function login(page) {
   await page.locator('input[type="text"]').first().fill(USER)
   await page.locator('input[type="password"]').first().fill(PASS)
   await page.getByRole("button", { name: "로그인", exact: true }).click()
-  await page.waitForURL("**/dashboard", { timeout: 40_000 })
+  // 로그인 뒤 가는 곳은 바뀌어 왔다(대시보드 → 업무 → 메신저 /chat) — 로그인 화면을 벗어났는지만 본다
+  await page.waitForURL((url) => !url.pathname.endsWith("/login"), { timeout: 40_000 })
 }
 
 /** 목록 화면에서 상세 경로 하나를 주워 온다 — id 를 밖에서 받지 않기 위해서다. */

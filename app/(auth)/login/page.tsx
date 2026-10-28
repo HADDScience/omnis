@@ -115,7 +115,8 @@ export default function LoginPage() {
       return
     }
 
-    router.push("/tasks")
+    // 첫 화면은 옴니스 메신저다(mydocs/plans/2026-10-28-omnis-messenger-agent.md)
+    router.push("/chat")
     router.refresh()
   }
 
@@ -305,7 +306,7 @@ export default function LoginPage() {
                 onClick={() => {
                   setSocial(provider)
                   signIn(provider, {
-                    callbackUrl: safeCallbackUrl() ?? apiUrl("/tasks"),
+                    callbackUrl: safeCallbackUrl() ?? apiUrl("/chat"),
                   })
                 }}
               />
