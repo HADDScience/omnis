@@ -1,10 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { format } from "date-fns"
+// date-fns 의 ko 가 아니라 DayPicker 의 ko — 드롭다운 · 이동 버튼의 화면낭독 이름까지 한국어다
+import { ko } from "react-day-picker/locale"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { ArrowDown01Icon, ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
@@ -150,15 +155,30 @@ export function CalendarView({ isAdmin, initialMonth }: { isAdmin: boolean; init
   }, [worksConfigured, ym, sync])
   useVisibleInterval(sync, SYNC_MS, worksConfigured)
 
-  const goMonth = useCallback((next: { year: number; month: number }) => {
-    setYm(next)
-    setSelected(defaultDay(next.year, next.month))
+  /** 그 달로 옮기고 그 날을 고른다. 날을 안 주면 이번 달은 오늘, 다른 달은 1일 */
+  const goTo = useCallback((next: { year: number; month: number }, day?: string) => {
+    // 같은 달이면 객체를 바꾸지 않는다 — 바꾸면 달 범위가 새로 잡혀 같은 달을 다시 읽는다
+    setYm((prev) => (prev.year === next.year && prev.month === next.month ? prev : next))
+    setSelected(day ?? defaultDay(next.year, next.month))
     try {
       window.history.replaceState(null, "", `?month=${monthKey(next.year, next.month)}`)
     } catch {
       // 주소를 못 바꿔도 화면은 바뀐다
     }
   }, [])
+  const goMonth = useCallback((next: { year: number; month: number }) => goTo(next), [goTo])
+
+  // 달력 창에서 고른 날로 바로 — 몇 해 전이라도 화살표를 여러 번 누르지 않게
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const pickDate = useCallback(
+    (date: Date | undefined) => {
+      if (!date) return
+      setPickerOpen(false)
+      // 달력의 Date 는 브라우저 시각 자정이다. 고른 칸의 연·월·일을 그대로 쓴다
+      goTo({ year: date.getFullYear(), month: date.getMonth() + 1 }, format(date, "yyyy-MM-dd"))
+    },
+    [goTo]
+  )
 
   const calendarOrder = useMemo(() => (data?.calendars ?? []).map((c) => c.id), [data])
   const visible = useMemo(() => {
@@ -197,8 +217,34 @@ export function CalendarView({ isAdmin, initialMonth }: { isAdmin: boolean; init
           >
             <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
           </Button>
-          <h1 className="min-w-[7.5em] text-center text-[17px] font-bold tracking-[-0.02em] tabular-nums" aria-live="polite">
-            {ym.year}년 {ym.month}월
+          <h1 className="text-[17px] font-bold tracking-[-0.02em]" aria-live="polite">
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`${ym.year}년 ${ym.month}월 — 날짜로 이동`}
+                    title="날짜로 이동"
+                    className="touch-target flex min-w-[7.5em] items-center justify-center gap-1 rounded-md px-1.5 tabular-nums transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  />
+                }
+              >
+                {ym.year}년 {ym.month}월
+                <HugeiconsIcon icon={ArrowDown01Icon} size={14} aria-hidden className="text-muted-foreground" />
+              </PopoverTrigger>
+              <PopoverContent align="start" side="bottom" className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  locale={ko}
+                  captionLayout="dropdown"
+                  startMonth={new Date(PICKER_FIRST_YEAR, 0)}
+                  endMonth={new Date(new Date().getFullYear() + PICKER_YEARS_AHEAD, 11)}
+                  defaultMonth={new Date(ym.year, ym.month - 1)}
+                  selected={dateOfKey(selected)}
+                  onSelect={pickDate}
+                />
+              </PopoverContent>
+            </Popover>
           </h1>
           <Button
             variant="ghost"
@@ -271,6 +317,16 @@ export function CalendarView({ isAdmin, initialMonth }: { isAdmin: boolean; init
       </div>
     </div>
   )
+}
+
+/** 날짜 고르기 창의 연도 범위. 회사 기록(연혁)이 창업 무렵부터 있다 */
+const PICKER_FIRST_YEAR = 2015
+const PICKER_YEARS_AHEAD = 3
+
+/** "YYYY-MM-DD" → 브라우저 시각 자정의 Date (달력 컴포넌트가 쓰는 꼴) */
+function dateOfKey(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number)
+  return new Date(y, m - 1, d)
 }
 
 /** 그 달을 열었을 때 처음 고를 날 — 이번 달이면 오늘, 아니면 1일 */
