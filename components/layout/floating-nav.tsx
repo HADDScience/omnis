@@ -191,11 +191,12 @@ export function FloatingNav({ userName }: FloatingNavProps) {
         {isMdUp && <NotificationBell />}
       </nav>
 
-      {/* 폰: 하단 가운데. 홈 인디케이터 위로 띄운다 */}
+      {/* 폰: 하단 가운데. 홈 인디케이터 위로 띄운다.
+          터치 기기에서 칸은 44px 이상이라 200px 폭에서는 다섯 칸(220px)이 넘친다 — 그때는 nav 안에서 민다 */}
       <nav
         aria-label="주 메뉴"
         className={cn(
-          "glass fixed inset-x-3 bottom-[calc(var(--safe-bottom)+8px)] z-[var(--z-nav)] flex items-stretch gap-0.5 rounded-[22px] p-1 transition-transform duration-200 motion-reduce:transition-none md:hidden",
+          "glass fixed inset-x-3 bottom-[calc(var(--safe-bottom)+8px)] z-[var(--z-nav)] flex items-stretch gap-0.5 overflow-x-auto rounded-[22px] p-1 [scrollbar-width:none] transition-transform duration-200 motion-reduce:transition-none md:hidden",
           keyboardOpen && "pointer-events-none translate-y-[calc(100%+24px)]"
         )}
       >
