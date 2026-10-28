@@ -234,6 +234,9 @@ export async function chat(m: ModelSpec, system: string | undefined, messages: C
       return chatAnthropic(m, system, messages, opts)
     case "openai-compat":
       return chatOpenAiCompat(m, system, messages, opts)
+    case "openai":
+      // 공식 OpenAI(Responses API)는 에이전트 벤치(bench/agent/drivers.ts)에만 있다. 1차 벤치 축이 아니다.
+      throw new Error(`[${m.key}] openai 모델은 bench/agent 에서만 쓴다`)
   }
 }
 

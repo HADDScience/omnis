@@ -39,14 +39,15 @@ npx tsx bench/agent/run.ts --list                       # 모델 · 키 유무 �
 npx tsx bench/agent/run.ts --dry-run                    # 0원 — 고정 스크립트로 루프·도구·채점·리포트 + 비용 추산
 npx tsx bench/agent/run.ts --models claude-haiku-5-5,gemini-3.8-flash --limit 2   # 모델별 2건 시험 (유료)
 npx tsx bench/agent/run.ts --models <…> --repeat 2      # 전체 (유료)
-npx tsx bench/agent/run.ts --run agent-20261028-1500    # 중단한 것 이어서
+npx tsx bench/agent/run.ts --run agent-20261028-150012  # 중단한 것 이어서 (없으면 새 폴더, 있으면 --run 없이 거부)
 npx tsx bench/agent/report.ts bench/results/agent-…     # 표만 다시 (--workdays 22)
 npx tsx bench/agent/estimate.ts bench/results/agent-…-dry   # dry-run 결과로 비용 추산만
 ```
 
 | 파일 | 역할 |
 |---|---|
-| `agent/drivers.ts` | 벤더 어댑터 — Anthropic(공식 SDK) · Gemini(함수 호출) · 고정 스크립트. 토큰 추산식 |
+| `agent/drivers.ts` | 벤더 어댑터 — Anthropic(공식 SDK) · Gemini(함수 호출) · OpenAI(공식 SDK, Responses API) · 고정 스크립트 · 가짜 OpenAI. 토큰 추산식 |
+| `agent/env.ts` | `.env` 읽기. API 키 셋은 `.env` 가 셸 환경변수를 이긴다. 시작할 때 키별 출처를 찍는다 |
 | `agent/loop.ts` | 벤더 중립 루프. 턴 상한(12) · 건당 원 상한(1,000원) · 턴 기록(도구·인자·결과 길이·지연) |
 | `agent/tools.ts` | 도구 세트. MCP 읽기 도구는 로컬 DB 를 실제로 읽고, 쓰기 도구 + `create_file` 은 **제안으로만 기록** |
 | `agent/grade.ts` | 결정적 채점(제안 인자 조건 · expect · 금지 행동 · 「실행했다고 단정」) + 심판 0·1·2 |
@@ -56,13 +57,19 @@ npx tsx bench/agent/estimate.ts bench/results/agent-…-dry   # dry-run 결과�
 
 - **dry-run 은 모델·심판을 부르지 않는다.** `dry-perfect`(과제 파일의 정답 스크립트)는 전부 통과하고
   `dry-naive`(대충 읽고 아무 데나 글을 올린 뒤 끝났다고 말하는 에이전트)는 전부 떨어져야 채점이 제대로 선 것이다.
+  `dry-openai` 는 정답 스크립트를 Responses API 모양의 가짜 응답으로 바꿔 실제 OpenAI 어댑터를 돈다 — 직전 reasoning·function_call
+  항목을 그대로 되돌리는지, 호출마다 function_call_output 을 붙이는지, temperature·previous_response_id 를 안 보내는지 검사한다.
   임베딩이 Gemini 를 부르는 `search_knowledge` 도 dry-run 에서는 막는다.
 - 실제 실행에서는 `search_knowledge` 가 질문 임베딩을 만든다(Gemini, 건당 1원 미만). 로컬 DB 의 `GeminiUsage` 에 행이 남는다.
 - **DB 는 `.env` 의 `DATABASE_URL` 만 읽고, localhost 가 아니면 시작하지 않는다.** `next start/build` 는
   `.env.production.local` 을 읽어 운영 Neon 에 붙으니 쓰지 않는다.
 - `--budget-krw`(기본 35,000원)에 모델+심판 누적이 닿으면 멈춘다. 같은 `--run` 으로 이어 돌린다.
 - 심판은 `AGENT_BENCH_JUDGE`(기본 `claude-sonnet-5-5`, config.ts 의 모델 키). `--no-judge` 로 끈다.
-- 모델 축은 `config.ts` 의 `AGENT_MODELS`(Claude 5.5 셋 · gemini-3.8-flash · gemini-3.5-flash-lite). 1차 벤치 `MODELS` 와 따로 둔다.
+- **API 키(GEMINI · ANTHROPIC · OPENAI)는 `.env` 값이 셸 환경변수를 이긴다.** `~/.zshrc` 가 export 한 다른 GEMINI 키로 불려 402 가 난 적이 있다.
+  시작할 때 `키 GEMINI_API_KEY ← .env (셸 값 무시)` 처럼 출처만 찍는다(값은 안 찍는다).
+- 새 실행의 run id 는 초까지 넣는다(`agent-YYYYMMDD-HHMMSS`). 폴더가 이미 있으면 `--run` 없이는 거부한다.
+- 모델 축은 `config.ts` 의 `AGENT_MODELS`(Claude 5.5 셋 · gemini-3.8-flash · gemini-3.5-flash-lite · gpt-6.1-sol · gpt-6.1-terra · gpt-6-luna). 1차 벤치 `MODELS` 와 따로 둔다.
+  OpenAI 는 Responses API 로 매번 전체 입력을 보낸다(`previous_response_id` 안 씀, `store: false` + `include: reasoning.encrypted_content`). reasoning effort medium, temperature 안 보냄.
   Claude 5.5 는 thinking 을 끌 수 없어 `effort`(medium)로만 조절하고 temperature·budget_tokens·forced tool_choice 를 보내지 않는다.
 - 과제 파일은 사내 데이터가 들어가 저장소 밖 `~/work/omnis-import/eval/agent-tasks-261028.json` (`--tasks` · `AGENT_BENCH_TASKS`).
   정답은 그 날짜 로컬 스냅샷에 묶인다(`snapshotDate`). 스냅샷을 새로 받으면 정답을 다시 확인한다.

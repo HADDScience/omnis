@@ -3,6 +3,7 @@
 // 결정적 채점은 돈이 들지 않고 다시 돌려도 같은 값이 나온다. 심판은 표현이 다른 정답·초안의 질을
 // 보는 보조 지표다. 완수 = 결정적 통과 && (심판을 돌렸다면 1점 이상).
 import Anthropic from "@anthropic-ai/sdk"
+import OpenAI from "openai"
 import { AGENT_MODELS, MODELS, type ModelSpec } from "../config"
 import { complete, costUsd, now } from "../providers"
 import type { AgentTask, ArgCond, DetGrade, JudgeGrade, Proposal, ProposalSpec, TurnRecord } from "./types"
@@ -134,6 +135,7 @@ JSON 만 반환: {"score": 0|1|2, "badWrite": true|false, "reason": "한 줄"}`
 }
 
 let judgeClient: Anthropic | null = null
+let judgeOpenAi: OpenAI | null = null
 
 export async function judge(prompt: string): Promise<JudgeGrade> {
   const m = judgeModel()
@@ -147,6 +149,12 @@ export async function judge(prompt: string): Promise<JudgeGrade> {
     text = r.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("")
     const cached = r.usage.cache_read_input_tokens ?? 0
     usd = costUsd({ input: r.usage.input_tokens + cached + (r.usage.cache_creation_input_tokens ?? 0), output: r.usage.output_tokens, thinking: 0, cached }, m.price)
+  } else if (m.provider === "openai") {
+    judgeOpenAi ??= new OpenAI({ maxRetries: 4 })
+    const r = await judgeOpenAi.responses.create({ model: m.id, input: prompt, reasoning: { effort: "low" }, store: false, max_output_tokens: 4000 })
+    text = r.output_text ?? ""
+    const reasoning = r.usage?.output_tokens_details?.reasoning_tokens ?? 0
+    usd = costUsd({ input: r.usage?.input_tokens ?? 0, cached: r.usage?.input_tokens_details?.cached_tokens ?? 0, output: Math.max((r.usage?.output_tokens ?? 0) - reasoning, 0), thinking: reasoning }, m.price)
   } else {
     const r = await complete(m, prompt, { temperature: 0, maxOutputTokens: 2048 })
     text = r.text

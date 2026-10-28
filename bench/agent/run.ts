@@ -12,14 +12,15 @@
 // 심판: AGENT_BENCH_JUDGE (기본 claude-sonnet-5-5). dry-run 은 심판을 부르지 않는다.
 //
 // DB 는 .env 의 DATABASE_URL 만 읽고, localhost 가 아니면 시작하지 않는다 — 운영 Neon 에 붙지 않게.
-// (next start/build 는 .env.production.local 을 읽어 운영에 붙는다. 이 스크립트는 dotenv/config = .env 만)
-import "dotenv/config"
+// (next start/build 는 .env.production.local 을 읽어 운영에 붙는다. 이 스크립트는 .env 만)
+// API 키 세 개는 .env 가 셸 환경변수를 이긴다 (env.ts). 시작할 때 키마다 출처를 한 줄씩 찍는다.
+import { printKeySources } from "./env"
 import { mkdirSync, existsSync, readFileSync, appendFileSync, writeFileSync } from "fs"
 import { join } from "path"
 import { prisma } from "@/lib/db"
 import type { Caller } from "@/lib/omnis-mcp"
 import { AGENT_MODELS, MODELS, KRW_PER_USD, usdToKrw, modelAvailable, type ModelSpec } from "../config"
-import { createDriver, scriptedDriver, estTokens, type Driver, type ScriptStep } from "./drivers"
+import { createDriver, scriptedDriver, openaiDriver, fakeOpenAiCreate, estTokens, type Driver, type ScriptStep } from "./drivers"
 import { runAgentLoop } from "./loop"
 import { AGENT_TOOLS, READ_TOOLS, WRITE_TOOLS, agentSystemPrompt } from "./tools"
 import { gradeDeterministic, buildJudgePrompt, judge, judgeModel } from "./grade"
@@ -32,6 +33,8 @@ const flag = (k: string) => args.includes(k)
 
 const DRY_PERFECT: ModelSpec = { key: "dry-perfect", provider: "openai-compat", id: "script:perfect", price: { input: 0, output: 0, note: "과제 파일의 정답 스크립트" } }
 const DRY_NAIVE: ModelSpec = { key: "dry-naive", provider: "openai-compat", id: "script:naive", price: { input: 0, output: 0, note: "채점이 걸러내야 하는 나쁜 에이전트" } }
+/** 정답 스크립트를 Responses API 모양의 가짜 응답으로 바꿔 실제 OpenAI 어댑터(openaiDriver)의 변환 경로를 돈다 */
+const DRY_OPENAI: ModelSpec = { key: "dry-openai", provider: "openai", id: "script:openai", price: { input: 0, output: 0, note: "가짜 Responses API" }, effort: "medium" }
 
 /** 정답 스크립트: 1턴 읽기 → 2턴 쓰기 제안 → 3턴 답 */
 function perfectScript(t: AgentTask): ScriptStep[] {
@@ -107,6 +110,7 @@ async function main() {
     return
   }
 
+  printKeySources()
   const dbHost = assertLocalDb()
   const todayKst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10)
   if (todayKst !== file.snapshotDate) {
@@ -115,8 +119,8 @@ async function main() {
 
   let models: ModelSpec[]
   if (dryRun) {
-    models = [DRY_PERFECT, DRY_NAIVE]
-    if (opt("--models")) console.log("dry-run: --models 는 무시하고 고정 스크립트(dry-perfect · dry-naive)로 돈다. 모델별 비용은 끝의 추산 표를 본다")
+    models = [DRY_PERFECT, DRY_NAIVE, DRY_OPENAI]
+    if (opt("--models")) console.log("dry-run: --models 는 무시하고 고정 스크립트(dry-perfect · dry-naive · dry-openai)로 돈다. 모델별 비용은 끝의 추산 표를 본다")
   } else {
     const want = (opt("--models") ?? "").split(",").map((s) => s.trim()).filter(Boolean)
     if (!want.length) throw new Error(`--models 를 주세요 (유료 호출이라 기본값이 없다). 예: ${AGENT_MODELS.map((m) => m.key).join(",")}`)
@@ -126,8 +130,12 @@ async function main() {
   const doJudge = !dryRun && !flag("--no-judge")
   if (doJudge && !modelAvailable(judgeModel()).ok) throw new Error(`심판 ${judgeModel().key} 키가 없습니다 (--no-judge 로 끄거나 키를 주세요)`)
 
-  const runId = opt("--run") ?? `agent-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "").replace(/(\d{8})(\d{4})/, "$1-$2")}${dryRun ? "-dry" : ""}`
+  // 새 실행은 초까지 넣는다. 분 단위였을 때 같은 분에 시작한 이전 실행(402 실패 행)에 이어 붙은 적이 있다.
+  const resume = opt("--run")
+  const runId = resume ?? `agent-${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "").replace(/(\d{8})(\d{6})/, "$1-$2")}${dryRun ? "-dry" : ""}`
   const dir = join("bench/results", runId)
+  if (!resume && existsSync(dir)) throw new Error(`${dir} 가 이미 있다. 이어 돌리려면 --run ${runId} 를 준다`)
+  if (resume && !existsSync(dir)) throw new Error(`--run ${resume}: ${dir} 가 없다`)
   mkdirSync(dir, { recursive: true })
   const outFile = join(dir, "results.jsonl")
   const done = new Set<string>()
@@ -188,6 +196,7 @@ async function runOne(
   let driver: Driver
   if (model === DRY_PERFECT) driver = scriptedDriver(perfectScript(task), system, AGENT_TOOLS, task.prompt)
   else if (model === DRY_NAIVE) driver = scriptedDriver(naiveScript(), system, AGENT_TOOLS, task.prompt)
+  else if (model === DRY_OPENAI) driver = openaiDriver(model, system, AGENT_TOOLS, task.prompt, fakeOpenAiCreate(perfectScript(task)))
   else driver = createDriver(model, system, AGENT_TOOLS, task.prompt)
 
   const r = await runAgentLoop(driver, model, caller, { maxTurns: o.maxTurns, maxKrwPerTask: o.maxKrwPerTask, dryRun: o.dryRun })

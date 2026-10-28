@@ -6,6 +6,7 @@
 //   - 토큰 = drivers.estTokens (한글 1자 ≈ 1토큰, 나머지 3.2자 ≈ 1토큰)
 //   - 턴마다 thinking·서두 출력 THINK_PER_TURN 토큰을 더한다
 //   - Claude 는 자동 캐시: 직전 턴까지의 앞부분은 캐시 읽기, 새로 붙은 부분은 캐시 쓰기(1.25배)
+//   - OpenAI 는 자동 프롬프트 캐시: 직전 턴까지의 앞부분은 캐시 입력 단가, 새로 붙은 부분은 입력 단가(쓰기 할증 없음)
 //   - Gemini 는 암묵 캐시를 가정하지 않는다 (상한 쪽)
 //   - "턴 2배" 열: 실제 모델은 정답 스크립트(2~3턴)보다 많이 돈다. 입력 ×2.5 · 출력 ×2 로 본다
 import { readFileSync } from "fs"
@@ -38,6 +39,9 @@ function rowUsd(r: AgentRow, m: ModelSpec): { inUsd: number; outUsd: number; inT
     outTok += O
     if (m.provider === "anthropic") {
       inUsd += (Math.min(prev, I) * cachedRate + Math.max(I - prev, 0) * m.price.input * 1.25) / 1e6
+      prev = I + t.estOutput
+    } else if (m.provider === "openai") {
+      inUsd += (Math.min(prev, I) * cachedRate + Math.max(I - prev, 0) * m.price.input) / 1e6
       prev = I + t.estOutput
     } else {
       inUsd += (I * m.price.input) / 1e6
