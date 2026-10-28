@@ -39,7 +39,7 @@ test.describe("onboarding", () => {
       .getByRole("textbox", { name: "비밀번호", exact: true })
       .fill(password)
     await page.getByRole("button", { name: "로그인", exact: true }).click()
-    await page.waitForURL("**/dashboard")
+    await page.waitForURL("**/tasks")
   }
   async function skipVideo(page: Page) {
     await page.getByRole("button", { name: "건너뛰기", exact: true }).click()

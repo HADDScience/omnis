@@ -45,7 +45,7 @@ export async function createActor(browser: Browser, name: string, password: stri
   await page.getByRole("textbox", { name: "비밀번호" }).fill(password)
   await page.getByRole("button", { name: "로그인", exact: true }).click()
   try {
-    await page.waitForURL("**/dashboard", { timeout: 20_000 })
+    await page.waitForURL("**/tasks", { timeout: 20_000 })
   } catch {
     throw new Error(`${name} 로그인 실패 — accounts.local.json 의 비밀번호가 이 DB 와 다르다`)
   }

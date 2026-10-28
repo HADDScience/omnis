@@ -21,14 +21,14 @@ test.describe("auth", () => {
   for (const admin of ADMINS) {
     test(`관리자 계정 ${admin} 로그인 → 대시보드 진입`, async ({ page }) => {
       await login(page, admin)
-      await expect(page).toHaveURL(/\/dashboard$/)
+      await expect(page).toHaveURL(/\/tasks$/)
     })
   }
 
   for (const member of MEMBERS) {
     test(`팀원 계정 ${member} 로그인 → 대시보드 진입`, async ({ page }) => {
       await login(page, member)
-      await expect(page).toHaveURL(/\/dashboard$/)
+      await expect(page).toHaveURL(/\/tasks$/)
     })
   }
 
@@ -38,7 +38,7 @@ test.describe("auth", () => {
       "데모 모드에서만 보이는 카드",
     )
     await quickLogin(page, "사원1")
-    await expect(page).toHaveURL(/\/dashboard$/)
+    await expect(page).toHaveURL(/\/tasks$/)
   })
 
   test("환경변수 데모 비밀번호가 올바르게 적용된다", async () => {

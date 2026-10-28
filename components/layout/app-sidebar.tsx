@@ -5,7 +5,6 @@ import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  DashboardSpeed02Icon,
   Task01Icon,
   BookOpen01Icon,
   FileAttachmentIcon,
@@ -64,7 +63,6 @@ import { InstallAppCard } from "@/components/layout/install-app-card"
  * href 를 내부 경로로 바꾸고 external 만 떼면 되고, 메뉴는 그대로 있다.
  */
 const navItems = [
-  { href: "/dashboard", label: "워크스페이스", icon: DashboardSpeed02Icon },
   { href: "/tasks", label: "업무", icon: Task01Icon },
   { href: "/omnis", label: "HADD DB", icon: BookOpen01Icon },
   {
@@ -115,7 +113,7 @@ export function AppSidebar({ userName, userEmail, userRole }: AppSidebarProps) {
   return (
     <Sidebar mobileModal={!onboarding.active}>
       <SidebarHeader className="px-2.5 pb-2 pt-3">
-        <Link href="/dashboard" onClick={closeOnMobile} className="flex items-center gap-2 px-1.5 pb-3">
+        <Link href="/tasks" onClick={closeOnMobile} className="flex items-center gap-2 px-1.5 pb-3">
           <OmnisMark className="size-[26px] rounded-[7px]" />
           <div className="flex flex-col leading-[1.1]">
             <span className="text-[13.5px] font-semibold">Omnis</span>

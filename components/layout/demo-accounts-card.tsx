@@ -30,7 +30,7 @@ export function DemoAccountsCard() {
       redirect: false,
     })
     if (!result?.error) {
-      router.push("/dashboard")
+      router.push("/tasks")
       router.refresh()
     } else {
       setPendingName(null)

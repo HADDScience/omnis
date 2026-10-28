@@ -50,7 +50,6 @@ const OUT = process.env.OUT_DIR ?? path.join(os.tmpdir(), "narrow-audit")
 /** 로그인 없이 열리는 것 / 로그인이 필요한 것 */
 const PUBLIC_ROUTES = [["/login", "로그인"]]
 const PRIVATE_ROUTES = [
-  ["/dashboard", "대시보드"],
   ["/tasks", "업무 목록"],
   ["/tasks/projects", "프로젝트 정리"],
   ["/chat", "채팅"],

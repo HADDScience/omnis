@@ -123,7 +123,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
 
     /**
-     * 로그인·로그아웃 뒤 돌아갈 곳. 화면은 "/dashboard" 처럼 앱 안 경로를 넘기는데,
+     * 로그인·로그아웃 뒤 돌아갈 곳. 화면은 "/tasks" 처럼 앱 안 경로를 넘기는데,
      * NextAuth 는 그것을 호스트 루트에 붙인다 — basePath(/omnis) 아래 뜰 때는 그
      * 자리가 홈페이지라 404 다. 앱 안 경로면 basePath 를 붙이고, 다른 오리진은 막는다.
      */

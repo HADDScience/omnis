@@ -120,12 +120,11 @@ try {
         csrfToken,
         name: "팀장",
         password: "demo1234",
-        callbackUrl: env.BASE_URL + "/dashboard",
+        callbackUrl: env.BASE_URL + "/tasks",
       },
     })
     const task = await db.task.findFirstOrThrow()
     for (const route of [
-      "/dashboard",
       "/tasks",
       `/tasks/${task.id}`,
       "/omnis",

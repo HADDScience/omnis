@@ -43,8 +43,8 @@ export default function MainError({
             <HugeiconsIcon icon={Refresh01Icon} size={15} aria-hidden />
             다시 시도
           </Button>
-          <Button variant="outline" render={<Link href="/dashboard" />}>
-            워크스페이스로
+          <Button variant="outline" render={<Link href="/tasks" />}>
+            업무로
           </Button>
         </div>
       </div>

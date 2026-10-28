@@ -14,7 +14,7 @@ interface TaskItem {
   status: string
 }
 
-interface MemberStat {
+export interface MemberStat {
   id: string
   name: string
   total: number
@@ -45,7 +45,8 @@ export function DashboardMembers({ members }: { members: MemberStat[] }) {
         <CardTitle className="text-base">팀원별 현황</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* 「상세」 시트 안에 놓인다 — 폭이 화면이 아니라 시트(최대 2xl)라 두 칸까지만 */}
+        <div className="grid gap-4 sm:grid-cols-2">
           {members.map((m) => (
             <MemberCard key={m.id} member={m} />
           ))}

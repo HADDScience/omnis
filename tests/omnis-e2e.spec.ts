@@ -66,7 +66,7 @@ async function sendCompleteMessage(
 test.describe("로그인", () => {
   test("정상 로그인 → 대시보드 이동", async ({ page }) => {
     await login(page, "정우창")
-    await expect(page).toHaveURL(/dashboard/)
+    await expect(page).toHaveURL(/\/tasks/)
   })
 
   test("잘못된 비밀번호 → 에러 메시지", async ({ page }) => {
@@ -251,8 +251,9 @@ test.describe("워크스페이스 동기화", () => {
     const taskName = `워크스페이스테스트_${Date.now()}`
     await createTaskViaAPI(page, { name: taskName, ownerName: "김아리", productId })
 
-    // 대시보드 → 워크스페이스 표시 확인
-    await page.goto("/dashboard")
+    // 업무 → 관계도 표시 확인
+    await page.goto("/tasks")
+    await page.getByRole("button", { name: "관계도", exact: true }).click()
     await page.waitForTimeout(2000)
     await expect(page.locator(".react-flow").getByText(taskName, { exact: true })).toBeVisible({ timeout: 10_000 })
 
@@ -263,7 +264,8 @@ test.describe("워크스페이스 동기화", () => {
     }
     expect(await getTaskStatus(page, taskName)).toBe("DONE")
 
-    await page.goto("/dashboard")
+    await page.goto("/tasks")
+    await page.getByRole("button", { name: "관계도", exact: true }).click()
     await page.waitForTimeout(1500)
     await expect(page.locator(".react-flow").getByText(taskName, { exact: true })).not.toBeVisible({ timeout: 10_000 })
   })
@@ -282,8 +284,9 @@ test.describe("워크스페이스 동기화", () => {
     const slug = await getTaskSlug(page, taskName)
     expect(slug).toBeTruthy()
 
-    // 대시보드 워크스페이스 표시 확인
-    await page.goto("/dashboard")
+    // 업무 관계도 표시 확인
+    await page.goto("/tasks")
+    await page.getByRole("button", { name: "관계도", exact: true }).click()
     await page.waitForTimeout(2000)
     await expect(page.locator(".react-flow").getByText(taskName, { exact: true })).toBeVisible({ timeout: 10_000 })
 
@@ -294,7 +297,8 @@ test.describe("워크스페이스 동기화", () => {
 
     expect(await getTaskStatus(page, taskName)).toBe("DONE")
 
-    await page.goto("/dashboard")
+    await page.goto("/tasks")
+    await page.getByRole("button", { name: "관계도", exact: true }).click()
     await page.waitForTimeout(2000)
     await expect(page.locator(".react-flow").getByText(taskName, { exact: true })).not.toBeVisible({ timeout: 10_000 })
   })
