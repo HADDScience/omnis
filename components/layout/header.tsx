@@ -1,10 +1,11 @@
 "use client"
 
 import { Fragment, type ReactNode } from "react"
-import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { NotificationBell } from "./notification-bell"
 import { RightPanelTrigger } from "./right-panel-trigger"
+import { NAV_DESKTOP_QUERY } from "./floating-nav"
+import { useMediaQuery } from "@/hooks/use-media-query"
 
 interface HeaderProps {
   title?: string
@@ -13,14 +14,14 @@ interface HeaderProps {
 }
 
 export function Header({ title, crumbs, actions }: HeaderProps) {
+  // PC 에서는 알림 종이 떠 있는 nav 에 있다
+  const isMdUp = useMediaQuery(NAV_DESKTOP_QUERY)
   return (
     <header
       // h-12 는 3rem = 39px(루트 81.25%)이라 44px 터치 타깃이 안 들어간다.
       // 터치 기기에서만 헤더를 키운다 — 마우스 환경 밀도는 그대로 둔다.
       className="flex h-12 shrink-0 items-center gap-3 border-b bg-background px-4 [@media(pointer:coarse)]:h-[52px]"
     >
-      <SidebarTrigger />
-      <Separator orientation="vertical" className="h-4 self-center!" />
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         {crumbs && crumbs.length > 0 ? (
           crumbs.map((c, i) => {
@@ -53,8 +54,12 @@ export function Header({ title, crumbs, actions }: HeaderProps) {
       <div className="flex items-center gap-1">
         {actions}
         <RightPanelTrigger />
-        {actions && <Separator orientation="vertical" className="mx-1 h-4 self-center!" />}
-        <NotificationBell />
+        {!isMdUp && (
+          <>
+            {actions && <Separator orientation="vertical" className="mx-1 h-4 self-center!" />}
+            <NotificationBell />
+          </>
+        )}
       </div>
     </header>
   )
