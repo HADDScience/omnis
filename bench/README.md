@@ -44,6 +44,7 @@ npx tsx bench/agent/report.ts bench/results/agent-…     # 표만 다시 (--wor
 npx tsx bench/agent/estimate.ts bench/results/agent-…-dry   # dry-run 결과로 비용 추산만
 npx tsx bench/agent/run.ts --dry-run --router jev       # 라우터 모드 0원 확인 (가짜 Jev · 가짜 Responses API)
 npx tsx bench/agent/run.ts --router jev --repeat 2      # 라우터 모드 실측 (유료): Jev 가 luna/sol 을 고른다
+npx tsx bench/agent/run.ts --tasks ~/work/omnis-import/eval/agent-tasks-261028b.json --split dev …   # 53과제 중 dev 묶음만
 ```
 
 | 파일 | 역할 |
@@ -77,6 +78,12 @@ npx tsx bench/agent/run.ts --router jev --repeat 2      # 라우터 모드 실�
   건당 원·지연은 Jev 몫 포함. 리포트에 라우팅 분포 · 유형별 분포 · 잘못 보낸 과제 · `--compare`(기본 agent-20261028-052125,
   전부 sol) 비교표가 붙는다. 키는 `JEV_API_KEY`(TypeSafe 직접 `api.typesafe.ai/v1/systemone`)를 먼저,
   없으면 `AI_GATEWAY_API_KEY`(`ai-gateway.vercel.sh/typesafe/v1/systemone`, 모델 `typesafe-ai/jev-1.14.0`). Jev 요금 입력 100만 토큰당 $0.042, 출력 무료.
+- **과제 53개(`agent-tasks-261028b.json`):** 261028 의 13개에 아주 간단한 것부터 복잡한 것까지 40개를 더했다.
+  과제마다 `level`(L0 아주 간단 · L1 단일 행동 · L2 조회 조합 · L3 복잡)과 `split`(dev · test)이 붙는다.
+  split 은 등급별로 반씩, 시드 20261028 로 고정해 나눴다(파일의 `splitRule`). `--split dev|test|all`(기본 all).
+  **level 은 채점·리포트용이고 Jev 에 넘기지 않는다** — Jev 는 요청 원문만 본다.
+  리포트에 등급별 완수율·건당 원, 묶음별 표, 라우터면 등급별 싼 모델 비율, 같은 run 에 luna·sol 이 둘 다 있으면
+  **이상적 라우터 상한**(과제마다 통과하는 쪽 중 싼 것을 골랐을 때)이 붙는다. `report.ts --ideal 싼,강한` 으로 두 모델을 바꾼다.
 - 새 실행의 run id 는 초까지 넣는다(`agent-YYYYMMDD-HHMMSS`). 폴더가 이미 있으면 `--run` 없이는 거부한다.
 - 모델 축은 `config.ts` 의 `AGENT_MODELS`(Claude 5.5 셋 · gemini-3.8-flash · gemini-3.5-flash-lite · gpt-6.1-sol · gpt-6.1-terra · gpt-6-luna). 1차 벤치 `MODELS` 와 따로 둔다.
   OpenAI 는 Responses API 로 매번 전체 입력을 보낸다(`previous_response_id` 안 씀, `store: false` + `include: reasoning.encrypted_content`). reasoning effort medium, temperature 안 보냄.

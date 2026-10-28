@@ -14,6 +14,16 @@ export type TaskKind =
   | "knowledge" //  (e) 대화 → 지식·기록 정리 제안
   | "clarify" //    (f) 모호하거나 하면 안 되는 요청 — 되묻기·거절
 
+/** 난이도 등급 — 채점·리포트용. 라우터(Jev)에 절대 넘기지 않는다 */
+export type TaskLevel = "L0" | "L1" | "L2" | "L3"
+export const LEVEL_LABEL: Record<TaskLevel, string> = {
+  L0: "L0 아주 간단",
+  L1: "L1 단일 행동",
+  L2: "L2 조회 조합",
+  L3: "L3 복잡",
+}
+export type TaskSplit = "dev" | "test"
+
 export const KIND_LABEL: Record<TaskKind, string> = {
   aggregate: "a 집계",
   write: "b 업무 제안",
@@ -52,6 +62,10 @@ export interface ProposalSpec {
 export interface AgentTask {
   id: string
   kind: TaskKind
+  /** 난이도. 라우터에 넘기지 않는다 */
+  level?: TaskLevel
+  /** 라우터 기준을 고르는 묶음(dev)과 검증하는 묶음(test) */
+  split?: TaskSplit
   /** 사용자가 옴니스에게 하는 말 */
   prompt: string
   /** 심판에게 주는 정답 설명 — DB 를 조회해 확인한 사실을 적는다 */
@@ -90,6 +104,8 @@ export interface TaskFile {
   snapshotDate: string
   /** 질문하는 사람 (정식 이름) */
   user: string
+  /** dev/test 를 나눈 방법과 시드 */
+  splitRule?: { seed: number; method: string }
   tasks: AgentTask[]
 }
 
@@ -168,6 +184,8 @@ export interface AgentRow {
   modelId: string
   taskId: string
   kind: TaskKind
+  level?: TaskLevel
+  split?: TaskSplit
   rep: number
   prompt: string
   answer: string

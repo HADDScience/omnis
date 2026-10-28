@@ -8,7 +8,7 @@
 //   npx tsx bench/agent/run.ts --router jev --repeat 2                     # 라우터 모드: Jev 가 luna/sol 을 고른다
 //
 // 옵션: --tasks <파일> (기본 ~/work/omnis-import/eval/agent-tasks-261028.json, AGENT_BENCH_TASKS)
-//       --only T01,T04 · --limit N · --repeat R · --max-turns 12 · --max-krw-per-task 1000
+//       --split dev|test|all (기본 all) · --only T01,T04 · --limit N · --repeat R · --max-turns 12 · --max-krw-per-task 1000
 //       --budget-krw 35000 (모델+심판 누적이 넘으면 멈춘다) · --no-judge · --user 정우창 · --workdays 22
 // 심판: AGENT_BENCH_JUDGE (기본 claude-sonnet-5-5). dry-run 은 심판을 부르지 않는다.
 // 라우터: --router jev · --router-threshold 0.7 · --router-cheap gpt-6-luna · --router-strong gpt-6.1-sol
@@ -81,6 +81,8 @@ function validateTasks(file: TaskFile): void {
     for (const [n] of t.dry.reads) if (!READ_TOOLS.has(n)) errs.push(`${t.id}: dry.reads 에 읽기 도구가 아님 ${n}`)
     for (const [n] of t.dry.proposals ?? []) if (!WRITE_TOOLS.has(n)) errs.push(`${t.id}: dry.proposals 에 쓰기 도구가 아님 ${n}`)
     if (!t.rubric) errs.push(`${t.id}: rubric 없음`)
+    if (t.level && !["L0", "L1", "L2", "L3"].includes(t.level)) errs.push(`${t.id}: level 은 L0~L3`)
+    if (t.split && !["dev", "test"].includes(t.split)) errs.push(`${t.id}: split 은 dev · test`)
   }
   if (errs.length) throw new Error(`과제 파일 오류\n${errs.join("\n")}`)
 }
@@ -106,7 +108,11 @@ async function main() {
   validateTasks(file)
   const only = opt("--only")?.split(",").map((s) => s.trim())
   const limit = Number(opt("--limit") ?? 0)
-  let tasks = only ? file.tasks.filter((t) => only.includes(t.id)) : file.tasks
+  const split = opt("--split") ?? "all"
+  if (!["dev", "test", "all"].includes(split)) throw new Error("--split 는 dev · test · all")
+  if (split !== "all" && file.tasks.some((t) => !t.split)) throw new Error(`--split ${split}: 과제 파일에 split 칸이 없는 과제가 있다`)
+  let tasks = file.tasks.filter((t) => split === "all" || t.split === split)
+  if (only) tasks = tasks.filter((t) => only.includes(t.id))
   if (limit > 0) tasks = tasks.slice(0, limit)
   const repeat = Math.max(1, Number(opt("--repeat") ?? 1))
   const maxTurns = Number(opt("--max-turns") ?? 12)
@@ -184,7 +190,7 @@ async function main() {
   const system = agentSystemPrompt(file.snapshotDate, caller.name)
   writeFileSync(join(dir, "meta.json"), JSON.stringify({
     runId, startedAt: new Date().toISOString(), dryRun, dbHost, caller: caller.name, krwPerUsd: KRW_PER_USD,
-    taskFile, snapshotDate: file.snapshotDate, taskCount: tasks.length, repeat, maxTurns, maxKrwPerTask, budgetKrw,
+    taskFile, snapshotDate: file.snapshotDate, split, splitRule: file.splitRule ?? null, taskCount: tasks.length, repeat, maxTurns, maxKrwPerTask, budgetKrw,
     models: models.map((m) => ({ key: m.key, id: m.id, price: m.price, effort: m.effort ?? null, thinking: m.thinking ?? null })),
     judge: doJudge ? judgeModel().key : null,
     router: router ? { route: router.cfg.route, url: router.cfg.url, jevModel: router.cfg.model, key: router.cfg.keyLabel, threshold: router.cfg.threshold, cheap: router.cheap.key, strong: router.strong.key } : null,
@@ -254,7 +260,8 @@ async function runOne(
     }
   }
   return {
-    runId, model: model.key, modelId: runModel.id, taskId: task.id, kind: task.kind, rep, prompt: task.prompt,
+    runId, model: model.key, modelId: runModel.id, taskId: task.id, kind: task.kind,
+    ...(task.level ? { level: task.level } : {}), ...(task.split ? { split: task.split } : {}), rep, prompt: task.prompt,
     answer: r.answer, proposals: r.proposals, turns: r.turns, usage: r.usage,
     costUsd: totalUsd, costKrw: usdToKrw(totalUsd), ms: r.ms + (decision?.ms ?? 0),
     det, judge: j, judgeEstInput: estTokens(judgePrompt),

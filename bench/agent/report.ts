@@ -1,6 +1,7 @@
 // 결과 표 — results.jsonl → summary.md · summary.csv
 //
 //   npx tsx bench/agent/report.ts bench/results/agent-<run> [--workdays 22] [--compare bench/results/<전부-sol 실행>]
+//                                 [--ideal 싼모델,강한모델]   # 이상적 라우터 상한의 두 모델 (기본: meta 의 라우터 설정 또는 gpt-6-luna,gpt-6.1-sol)
 //
 // 표 넷: 모델별 요약 · 월 예산(하루 20/50/100건 × 건당 원) · 유형별 완수 · 과제별 상세.
 // dry-run 결과면 끝에 "돌리기 전 비용 추산" 을 붙인다.
@@ -9,7 +10,7 @@ import { readFileSync, writeFileSync, existsSync } from "fs"
 import { join } from "path"
 import { KRW_PER_USD } from "../config"
 import { estimateMarkdown } from "./estimate"
-import { KIND_LABEL, type AgentRow, type TaskKind } from "./types"
+import { KIND_LABEL, LEVEL_LABEL, type AgentRow, type TaskKind, type TaskLevel } from "./types"
 
 const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : "–")
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
@@ -56,6 +57,16 @@ function routerMarkdown(rows: AgentRow[], compareDir?: string): string[] {
       const kst = ks.filter((r) => !toCheap.includes(r))
       out.push(`| ${KIND_LABEL[k]} | ${kc.length}/${ks.length} | ${pct(kc.filter((r) => r.completed).length, kc.length)} | ${pct(kst.filter((r) => r.completed).length, kst.length)} |`)
     }
+    const levels = [...new Set(rs.map((r) => r.level).filter((l): l is TaskLevel => !!l))].sort()
+    if (levels.length) {
+      out.push(``, `등급별 — 싼 모델로 보낸 비율 (등급은 Jev 에 넘기지 않았다):`, ``, `| 등급 | 싼 모델로 / 전체 | 비율 | 싼 모델 완수 | 강한 모델 완수 |`, `|---|---:|---:|---:|---:|`)
+      for (const lv of levels) {
+        const ls = rs.filter((r) => r.level === lv)
+        const lc = ls.filter((r) => toCheap.includes(r))
+        const lst = ls.filter((r) => !toCheap.includes(r))
+        out.push(`| ${LEVEL_LABEL[lv]} | ${lc.length}/${ls.length} | ${pct(lc.length, ls.length)} | ${pct(lc.filter((r) => r.completed).length, lc.length)} | ${pct(lst.filter((r) => r.completed).length, lst.length)} |`)
+      }
+    }
     const wrong = toCheap.filter((r) => !r.completed)
     out.push(``, `잘못 보낸 과제 (싼 모델로 보냈는데 실패) ${wrong.length}건${wrong.length ? ":" : ""}`)
     for (const r of wrong) {
@@ -88,7 +99,46 @@ function routerMarkdown(rows: AgentRow[], compareDir?: string): string[] {
   return out
 }
 
-export function writeAgentReport(dir: string, opts: { workdays?: number; repeat?: number; compareDir?: string } = {}): string {
+/**
+ * 이상적 라우터 상한 — 같은 run 안에 싼 모델·강한 모델 결과가 둘 다 있으면, (과제, 반복)마다 통과하는 쪽 중
+ * 싼 것을 골랐다고 친다. 둘 다 실패하면 강한 모델로 보냈다고 보고 그 비용·실패를 센다.
+ * 실제 라우터가 다가갈 수 있는 한계다(Jev 비용 0, 미리 답을 안다고 가정).
+ */
+function idealRouterMarkdown(rows: AgentRow[], cheap: string, strong: string): string[] {
+  const key = (r: AgentRow) => `${r.taskId}#${r.rep}`
+  const c = new Map(rows.filter((r) => r.model === cheap).map((r) => [key(r), r]))
+  const s = new Map(rows.filter((r) => r.model === strong).map((r) => [key(r), r]))
+  const both = [...c.keys()].filter((k) => s.has(k))
+  if (!both.length) return []
+  const pick = both.map((k) => {
+    const a = c.get(k)!, b = s.get(k)!
+    if (a.completed && (!b.completed || a.costKrw <= b.costKrw)) return { row: a, used: cheap }
+    if (b.completed) return { row: b, used: strong }
+    return { row: b, used: strong }
+  })
+  const strongRows = both.map((k) => s.get(k)!)
+  const done = pick.filter((p) => p.row.completed).length
+  const krw = avg(pick.map((p) => p.row.costKrw))
+  const sKrw = avg(strongRows.map((r) => r.costKrw))
+  const out = [
+    ``, `## 이상적 라우터 상한 (${cheap} / ${strong})`, ``,
+    `같은 run 의 (과제, 반복) ${both.length}쌍마다 통과하는 쪽 중 싼 것을 골랐다고 친 값. 둘 다 실패하면 ${strong} 로 센다. Jev 비용은 0 으로 둔다.`, ``,
+    `| | 완수율 | 건당 원 | ${cheap} 로 간 비율 |`, `|---|---:|---:|---:|`,
+    `| 전부 ${strong} | ${pct(strongRows.filter((r) => r.completed).length, both.length)} | ${sKrw.toFixed(1)} | 0% |`,
+    `| 이상적 라우터 | ${pct(done, both.length)} | ${krw.toFixed(1)} (${sKrw ? Math.round((1 - krw / sKrw) * 100) : 0}% 절감) | ${pct(pick.filter((p) => p.used === cheap).length, both.length)} |`,
+  ]
+  const levels = [...new Set(pick.map((p) => p.row.level).filter((l): l is TaskLevel => !!l))].sort()
+  if (levels.length) {
+    out.push(``, `| 등급 | 쌍 | 이상적 완수율 | 이상적 건당 원 | ${cheap} 로 |`, `|---|---:|---:|---:|---:|`)
+    for (const lv of levels) {
+      const ps = pick.filter((p) => p.row.level === lv)
+      out.push(`| ${LEVEL_LABEL[lv]} | ${ps.length} | ${pct(ps.filter((p) => p.row.completed).length, ps.length)} | ${avg(ps.map((p) => p.row.costKrw)).toFixed(1)} | ${pct(ps.filter((p) => p.used === cheap).length, ps.length)} |`)
+    }
+  }
+  return out
+}
+
+export function writeAgentReport(dir: string, opts: { workdays?: number; repeat?: number; compareDir?: string; ideal?: [string, string] } = {}): string {
   const rows = loadRows(dir)
   const workdays = opts.workdays ?? 22
   const meta = existsSync(join(dir, "meta.json")) ? JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) : {}
@@ -161,6 +211,22 @@ export function writeAgentReport(dir: string, opts: { workdays?: number; repeat?
     out.push(`| ${KIND_LABEL[k]} | ${models.map((m) => { const rs = by(m).filter((r) => r.kind === k); return `${pct(rs.filter((r) => r.completed).length, rs.length)} (${rs.length})` }).join(" | ")} |`)
   }
 
+  // ─── 등급별 ───
+  const levels = [...new Set(rows.map((r) => r.level).filter((l): l is TaskLevel => !!l))].sort()
+  if (levels.length) {
+    out.push(``, `## 등급별 완수율 · 건당 원`, ``, `칸: 완수율 · 건당 원 (건수)`, ``, `| 등급 | ${models.join(" | ")} |`, `|---|${models.map(() => "---:").join("|")}|`)
+    for (const lv of levels) {
+      out.push(`| ${LEVEL_LABEL[lv]} | ${models.map((m) => { const rs = by(m).filter((r) => r.level === lv); return rs.length ? `${pct(rs.filter((r) => r.completed).length, rs.length)} · ${avg(rs.map((r) => r.costKrw)).toFixed(1)}원 (${rs.length})` : "–" }).join(" | ")} |`)
+    }
+    const splits = [...new Set(rows.map((r) => r.split).filter(Boolean))]
+    if (splits.length > 1) {
+      out.push(``, `| 묶음 | ${models.join(" | ")} |`, `|---|${models.map(() => "---:").join("|")}|`)
+      for (const sp of splits) out.push(`| ${sp} | ${models.map((m) => { const rs = by(m).filter((r) => r.split === sp); return rs.length ? `${pct(rs.filter((r) => r.completed).length, rs.length)} · ${avg(rs.map((r) => r.costKrw)).toFixed(1)}원 (${rs.length})` : "–" }).join(" | ")} |`)
+    }
+  }
+
+  out.push(...idealRouterMarkdown(rows, opts.ideal?.[0] ?? meta.router?.cheap ?? "gpt-6-luna", opts.ideal?.[1] ?? meta.router?.strong ?? "gpt-6.1-sol"))
+
   // ─── 과제별 ───
   out.push(``, `## 과제별`, ``, `✓ 완수 · △ 결정 통과했으나 심판 0점 · ✗ 실패. 괄호: 적중/기대 · 맞은 제안/기대 제안 · 턴 · 원.`, ``)
   out.push(`| 과제 | 유형 | ${models.join(" | ")} |`, `|---|---|${models.map(() => "---").join("|")}|`)
@@ -213,5 +279,7 @@ if (process.argv[1]?.endsWith("report.ts")) {
   if (!dir) throw new Error("사용법: npx tsx bench/agent/report.ts bench/results/agent-<run> [--workdays 22]")
   const i = process.argv.indexOf("--workdays")
   const c = process.argv.indexOf("--compare")
-  console.log(writeAgentReport(dir, { workdays: i > 0 ? Number(process.argv[i + 1]) : undefined, compareDir: c > 0 ? process.argv[c + 1] : undefined }))
+  const d = process.argv.indexOf("--ideal")
+  const ideal = d > 0 ? (process.argv[d + 1].split(",") as [string, string]) : undefined
+  console.log(writeAgentReport(dir, { workdays: i > 0 ? Number(process.argv[i + 1]) : undefined, compareDir: c > 0 ? process.argv[c + 1] : undefined, ideal }))
 }
