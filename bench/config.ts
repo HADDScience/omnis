@@ -27,6 +27,11 @@ export interface ModelSpec {
   thinking?: { budget?: number; level?: "minimal" | "low" | "medium" | "high" }
   /** Anthropic: extended thinking 예산 토큰. 없으면 끔 */
   anthropicThinkingBudget?: number
+  /**
+   * Anthropic: output_config.effort. 5.5 세대는 thinking 을 끌 수 없고(budget_tokens 를 보내면 400)
+   * 깊이는 effort 로만 조절한다. 에이전트 벤치(bench/agent)만 읽는다
+   */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max"
   maxOutputTokens?: number
   /** 벤더 요청 사이 최소 간격(ms). 무료 티어 속도 제한용 */
   minIntervalMs?: number
@@ -60,6 +65,24 @@ export const MODELS: ModelSpec[] = [
   // ── OpenAI 호환 (OPENAI_COMPAT_BASE_URL · OPENAI_COMPAT_API_KEY 없으면 건너뜀) ──
   // 예: Groq 의 Gemma, OpenRouter 의 GPT mini. id 와 요금은 쓰는 곳에 맞춰 바꾼다.
   // { key: "groq-gemma", provider: "openai-compat", id: "gemma2-9b-it", price: { input: 0.20, output: 0.20 } },
+]
+
+/**
+ * 에이전트형 과제 벤치(bench/agent)의 모델 축. 1차 벤치 그리드(MODELS)와 따로 둔다 —
+ * MODELS 에 넣으면 `bench/run.ts` 를 모델 지정 없이 돌릴 때 유료 모델이 조용히 늘어난다.
+ *
+ * Claude 요금: claude-api 스킬 표 2026-10-06 캐시 (USD / 100만 토큰).
+ * Haiku 5.5 는 프롬프트 10만 토큰까지의 단가다 (넘으면 0.50 / 2.50). 에이전트 한 턴은 그 아래로 본다.
+ * effort 는 셋 다 medium 으로 명시한다 — Opus·Haiku 5.5 의 기본은 medium, Sonnet 5.5 는 high 라
+ * 생략하면 모델마다 조건이 달라진다.
+ *
+ * 운영 기본 모델(lib/ai.ts 의 gemini-3.6-flash)은 요금을 확인한 적이 없어 넣지 않는다.
+ */
+export const AGENT_MODELS: ModelSpec[] = [
+  { key: "claude-haiku-5-5", provider: "anthropic", id: "claude-haiku-5-5", price: { input: 0.10, output: 0.50, cachedInput: 0.01 }, effort: "medium" },
+  { key: "claude-sonnet-5-5", provider: "anthropic", id: "claude-sonnet-5-5", price: { input: 2.00, output: 10.00, cachedInput: 0.20 }, effort: "medium" },
+  { key: "claude-opus-5-5", provider: "anthropic", id: "claude-opus-5-5", price: { input: 4.00, output: 20.00, cachedInput: 0.20 }, effort: "medium" },
+  ...MODELS.filter((m) => m.key === "gemini-3.8-flash" || m.key === "gemini-3.5-flash-lite"),
 ]
 
 export const METHODS = ["baseline", "vector", "hybrid", "stuff", "route", "native"] as const

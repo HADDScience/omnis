@@ -50,7 +50,7 @@ export function costUsd(u: Usage, p: Price): number {
 
 const lastCallAt = new Map<string, number>()
 
-async function throttle(m: ModelSpec) {
+export async function throttle(m: ModelSpec) {
   if (!m.minIntervalMs) return
   const last = lastCallAt.get(m.key) ?? 0
   const wait = last + m.minIntervalMs - now()
@@ -58,7 +58,7 @@ async function throttle(m: ModelSpec) {
   lastCallAt.set(m.key, now())
 }
 
-async function fetchWithRetry(url: string, init: RequestInit, label: string, maxAttempts = 6): Promise<Response> {
+export async function fetchWithRetry(url: string, init: RequestInit, label: string, maxAttempts = 6): Promise<Response> {
   let lastErr = ""
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let res: Response
