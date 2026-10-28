@@ -1575,3 +1575,90 @@ model ColumnPostEmbedding {
   embedding   Float[]
   updatedAt   DateTime @updatedAt
 }
+
+// ─── 캘린더 (2026-10-28) ─────────────────────────────────────
+
+/// 외부 캘린더 하나(네이버 웍스 CalDAV 컬렉션)와 그 동기화 커서.
+///
+/// 캘린더 id 는 웍스에서 캘린더를 다시 만들면 바뀐다. 그래서 설정(`CALDAV_CALENDARS`)은
+/// 표시 이름으로 고르고, 이 행은 찾은 결과를 담는다 — mydocs/tech/calendar.md 4장.
+model ExternalCalendar {
+  id          String           @id @default(uuid())
+  /// "naver-works"
+  provider    String
+  /// CalDAV 경로의 마지막 칸 (c_300176554_…)
+  externalId  String
+  href        String
+  displayName String
+  /// 옴니스에서 누가 보는가. 웍스에서 보이는 사람과 옴니스 구성원이 같다는 보장이 없어
+  /// 처음엔 관리자만 — 관리자가 캘린더 화면에서 연다.
+  audience    CalendarAudience @default(ADMIN)
+  /// 컬렉션의 마지막 변경 시각(CS:getctag). 같으면 이번 주기에 아무것도 당기지 않는다
+  ctag        String?
+  /// sync-collection 커서. 서버가 주는 값이 평문 시각이라 3초 되돌려 저장한다(같은 초의 변경을 놓치지 않게)
+  syncToken   String?
+  /// 마지막으로 성공한 시각
+  syncedAt    DateTime?
+  /// 마지막으로 시도한 시각 — 실패해도 남긴다. 열람 시 갱신의 60초 판정이 이것을 본다
+  attemptedAt DateTime?
+  lastError   String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  events ExternalCalendarEvent[]
+
+  @@unique([provider, externalId])
+}
+
+enum CalendarAudience {
+  ALL
+  ADMIN
+}
+
+/// 외부 캘린더에서 들여온 일정. 옴니스 안에 집이 없는 데이터만 담는다 —
+/// 업무·견적처럼 옴니스가 원본인 날짜는 여기 복사하지 않고 읽을 때 모은다(lib/calendar).
+///
+/// 반복 일정은 마스터만 담고 펼치지 않는다. 펼친 회차를 쌓으면 끝없는 반복에 끝이 없고,
+/// 규칙이 바뀔 때마다 지우고 다시 넣어야 한다. 조회 창에 맞춰 그때 펼친다.
+model ExternalCalendarEvent {
+  id           String           @id @default(uuid())
+  calendarId   String
+  calendar     ExternalCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  /// iCalendar UID. 마스터와 그 예외 회차가 **같은 UID** 를 쓴다
+  uid          String
+  /// 예외 회차의 원래 시각(RECURRENCE-ID 를 UTC ISO 로). 마스터는 빈 문자열이다 —
+  /// null 로 두면 Postgres 유니크 키가 null 끼리 겹치는 것을 막지 못한다
+  recurrenceId String           @default("")
+  /// 이 일정이 든 .ics 리소스. 마스터와 예외가 한 리소스에 같이 든다
+  href         String
+  etag         String?
+  summary      String
+  description  String?
+  location     String?
+  /// 첫 회차(반복이면 마스터의 DTSTART)
+  startAt      DateTime
+  endAt        DateTime
+  /// 종일 일정(VALUE=DATE). 이때 startAt 은 서울 자정이고 endAt 은 끝 다음 날 서울 자정이다
+  isAllDay     Boolean          @default(false)
+  tzid         String?
+  rrule        String?
+  exdates      DateTime[]
+  /// 반복의 마지막 회차가 끝나는 시각. 끝없는 반복이면 null — 조회 창을 거를 때 쓴다
+  recurUntil   DateTime?
+  /// CONFIRMED · TENTATIVE · CANCELLED
+  status       String?
+  sequence     Int              @default(0)
+  lastModified DateTime?
+  /// ORGANIZER 의 메일 주소. 옴니스 사용자와는 메일로만 맞춘다(auth-architecture)
+  organizer    String?
+  /// [{ email, name, partstat }]
+  attendees    Json?
+  /// sync-collection 의 404 묘비. 지우지 않고 가린다
+  deletedAt    DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([calendarId, uid, recurrenceId])
+  @@index([calendarId, startAt])
+  @@index([href])
+}

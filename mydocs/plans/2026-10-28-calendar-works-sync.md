@@ -7,10 +7,9 @@ last_verified: 2026-10-28
 
 # 캘린더 — 웍스 일정을 들여와 옴니스 날짜 데이터와 함께 보여 준다
 
-상태: 2026-10-28 작업지시자가 막혀 있던 둘을 정했다.
+상태: 2026-10-28 작업지시자 승인(「진행해줘」). 막혀 있던 둘도 같은 날 정했다.
 - **계정**: 정우창 개인 계정(`jwoochang`)의 앱 비밀번호를 쓴다
 - **범위**: 캘린더 3개 — `Hadd Science` · `대표님 일정` · `바이오아이코어 2026`
-- 아직 승인받지 않은 것: 이 계획 자체. **승인 뒤 1단계를 시작한다.**
 - PR 까지만 한다. 머지는 작업지시자가 한다.
 
 설계의 권위 문서는 [`../tech/calendar.md`](../tech/calendar.md) 다. 왜 CalDAV 인지,
@@ -58,7 +57,10 @@ last_verified: 2026-10-28
 
 - `(provider, externalCalendarId, externalId, recurrenceId)` 유니크 —
   **마스터와 예외 회차가 UID 를 공유**하므로 `recurrenceId` 가 키에 들어가야 한다
-- `CalendarSyncState`: `externalCalendarId` · `displayName` · `ctag` · `syncToken` · `syncedAt` · `lastError`
+- `ExternalCalendar`: `externalId` · `displayName` · `ctag` · `syncToken` · `syncedAt` · `attemptedAt` · `lastError` · `audience`
+  — 계획 때는 `CalendarSyncState` 라 불렀다. 커서만이 아니라 **누가 보는가(`audience`)** 까지 담게 돼 이름을 바꿨다.
+  웍스에서 보이는 사람과 옴니스 구성원이 같다는 보장이 없어 **기본값은 관리자만**이고, 관리자가 화면에서 연다
+- `recurrenceId` 는 마스터에서 `null` 이 아니라 **빈 문자열**이다. Postgres 유니크 키는 null 끼리의 겹침을 막지 못한다
 - `calendarId` 를 코드에 박지 않는다. 캘린더는 PROPFIND 로 찾고, **표시 이름으로 걸러**
   `CALDAV_CALENDARS="Hadd Science,대표님 일정,바이오아이코어 2026"` 와 맞춘다.
   웍스에서 캘린더를 다시 만들면 id 가 바뀌지만 이름은 유지된다
