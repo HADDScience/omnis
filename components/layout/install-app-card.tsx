@@ -31,7 +31,7 @@ import {
 const DISMISS_KEY = "omnis:install-card-dismissed"
 
 /**
- * 사이드바 아래의 앱 설치 안내.
+ * 마이 탭 위쪽의 앱 설치 안내.
  *
  * 브라우저가 설치 이벤트(`beforeinstallprompt`)를 줬으면 **바로 설치** 버튼이 뜬다 —
  * 안드로이드 크롬·PC 크롬/엣지가 여기 해당한다. iOS 는 그 이벤트가 없어 코드로 설치를 띄울
@@ -82,7 +82,7 @@ export function InstallAppCard() {
 
   return (
     <>
-      <div className="relative mx-2 mb-2 mt-auto rounded-lg border border-border bg-muted/40 p-3">
+      <div className="relative rounded-lg border border-border bg-muted/40 p-3">
         <button
           type="button"
           onClick={dismiss}
