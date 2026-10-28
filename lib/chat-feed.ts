@@ -1,6 +1,7 @@
 // 채팅 피드 읽기 — 화면(app/api/chat/feed)과 MCP(list_chat)가 같은 길을 쓴다.
 // 라우트에서 그대로 옮겼다(2026-09-16). 보기(view)마다 무엇을 모으는지가 여기 한 곳에 있다.
 import { prisma } from "@/lib/db"
+import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 
 export type FeedView = "all" | "task" | "dm" | "ai"
 
@@ -16,6 +17,7 @@ export type FeedMessage = Awaited<ReturnType<typeof prisma.chatMessage.findMany<
 /**
  * 오래된 것 → 새 것 순으로 돌려준다(화면이 그 순서로 그린다).
  * `dm` 은 서로를 @멘션한 글, `ai` 는 Omnis AI 가 쓰거나 불린 글이다.
+ * 어느 보기든 전사방 글만 — 옴니스 1:1 · 단톡 글은 그 방 참여자만 읽는다(lib/chat-rooms.ts).
  */
 export async function readChatFeed(input: {
   currentUserId: string
@@ -31,11 +33,11 @@ export async function readChatFeed(input: {
   let messages: FeedMessage[] = []
 
   if (view === "all") {
-    messages = await prisma.chatMessage.findMany({ orderBy: { createdAt: "desc" }, take, include: INCLUDE })
+    messages = await prisma.chatMessage.findMany({ where: PUBLIC_MESSAGE_WHERE, orderBy: { createdAt: "desc" }, take, include: INCLUDE })
   } else if (view === "task" && id) {
     const mentioned = await prisma.chatMention.findMany({ where: { type: "TASK", taskId: id }, select: { messageId: true } })
     messages = await prisma.chatMessage.findMany({
-      where: { OR: [{ id: { in: mentioned.map((m) => m.messageId) } }, { taskId: id }] },
+      where: { ...PUBLIC_MESSAGE_WHERE, OR: [{ id: { in: mentioned.map((m) => m.messageId) } }, { taskId: id }] },
       orderBy: { createdAt: "desc" }, take, include: INCLUDE,
     })
   } else if (view === "dm" && userId) {
@@ -50,7 +52,7 @@ export async function readChatFeed(input: {
       select: { messageId: true },
     })
     messages = await prisma.chatMessage.findMany({
-      where: { id: { in: mentioned.map((m) => m.messageId) } },
+      where: { ...PUBLIC_MESSAGE_WHERE, id: { in: mentioned.map((m) => m.messageId) } },
       orderBy: { createdAt: "desc" }, take, include: INCLUDE,
     })
   } else if (view === "ai") {
@@ -58,6 +60,7 @@ export async function readChatFeed(input: {
     messages = aiUser
       ? await prisma.chatMessage.findMany({
           where: {
+            ...PUBLIC_MESSAGE_WHERE,
             OR: [{ authorId: aiUser.id }, { mentions: { some: { type: "USER", userId: aiUser.id } } }],
           },
           orderBy: { createdAt: "desc" }, take, include: INCLUDE,

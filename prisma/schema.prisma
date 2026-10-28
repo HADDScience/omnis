@@ -29,6 +29,8 @@ model User {
   assignedTasks    TaskAssignee[]
   instructedTasks  Task[]             @relation("TaskInstructor")
   chatMessages     ChatMessage[]
+  chatRoomsCreated ChatRoom[]         @relation("ChatRoomCreator")
+  chatRoomMembers  ChatRoomMember[]
   weeklyReports    WeeklyReport[]
   omnisUpdates     OmnisCard[]
   omnisVersions    OmnisCardVersion[]
@@ -81,11 +83,51 @@ model UserIdentity {
   @@index([userId])
 }
 
+/// 채팅방. 메신저 왼쪽 목록의 한 줄이다(mydocs/plans/2026-10-28-omnis-messenger-agent.md).
+///
+/// 업무방(TASK)은 표로 만들지 않는다 — 업무 스레드는 `ChatMessage.taskId` 로 묶인 글이고, 목록은 그 글을 방처럼 보여 준다.
+/// enum 에 TASK 가 있는 것은 목록 · 주소가 방 종류를 한 가지 이름으로 부르게 하려는 자리다.
 model ChatRoom {
-  id        String        @id @default(uuid())
-  name      String
-  createdAt DateTime      @default(now())
-  messages  ChatMessage[]
+  id            String           @id @default(uuid())
+  name          String
+  createdAt     DateTime         @default(now())
+  /// 기존 방(「전체」 = default-room)은 기본값으로 COMPANY 가 된다. 옛 코드가 kind 없이 upsert 해도 COMPANY 다.
+  kind          ChatRoomKind     @default(COMPANY)
+  /// 방을 만든 사람. 기존 방 · 카톡 이식 방은 null
+  createdById   String?
+  createdBy     User?            @relation("ChatRoomCreator", fields: [createdById], references: [id])
+  /// 목록 정렬용 — 이 방에 마지막 글이 붙은 시각. 메신저 경로(lib/chat-rooms.ts)가 쓴다.
+  /// 전사방은 여러 경로(업무 생성 · MCP · 채팅 패널)가 글을 써서 이 칸을 믿지 않고 최신 글을 직접 읽는다.
+  lastMessageAt DateTime?
+  messages      ChatMessage[]
+  members       ChatRoomMember[]
+
+  @@index([kind, lastMessageAt])
+}
+
+enum ChatRoomKind {
+  /// 전사방 — 구성원 모두가 읽고 쓴다. 참여자 행이 없어도 된다
+  COMPANY
+  /// 업무방 — 표로 만들지 않는다(위 주석)
+  TASK
+  /// 옴니스와의 1:1 방. ChatGPT 의 세션 하나. 참여자는 만든 사람 한 명이다
+  OMNIS_DM
+  /// 단톡방 — 5단계에서 만든다
+  GROUP
+}
+
+/// 방 참여자. COMPANY 는 모두가 참여자라 행을 만들지 않는다 — OMNIS_DM · GROUP 만 이 표로 읽기 권한을 정한다.
+model ChatRoomMember {
+  roomId     String
+  room       ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime  @default(now())
+  /// 마지막으로 이 방을 연 시각. 안 읽은 글 표시가 쓴다
+  lastReadAt DateTime?
+
+  @@id([roomId, userId])
+  @@index([userId])
 }
 
 model ChatMessage {
@@ -112,6 +154,10 @@ model ChatMessage {
   replyToId         String?
   replyTo           ChatMessage?  @relation("MessageReply", fields: [replyToId], references: [id])
   replies           ChatMessage[] @relation("MessageReply")
+  /// 옴니스 답이면 그 답을 만든 질문 기록. 출처(sources)는 OmnisQuery 에 있어 여기 다시 싣지 않는다.
+  /// 옴니스 글의 작성자는 시스템 계정(lib/system-user.ts, id "system")이다
+  omnisQueryId      String?       @unique
+  omnisQuery        OmnisQuery?   @relation(fields: [omnisQueryId], references: [id])
 
   files    File[]
   mentions ChatMention[]
@@ -435,6 +481,8 @@ model OmnisQuery {
   /// 답변 근거 출처 배열 [{ id, source, sourceId, title, sourceLabel, similarity }]
   sources   Json
   createdAt DateTime @default(now())
+  /// 메신저 옴니스 방에서 나온 질문이면 그 답 글
+  message   ChatMessage?
 
   @@index([userId, createdAt])
 }

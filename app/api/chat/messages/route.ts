@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client"
 import { auth } from "@/lib/auth"
 import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
+import { roomAccess } from "@/lib/chat-rooms"
 
 // 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
 export const maxDuration = 60
@@ -57,6 +58,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const roomId = searchParams.get("roomId")
   if (!roomId) return NextResponse.json({ error: "roomId 필수" }, { status: 400 })
+  // 옴니스 1:1 · 단톡 방은 참여자만 읽는다. 없는 방은 예전처럼 빈 목록으로 떨어진다
+  if ((await roomAccess(roomId, session.user.id)) === "forbidden") {
+    return NextResponse.json({ error: "이 방을 볼 수 없습니다" }, { status: 403 })
+  }
 
   const after = searchParams.get("after")
   const before = searchParams.get("before")
@@ -149,6 +154,12 @@ export async function POST(req: NextRequest) {
 
   if (!roomId || !content?.trim()) {
     return NextResponse.json({ error: "roomId, content 필수" }, { status: 400 })
+  }
+  // 이 길은 전사방(팀 채팅 · 업무 스레드) 전용이다. 옴니스 방은 /api/chat/rooms/[roomId]/ask 로 쓴다 —
+  // 여기로 들어오면 업무 재구성 · 색인 · 멘션 알림이 1:1 대화에 붙는다. 없는 방은 postChatMessage 가 만든다(전사방)
+  const access = await prisma.chatRoom.findUnique({ where: { id: roomId }, select: { kind: true } })
+  if (access && access.kind !== "COMPANY") {
+    return NextResponse.json({ error: "이 방에는 여기로 글을 쓸 수 없습니다" }, { status: 403 })
   }
 
   const { message, taskUpdate, rebuild } = await postChatMessage(

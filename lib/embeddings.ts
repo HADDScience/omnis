@@ -163,9 +163,11 @@ async function buildChatMessageChunks(
 ): Promise<RawChunk[] | null> {
   const msg = await prisma.chatMessage.findUnique({
     where: { id: messageId },
-    include: { author: { select: { name: true } }, task: { select: { name: true } } },
+    include: { author: { select: { name: true } }, task: { select: { name: true } }, room: { select: { kind: true } } },
   })
   if (!msg) return null
+  // 사내 지식은 전사방 글만 — 옴니스 1:1 · 단톡 글은 그 방 사람만 읽는다. 색인에 넣으면 남의 검색에 걸린다
+  if (msg.room.kind !== "COMPANY") return null
 
   const text = msg.content.trim()
   // 시스템 메시지·플레이스홀더·짧은 잡담 제외
