@@ -3,6 +3,7 @@
 // 과제 파일은 사내 데이터가 들어가 저장소 밖(~/work/omnis-import/eval/agent-tasks-*.json)에 둔다.
 // 형식 예시는 bench/agent/tasks.example.json.
 import type { Usage } from "../providers"
+import type { RouterDecision } from "./router"
 
 /** 과제 유형. 리포트가 유형별로 나눠 센다 */
 export type TaskKind =
@@ -161,7 +162,9 @@ export interface JudgeGrade {
 
 export interface AgentRow {
   runId: string
+  /** 라우터 모드면 가상 모델 이름 (예: router:jev(luna/sol)) */
   model: string
+  /** 실제로 돈 모델 ID. 라우터 모드면 고른 모델 */
   modelId: string
   taskId: string
   kind: TaskKind
@@ -171,14 +174,18 @@ export interface AgentRow {
   proposals: Proposal[]
   turns: TurnRecord[]
   usage: AgentUsage
+  /** 라우터 모드면 Jev 호출 몫을 포함한다 */
   costUsd: number
   costKrw: number
+  /** 라우터 모드면 Jev 호출 지연을 포함한다 */
   ms: number
   det: DetGrade
   judge: JudgeGrade | null
   /** 심판 프롬프트 추정 토큰 (dry-run 은 보내지 않고 크기만 잰다) */
   judgeEstInput: number
   completed: boolean
+  /** 라우터 모드만: Jev 결정 · 확신도 · 고른 모델 · Jev 토큰·비용·지연 */
+  router?: RouterDecision
   error?: string
   note?: string
   at: string

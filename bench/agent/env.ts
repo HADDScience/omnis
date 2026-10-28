@@ -1,4 +1,4 @@
-// .env 읽기 — API 키 세 개는 .env 가 셸 환경변수를 이긴다.
+// .env 읽기 — API 키(모델 셋 + 라우터 Jev 둘)는 .env 가 셸 환경변수를 이긴다.
 //
 // `import "dotenv/config"` 는 이미 있는 환경변수를 덮어쓰지 않는다. ~/.zshrc 가 다른 GEMINI_API_KEY 를
 // export 하고 있어, 벤치가 잔액 0 인 키로 불러 402 가 난 적이 있다(2026-10-28). 그래서 키만 .env 값으로
@@ -9,7 +9,8 @@
 import { existsSync, readFileSync } from "fs"
 import { config, parse } from "dotenv"
 
-export const API_KEYS = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"] as const
+/** JEV_API_KEY = TypeSafe 직접 · AI_GATEWAY_API_KEY = Vercel AI Gateway 경유 (라우터 모드만 쓴다) */
+export const API_KEYS = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "JEV_API_KEY", "AI_GATEWAY_API_KEY"] as const
 
 export type KeySource = ".env" | ".env (셸 값 무시)" | "셸" | "없음"
 

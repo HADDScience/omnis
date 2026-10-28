@@ -42,12 +42,15 @@ npx tsx bench/agent/run.ts --models <…> --repeat 2      # 전체 (유료)
 npx tsx bench/agent/run.ts --run agent-20261028-150012  # 중단한 것 이어서 (없으면 새 폴더, 있으면 --run 없이 거부)
 npx tsx bench/agent/report.ts bench/results/agent-…     # 표만 다시 (--workdays 22)
 npx tsx bench/agent/estimate.ts bench/results/agent-…-dry   # dry-run 결과로 비용 추산만
+npx tsx bench/agent/run.ts --dry-run --router jev       # 라우터 모드 0원 확인 (가짜 Jev · 가짜 Responses API)
+npx tsx bench/agent/run.ts --router jev --repeat 2      # 라우터 모드 실측 (유료): Jev 가 luna/sol 을 고른다
 ```
 
 | 파일 | 역할 |
 |---|---|
 | `agent/drivers.ts` | 벤더 어댑터 — Anthropic(공식 SDK) · Gemini(함수 호출) · OpenAI(공식 SDK, Responses API) · 고정 스크립트 · 가짜 OpenAI. 토큰 추산식 |
-| `agent/env.ts` | `.env` 읽기. API 키 셋은 `.env` 가 셸 환경변수를 이긴다. 시작할 때 키별 출처를 찍는다 |
+| `agent/env.ts` | `.env` 읽기. API 키(모델 셋 + `JEV_API_KEY` · `AI_GATEWAY_API_KEY`)는 `.env` 가 셸 환경변수를 이긴다. 시작할 때 키별 출처를 찍는다 |
+| `agent/router.ts` | 라우터 — Jev 에 요청 원문만 보내 simple/complex · 확신도를 받고, 코드 규칙으로 실행 모델을 고른다 |
 | `agent/loop.ts` | 벤더 중립 루프. 턴 상한(12) · 건당 원 상한(1,000원) · 턴 기록(도구·인자·결과 길이·지연) |
 | `agent/tools.ts` | 도구 세트. MCP 읽기 도구는 로컬 DB 를 실제로 읽고, 쓰기 도구 + `create_file` 은 **제안으로만 기록** |
 | `agent/grade.ts` | 결정적 채점(제안 인자 조건 · expect · 금지 행동 · 「실행했다고 단정」) + 심판 0·1·2 |
@@ -67,6 +70,13 @@ npx tsx bench/agent/estimate.ts bench/results/agent-…-dry   # dry-run 결과�
 - 심판은 `AGENT_BENCH_JUDGE`(기본 `claude-sonnet-5-5`, config.ts 의 모델 키). `--no-judge` 로 끈다.
 - **API 키(GEMINI · ANTHROPIC · OPENAI)는 `.env` 값이 셸 환경변수를 이긴다.** `~/.zshrc` 가 export 한 다른 GEMINI 키로 불려 402 가 난 적이 있다.
   시작할 때 `키 GEMINI_API_KEY ← .env (셸 값 무시)` 처럼 출처만 찍는다(값은 안 찍는다).
+- **라우터 모드(`--router jev`, 계획서 0-b):** 과제마다 Jev(TypeSafe System One, `jev-1.14.0` 고정)에 사용자 요청 원문만
+  state 로 보내 고정 질문(simple / complex Choice)의 답과 확신도를 받는다. 유형 라벨·정답은 보내지 않는다.
+  규칙(코드): simple → `--router-cheap`(기본 gpt-6-luna), complex → `--router-strong`(기본 gpt-6.1-sol),
+  확신도 < `--router-threshold`(기본 0.7) · 형식이 다른 응답 · 호출 실패 → strong. 결과 표에는 `router:jev(luna/sol)` 한 줄,
+  건당 원·지연은 Jev 몫 포함. 리포트에 라우팅 분포 · 유형별 분포 · 잘못 보낸 과제 · `--compare`(기본 agent-20261028-052125,
+  전부 sol) 비교표가 붙는다. 키는 `JEV_API_KEY`(TypeSafe 직접 `api.typesafe.ai/v1/systemone`)를 먼저,
+  없으면 `AI_GATEWAY_API_KEY`(`ai-gateway.vercel.sh/typesafe/v1/systemone`, 모델 `typesafe-ai/jev-1.14.0`). Jev 요금 입력 100만 토큰당 $0.042, 출력 무료.
 - 새 실행의 run id 는 초까지 넣는다(`agent-YYYYMMDD-HHMMSS`). 폴더가 이미 있으면 `--run` 없이는 거부한다.
 - 모델 축은 `config.ts` 의 `AGENT_MODELS`(Claude 5.5 셋 · gemini-3.8-flash · gemini-3.5-flash-lite · gpt-6.1-sol · gpt-6.1-terra · gpt-6-luna). 1차 벤치 `MODELS` 와 따로 둔다.
   OpenAI 는 Responses API 로 매번 전체 입력을 보낸다(`previous_response_id` 안 씀, `store: false` + `include: reasoning.encrypted_content`). reasoning effort medium, temperature 안 보냄.

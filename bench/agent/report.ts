@@ -1,9 +1,10 @@
 // 결과 표 — results.jsonl → summary.md · summary.csv
 //
-//   npx tsx bench/agent/report.ts bench/results/agent-<run> [--workdays 22]
+//   npx tsx bench/agent/report.ts bench/results/agent-<run> [--workdays 22] [--compare bench/results/<전부-sol 실행>]
 //
 // 표 넷: 모델별 요약 · 월 예산(하루 20/50/100건 × 건당 원) · 유형별 완수 · 과제별 상세.
 // dry-run 결과면 끝에 "돌리기 전 비용 추산" 을 붙인다.
+// 라우터 모드 행이 있으면 라우팅 분포 · 잘못 보낸 과제 · 전부-강한모델 실행(--compare)과의 비교를 더한다.
 import { readFileSync, writeFileSync, existsSync } from "fs"
 import { join } from "path"
 import { KRW_PER_USD } from "../config"
@@ -26,7 +27,68 @@ export function loadRows(dir: string): AgentRow[] {
 
 const writeTask = (r: AgentRow) => r.det.expectedProposals > 0 || r.kind === "clarify" || r.kind === "write" || r.kind === "knowledge"
 
-export function writeAgentReport(dir: string, opts: { workdays?: number; repeat?: number } = {}): string {
+/** 라우터 절. 판단 기준(계획서 0-b): 완수율이 비교 대상보다 떨어지지 않으면서 건당 원이 30% 이상 줄면 채택 */
+function routerMarkdown(rows: AgentRow[], compareDir?: string): string[] {
+  const routed = rows.filter((r) => r.router)
+  if (!routed.length) return []
+  const out: string[] = [``, `## 라우터`]
+  for (const name of [...new Set(routed.map((r) => r.model))]) {
+    const rs = routed.filter((r) => r.model === name)
+    const d0 = rs[0].router!
+    const cheapKey = d0.cheap
+    const strongKey = d0.strong
+    const toCheap = rs.filter((r) => r.router!.chosen === r.router!.cheap)
+    const fb = (f: string) => rs.filter((r) => r.router!.fallback === f).length
+    const jevKrw = avg(rs.map((r) => r.router!.costUsd * KRW_PER_USD))
+    const confs = rs.map((r) => r.router!.confidence).filter((c): c is number => c !== null)
+    out.push(
+      ``, `### ${name}`, ``,
+      `Jev ${d0.jevModel} (${d0.route}) · 확신도 기준 ${d0.threshold}. Jev 에는 요청 원문만 보냈다(유형 라벨·정답 없음).`, ``,
+      `| 건수 | 싼 모델로 | 강한 모델로 | ↳ complex | ↳ 확신 낮음 | ↳ 형식 오류 | ↳ 호출 오류 | 확신도 평균 | Jev 건당 원 | Jev 지연 p50 |`,
+      `|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
+      `| ${rs.length} | ${toCheap.length} (${pct(toCheap.length, rs.length)}) | ${rs.length - toCheap.length} | ${rs.filter((r) => r.router!.label === "complex" && !r.router!.fallback).length} | ${fb("low_confidence")} | ${fb("malformed")} | ${fb("error")} | ${confs.length ? avg(confs).toFixed(2) : "–"} | ${jevKrw.toFixed(3)} | ${quantile(rs.map((r) => r.router!.ms), 0.5)}ms |`,
+      ``, `유형별 — 싼 모델(${cheapKey})로 보낸 비율 (강한 모델 ${strongKey}):`, ``,
+      `| 유형 | 싼 모델로 / 전체 | 싼 모델 완수 | 강한 모델 완수 |`, `|---|---:|---:|---:|`
+    )
+    for (const k of [...new Set(rs.map((r) => r.kind))] as TaskKind[]) {
+      const ks = rs.filter((r) => r.kind === k)
+      const kc = ks.filter((r) => toCheap.includes(r))
+      const kst = ks.filter((r) => !toCheap.includes(r))
+      out.push(`| ${KIND_LABEL[k]} | ${kc.length}/${ks.length} | ${pct(kc.filter((r) => r.completed).length, kc.length)} | ${pct(kst.filter((r) => r.completed).length, kst.length)} |`)
+    }
+    const wrong = toCheap.filter((r) => !r.completed)
+    out.push(``, `잘못 보낸 과제 (싼 모델로 보냈는데 실패) ${wrong.length}건${wrong.length ? ":" : ""}`)
+    for (const r of wrong) {
+      const why = [r.error, ...r.det.violations, r.det.matched.length < r.det.expectedProposals ? `제안 ${r.det.matched.length}/${r.det.expectedProposals}` : "", r.det.hits.length < r.det.minHits ? `expect ${r.det.hits.length}/${r.det.minHits}` : "", r.judge && r.judge.score === 0 ? `심판 0` : ""].filter(Boolean)
+      out.push(`- ${r.taskId}#${r.rep} (${KIND_LABEL[r.kind]}, 확신 ${r.router!.confidence?.toFixed(2) ?? "-"}): ${why.join(" · ").slice(0, 200)}`)
+    }
+
+    // 전부-강한 모델 실행과 비교
+    if (compareDir) {
+      const base = loadRows(compareDir).filter((r) => r.model === strongKey)
+      const taskIds = new Set(rs.map((r) => r.taskId))
+      const baseSame = base.filter((r) => taskIds.has(r.taskId))
+      if (baseSame.length) {
+        const stat = (xs: AgentRow[]) => ({ n: xs.length, done: xs.filter((r) => r.completed).length / xs.length, krw: avg(xs.map((r) => r.costKrw)), p50: quantile(xs.map((r) => r.ms / 1000), 0.5) })
+        const a = stat(baseSame)
+        const b = stat(rs)
+        const save = 1 - b.krw / a.krw
+        const ok = b.done >= a.done && save >= 0.3
+        out.push(
+          ``, `비교 — 전부 ${strongKey} (${compareDir.split("/").pop()}, 같은 과제 ${baseSame.length}건):`, ``,
+          `| | 건수 | 완수율 | 건당 원 | 지연 p50 |`, `|---|---:|---:|---:|---:|`,
+          `| 전부 ${strongKey} | ${a.n} | ${Math.round(a.done * 100)}% | ${a.krw.toFixed(1)} | ${a.p50.toFixed(1)}s |`,
+          `| ${name} | ${b.n} | ${Math.round(b.done * 100)}% | ${b.krw.toFixed(1)} | ${b.p50.toFixed(1)}s |`,
+          `| 차이 | | ${Math.round((b.done - a.done) * 100)}%p | ${Math.round(-save * 100)}% | ${(b.p50 - a.p50 >= 0 ? "+" : "")}${(b.p50 - a.p50).toFixed(1)}s |`,
+          ``, `판단 기준(완수율 유지 · 건당 원 30% 이상 절감): ${ok ? "충족" : "미충족"}${rs.some((r) => r.router!.route === "dry") ? " — dry-run 이라 의미 없음" : ""}`
+        )
+      } else out.push(``, `비교 대상 ${compareDir} 에 ${strongKey} 행이 없다`)
+    }
+  }
+  return out
+}
+
+export function writeAgentReport(dir: string, opts: { workdays?: number; repeat?: number; compareDir?: string } = {}): string {
   const rows = loadRows(dir)
   const workdays = opts.workdays ?? 22
   const meta = existsSync(join(dir, "meta.json")) ? JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) : {}
@@ -110,6 +172,8 @@ export function writeAgentReport(dir: string, opts: { workdays?: number; repeat?
     ).join("<br>") || "–").join(" | ")} |`)
   }
 
+  out.push(...routerMarkdown(rows, opts.compareDir ?? (meta.compare ? join("bench/results", meta.compare) : undefined)))
+
   // ─── 실패 사유 ───
   const fails = rows.filter((r) => !r.completed)
   if (fails.length) {
@@ -148,5 +212,6 @@ if (process.argv[1]?.endsWith("report.ts")) {
   const dir = process.argv[2]
   if (!dir) throw new Error("사용법: npx tsx bench/agent/report.ts bench/results/agent-<run> [--workdays 22]")
   const i = process.argv.indexOf("--workdays")
-  console.log(writeAgentReport(dir, { workdays: i > 0 ? Number(process.argv[i + 1]) : undefined }))
+  const c = process.argv.indexOf("--compare")
+  console.log(writeAgentReport(dir, { workdays: i > 0 ? Number(process.argv[i + 1]) : undefined, compareDir: c > 0 ? process.argv[c + 1] : undefined }))
 }
