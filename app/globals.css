@@ -532,12 +532,12 @@
 @media (width >= 48rem) {
   :root {
     --nav-offset-bottom: 0px;
-    --nav-w: 18.75rem;
+    --nav-w: 16.25rem;
   }
 }
 @media (width >= 64rem) {
   :root {
-    --nav-w: 35rem;
+    --nav-w: 29.25rem;
   }
 }
 .dark {

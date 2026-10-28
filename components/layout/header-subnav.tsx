@@ -18,3 +18,8 @@ export function HeaderSubnavProvider({ subnav, children }: { subnav: ReactNode; 
 export function useHeaderSubnav() {
   return useContext(HeaderSubnavContext)
 }
+
+/** 제목줄 스켈레톤(서버 컴포넌트)이 하위 탭 띠를 그대로 그리게 하는 자리 */
+export function HeaderSubnavSlot() {
+  return <>{useHeaderSubnav()}</>
+}

@@ -8,13 +8,12 @@ import {
   Archive02Icon,
   BubbleChatIcon,
   Calendar03Icon,
-  Search01Icon,
   Task01Icon,
 } from "@hugeicons/core-free-icons"
 import { LinkPendingMark } from "@/components/ui/pending-link"
 import { cn } from "@/lib/utils"
 import { useMediaQuery } from "@/hooks/use-media-query"
-import { useCommandPalette } from "./command-palette-context"
+import { MeAvatarLink } from "./current-user"
 import { useRightPanel } from "./right-panel-context"
 import { NotificationBell } from "./notification-bell"
 
@@ -37,14 +36,13 @@ type Tab = {
   onboarding?: string
 }
 
-/** 탭 정의는 여기 한 곳 — 사이드바의 메뉴 목록을 대신한다. 「마이」 는 아이콘 대신 이름 첫 글자를 그린다. */
+/** 탭 정의는 여기 한 곳 — 사이드바의 메뉴 목록을 대신한다. 마이(계정·설정)는 탭이 아니라 아바타(MeAvatarLink)다. */
 const TABS: readonly Tab[] = [
   { key: "chat", href: "/", label: "채팅", match: ["/chat"], onboarding: "ai" },
   { key: "tasks", href: "/tasks", label: "업무", match: ["/tasks"], onboarding: "tasks" },
   { key: "calendar", href: "/calendar", label: "캘린더", match: ["/calendar"] },
   // 아카이브 = 회사가 가진 것: 지식 카드 · 시놀로지 NAS · 지식재산권 · 고객·견적
   { key: "archive", href: "/omnis", label: "아카이브", match: ["/omnis", "/nas", "/crm"], onboarding: "resources" },
-  { key: "me", href: "/settings", label: "마이", match: ["/settings"], onboarding: "profile" },
 ]
 
 const ICONS = {
@@ -75,10 +73,6 @@ function useKeyboardOpen() {
   return open
 }
 
-interface FloatingNavProps {
-  userName?: string | null
-}
-
 /**
  * PC 에서는 페이지가 스크롤돼 내용이 nav 밑으로 들어갈 때만, 폰에서는 늘 — 바 가장자리에 가변 블러 띠를 깐다.
  * 글자가 유리 바로 밑에서 또렷하게 겹치지 않고 서서히 흐려지며 들어간다(Linear 의 스크롤 끝 가변 블러).
@@ -102,23 +96,29 @@ function useMainScrolled() {
  * 두 모양은 CSS 로만 갈라 서버·클라이언트 첫 화면이 같다.
  *
  * 생김새는 Linear 의 리퀴드 글래스를 따른다(linear.app/now/linear-liquid-glass):
- * 탭은 캡슐 하나, 동작(검색·알림)은 옆의 따로 뜬 원. 현재 탭은 캡슐 안에서 미끄러지는 한 겹 더 진한 유리.
+ * 탭은 캡슐 하나, 알림·마이는 옆의 따로 뜬 원. 현재 탭은 캡슐 안에서 미끄러지는 한 겹 더 진한 유리.
  * 누르면 살짝 눌렸다 돌아온다. 굴절은 넣지 않는다.
  */
-export function FloatingNav({ userName }: FloatingNavProps) {
+export function FloatingNav() {
   const pathname = usePathname()
   const rightPanel = useRightPanel()
-  const commandPalette = useCommandPalette()
   const keyboardOpen = useKeyboardOpen()
   const scrolled = useMainScrolled()
   // 알림 종은 PC 에서는 nav, 폰에서는 페이지 헤더에 하나만 둔다 — 둘 다 그리면 알림을 두 번씩 불러온다
   const isMdUp = useMediaQuery(NAV_DESKTOP_QUERY)
 
-  const initial = userName?.charAt(0) ?? "?"
-  const activeKey =
+  // 누른 탭을 바로 켠다. 주소(pathname)는 새 화면이 다 그려진 뒤에야 바뀌어서, 그것만 보면 업무 보드처럼
+  // 무거운 화면으로 갈 때 알약이 옛 탭에 한참 머물렀다. 주소가 바뀌면(도착하면) 누른 표시는 내려놓는다
+  const [pending, setPending] = useState<{ key: string; from: string } | null>(null)
+  if (pending && pending.from !== pathname) setPending(null)
+  const routeKey =
     TABS.find((tab) =>
       tab.key === "chat" && !CHAT_HOME_READY ? rightPanel.open : isActive(tab, pathname)
     )?.key ?? null
+  const activeKey = pending?.key ?? routeKey
+  const select = (key: string) => {
+    if (key !== routeKey) setPending({ key, from: pathname })
+  }
 
   return (
     <>
@@ -130,24 +130,16 @@ export function FloatingNav({ userName }: FloatingNavProps) {
           scrolled ? "opacity-100" : "opacity-0"
         )}
       />
-      {/* PC: 제목줄 가운데. 캡슐(탭) + 원(검색) + 원(알림) — 폭은 --nav-w 로 정해져 있고 제목줄이 그만큼 비워 둔다 */}
+      {/* PC: 제목줄 가운데. 캡슐(탭) + 원(알림) + 원(마이) — 폭은 --nav-w 로 정해져 있고 제목줄이 그만큼 비워 둔다 */}
       <nav
         aria-label="주 메뉴"
         className="fixed left-1/2 top-[calc(var(--demo-banner-height,0px)+0.25rem)] z-[var(--z-nav)] hidden w-[var(--nav-w)] -translate-x-1/2 items-center gap-1.5 md:flex"
       >
-        <TabCapsule variant="top" activeKey={activeKey} initial={initial} />
-        <button
-          type="button"
-          onClick={() => commandPalette.open()}
-          aria-label="검색 (⌘K)"
-          title="검색 (⌘K)"
-          className={cn(CIRCLE, "text-muted-foreground hover:text-foreground")}
-        >
-          <HugeiconsIcon icon={Search01Icon} size={16} aria-hidden />
-        </button>
+        <TabCapsule variant="top" activeKey={activeKey} onSelect={select} />
         <div className={cn(CIRCLE, "[&_button]:size-10 [&_button]:rounded-full")}>
           {isMdUp && <NotificationBell />}
         </div>
+        <MeAvatarLink className={CIRCLE} />
       </nav>
 
       {/* 폰: 하단 가장자리 가변 블러 — 목록 끝이 nav 밑으로 서서히 사라진다 */}
@@ -159,7 +151,7 @@ export function FloatingNav({ userName }: FloatingNavProps) {
         )}
       />
       {/* 폰: 하단 가운데. 홈 인디케이터 위로 띄운다.
-          터치 기기에서 칸은 44px 이상이라 200px 폭에서는 다섯 칸(220px)이 넘친다 — 그때는 nav 안에서 민다 */}
+          터치 기기에서 칸은 44px 이상 — 200px 폭에서 네 칸(176px)은 들어가지만, 넘치면 nav 안에서 민다 */}
       <nav
         aria-label="주 메뉴"
         className={cn(
@@ -167,7 +159,7 @@ export function FloatingNav({ userName }: FloatingNavProps) {
           keyboardOpen && "pointer-events-none translate-y-[calc(100%+24px)]"
         )}
       >
-        <TabCapsule variant="bottom" activeKey={activeKey} initial={initial} />
+        <TabCapsule variant="bottom" activeKey={activeKey} onSelect={select} />
       </nav>
     </>
   )
@@ -184,11 +176,12 @@ const CIRCLE =
 function TabCapsule({
   variant,
   activeKey,
-  initial,
+  onSelect,
 }: {
   variant: "top" | "bottom"
   activeKey: string | null
-  initial: string
+  /** 탭을 누른 순간 — 도착을 기다리지 않고 알약을 옮긴다 */
+  onSelect: (key: string) => void
 }) {
   const rightPanel = useRightPanel()
   const capsule = useRef<HTMLDivElement>(null)
@@ -236,21 +229,9 @@ function TabCapsule({
         const active = tab.key === activeKey
         // 채팅 화면이 없는 동안의 채팅 탭은 이동이 아니라 패널 여닫기다
         const panelTab = tab.key === "chat" && !CHAT_HOME_READY
-        const icon =
-          tab.key === "me" ? (
-            <span
-              aria-hidden
-              className={cn(
-                "flex items-center justify-center rounded-full font-semibold",
-                variant === "top" ? "size-[18px] text-[10px]" : "size-[22px] text-[11px]",
-                active ? "bg-foreground text-background" : "bg-muted-foreground/20 text-muted-foreground"
-              )}
-            >
-              {initial}
-            </span>
-          ) : (
-            <HugeiconsIcon icon={ICONS[tab.key as keyof typeof ICONS]} size={variant === "top" ? 16 : 20} aria-hidden />
-          )
+        const icon = (
+          <HugeiconsIcon icon={ICONS[tab.key as keyof typeof ICONS]} size={variant === "top" ? 16 : 20} aria-hidden />
+        )
         const className = cn(
           "relative z-[1] flex items-center justify-center rounded-full transition-[color,transform] duration-150 active:scale-[0.94] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
           variant === "top"
@@ -300,6 +281,11 @@ function TabCapsule({
             href={tab.href}
             data-onboarding={tab.onboarding}
             aria-current={active ? "page" : undefined}
+            onClick={(e) => {
+              // 새 탭·새 창으로 여는 클릭은 이 화면을 떠나지 않는다
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+              onSelect(tab.key)
+            }}
             title={variant === "top" ? tab.label : undefined}
             className={className}
           >

@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/db"
 import { FloatingNav } from "@/components/layout/floating-nav"
+import { CurrentUserProvider } from "@/components/layout/current-user"
 import { MainWithChat } from "@/components/layout/main-with-chat"
 import { CommandPaletteProvider } from "@/components/layout/command-palette-context"
 import { RightPanelProvider } from "@/components/layout/right-panel-context"
@@ -47,6 +48,7 @@ export default async function MainLayout({
     // 사이드바 대신 떠 있는 nav(mydocs/plans/2026-10-28-floating-nav.md). 셸은 화면 높이 그대로 한 칸이다
     <div className="flex min-h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] w-full">
       <PwaRegister />
+      <CurrentUserProvider name={session.user.name ?? null}>
       <CommandPaletteProvider>
         <RightPanelProvider>
         <OnboardingProvider key={session.user.id} initialState={{
@@ -61,10 +63,11 @@ export default async function MainLayout({
             {children}
           </MainWithChat>
         </main>
-        <FloatingNav userName={session.user.name} />
+        <FloatingNav />
         </OnboardingProvider>
         </RightPanelProvider>
       </CommandPaletteProvider>
+      </CurrentUserProvider>
     </div>
   )
 }

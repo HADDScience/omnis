@@ -6,6 +6,7 @@ import { NotificationBell } from "./notification-bell"
 import { RightPanelTrigger } from "./right-panel-trigger"
 import { NAV_DESKTOP_QUERY } from "./floating-nav"
 import { useHeaderSubnav } from "./header-subnav"
+import { MeAvatarLink } from "./current-user"
 import { useMediaQuery } from "@/hooks/use-media-query"
 
 interface HeaderProps {
@@ -15,7 +16,7 @@ interface HeaderProps {
 }
 
 export function Header({ title, crumbs, actions }: HeaderProps) {
-  // PC 에서는 알림 종이 떠 있는 nav 에 있다
+  // PC 에서는 알림 종·마이 아바타가 떠 있는 nav 옆에 있다
   const isMdUp = useMediaQuery(NAV_DESKTOP_QUERY)
   const subnav = useHeaderSubnav()
   return (
@@ -63,6 +64,7 @@ export function Header({ title, crumbs, actions }: HeaderProps) {
             <>
               {actions && <Separator orientation="vertical" className="mx-1 h-4 self-center!" />}
               <NotificationBell />
+              <MeAvatarLink className="touch-target size-8" />
             </>
           )}
         </div>
