@@ -6,8 +6,8 @@ test.describe("HADD DB (Omnis 지식 허브)", () => {
     await login(page, "팀장")
   })
 
-  test("HADD DB 메뉴 클릭 → /omnis 진입", async ({ page }) => {
-    await page.getByRole("link", { name: "HADD DB" }).click()
+  test("아카이브 탭 클릭 → /omnis 진입", async ({ page }) => {
+    await page.getByRole("link", { name: "아카이브" }).first().click()
     await expect(page).toHaveURL(/\/omnis$/)
     // 2026-09-16(PR #29) 에 h1 이 바뀌었다. 계획서의 결정 기록:
     // "회사의 모든 지식, 한 번의 검색으로." 는 검색이 카드만 훑는 지금 참이 아니다

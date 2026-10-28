@@ -259,8 +259,6 @@ test.describe("onboarding", () => {
       "ai",
       "resources",
       "profile",
-      "mcp",
-      "replay",
     ]
     for (const target of targets) {
       await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
@@ -319,14 +317,14 @@ test.describe("onboarding", () => {
           "chat-trigger"
         )
       }
-      if (target === "mcp")
+      if (target === "profile")
         await page.screenshot({
           animations: "disabled",
           path: "/tmp/omnis-onboarding-precise-spotlight.png",
         })
       await page
         .getByRole("button", {
-          name: target === "replay" ? "안내 마치기" : "다음 →",
+          name: target === "profile" ? "안내 마치기" : "다음 →",
           exact: true,
         })
         .click()
@@ -372,8 +370,6 @@ test.describe("onboarding", () => {
       "ai",
       "resources",
       "profile",
-      "mcp",
-      "replay",
     ]
     for (const stop of stops) {
       await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
@@ -382,7 +378,7 @@ test.describe("onboarding", () => {
       )
       await page.clock.fastForward(1300)
       await expect(page.locator(".spotlight-shade mask rect")).toHaveCount(2)
-      if (stop === "mcp") {
+      if (stop === "profile") {
         await page.waitForTimeout(1200)
         await page.screenshot({
           animations: "disabled",
@@ -453,7 +449,7 @@ test.describe("onboarding", () => {
     await finish(page)
     await page.reload()
     await expect(
-      page.getByRole("button", { name: "프로필 메뉴" })
+      page.getByRole("link", { name: "마이" }).first()
     ).toBeVisible()
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
     const other = await browser.newContext()
@@ -461,8 +457,8 @@ test.describe("onboarding", () => {
     await login(otherPage)
     await expect(otherPage.locator(".omnis-tour-surface")).toHaveCount(0)
     await other.close()
-    await page.getByRole("button", { name: "프로필 메뉴" }).click()
-    await page.getByRole("menuitem", { name: "Omnis MCP 등록" }).click()
+    await page.goto("/settings")
+    await page.getByRole("button", { name: /Omnis MCP 등록/ }).click()
     const input = page.getByRole("textbox", { name: "MCP 서버 주소" })
     await expect(input).toHaveValue(/\/api\/ip-mcp$/)
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
@@ -471,8 +467,8 @@ test.describe("onboarding", () => {
       await input.inputValue()
     )
     await page.getByRole("button", { name: "닫기", exact: true }).click()
-    await page.getByRole("button", { name: "프로필 메뉴" }).click()
-    await page.getByRole("menuitem", { name: "온보딩 튜토리얼" }).click()
+    await page.goto("/settings")
+    await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
     await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
     const second = await prisma.user.create({
       data: { name: `${name}-other`, passwordHash: hashSync(password, 4) },
@@ -609,14 +605,14 @@ test.describe("onboarding", () => {
     ).toBeVisible()
     await page.keyboard.press("Escape")
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
-    await page
-      .getByRole("button", { name: "Omnis AI 에게 질문", exact: true })
-      .click()
+    // 사이드바의 「Omnis AI 에게 질문」 자리는 nav 채팅 탭 → 패널의 Omnis AI 탭이다
+    await page.getByRole("button", { name: "채팅", exact: true }).click()
+    await page.getByRole("button", { name: "Omnis AI", exact: true }).click()
     const input = page.getByRole("textbox", { name: "옴니스에게 보낼 질문" })
     await input.fill("아직 전송하지 않은 질문입니다")
     const url = page.url()
-    await page.getByRole("button", { name: "프로필 메뉴" }).click()
-    await page.getByRole("menuitem", { name: "온보딩 튜토리얼" }).click()
+    await page.goto("/settings")
+    await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
     await skipVideo(page)
     for (let index = 0; index < 2; index++) {
       await page.clock.fastForward(1300)
@@ -659,14 +655,14 @@ test.describe("onboarding", () => {
         .locator(".spotlight-card")
         .evaluate((node) => node.getBoundingClientRect().height)
     ).toBeLessThan(350)
-    for (let index = 0; index < 6; index++) {
+    for (let index = 0; index < 5; index++) {
       await page.clock.fastForward(1300)
       await page.clock.fastForward(7100)
     }
     await page.clock.fastForward(1300)
     await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
       "data-tour-stop",
-      "mcp"
+      "profile"
     )
     await expect(page.locator(".spotlight-shade mask rect")).toHaveCount(2)
     await page.waitForTimeout(1200)

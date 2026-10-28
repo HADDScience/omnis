@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/manual/ux-rules.md
-last_verified: 2026-09-16
+last_verified: 2026-10-28
 ---
 
 # UX·구조 규칙 — canonical
@@ -37,7 +37,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - (R) 신규 `position: fixed`/`sticky` 컴포넌트가 (a) z 토큰 사용, (b) ChatDock 점유 사분면(우하단) 회피?
 - (E) 모달/토스트는 `var(--z-dialog)` / `var(--z-toast)` 토큰 사용
 - (S) 모든 fixed/sticky 컴포넌트
-- 토큰: `--z-dock: 40` / `--z-banner: 50` / `--z-popover: 60` / `--z-dialog: 100` / `--z-toast: 120`
+- 토큰: `--z-dock: 40` / `--z-nav: 45` / `--z-banner: 50` / `--z-popover: 60` / `--z-dialog: 100` / `--z-toast: 120`
 
 ### 15. shadcn primitive 구조 재정의 금지
 - (R) DialogHeader/DialogFooter에 `flex-row` 등 layout 변형 클래스 추가?
@@ -134,11 +134,28 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 ## viewport 책임 표 (Phase 1)
 
-| Viewport | 본문 max-width | Activity Rail | 헤더 |
-|----------|---------------|---------------|------|
-| `< 768px` (mobile) | `100%` (gutter 16px) | 하단 Sheet (FAB로 토글) | 상단 sticky 컴팩트 1줄 |
-| `768~1280px` (tablet) | `100%` | 우측 320px Collapsible (기본 접힘) | 상단 sticky 2줄 |
-| `≥ 1280px` (desktop) | `min(768px, 1fr)` | 우측 320px 고정 | 상단 sticky 풀 |
+| Viewport | 본문 max-width | Activity Rail | 헤더 | 주 메뉴 |
+|----------|---------------|---------------|------|---------|
+| `< 768px` (mobile) | `100%` (gutter 16px) | 하단 Sheet (FAB로 토글) | 상단 sticky 컴팩트 1줄 | 하단 떠 있는 nav |
+| `768~1280px` (tablet) | `100%` | 우측 320px Collapsible (기본 접힘) | 상단 sticky 2줄 | 상단 가운데 떠 있는 nav |
+| `≥ 1280px` (desktop) | `min(768px, 1fr)` | 우측 320px 고정 | 상단 sticky 풀 | 상단 가운데 떠 있는 nav |
+
+---
+
+## 떠 있는 nav (2026-10-28)
+
+사이드바를 걷고 탭 다섯(채팅 · 업무 · 캘린더 · 아카이브 · 마이)을 유리 nav 로 띄웠다.
+계획: [`../plans/2026-10-28-floating-nav.md`](../plans/2026-10-28-floating-nav.md)
+
+- 탭 정의는 `components/layout/floating-nav.tsx` 의 `TABS` 한 곳이다. 메뉴를 더하거나 빼면 여기만 고친다
+- PC(≥ 768px)는 상단 가운데, 폰은 하단. 두 모양은 **CSS 로만** 가른다 — JS 로 가르면 서버 첫 화면과 어긋난다.
+  단 알림 종처럼 두 번 그리면 일을 두 번 하는 것은 `NAV_DESKTOP_QUERY` 로 한 곳에만 그린다
+- 유리는 `globals.css` 의 `.glass` 유틸과 `--glass-*` 토큰. `backdrop-filter` 미지원 · `prefers-reduced-transparency` 에서는 불투명 판
+- **내용이 nav 밑에 깔리지 않게** 하는 일은 셸(`MainWithChat`)이 `--nav-offset-top` / `--nav-offset-bottom` 만큼 비워서 한다.
+  화면 높이에 묶인 화면(업무 보드 · 채팅 · 캘린더)은 이 칸 안에서 `h-full` 로 높이를 잰다 — 화면마다 nav 높이를 빼지 않는다.
+  화면 전체를 덮는 `fixed` 요소를 새로 만들면 이 두 변수를 직접 뺀다
+- 폰 키보드가 올라오면(`visualViewport` 높이가 3/4 미만) 하단 nav 를 내린다
+- 섹션 안의 하위 이동은 nav 가 아니라 화면 위 띠로 한다 — 아카이브는 `ArchiveNav`(`/omnis` · `/crm` 레이아웃), CRM 은 그 아래 `CrmNav`
 
 ---
 
