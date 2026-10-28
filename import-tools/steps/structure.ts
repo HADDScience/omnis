@@ -25,10 +25,36 @@ interface Draft {
   status?: "TODO" | "IN_PROGRESS" | "DONE"; confidence?: "high" | "low"
   /** 이미 있는 업무의 연속이면 그 업무 이름. 새 카드를 만들지 않고 메시지를 그 업무에 붙인다. */
   continuesTask?: string | null
+  /**
+   * 이 업무에 속하는 메시지의 세션 안 번호. 고른 메시지만 카드에 붙는다.
+   * 없으면(이 필드가 생기기 전 캐시) 세션 전체를 붙인다.
+   */
+  messages?: number[]
+  /** 한 세션에서 나온 업무 중 몇 번째인지. 0 이면 sourceId 가 예전과 같다. */
+  part?: number
   /** 그 라운드 입력에서 projectId 가 가리키던 이름. 다른 DB(프로덕션)에서 id 가 달라도 이름으로 되짚는다. */
   projectName?: string | null
   round?: number
 }
+
+/**
+ * Claude 출력 → 세션별 업무 목록.
+ *
+ * 한 세션에 업무가 섞여 있거나 업무가 없을 수 있어서 출력은 `{id, tasks: [...]}` 다.
+ * 예전 출력(세션당 업무 하나, `{id, name, ...}`)도 읽는다 — 감사 자료로 남은 라운드를 되살릴 때.
+ */
+export function toDraftLists(items: unknown[]): Map<string, Draft[]> {
+  const out = new Map<string, Draft[]>()
+  for (const it of items as ({ id?: string; tasks?: Draft[] } & Draft)[]) {
+    if (!it?.id) continue
+    const list = Array.isArray(it.tasks) ? it.tasks : typeof it.name === "string" ? [it] : null
+    if (!list) continue
+    out.set(it.id, list.filter((d) => d && typeof d.name === "string").map((d, part) => ({ ...d, id: it.id!, part })))
+  }
+  return out
+}
+
+const taskSourceIdOf = (d: Draft) => `kakao-task:${d.id}${d.part ? `#${d.part}` : ""}`
 
 /**
  * 세션별 구조화 결과 캐시.
@@ -39,10 +65,14 @@ interface Draft {
  */
 const CACHE = `${DIR}/drafts.json`
 
-export function loadDraftCache(): Map<string, Draft> {
-  if (existsSync(CACHE)) return new Map(Object.entries(JSON.parse(readFileSync(CACHE, "utf8")) as Record<string, Draft>))
+export function loadDraftCache(): Map<string, Draft[]> {
+  // 값이 배열이 아니면 세션당 업무 하나이던 때의 캐시다.
+  if (existsSync(CACHE)) {
+    return new Map(Object.entries(JSON.parse(readFileSync(CACHE, "utf8")) as Record<string, Draft | Draft[]>)
+      .map(([k, v]) => [k, Array.isArray(v) ? v : [v]]))
+  }
   // 캐시가 없으면 지금까지의 라운드 입출력에서 되살린다 (처음 이식 때 손으로 돌린 라운드 포함).
-  const cache = new Map<string, Draft>()
+  const cache = new Map<string, Draft[]>()
   if (!existsSync(`${DIR}/out`)) return cache
   for (const f of readdirSync(`${DIR}/out`).filter((x) => /^round\d+\.json$/.test(x)).sort()) {
     const round = Number(f.match(/\d+/)![0])
@@ -50,14 +80,14 @@ export function loadDraftCache(): Map<string, Draft> {
     const ctx = existsSync(inFile)
       ? new Map((JSON.parse(readFileSync(inFile, "utf8")) as { context: { projects: { id: string; name: string }[] } }).context.projects.map((p) => [p.id, p.name]))
       : new Map<string, string>()
-    let drafts: Draft[]
-    try { drafts = parseJsonArray<Draft>(readFileSync(`${DIR}/out/${f}`, "utf8")) } catch { continue }
-    for (const d of drafts) if (d?.id) cache.set(d.id, { ...d, projectName: d.projectId ? ctx.get(d.projectId) ?? null : null, round })
+    let lists: Map<string, Draft[]>
+    try { lists = toDraftLists(parseJsonArray(readFileSync(`${DIR}/out/${f}`, "utf8"))) } catch { continue }
+    for (const [id, ds] of lists) cache.set(id, ds.map((d) => ({ ...d, projectName: d.projectId ? ctx.get(d.projectId) ?? null : null, round })))
   }
   saveDraftCache(cache)
   return cache
 }
-function saveDraftCache(cache: Map<string, Draft>) {
+function saveDraftCache(cache: Map<string, Draft[]>) {
   mkdirSync(DIR, { recursive: true })
   writeFileSync(CACHE, JSON.stringify(Object.fromEntries(cache), null, 1))
 }
@@ -96,7 +126,7 @@ export async function pendingForStructure(sessions: RawSession[]): Promise<RawSe
   const classified = loadClassified()
   const done = new Set(
     (await prisma.task.findMany({ where: { sourceId: { startsWith: "kakao-task:" } }, select: { sourceId: true } }))
-      .map((t) => t.sourceId!.slice("kakao-task:".length)),
+      .map((t) => t.sourceId!.slice("kakao-task:".length).replace(/#\d+$/, "")),
   )
   const candidates = sessions
     .filter((s) => ROOMS[s.room] && classified.get(s.id)?.label === "업무" && classified.get(s.id)?.actionable === true && !done.has(s.id))
@@ -109,7 +139,7 @@ export async function pendingForStructure(sessions: RawSession[]): Promise<RawSe
     .sort((a, b) => a.start.localeCompare(b.start))
 }
 
-async function buildPayload(round: number, totalRounds: number, chunk: RawSession[]) {
+export async function buildPayload(round: number, totalRounds: number, chunk: RawSession[]) {
   const [projects, products, members, omnisCards, priorTasks] = await Promise.all([
     prisma.project.findMany({ where: { archived: false }, select: { id: true, name: true, product: { select: { name: true } } }, orderBy: { createdAt: "asc" } }),
     prisma.product.findMany({ select: { id: true, name: true } }),
@@ -143,9 +173,21 @@ async function buildPayload(round: number, totalRounds: number, chunk: RawSessio
     },
     sessions: chunk.map((s) => ({
       id: s.id, start: s.start,
-      messages: s.msgs.map((m) => ({ t: m.t.slice(5, 16), u: SPEAKER_TO_USER[m.u] ?? m.u, m: m.m })),
+      messages: s.msgs.map((m, i) => ({ i, t: m.t.slice(5, 16), u: SPEAKER_TO_USER[m.u] ?? m.u, m: m.m })),
     })),
   }
+}
+
+/**
+ * 업무가 고른 메시지. 번호가 없으면 세션 전체(예전 캐시), 있으면 범위 안의 것만 시간순으로.
+ * 세션 안에서 업무 이야기와 잡담·다른 일이 1~2분 간격으로 섞이므로 세션을 통째로 붙이면 안 된다.
+ */
+function pickMessages(d: Draft, s: RawSession) {
+  if (!Array.isArray(d.messages)) return s.msgs
+  return [...new Set(d.messages)]
+    .filter((i) => Number.isInteger(i) && i >= 0 && i < s.msgs.length)
+    .sort((a, b) => a - b)
+    .map((i) => s.msgs[i])
 }
 
 async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
@@ -163,8 +205,11 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
   for (const d of drafts) {
     const s = sessions.get(d.id)
     if (!s) { stats.skipped++; continue }
-    const sourceId = `kakao-task:${d.id}`
+    const sourceId = taskSourceIdOf(d)
     if (await prisma.task.findUnique({ where: { sourceId }, select: { id: true } })) { stats.skipped++; continue }
+    const picked = pickMessages(d, s)
+    if (picked.length === 0) { stats.skipped++; continue }
+    const pickedIds = picked.map((m) => messageSourceId(s.room, m))
 
     // 기존 업무의 연속이면 새 카드 대신 그 업무 스레드에 메시지를 붙인다. 이름이 같은 업무가 여럿이면 가장 최근 것.
     // 이름을 못 찾으면 새 카드로 간다 — 붙일 곳을 지어내지 않는다.
@@ -172,7 +217,7 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
       ? await prisma.task.findFirst({ where: { name: d.continuesTask.trim() }, orderBy: { createdAt: "desc" }, select: { id: true, status: true } })
       : null
     if (target) {
-      await prisma.chatMessage.updateMany({ where: { sourceId: { in: sessionMessageIds(s) }, taskId: null }, data: { taskId: target.id } })
+      await prisma.chatMessage.updateMany({ where: { sourceId: { in: pickedIds }, taskId: null }, data: { taskId: target.id } })
       // 후속 세션이 완료 보고면 기존 카드를 올린다. 올리기만 한다 — 사람이 옴니스에서 바꾼 상태를 되돌리지 않게.
       const next = d.status && STATUSES.has(d.status) ? d.status : null
       if (next && RANK[next] > (RANK[target.status] ?? 99)) {
@@ -205,10 +250,10 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
     const assigneeIds = [...new Set((d.ownerHints ?? []).map((n) => userByName.get(String(n).trim())).filter((v): v is string => !!v))]
     if (assigneeIds.length === 0) stats.noAssignee++
 
-    const instructorId = userBySpeaker.get(s.msgs[0]?.u)
+    const instructorId = userBySpeaker.get(picked[0].u) ?? userBySpeaker.get(s.msgs[0]?.u)
     if (!instructorId) { stats.skipped++; continue }
 
-    const createdAt = parseKst(s.start)
+    const createdAt = parseKst(picked[0].t)
     const deadline = sensibleDeadline(d.deadlineHint, createdAt)
     if (d.deadlineHint && !deadline) stats.dropped++
     if (deadline) stats.deadline++
@@ -221,7 +266,7 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
       data: {
         sourceId,
         name: (d.name || "제목 없는 업무").slice(0, 120),
-        slug: `${base || "업무"}-${d.id.slice(0, 6)}`,
+        slug: `${base || "업무"}-${d.id.slice(0, 6)}${d.part ? `-${d.part}` : ""}`,
         instructorId,
         assignees: { create: assigneeIds.map((userId) => ({ userId })) },
         projectId,
@@ -233,15 +278,15 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
         checklists: { create: items.map((name) => ({ name, done: status === "DONE" })) },
         sourceMessages: {
           source: "kakao", sessionId: d.id, room: s.room, round: d.round ?? null, confidence: d.confidence ?? null,
-          start: s.start, end: s.end,
-          messages: s.msgs.map((m) => ({ t: m.t, u: SPEAKER_TO_USER[m.u] ?? m.u, m: m.m })),
+          start: picked[0].t, end: picked[picked.length - 1].t,
+          messages: picked.map((m) => ({ t: m.t, u: SPEAKER_TO_USER[m.u] ?? m.u, m: m.m })),
         },
         createdAt,
       },
       select: { id: true },
     })
-    // 이 세션의 메시지를 업무에 연결한다 — 스레드에서 원문이 보이게.
-    await prisma.chatMessage.updateMany({ where: { sourceId: { in: sessionMessageIds(s) }, taskId: null }, data: { taskId: task.id } })
+    // 고른 메시지만 업무에 연결한다 — 스레드에서 원문이 보이게. 나머지는 카드 없는 채팅으로 남는다.
+    await prisma.chatMessage.updateMany({ where: { sourceId: { in: pickedIds }, taskId: null }, data: { taskId: task.id } })
     createdIds.push(task.id)
     stats.created++
   }
@@ -280,28 +325,28 @@ export async function structure(sessions: RawSession[], opts: { model: string; d
       console.log(`  ${tag} · 세션 ${fresh.length}개 (${fresh[0].start.slice(0, 10)} ~ ${fresh[fresh.length - 1].start.slice(0, 10)}) · 맥락: 프로젝트 ${payload.context.projects.length} · 앞선 업무 ${payload.context.priorTasks.length}`)
 
       const prompt = template.replace("{{COUNT}}", String(fresh.length)).replace("{{INPUT}}", JSON.stringify(payload))
-      let drafts: Draft[] | null = null
-      for (let attempt = 1; attempt <= 2 && !drafts; attempt++) {
+      let lists: Map<string, Draft[]> | null = null
+      for (let attempt = 1; attempt <= 2 && !lists; attempt++) {
         try {
           const text = await askClaude(prompt, { model: opts.model })
           writeFileSync(`${DIR}/out/${tag}${attempt > 1 ? `-retry${attempt}` : ""}.json`, text)
-          const parsed = parseJsonArray<Draft>(text)
+          const parsed = toDraftLists(parseJsonArray(text))
           const ids = new Set(fresh.map((s) => s.id))
-          const valid = parsed.filter((d) => d && ids.has(d.id) && typeof d.name === "string")
-          if (valid.length < fresh.length * 0.8) throw new Error(`세션 ${fresh.length}개 중 ${valid.length}개만 돌아왔다`)
-          drafts = valid
+          for (const id of parsed.keys()) if (!ids.has(id)) parsed.delete(id)
+          if (parsed.size < fresh.length * 0.8) throw new Error(`세션 ${fresh.length}개 중 ${parsed.size}개만 돌아왔다`)
+          lists = parsed
         } catch (e) {
           console.log(`  ⚠ ${tag} 시도 ${attempt}: ${(e as Error).message.split("\n")[0]}`)
         }
       }
-      if (!drafts) { console.log(`  ✗ ${tag} 건너뜀 — 다음 실행에서 다시 시도한다`); round++; continue }
+      if (!lists) { console.log(`  ✗ ${tag} 건너뜀 — 다음 실행에서 다시 시도한다`); round++; continue }
       const ctx = new Map(payload.context.projects.map((p) => [p.id, p.name]))
-      for (const d of drafts) cache.set(d.id, { ...d, projectName: d.projectId ? ctx.get(d.projectId) ?? null : null, round })
+      for (const [id, ds] of lists) cache.set(id, ds.map((d) => ({ ...d, projectName: d.projectId ? ctx.get(d.projectId) ?? null : null, round })))
       saveDraftCache(cache)
       round++
     }
 
-    const drafts = chunk.map((s) => cache.get(s.id)).filter((d): d is Draft => !!d)
+    const drafts = chunk.flatMap((s) => cache.get(s.id) ?? [])
     const st = await applyDrafts(drafts, chunk)
     created += st.created
     console.log(`  적용 — 생성 ${st.created} · 기존 업무에 붙임 ${st.continued} (상태 올림 ${st.promoted}) ·건너뜀 ${st.skipped} · 과제 매칭 ${st.matched} (신규 ${st.newProj}) · 기타 ${st.misc} · 담당자 없음 ${st.noAssignee} · 마감 ${st.deadline} (버림 ${st.dropped})`)

@@ -37,7 +37,7 @@ python3 import-tools/kakao-sync.py --target prod --when-idle 10   # 10분 넘게
 | 1 | 수집 | CSV → 메시지 마스터에 합침 → 세션(1시간 공백 기준) | `steps/ingest.ts` |
 | 2 | 분류 | 새 세션을 업무·정보공유·잡담·빈껍데기로 | `claude -p` **병렬** — 세션끼리 독립 |
 | 3 | 메시지 | 전량 `ChatMessage` 로 (잡담도 — 맥락이 있어야 업무가 읽힌다) | `createMany skipDuplicates` |
-| 4 | 구조화 | 업무·실행가능 세션 → 업무 카드 + 체크리스트 + 메시지 연결 | `claude -p` **순차** 40개씩 |
+| 4 | 구조화 | 업무·실행가능 세션 → 업무 카드 + 체크리스트 + 메시지 연결. 세션 하나에서 업무 여럿, 카드에는 Claude 가 고른 메시지만 | `claude -p` **순차** 40개씩 |
 | 5 | 첨부 | `File: 이름` 은 이름으로, `Photo` 는 파일명의 시각으로 짝 맞춰 NAS 업로드 | `--media` 있을 때만 |
 | 6 | 임베딩 | 새 업무·메시지를 옴니스 AI 색인에 | Gemini 100건씩 묶어 호출 |
 
@@ -58,7 +58,7 @@ N 라운드는 1..N-1 이 만든 프로젝트·업무를 맥락으로 받는다.
 |---|---|
 | 메시지 | `ChatMessage.sourceId = kakao:<sha1(방|시각|작성자|본문)>` 유니크 |
 | 분류 | `KAKAO_DATA_DIR/final.json` 에 세션 id 가 있는가 |
-| 구조화 | `Task.sourceId = kakao-task:<세션id>` 유니크 |
+| 구조화 | `Task.sourceId = kakao-task:<세션id>` 유니크. 한 세션의 두 번째 업무부터 `#1`, `#2` … |
 | 첨부 | 그 메시지에 같은 이름의 `File` 이 있는가 |
 | 임베딩 | `EmbeddingChunk` 에 있고 contentHash 가 같은가 |
 
