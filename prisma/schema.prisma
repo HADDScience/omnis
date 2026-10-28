@@ -1586,7 +1586,7 @@ model ExternalCalendar {
   id          String           @id @default(uuid())
   /// "naver-works"
   provider    String
-  /// CalDAV 경로의 마지막 칸 (c_300176554_…)
+  /// CalDAV 경로의 마지막 칸 (c_{숫자}_{uuid} 꼴)
   externalId  String
   href        String
   displayName String

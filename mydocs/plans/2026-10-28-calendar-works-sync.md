@@ -11,6 +11,8 @@ last_verified: 2026-10-28
 - **계정**: 정우창 개인 계정(`jwoochang`)의 앱 비밀번호를 쓴다
 - **범위**: 캘린더 3개 — `Hadd Science` · `대표님 일정` · `바이오아이코어 2026`
 - PR 까지만 한다. 머지는 작업지시자가 한다.
+- **2026-10-28 1~5단계 구현 끝.** 실측 [`../working/2026-10-28-calendar-works-sync.md`](../working/2026-10-28-calendar-works-sync.md) —
+  계획과 달라진 것 · 머지 전에 사람이 할 것(운영 마이그레이션 · 환경변수 넷)도 거기 있다
 
 설계의 권위 문서는 [`../tech/calendar.md`](../tech/calendar.md) 다. 왜 CalDAV 인지,
 무엇이 실측으로 확인됐는지는 거기 있고 여기 옮기지 않는다.

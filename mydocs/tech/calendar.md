@@ -25,7 +25,7 @@ last_verified: 2026-10-27
 | 옴니스 → 폰·외부 캘린더 | **개인 토큰이 든 ICS 구독 피드** (2026-09-23) | 폰 위젯을 만들지 않고 OS 기본 캘린더를 쓴다. 읽기 전용 · 갱신은 저쪽 주기 |
 | 반복 일정 | **우리가 펼친다** | 서버는 마스터+RRULE 로만 주고 `C:expand` 를 무시한다 |
 | 지연 | **열람 시 갱신이 주력, 스케줄은 보조** | Vercel Hobby 의 크론은 하루 1회다 — 분 단위 크론이 없다 |
-| 옴니스 스키마 | **새 테이블은 하나(`ExternalCalendarEvent`)** | 나머지는 기존 모델의 날짜 칸을 읽는 파생 층 |
+| 옴니스 스키마 | **새 테이블은 웍스 미러 둘**(`ExternalCalendar` · `ExternalCalendarEvent`) | 나머지는 기존 모델의 날짜 칸을 읽는 파생 층 |
 
 ## 1. 웍스에서 데이터를 꺼내는 세 가지 길
 
@@ -314,7 +314,7 @@ UTC 자정이면 UTC 날짜, 아니면 서울 날짜. 세 꼴 모두 맞는 날�
 
 성능이 문제가 되면 그때 인덱스 테이블을 materialize 한다. 지금 규모(업무 수백 건대)에서는 필요 없다.
 
-### 3.2 `ExternalCalendarEvent` — 새 테이블은 이것 하나
+### 3.2 `ExternalCalendarEvent` — 새 테이블은 웍스 미러뿐
 
 옴니스 안에 집이 없는 데이터, 즉 웍스에서 미러링한 일정만 담는다.
 
@@ -364,9 +364,33 @@ UTC 자정이면 UTC 날짜, 아니면 서울 날짜. 세 꼴 모두 맞는 날�
 - **ICS 피드를 어느 데이터까지 담을지** — `Task.deadline` 으로 시작하는 것은 정했고,
   3.1 의 나머지와 웍스 일정을 언제 더할지는 미정이다.
 - **스케줄러를 어디에 둘지** — 사내 NAS 인지 GitHub Actions 인지. Vercel Hobby 로는 안 된다.
+  2026-10-28 구현에는 넣지 않았다 — 아무도 안 볼 때의 동기화가 필요해지는 것은 알림을 붙일 때다.
 
-스키마 변경과 외부 자격증명 투입이 들어가므로 [`AGENTS.md`](../../AGENTS.md) 의 타스크 사이클
-2단계(계획서 → 승인)를 거친다. 이 문서는 그 계획서가 아니라 **그 앞의 확정 사실**이다.
+## 4a. 구현 (2026-10-28)
+
+계획 [`../plans/2026-10-28-calendar-works-sync.md`](../plans/2026-10-28-calendar-works-sync.md) ·
+실측 [`../working/2026-10-28-calendar-works-sync.md`](../working/2026-10-28-calendar-works-sync.md).
+
+| 어디 | 무엇 |
+|---|---|
+| `lib/caldav/` | 읽기 전용 클라이언트 · XML · iCalendar 파서 · 동기화(`syncWorksCalendars`) |
+| `lib/calendar/` | 시간대 · RRULE 전개 · 읽기 모델(`getCalendarItems`) · 월 칸 계산 |
+| `app/api/calendar/` | `GET` 읽기 · `POST sync` 열람 시 갱신 · `PATCH calendars/[id]` 공개범위 |
+| `app/(main)/calendar/` | 월 보기 화면 |
+| `scripts/calendar-sync.ts` | 지금 한 번 당기기 · `--force` 처음부터 |
+
+환경변수(서버 전용). **넷 중 하나라도 비면 웍스 부분이 통째로 꺼지고** 캘린더는 옴니스 날짜만으로 돈다 —
+새 테이블을 읽지도 않는다. 데모(`omnis`)에는 넣지 않는다.
+
+| 이름 | 뜻 |
+|---|---|
+| `CALDAV_HOME_URL` | 캘린더 홈. `https://caldav.worksmobile.com/rl/{테넌트}/caldav/{웍스 userId}/calendar/` |
+| `CALDAV_USERNAME` | 그 계정의 회사 메일 주소 |
+| `CALDAV_PASSWORD` | 앱 비밀번호. **IMAP 도 열리는 열쇠다** — Sensitive 로만 |
+| `CALDAV_CALENDARS` | 들일 캘린더의 표시 이름, 쉼표로. `calendarId` 는 PROPFIND 로 찾는다 |
+
+비밀번호를 바꾸면 동기화는 401 로 멈추고, 관리자에게만 「보기」 창에 오류가 보인다.
+구성원 화면은 DB 에 있던 것으로 그대로 돈다.
 
 ## 5. 실측 기록 (2026-10-27)
 
