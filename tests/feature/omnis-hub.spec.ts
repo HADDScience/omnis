@@ -25,6 +25,11 @@ test.describe("HADD DB (Omnis 지식 허브)", () => {
     // 감춘다(totalCards > 0 이면 예전 화면 그대로)". 카드 0건인 DB(운영 스냅샷 등)에서는
     // 없는 것이 맞으므로 실패가 아니라 건너뛴다.
     const chipRow = page.getByRole("link", { name: /^즐겨찾기\s*·\s*\d+$/ })
+    // isVisible() 은 기다리지 않는다 — 스켈레톤(loading.tsx)이 떠 있는 동안 물으면 카드가 있어도
+    // 건너뛰었다(6회 중 3회). 언제나 그려지는 제목이 뜬 뒤에 칩 줄 유무를 본다
+    await expect(
+      page.getByRole("heading", { name: /회사가 쌓아 온 것/ })
+    ).toBeVisible()
     test.skip(!(await chipRow.isVisible()), "카드 0건인 DB — 칩 줄이 감춰진다")
     for (const category of ["기업정보", "인력현황", "지식재산권"]) {
       await expect(
