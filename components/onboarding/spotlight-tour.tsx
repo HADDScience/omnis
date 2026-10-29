@@ -5,7 +5,13 @@ import { usePathname, useRouter } from "next/navigation"
 import { useOnboarding } from "./onboarding-provider"
 import { TourSurface } from "./tour-surface"
 import { useTourClock } from "./use-tour-clock"
-import { TOUR_STOPS as stops } from "./tour-stops"
+import {
+  TOUR_STOPS as stops,
+  clearTourResume,
+  peekTourResume,
+  saveTourResume,
+} from "./tour-stops"
+import { TourSocial } from "./tour-social"
 import "./onboarding.css"
 
 /** 장면 하나를 읽는 시간. 탭 장면은 이 시간이 지나면 다음으로 넘어간다 */
@@ -68,11 +74,14 @@ function clippedRect(node: HTMLElement) {
 
 function Stop({
   index,
+  from,
   onAdvance,
   onFinish,
   onPrevious,
 }: {
   index: number
+  /** 안내를 시작한 화면 — 소셜 연결로 나갔다 돌아온 뒤에도 끝나면 이리로 */
+  from: string
   onAdvance: () => void
   onFinish: () => void
   onPrevious: () => void
@@ -84,7 +93,8 @@ function Stop({
   const card = useRef<HTMLElement>(null)
   const [box, setBox] = useState<Box | null>(null)
   const [settled, setSettled] = useState(false)
-  const duration = READ_MS
+  // 간편 로그인은 고르는 장면이라 저절로 넘기지 않는다(시계 0 = 멈춤)
+  const duration = stop.social ? 0 : READ_MS
   const clock = useTourClock(duration, onAdvance, settled)
   // 장면의 화면으로 옮겨 간다. 이미 그 화면이면 그대로 둔다(다시 읽으면 쓰던 글 · 스크롤이 사라진다)
   useEffect(() => {
@@ -285,27 +295,36 @@ function Stop({
         </span>
         <h2>{stop.title}</h2>
         <p>{stop.copy}</p>
+        {stop.social && (
+          <TourSocial
+            onLeave={() => saveTourResume({ stop: index + 1, from })}
+          />
+        )}
         {stop.target && !box?.hole && settled && (
           <p className="spotlight-fallback">
             현재 화면에서는 이 영역이 접혀 있거나 표시되지 않아요. 메뉴를 열어
             확인할 수 있어요.
           </p>
         )}
-        <div className="intro-progress">
-          <span>
-            <i style={{ transform: `scaleX(${clock.elapsed / duration})` }} />
-          </span>
-        </div>
-        <div className="spotlight-playback">
-          <button onClick={clock.toggle}>
-            {clock.paused ? "▷ 재생" : "Ⅱ 일시정지"}
-          </button>
-          <span>
-            {clock.paused
-              ? "일시정지 중"
-              : `자동 진행 · ${Math.max(1, Math.ceil((duration - clock.elapsed) / 1000))}초`}
-          </span>
-        </div>
+        {duration > 0 && (
+          <>
+            <div className="intro-progress">
+              <span>
+                <i style={{ transform: `scaleX(${clock.elapsed / duration})` }} />
+              </span>
+            </div>
+            <div className="spotlight-playback">
+              <button onClick={clock.toggle}>
+                {clock.paused ? "▷ 재생" : "Ⅱ 일시정지"}
+              </button>
+              <span>
+                {clock.paused
+                  ? "일시정지 중"
+                  : `자동 진행 · ${Math.max(1, Math.ceil((duration - clock.elapsed) / 1000))}초`}
+              </span>
+            </div>
+          </>
+        )}
         <div className="spotlight-controls">
           <button
             disabled={index === 0}
@@ -316,7 +335,7 @@ function Stop({
           </button>
           <button onClick={onFinish}>안내 건너뛰기</button>
           <button className="spotlight-next" onClick={onAdvance}>
-            {last ? "안내 마치기" : "다음 →"}
+            {last ? "안내 마치기" : stop.social ? "나중에" : "다음 →"}
           </button>
         </div>
         <span role="status" className="sr-only">
@@ -330,10 +349,13 @@ function Stop({
 export default function SpotlightTour({ onFinish }: { onFinish: () => void }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [index, setIndex] = useState(0)
+  // 소셜 연결에서 돌아왔으면 적어 둔 장면부터(이 컴포넌트는 브라우저에서만 그린다 — ssr: false)
+  const [resume] = useState(peekTourResume)
+  useEffect(() => clearTourResume(), [])
+  const [index, setIndex] = useState(resume?.stop ?? 0)
   const { setSpotlightTarget } = useOnboarding()
   // 안내는 장면마다 화면을 옮겨 다닌다. 끝나면 안내를 시작한 화면으로 돌려보낸다
-  const [from] = useState(pathname)
+  const [from] = useState(resume?.from ?? pathname)
   const latest = useRef(pathname)
   useEffect(() => {
     latest.current = pathname
@@ -352,6 +374,7 @@ export default function SpotlightTour({ onFinish }: { onFinish: () => void }) {
       <Stop
         key={index}
         index={index}
+        from={from}
         onAdvance={() =>
           index === stops.length - 1 ? finish() : setIndex(index + 1)
         }

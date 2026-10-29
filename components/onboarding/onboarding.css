@@ -175,3 +175,9 @@
 @media (prefers-reduced-motion: reduce) {
  .intro-workflow[data-focus] .intro-composer, .intro-workflow[data-focus] .intro-message-focus { transform: none; transition: none; }
 }
+
+/* 스포트라이트 — 간편 로그인 장면(2026-10-29) */
+.tour-social { display: flex; flex-direction: column; gap: 8px; margin: -6px 0 16px; min-height: 44px; }
+.tour-social-linked { display: flex; align-items: center; justify-content: center; gap: 6px; height: 44px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--muted-foreground); }
+.tour-social-linked svg { color: var(--primary); }
+.spotlight-card p.tour-social-later { margin-top: -6px; font-size: 12px; color: var(--foreground); }

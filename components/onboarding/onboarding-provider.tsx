@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -12,6 +13,7 @@ import dynamic from "next/dynamic"
 import { toast } from "sonner"
 import { apiUrl } from "@/lib/base-path"
 import type { OnboardingState } from "@/lib/schemas/onboarding"
+import { peekTourResume } from "./tour-stops"
 
 const loadingTour = () => (
   <div
@@ -56,6 +58,11 @@ export function OnboardingProvider({
   const [phase, setPhase] = useState<Phase>(
     initialState.onboardingCompletedAt ? "app" : "spotlight"
   )
+  // 안내를 마친 사람이 「다시 보기」 중에 소셜 연결로 나갔다 돌아왔다 — 하던 안내를 잇는다.
+  // sessionStorage 는 서버에서 못 읽어 첫 그리기 뒤에 본다
+  useEffect(() => {
+    if (initialState.onboardingCompletedAt && peekTourResume()) setPhase("spotlight")
+  }, [initialState.onboardingCompletedAt])
   const [spotlightTarget, setSpotlightTarget] = useState<string | null>(null)
   const [mcpOpen, setMcpOpen] = useState<McpOpenOptions | null>(null)
   // Serialize writes so an earlier, slow request cannot race the final completion.
