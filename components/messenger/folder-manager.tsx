@@ -1,0 +1,455 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  Add01Icon,
+  ArrowDown01Icon,
+  ArrowLeft01Icon,
+  ArrowUp01Icon,
+  Building03Icon,
+  Delete02Icon,
+  Folder01Icon,
+  MoreHorizontalIcon,
+  PencilEdit01Icon,
+  Task01Icon,
+  Tick02Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
+import {
+  FOLDER_NAME_MAX,
+  FOLDER_RULES,
+  filterRooms,
+  RULE_FOLDER_INFO,
+  sortByRecent,
+  type ChatFolderView,
+  type FolderRule,
+} from "@/lib/chat-list"
+import type { RoomListItem } from "@/lib/chat-rooms"
+import { chatPrefs } from "./chat-prefs-client"
+
+const RULE_ICON = { COMPANY: Building03Icon, TASK: Task01Icon, GROUP: UserGroupIcon } as const
+
+const errText = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback)
+
+/**
+ * 채팅방 폴더 관리 — 만들기 · 이름 바꾸기 · 지우기 · 순서 · 방 넣고 빼기 · 추천(규칙) 폴더 추가.
+ * 폴더는 내 설정이다(남에게 보이지 않는다). 바꿀 때마다 서버에 바로 쓰고 목록을 다시 읽는다(onChanged).
+ * 지우기는 창을 띄우지 않고 그 줄에서 한 번 더 묻는다(ux-rules 11).
+ */
+export function FolderManager({
+  open,
+  onOpenChange,
+  folders,
+  rooms,
+  onChanged,
+  pickFolderId,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  folders: ChatFolderView[]
+  rooms: RoomListItem[]
+  onChanged: () => Promise<void>
+  /** 열자마자 이 폴더의 「방 고르기」 로 */
+  pickFolderId?: string
+}) {
+  const [picking, setPicking] = useState<string | null>(null)
+  useEffect(() => {
+    if (open) setPicking(pickFolderId ?? null)
+  }, [open, pickFolderId])
+
+  const pickFolder = picking ? folders.find((f) => f.id === picking && !f.rule) : undefined
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[min(640px,calc(var(--app-vh)-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        {pickFolder ? (
+          <RoomPicker folder={pickFolder} rooms={rooms} onBack={() => setPicking(null)} onChanged={onChanged} />
+        ) : (
+          <FolderList folders={folders} onChanged={onChanged} onPick={(id) => setPicking(id)} />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── 폴더 목록 ────────────────────────────────────────────
+
+function FolderList({
+  folders,
+  onChanged,
+  onPick,
+}: {
+  folders: ChatFolderView[]
+  onChanged: () => Promise<void>
+  onPick: (id: string) => void
+}) {
+  // 순서를 바꾸면 서버 응답 전에 먼저 그린다
+  const [items, setItems] = useState(folders)
+  useEffect(() => setItems(folders), [folders])
+  const [newName, setNewName] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
+  // 성공은 알리지 않는다 — 바뀐 것이 그 자리에 보이고, 폰에서는 토스트가 칩 줄을 가린다
+  const run = async (work: () => Promise<unknown>, fail: string) => {
+    setBusy(true)
+    try {
+      await work()
+    } catch (err) {
+      toast.error(errText(err, fail))
+    } finally {
+      await onChanged()
+      setBusy(false)
+    }
+  }
+
+  const create = () => {
+    const name = newName.trim()
+    if (!name) return
+    void run(() => chatPrefs.createFolder({ name }), "폴더를 만들지 못했습니다").then(() =>
+      setNewName(""),
+    )
+  }
+
+  const move = (index: number, delta: -1 | 1) => {
+    const to = index + delta
+    if (to < 0 || to >= items.length) return
+    const next = [...items]
+    ;[next[index], next[to]] = [next[to], next[index]]
+    setItems(next)
+    void run(() => chatPrefs.reorderFolders(next.map((f) => f.id)), "순서를 바꾸지 못했습니다")
+  }
+
+  const rename = () => {
+    if (!renaming) return
+    const name = renaming.name.trim()
+    if (!name) return
+    void run(() => chatPrefs.renameFolder(renaming.id, name), "이름을 바꾸지 못했습니다").then(() => setRenaming(null))
+  }
+
+  const existingRules = new Set(items.map((f) => f.rule).filter(Boolean) as FolderRule[])
+
+  return (
+    <>
+      <DialogHeader className="border-b p-4 pr-12">
+        <DialogTitle>채팅방 폴더</DialogTitle>
+        <DialogDescription className="text-[12px]">
+          내 목록에서만 보이는 폴더예요. 폴더마다 목록 위에 칩이 하나씩 생겨요.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+        <h3 className="mb-1.5 text-[11px] font-semibold text-muted-foreground">내 폴더</h3>
+        {items.length === 0 ? (
+          <p className="rounded-md border border-dashed px-3 py-2 text-[12px] text-muted-foreground">
+            아직 폴더가 없어요. 아래에서 만들거나 추천 폴더를 추가해 보세요.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y rounded-lg border">
+            {items.map((f, i) => (
+              <li key={f.id} className="flex min-w-0 items-center gap-2 px-2.5 py-1.5">
+                {confirmDelete === f.id ? (
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 py-1">
+                    <p className="min-w-0 flex-1 text-[12.5px]">
+                      「{f.name}」 폴더를 지울까요? <span className="text-muted-foreground">안의 방은 그대로 남아요.</span>
+                    </p>
+                    <span className="flex shrink-0 gap-1.5">
+                      <Button size="sm" variant="ghost" className="touch-target" onClick={() => setConfirmDelete(null)}>
+                        취소
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="touch-target"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(() => chatPrefs.deleteFolder(f.id), "폴더를 지우지 못했습니다").then(
+                            () => setConfirmDelete(null),
+                          )
+                        }
+                      >
+                        지우기
+                      </Button>
+                    </span>
+                  </div>
+                ) : renaming?.id === f.id ? (
+                  <form
+                    className="flex min-w-0 flex-1 items-center gap-1.5"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      rename()
+                    }}
+                  >
+                    <Input
+                      autoFocus
+                      value={renaming.name}
+                      maxLength={FOLDER_NAME_MAX}
+                      onChange={(e) => setRenaming({ id: f.id, name: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setRenaming(null)
+                        }
+                      }}
+                      aria-label="새 폴더 이름"
+                      className="touch-target h-8 min-w-0 flex-1 text-[12.5px]"
+                    />
+                    <Button type="submit" size="sm" className="touch-target" disabled={busy || !renaming.name.trim()}>
+                      저장
+                    </Button>
+                  </form>
+                ) : (
+                  <>
+                    <HugeiconsIcon
+                      icon={f.rule ? RULE_ICON[f.rule] : Folder01Icon}
+                      size={15}
+                      aria-hidden
+                      className="shrink-0 text-muted-foreground"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-medium">{f.name}</span>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {f.rule ? "추천 폴더 · 방 종류로 자동" : `방 ${f.roomKeys.length}개`}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center">
+                      <IconButton label={`${f.name} 앞으로`} disabled={busy || i === 0} onClick={() => move(i, -1)}>
+                        <HugeiconsIcon icon={ArrowUp01Icon} size={14} aria-hidden />
+                      </IconButton>
+                      <IconButton label={`${f.name} 뒤로`} disabled={busy || i === items.length - 1} onClick={() => move(i, 1)}>
+                        <HugeiconsIcon icon={ArrowDown01Icon} size={14} aria-hidden />
+                      </IconButton>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <button
+                              type="button"
+                              aria-label={`${f.name} 폴더 메뉴`}
+                              className="touch-target flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                            />
+                          }
+                        >
+                          <HugeiconsIcon icon={MoreHorizontalIcon} size={15} aria-hidden />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          {!f.rule && (
+                            <DropdownMenuItem className="touch-target" onClick={() => onPick(f.id)}>
+                              <HugeiconsIcon icon={Add01Icon} size={14} aria-hidden />
+                              방 넣고 빼기
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem className="touch-target" onClick={() => setRenaming({ id: f.id, name: f.name })}>
+                            <HugeiconsIcon icon={PencilEdit01Icon} size={14} aria-hidden />
+                            이름 바꾸기
+                          </DropdownMenuItem>
+                          <DropdownMenuItem variant="destructive" className="touch-target" onClick={() => setConfirmDelete(f.id)}>
+                            <HugeiconsIcon icon={Delete02Icon} size={14} aria-hidden />
+                            지우기
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <form
+          className="mt-3 flex items-center gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            create()
+          }}
+        >
+          <Input
+            value={newName}
+            maxLength={FOLDER_NAME_MAX}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="새 폴더 이름"
+            aria-label="새 폴더 이름"
+            className="touch-target h-8 min-w-0 flex-1 text-[12.5px]"
+          />
+          <Button type="submit" size="sm" className="touch-target gap-1" disabled={busy || !newName.trim()}>
+            <HugeiconsIcon icon={Add01Icon} size={14} aria-hidden />
+            폴더 만들기
+          </Button>
+        </form>
+
+        <h3 className="mb-1.5 mt-5 text-[11px] font-semibold text-muted-foreground">추천 폴더</h3>
+        <ul className="flex flex-col divide-y rounded-lg border">
+          {FOLDER_RULES.map((rule) => {
+            const added = existingRules.has(rule)
+            return (
+              <li key={rule} className="flex min-w-0 items-center gap-2 px-2.5 py-2">
+                <HugeiconsIcon icon={RULE_ICON[rule]} size={15} aria-hidden className="shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-medium">{RULE_FOLDER_INFO[rule].name}</span>
+                  <span className="block text-[11px] text-muted-foreground">{RULE_FOLDER_INFO[rule].hint}</span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="touch-target shrink-0 gap-1"
+                  disabled={busy || added}
+                  aria-label={added ? `${RULE_FOLDER_INFO[rule].name} 추가됨` : `${RULE_FOLDER_INFO[rule].name} 추가`}
+                  onClick={() =>
+                    void run(
+                      () => chatPrefs.createFolder({ rule }),
+                      "추천 폴더를 추가하지 못했습니다"
+                    )
+                  }
+                >
+                  {added && <HugeiconsIcon icon={Tick02Icon} size={13} aria-hidden />}
+                  {added ? "추가됨" : "추가"}
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </>
+  )
+}
+
+function IconButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  disabled?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="touch-target flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30"
+    >
+      {children}
+    </button>
+  )
+}
+
+// ─── 방 고르기 ────────────────────────────────────────────
+
+function RoomPicker({
+  folder,
+  rooms,
+  onBack,
+  onChanged,
+}: {
+  folder: ChatFolderView
+  rooms: RoomListItem[]
+  onBack: () => void
+  onChanged: () => Promise<void>
+}) {
+  const [keys, setKeys] = useState(() => new Set(folder.roomKeys))
+  const [q, setQ] = useState("")
+  const shown = useMemo(() => filterRooms(sortByRecent(rooms), q), [rooms, q])
+
+  const toggle = async (room: RoomListItem) => {
+    const inside = keys.has(room.key)
+    setKeys((s) => {
+      const n = new Set(s)
+      if (inside) n.delete(room.key)
+      else n.add(room.key)
+      return n
+    })
+    try {
+      if (inside) await chatPrefs.removeFromFolder(folder.id, room.key)
+      else await chatPrefs.addToFolder(folder.id, room.key)
+    } catch (err) {
+      toast.error(errText(err, "폴더를 바꾸지 못했습니다"))
+      setKeys((s) => {
+        const n = new Set(s)
+        if (inside) n.add(room.key)
+        else n.delete(room.key)
+        return n
+      })
+    }
+    await onChanged()
+  }
+
+  return (
+    <>
+      <DialogHeader className="border-b p-4 pr-12">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="폴더 목록으로"
+            className="touch-target -ml-1.5 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <HugeiconsIcon icon={ArrowLeft01Icon} size={16} aria-hidden />
+          </button>
+          <DialogTitle className="min-w-0 truncate">「{folder.name}」 에 넣을 방</DialogTitle>
+        </div>
+        <DialogDescription className="text-[12px]">누르면 바로 넣고 빼요. 지금 {keys.size}개</DialogDescription>
+      </DialogHeader>
+      <div className="shrink-0 px-4 pt-3">
+        <Input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="방 이름으로 찾기"
+          aria-label="넣을 방 찾기"
+          className="touch-target h-8 text-[12.5px]"
+        />
+      </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+        {shown.length === 0 && <li className="px-3 py-2 text-[12px] text-muted-foreground">맞는 방이 없어요</li>}
+        {shown.map((r) => {
+          const on = keys.has(r.key)
+          return (
+            <li key={r.key}>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                onClick={() => void toggle(r)}
+                className="touch-target flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "flex size-4 shrink-0 items-center justify-center rounded border",
+                    on ? "border-primary bg-primary text-primary-foreground" : "border-input",
+                  )}
+                >
+                  {on && <HugeiconsIcon icon={Tick02Icon} size={11} />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px]">
+                    {r.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
+                    {r.name}
+                  </span>
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    {r.kind === "OMNIS_DM" ? "옴니스" : r.kind === "COMPANY" ? "전사방" : r.kind === "TASK" ? "업무방" : "단톡방"}
+                    {r.preview ? ` · ${r.preview}` : ""}
+                  </span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </>
+  )
+}

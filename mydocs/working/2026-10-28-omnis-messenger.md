@@ -2,10 +2,10 @@
 kind: snapshot
 status: active
 canonical: mydocs/working/2026-10-28-omnis-messenger.md
-last_verified: 2026-10-28
+last_verified: 2026-10-29
 ---
 
-# 옴니스 메신저 — 1단계(채팅방 모델) · 2단계(첫 화면 = 메신저) 구현 · 실측
+# 옴니스 메신저 — 1단계(채팅방 모델) · 2단계(첫 화면 = 메신저) · 2-b(목록 칩 · 폴더 · 검색) 구현 · 실측
 
 계획: [`../plans/2026-10-28-omnis-messenger-agent.md`](../plans/2026-10-28-omnis-messenger-agent.md) 의 1 · 2단계.
 브랜치 `feat/omnis-messenger`(feat/floating-nav 위, 그 아래 feat/tasks-tab-status), 워크트리 `../omnis-messenger`.
@@ -269,13 +269,268 @@ DB 에 남은 대화:
 | `1440-task-room.png` · `375-task-room.png` | 업무방 |
 | `1440-right-panel.png` | 오른쪽 패널 — 탭은 「전체」 만(업무 화면 밖), 「Omnis AI」 없음 |
 
-## 남은 문제
+## 2-b. 방 목록 필터 · 폴더 · 검색 (2026-10-29)
+
+작업지시자 요청: 카톡처럼 목록 위에 칩 한 줄 + 사용자 폴더 + 검색. 참고 화면은 카톡 「목록 위 필터 칩」 · 「채팅방 폴더 관리」 — 모양은 Omnis 부품(Badge · Dialog · DropdownMenu · ContextMenu)으로 그렸다.
+3단계(feat/omnis-agent)가 같은 브랜치 위에서 대화 칸을 바꾸고 있어, 이번 변경은 **목록 · 목록 API · 폴더 · 읽음** 파일에만 두었다 — `omnis-room.tsx` · `company-room.tsx` · `lib/omnis-room.ts` · `lib/omnis-ask.ts` 는 건드리지 않았다.
+
+| 곳 | 무엇 |
+|---|---|
+| `lib/chat-list.ts` | 규칙(순수 함수) — 방 키 · 칩 · 규칙 폴더 · 안 읽음 셈법 · 검색 · 남의 방 키 판정. 브라우저와 서버가 같이 쓴다 |
+| `lib/chat-prefs.ts` | 읽음 · 즐겨찾기 · 폴더 쓰기. 방 키를 쓰기 전에 `checkRoomKey` |
+| `lib/chat-rooms.ts` `listRooms` | 방마다 `key` · `unread` · `favorite`, 응답에 `folders` · `query`. `?q=` 검색. 즐겨찾기 · 폴더에 넣은 업무방은 최근 30개 밖이라도 온다 |
+| `lib/schemas/chat-folder.ts` | API 입력(Zod) |
+| `app/api/chat/prefs` | `PATCH { roomKey, favorite?, read? }` |
+| `app/api/chat/folders` · `[folderId]` · `[folderId]/rooms` | 만들기(`{name}` · `{rule}`) · 순서 · 이름 · 지우기 · 방 넣기/빼기 |
+| `components/messenger/room-list.tsx` · `folder-manager.tsx` · `chat-prefs-client.ts` | 검색칸 · 칩 · ⋯/우클릭 메뉴 · 폴더 관리 창 · 읽음 올리기 |
+
+### 스키마 — 마이그레이션 `prisma/migrations/20261029010000_chat_folders` (추가만)
+
+| 무엇 | 칸 |
+|---|---|
+| `ChatRoomPref` (신설) | `(userId, roomKey)` 기본키 · `favorite` · `lastReadAt?` · `createdAt` · `updatedAt` |
+| `enum ChatFolderRule` (신설) | COMPANY · TASK · GROUP |
+| `ChatFolder` (신설) | `id` · `userId` · `name` · `rule?` · `order` · 유일 `(userId, rule)` · 색인 `(userId, order)` |
+| `ChatFolderRoom` (신설) | `(folderId, roomKey)` 기본키 · `addedAt` |
+| `User` | 관계 칸 `chatRoomPrefs` · `chatFolders`(DB 칸 없음) |
+
+- **방을 id 가 아니라 방 키로 가리킨다** — `room:<ChatRoom.id>` · `task:<Task.id>`. 전사방은 참여자 행이 없고 업무방은 표 자체가 없어(taskId 로 묶인 가상 방) `ChatRoomMember.lastReadAt` 에 달 수 없다. 방 키는 FK 가 아니라서 방 · 업무가 지워지면 설정 행이 남는다 — 목록은 있는 방에만 설정을 붙이므로 화면에는 영향이 없다
+- **`ChatRoomPref` 의 키 `*` 한 줄 = 안 읽음을 세기 시작한 시각.** 처음 목록을 연 순간 만든다. 이 줄이 없으면 한 번도 안 연 전사방(글 1만 5천여 건)이 통째로 안 읽은 글이 된다. 한 번도 안 연 방은 이 시각 뒤의 글만 센다. API 는 `*` 를 받지 않는다(400)
+- 규칙 폴더 유일 제약은 `(userId, rule)` — 수동 폴더는 rule 이 NULL 이라 Postgres 에서 서로 겹치지 않는다
+- `ChatRoomMember.lastReadAt` 은 그대로 두고 쓰지 않는다(옴니스 방 코드가 3단계에서 바뀌는 중이라 손대지 않았다)
+- 백필 없음 — 새 표뿐이고, 기준 줄은 목록이 처음 열릴 때 생긴다
+
+```
+$ pnpm exec prisma migrate deploy
+Datasource "db": PostgreSQL database "omnis", schema "public" at "localhost:5433"
+50 migrations found in prisma/migrations
+Applying migration `20261029010000_chat_folders`
+All migrations have been successfully applied.
+
+$ pnpm exec prisma migrate status
+50 migrations found in prisma/migrations
+Database schema is up to date!
+```
+
+같은 로컬 DB 를 쓰는 feat/omnis-agent 의 `20261029000000_agent_runtime` 은 이 시점에 적용 기록이 없었고, `migrate deploy` 는 실패 없이 지나갔다.
+
+### 정한 것
+
+| 무엇 | 정한 것 | 왜 |
+|---|---|---|
+| 안 읽은 글 | 방을 마지막으로 읽은 시각(없으면 기준 시각) 뒤의 글. **지운 글 · 내 글은 세지 않는다.** **시스템 계정 글은 옴니스 1:1 방에서만 센다** | 전사방 · 업무방의 🤖 글(재구성 · 완료 확인 대기)은 사람 글 뒤에 저절로 붙어 한 번 대화에 배지가 두 번 오른다. 옴니스 1:1 방에서는 옴니스 답이 그 방의 상대 글이다 |
+| 업무 스레드 글 | 업무방에서 세고, **전사방에서도 센다** | 전사방 화면(`ChatPanel` 「전체」)에 같은 글이 보인다. 업무방만 열면 전사방 배지는 남는다 |
+| 읽음 올리기 | 방을 열 때 · 떠날 때 · 열어 둔 방에 목록이 새 글을 셀 때(30초 폴링) | 대화 칸을 건드리지 않으려고 목록이 주소로 지금 방을 안다. 연 방의 배지는 서버 응답 전에도 0 으로 그린다 |
+| 규칙의 정본 | `countsAsUnread`(순수 함수). 서버는 같은 규칙을 SQL 로 센다 | 목록마다 메시지를 불러와 세면 무겁다. 대신 HTTP 검증이 실제 DB 에서 SQL 과 이 함수의 답을 맞춰 본다(아래 [6]) |
+| 「안읽음」 칩 배지 | 안 읽은 글이 있는 **방의 수**. 줄 배지는 그 방의 **글 수**, 100 부터 「99+」 | 카톡과 같다 |
+| 검색 범위 | **고른 칩과 상관없이 전체에서** | 폴더 칩을 고른 채 찾다가 다른 폴더의 방을 놓치는 일이 없게. 검색 중에는 칩 줄을 옅게 하고 「전체에서 찾은 방 N개」 를 띄운다 |
+| 검색 대상 | 방 이름 · 업무 이름 · 슬러그(`#` 붙여도) · 마지막 글 미리보기(보낸 사람 포함). 메시지 본문 전체는 범위 밖 | 업무방은 서버가 최근 30개에 묶지 않고 최대 50개까지 찾는다(ILIKE, `%`·`_`·`\` 이스케이프) |
+| 남의 방 키 | 폴더 넣기 · 즐겨찾기 · 읽음 모두 **404**(없는 방과 같은 답) | 403 과 404 가 갈리면 그 id 의 1:1 방이 있다는 것이 샌다 |
+| 규칙 폴더 | 종류마다 하나(409), 방을 손으로 넣지 않는다(400) | 규칙으로 채우는 폴더에 손 넣은 방이 섞이면 무엇이 왜 들어 있는지 알 수 없다 |
+| 폴더 한도 | 사람당 20개, 이름 20자 | 칩 줄이 끝없이 길어지지 않게 |
+| 칩 기억 | `localStorage` `omnis.chat.chip.<userId>` | 요구대로. 기기마다 따로 기억한다 |
+
+### 함정 — SQL 조각이 next dev 에서 jsonb 로 직렬화됐다
+
+처음에는 업무방 질의의 조건을 `Prisma.sql` 조각으로 끼웠다. `tsx` 로 부르면 통과하는데 dev 서버(webpack)에서는 500 이었다.
+
+```
+Raw query failed. Code: `42804`. Message: `ERROR: argument of AND must be type boolean, not type jsonb`
+```
+
+webpack 번들 안의 `Prisma.sql` 이 `$queryRaw` 가 아는 Sql 객체로 인식되지 않아, 조각이 SQL 이 아니라 값(jsonb 매개변수)으로 넘어갔다.
+조각을 걷고 `${ids}::text[] IS NULL OR …` · `${pattern}::text IS NULL OR …` 처럼 매개변수로만 넘겼다.
+`lib/kpi.ts` 도 `Prisma.sql` 조각을 쓴다 — 그쪽이 dev 서버에서 도는 경로인지는 확인하지 않았다.
+
+새 표를 더한 뒤 `prisma generate` 를 해도 **떠 있던 dev 서버는 옛 클라이언트를 쥐고 있어**(`prisma.chatRoomPref` 가 undefined) 서버를 다시 띄웠다.
+
+### 검증
+
+#### 품질 게이트
+
+```
+$ pnpm run verify
+verify exit 0
+✖ 37 problems (0 errors, 37 warnings)     ← 이번에 손댄 파일에는 경고가 없다
+
+$ pnpm run test:unit
+ℹ tests 70
+ℹ pass 70
+ℹ fail 0
+```
+
+`lib/chat-list.test.ts` 19건이 이번에 더한 것이다 — 방 키 해석 · 주소 → 방 키 · **남의 1:1 방 키 forbidden** · 없는 방/잘못된 키 · **규칙 폴더 분류**(새 업무방도 저절로, 손 넣은 키 무시) · 수동 폴더 · 전체 한 목록(최근 글 순) · 옴니스/안읽음/즐겨찾기 칩 · 지운 폴더 칩 · **안 읽음 셈법**(읽은 뒤 남의 글만 · 내 글/지운 글 제외 · 시스템 글은 1:1 방에서만 · 기준 시각) · 99+ · **검색 거르기**(이름 · #슬러그 · 미리보기 · 보낸 사람 · 없는 말 · 대소문자).
+
+#### HTTP — `BASE=http://localhost:3102 pnpm exec tsx --env-file=.env scripts/verify-chat-folders.ts`
+
+시험 글은 DB 에 직접 넣는다(전사방 글쓰기 API 는 색인 · 재구성으로 모델을 부를 수 있다). 끝에 시험 글 · 방 · 폴더를 지우고 두 사람의 방 설정을 되돌린다.
+
+```
+대상 DB: localhost:5433 · 서버: http://localhost:3102
+A=윤훈 · B=팀장
+
+[1] 목록 응답
+  ✓ 방마다 key · unread · favorite 가 있다
+  ✓ 폴더 목록이 온다
+  ✓ 안 읽음 기준 줄이 생겼다
+  ✓ A 목록에 B 의 1:1 방이 없다 (거부되어야 하는 경우)
+  ✓ 로그인 없이 401
+
+[2] 즐겨찾기
+  ✓ 전사방 즐겨찾기 켜기 200
+  ✓ 목록에 favorite=true
+  ✓ 끄면 favorite=false
+  ✓ 바꿀 것 없는 요청 400
+
+[3] 폴더
+  ✓ 수동 폴더 만들기 201
+  ✓ 업무방 넣기 201
+  ✓ 내 1:1 방 넣기 201
+  ✓ 같은 방 두 번 넣어도 한 줄
+  ✓ 목록의 폴더에 두 방
+  ✓ 이름 바꾸기 200
+  ✓ 빈 이름은 400
+  ✓ 21자 이름은 400
+  ✓ 순서 바꾸기 200
+  ✓ 바뀐 순서로 온다
+  ✓ 이름이 다듬어져 저장
+  ✓ 빼기 200
+  ✓ 빼면 한 방
+
+[4] 추천(규칙) 폴더
+  ✓ 「업무방」 추가
+  ✓ 두 번째 「업무방」 은 409 (거부되어야 하는 경우)
+  ✓ 없는 규칙은 400
+  ✓ 규칙 폴더에 방을 직접 넣으면 400
+
+[5] 남의 방 · 남의 폴더 (모두 거부되어야 하는 경우)
+  ✓ B 의 1:1 방을 A 폴더에 넣으면 404
+  ✓ …없는 방과 같은 답(404)
+  ✓ B 의 1:1 방 즐겨찾기 404
+  ✓ B 의 1:1 방 읽음 404
+  ✓ B 의 방 설정 행이 생기지 않았다
+  ✓ B 의 방이 A 폴더에 들어가지 않았다
+  ✓ 기준 줄 키 `*` 는 400
+  ✓ 모르는 접두사 400
+  ✓ A 가 B 폴더 이름 바꾸면 404
+  ✓ A 가 B 폴더에 방 넣으면 404
+  ✓ A 가 B 폴더 지우면 404
+  ✓ A 순서에 B 폴더를 섞으면 400
+  ✓ B 폴더는 그대로
+  ✓ A 목록에 B 폴더가 없다
+  ✓ B 목록에 A 폴더가 없다
+
+[6] 안 읽음
+  ✓ 읽은 직후 전사방 0
+  ✓ B 가 쓰면 전사방 1
+  ✓ 내 글 · 시스템 글 · 지운 글은 늘지 않는다 (거부되어야 하는 경우)
+  ✓ 업무 스레드 글 — 업무방 1
+  ✓ …전사방도 2(전사방 화면에 같은 글이 보인다)
+  ✓ 옴니스 1:1 방 — 옴니스 답은 센다
+  ✓ SQL(2) = 규칙 정본(2) — 읽은 뒤 글 5개 중
+  ✓ 열면(read) 전사방 0
+  ✓ …업무방은 따로라 그대로 1
+
+[7] 검색
+  ✓ 슬러그 「에이전트-확인-흐름-점검」 로 그 업무방
+  ✓ #슬러그 로도
+  ✓ 업무 이름 일부로
+  ✓ 마지막 글 미리보기로(「옴니스 답 [시험]」)
+  ✓ 방 이름으로 전사방
+  ✓ 없는 말은 0건
+  ✓ B 의 1:1 방 이름으로 찾아도 안 나온다 (거부되어야 하는 경우)
+  ✓ `%` 는 모든 방이 아니라 글자로
+
+전부 통과
+```
+
+1 · 2단계 검증도 다시 돌렸다 — `scripts/verify-chat-rooms.ts` 전부 통과(목록 모양 · 1:1 방이 새지 않음), `scripts/verify-omnis-room-http.ts` 전부 통과.
+
+#### 화면 — Playwright 1440 · 375 (dev 3102, 정우창 · 윤훈 세션 쿠키)
+
+시나리오 스크립트는 세션 스크래치에 두었다(저장소에 넣지 않았다). 매번 정우창의 폴더 · 방 설정과 시험 글을 지우고 시작한다. 두 폭 모두 **전부 통과**, 모든 장에서 문서 가로 넘침 0px, 콘솔 오류 0건
+(전사방 첨부 미리보기의 「Failed to load resource」 3~5건은 로컬에 NAS 가 없어 나는 것이라 따로 셌다).
+
+```
+[375] 1. 칩 전환 — 전체가 한 목록인가
+  ✓ 방 종류 칸 제목(h2)이 없다
+  ✓ 최근 글 순 (33줄)
+  ✓ 옴니스 · 전사방 · 업무방이 한 목록에 섞여 있다
+  ✓ 「전체」 칩이 눌려 있다
+  ✓ 옴니스 칩 — 업무방 · 전사방이 없다 (2줄)
+  ✓ 새로고침해도 마지막 칩(옴니스)을 기억
+[375] 2. 즐겨찾기
+  ✓ 즐겨찾기 칩에 하드사이언스                    (1440 은 + 우클릭 메뉴에 「즐겨찾기 끄기」)
+[375] 3. 폴더 만들기 → 방 넣기 → 칩으로 보기
+  ✓ 방 고르기 — 두 방이 체크됨
+  ✓ 「견적 모음」 칩에 고른 방 (2줄)
+  ✓ 둘 다 빼면 빈 폴더 문구                      (목록의 ⋯ 메뉴로 뺐다)
+[375] 4. 추천 폴더 「업무방」 추가
+  ✓ 「업무방」 칩은 업무방만 (30줄)
+[375] 5. 안읽음 — 다른 사용자가 전사방에 쓰면 배지, 열면 사라짐
+    윤훈이 전사방에 보냄: [2b 시험] 안읽음 확인 375px 오전 10:49:17
+  ✓ 전사방 줄에 배지 (1)
+  ✓ 안읽음 칩에 방 수 배지 (2)
+  ✓ 안읽음 칩에 하드사이언스
+  ✓ 열고 나면 전사방 배지가 사라졌다
+  ✓ 새로고침 뒤에도 — 안읽음 칩에서 전사방이 빠졌다
+[375] 6. 검색
+  ✓ 「하드」 → 하드사이언스 (1줄)
+  ✓ #슬러그 「task-44a5cd4f」 → 업무방
+  ✓ Esc 로 검색어를 지운다
+[375] 폰 — 칩 줄은 가로로 스크롤, 터치 타깃
+    칩 줄 scrollWidth 382 / clientWidth 315
+  ✓ 칩 · 줄 · ⋯ · 검색칸 모두 44px 이상
+  ✓ 콘솔 오류 없음 (0)
+전부 통과
+```
+
+5번의 글은 윤훈 계정으로 **전사방 화면의 입력창에서 실제로 보냈다**(dev 서버는 `GEMINI_API_KEY` 를 뺀 채 떠 있어 색인 · 재구성 모델을 부르지 않는다). 「안읽음 칩에 방 수 배지 (2)」 의 나머지 하나는 같은 로컬 DB 에서 10:40 에 옴니스 답이 온 정우창의 1:1 방이다.
+
+첫 375 실행은 **성공 토스트가 화면 위 칩 줄을 덮어** 다음 칩을 누르지 못해 멈췄다. 즐겨찾기 · 폴더 · 순서의 성공 토스트를 걷었다(실패만 토스트).
+
+스크린샷 `mydocs/working/omnis-messenger/` — `{1440,375}-2b-*.png`
+
+| 파일 | 무엇 |
+|---|---|
+| `*-2b-1-all.png` · `*-2b-1-omnis.png` | 전체(한 목록) · 옴니스 칩 |
+| `*-2b-2-row-menu.png` · `*-2b-2-favorite.png` · `1440-2b-2-context-menu.png` | ⋯ 메뉴 · 즐겨찾기 칩 · 우클릭 메뉴 |
+| `*-2b-3-manager-empty.png` · `*-2b-3-pick-rooms.png` · `*-2b-3-folder-chip.png` · `*-2b-3-folder-empty.png` | 폴더 관리(빈) · 방 고르기 · 폴더 칩 · 빈 폴더 |
+| `*-2b-4-manager-rule.png` · `*-2b-4-rule-folder.png` | 추천 「업무방」 추가됨 · 그 칩 |
+| `*-2b-5-unread-badge.png` · `*-2b-5-unread-chip.png` · `*-2b-5-after-open.png` | 배지 · 안읽음 칩 · 연 뒤 |
+| `*-2b-6-search.png` · `*-2b-6-search-empty.png` | 검색 · 검색 결과 없음 |
+
+#### 좁은 화면 — `BASE_URL=http://localhost:3102 AUDIT_USER=팀장 AUDIT_PASS=… ROUTES=/chat node scripts/narrow-audit.mjs`
+
+```
+✗ 320px /chat   overflow=0 bleed=0 clip=12 ellip=12 tiny=0
+✗ 280px /chat   overflow=0 bleed=0 clip=12 ellip=12 tiny=0
+✗ 240px /chat   overflow=0 bleed=0 clip=12 ellip=12 tiny=0
+✗ 200px /chat   overflow=0 bleed=0 clip=12 ellip=12 tiny=0
+잘리거나 넘친 화면: 4 / 4      (exit 1)
+```
+
+- **가로 넘침 · 삐져나감 · 44px 미만은 200px 까지 0** 이다
+- clip · ellip 12 는 2단계와 같은 수 · 같은 종류다 — 방 이름 · 미리보기 한 줄의 `truncate`(200px 실측 목록: 「옴니스에게 회사 일을 물어보세요」 · 「하드사이언스」 · 업무 이름 · 「보낸 사람: 내용」). 칩 줄은 `overflow-x-auto` 라 잘림으로 잡히지 않는다
+
+### 남은 문제 (2-b)
+
+1. **업무방은 여전히 최근 30개**다. 「업무방」 규칙 폴더도 그 30개(+ 즐겨찾기 · 수동 폴더에 넣은 업무방)만 보인다. 더 오래된 업무방은 검색으로 찾는다(최대 50개)
+2. 안 읽은 수는 **목록을 다시 읽을 때(30초 폴링 · 방 화면이 목록을 새로 고칠 때)** 바뀐다. 실시간 푸시는 없다
+3. 지금 연 방의 읽음은 목록이 올린다 — 방을 연 채 목록 폴링 사이에 온 글은 떠날 때 읽음 처리된다. 폰에서 대화만 보고 있을 때도 목록 칸은 숨겨진 채 돌아 같은 규칙으로 올린다(목록이 그려지지 않을 뿐 컴포넌트는 떠 있다)
+4. 방 키는 FK 가 아니다 — 방 · 업무를 지우면 `ChatRoomPref` · `ChatFolderRoom` 행이 남는다. 목록에는 보이지 않고, 폴더의 「방 N개」 수만 지운 방까지 센다
+5. 폴더 순서는 ↑ ↓ 버튼으로만 바꾼다(끌어 놓기 없음). 방 고르기 창은 지금 목록에 있는 방(업무방 30개 + 고정한 것)만 보여 준다
+6. 검색은 서버에 한 번 더 묻는다(250ms 기다린 뒤). 마지막 글 미리보기는 서버에서 60자로 자르기 전의 원문으로 거른다 — 화면에 안 보이는 뒷부분의 말로도 걸릴 수 있다
+7. 칩 기억은 기기마다 따로다(localStorage). 다른 기기에서는 「전체」 로 시작한다
+8. 운영 반영 때 마이그레이션이 하나 늘었다 — 아래 「운영 반영 순서」 1번에 `20261029010000_chat_folders` 를 더했다
+
+## 남은 문제 (1 · 2단계)
 
 1. **방 화면의 404 는 HTTP 200 으로 나간다.** `loading.tsx` 가 스트리밍을 먼저 시작해 `notFound()` 가 상태 코드 대신 본문 표식(`NEXT_HTTP_ERROR_FALLBACK;404`)으로 온다. 남의 방 내용은 내려가지 않는다(HTTP 검증 [2]). 상태 코드까지 404 여야 하면 방 페이지의 `loading.tsx` 를 빼야 한다
 2. **재사용한 `ChatPanel` · `TaskThread` 의 44px 미만 터치 타깃**(위 narrow-audit). 오른쪽 패널에서 이미 그랬던 것이고 이번에 고치지 않았다
 3. 콘솔 경고 두 가지를 한 번씩 봤다 — 375px 연속 이동 중 「hydrated but some attributes … didn't match」, 1440px 전사방에서 「state update on a component that hasn't mounted yet」. 같은 주소를 새로 열면 다시 나오지 않았다(375px 에서 /tasks · /chat · /chat/new · 전사방 · 업무방 · 옴니스 방을 각 1~2회 새로 열어 0건)
 4. 답은 스트리밍하지 않는다 — 실측 7~11초 동안 스켈레톤. 함수 상한 `maxDuration = 60`
-5. 방 이름은 첫 질문 앞 30자로 고정이고, 방 이름 바꾸기 · 지우기는 없다. `lastReadAt` 은 남기지만 안 읽은 표시는 아직 그리지 않는다
+5. 방 이름은 첫 질문 앞 30자로 고정이고, 방 이름 바꾸기 · 지우기는 없다. 안 읽은 표시는 2-b 에서 그린다 — `ChatRoomMember.lastReadAt` 이 아니라 `ChatRoomPref`(방 키) 로
 6. 문맥에는 앞 대화의 **글**만 들어가고 앞 턴의 도구 결과는 들어가지 않는다. 2턴처럼 앞 답에 슬러그가 있으면 이어지지만, 앞 답에 없던 세부를 물으면 도구를 다시 부른다
 7. 전사방을 가운데에 연 채로 오른쪽 패널 「전체」 도 열면 같은 방을 두 곳에서 폴링한다
 8. `/omnis/ask` 질문 화면과 `OmnisAsk` 의 dock 변형(이제 쓰는 곳 없음)은 그대로 두었다
@@ -283,7 +538,7 @@ DB 에 남은 대화:
 
 ## 운영 반영 순서 — migrate 먼저, 머지 나중
 
-1. 운영 DB 를 가리키는지 호스트부터 찍고 확인한 뒤 `pnpm run db:deploy` — `20261028010000_chat_room_kinds` 하나. 추가만 하는 변경이라 지금 운영 코드는 그대로 돈다
+1. 운영 DB 를 가리키는지 호스트부터 찍고 확인한 뒤 `pnpm run db:deploy` — `20261028010000_chat_room_kinds` · `20261029010000_chat_folders` 둘. 추가만 하는 변경이라 지금 운영 코드는 그대로 돈다
 2. 그 다음 머지. 순서는 nav 계획대로 **캘린더(머지됨) → nav(`feat/floating-nav`, 그 아래 `feat/tasks-tab-status`) → 이 브랜치**
 3. migrate 전에 이 코드가 나가면: 목록 · 피드 · 지표 · 색인이 `ChatRoom.kind` 를 읽다 오류가 난다(`lib/kpi.ts` 의 raw SQL 포함). kpi-export 를 운영에 돌릴 때도 migrate 뒤에
 4. 데모(`omnis`) 프로젝트는 main 빌드가 `prisma migrate deploy` 를 돌려 따로 할 일이 없다

@@ -22,7 +22,7 @@ export const useRoomListReload = () => useContext(RoomListReload)
  *
  * 높이는 MainWithChat 스크롤 칸 안에서 h-full 이다. 그 칸이 nav 높이(--nav-offset-*)를 이미 비워 두므로 여기서 다시 빼지 않는다.
  */
-export function MessengerShell({ children }: { children: ReactNode }) {
+export function MessengerShell({ children, userId }: { children: ReactNode; userId: string }) {
   const pathname = usePathname()
   const atList = pathname === "/chat"
   const [version, setVersion] = useState(0)
@@ -52,7 +52,7 @@ export function MessengerShell({ children }: { children: ReactNode }) {
               atList ? "flex" : "hidden",
             )}
           >
-            <RoomList version={version} />
+            <RoomList version={version} userId={userId} />
           </aside>
           <section className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", atList ? "hidden" : "flex")}>
             {children}
