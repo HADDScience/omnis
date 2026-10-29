@@ -18,7 +18,7 @@ export function useCurrentUser() {
 
 /**
  * 마이(계정·설정)로 가는 아바타. 설정은 가끔 쓰는 곳이라 탭 한 칸을 주지 않고 동그라미로 뺐다 —
- * Apple·Linear 탭바도 프로필을 탭에 두지 않는다. PC 는 떠 있는 nav 옆, 폰은 페이지 제목줄 오른쪽.
+ * Apple·Linear 탭바도 프로필을 탭에 두지 않는다. PC 는 떠 있는 nav 옆, 폰은 하단 nav 의 탭 캡슐 오른쪽(2026-10-29 제목줄에서 옮김).
  */
 export function MeAvatarLink({ className }: { className?: string }) {
   const { name } = useCurrentUser()

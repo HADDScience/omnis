@@ -144,7 +144,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 ## 떠 있는 nav (2026-10-28)
 
-사이드바를 걷고 탭 넷(채팅 · 업무 · 캘린더 · 아카이브)을 유리 nav 로 띄웠다. 마이(계정·설정)는 탭이 아니라 아바타 원이다(`MeAvatarLink`) — PC 는 nav 옆, 폰은 제목줄 오른쪽.
+사이드바를 걷고 탭 넷(채팅 · 업무 · 캘린더 · 아카이브)을 유리 nav 로 띄웠다. 마이(계정·설정)는 탭이 아니라 아바타 원이다(`MeAvatarLink`) — PC 는 nav 옆, 폰은 하단 nav 의 탭 캡슐 오른쪽(둘 다 「캡슐 + 내 원」).
 계획: [`../plans/2026-10-28-floating-nav.md`](../plans/2026-10-28-floating-nav.md)
 
 - 탭 정의는 `components/layout/floating-nav.tsx` 의 `TABS` 한 곳이다. 메뉴를 더하거나 빼면 여기만 고친다

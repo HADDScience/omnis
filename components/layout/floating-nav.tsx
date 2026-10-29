@@ -150,16 +150,20 @@ export function FloatingNav() {
           keyboardOpen && "hidden"
         )}
       />
-      {/* 폰: 하단 가운데. 홈 인디케이터 위로 띄운다.
-          터치 기기에서 칸은 44px 이상 — 200px 폭에서 네 칸(176px)은 들어가지만, 넘치면 nav 안에서 민다 */}
+      {/* 폰: 하단 가운데. 홈 인디케이터 위로 띄운다. 캡슐(탭 넷) + 원(마이) — PC 와 같은 「캡슐 + 내 원」 짜임이다.
+          마이를 다섯째 탭으로 넣지 않는다: 자주 쓰지 않는 계정 화면이 일하는 곳과 같은 무게를 갖게 된다(2026-10-29 작업지시자).
+          터치 기기에서 칸은 44px 이상 — 200px 폭에서 네 칸(176px)은 들어가지만, 넘치면 캡슐 안에서 민다 */}
       <nav
         aria-label="주 메뉴"
         className={cn(
-          "fixed inset-x-3 bottom-[calc(var(--safe-bottom)+8px)] z-[var(--z-nav)] flex transition-transform duration-200 motion-reduce:transition-none md:hidden",
+          "fixed inset-x-3 bottom-[calc(var(--safe-bottom)+8px)] z-[var(--z-nav)] flex h-[54px] items-stretch gap-2 transition-transform duration-200 motion-reduce:transition-none md:hidden",
           keyboardOpen && "pointer-events-none translate-y-[calc(100%+24px)]"
         )}
       >
         <TabCapsule variant="bottom" activeKey={activeKey} onSelect={select} />
+        {/* 원의 지름 = 캡슐 높이. nav 높이를 54px 로 고정해야 정사각이 된다 — 높이가 내용으로 정해지면
+            aspect-square 가 폭을 못 잡아 26px 막대가 됐다(2026-10-29 실측) */}
+        <MeAvatarLink className={cn(CIRCLE, "size-auto h-full aspect-square [&>span]:size-8 [&>span]:text-[12px]")} />
       </nav>
     </>
   )
@@ -212,7 +216,7 @@ function TabCapsule({
       ref={capsule}
       className={cn(
         "glass flex items-stretch rounded-full p-1",
-        variant === "top" ? "flex-1" : "w-full gap-0.5 overflow-x-auto rounded-[24px] [scrollbar-width:none]"
+        variant === "top" ? "flex-1" : "min-w-0 flex-1 gap-0.5 overflow-x-auto rounded-[24px] [scrollbar-width:none]"
       )}
     >
       {pill && (
