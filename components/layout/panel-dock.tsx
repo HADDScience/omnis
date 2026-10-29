@@ -13,8 +13,8 @@ import { useRightPanel } from "./right-panel-context"
  * (C 키 · ⌘⇧F 는 물리 키보드에서만, ?taskId= 는 링크로 들어올 때만). 업무를 보다가 그 업무 스레드 · 전사 채팅 ·
  * 옴니스를 옆에 여는 자리라, 손이 닿고 본문을 덜 가리는 오른쪽 아래에 둔다.
  *
- * 폰의 채팅 화면(/chat…)에서는 그리지 않는다 — 대화가 화면 전체이고 오른쪽 아래는 「새 대화」 단추 · 입력칸 자리다.
- * PC 의 채팅 화면에서는 입력칸 위로 올려 보내기 단추와 겹치지 않게 한다.
+ * 채팅 화면(/chat…)에서는 그리지 않는다 — 대화가 화면 전체이고 오른쪽 아래는 「새 대화」 단추 · 입력칸 자리다.
+ * PC 에서도 숨긴다(2026-10-29 작업지시자) — 채팅 화면 안에서 대화 패널을 또 열 일이 없다.
  */
 export function PanelDock() {
   const { open, openWith, task } = useRightPanel()
@@ -32,7 +32,7 @@ export function PanelDock() {
       className={cn(
         "glass fixed! right-4 z-[var(--z-dock)] flex size-12 items-center justify-center rounded-full text-foreground transition-transform duration-150 active:scale-[0.94] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         "bottom-[calc(var(--nav-offset-bottom)+12px)]",
-        inChat && "max-md:hidden md:bottom-[96px]",
+        inChat && "hidden",
       )}
     >
       <HugeiconsIcon icon={BubbleChatIcon} size={20} aria-hidden />

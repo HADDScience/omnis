@@ -4,7 +4,6 @@ import { createContext, useCallback, useContext, useState, type ReactNode } from
 import { usePathname, useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { BubbleChatSparkIcon, PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
-import { Header } from "@/components/layout/header"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { RoomList } from "./room-list"
@@ -24,6 +23,9 @@ export const useChatUserId = () => useContext(ChatUser)
  * 두 모양은 CSS 로만 가른다 — 경로는 서버도 알아서 첫 화면이 어긋나지 않는다.
  *
  * 높이는 MainWithChat 스크롤 칸 안에서 h-full 이다. 그 칸이 nav 높이(--nav-offset-*)를 이미 비워 두므로 여기서 다시 빼지 않는다.
+ *
+ * 제목줄(「채팅」)은 두지 않는다(2026-10-29 작업지시자). 다만 PC 의 떠 있는 nav 는 화면 위 가운데에 겹쳐 뜨므로
+ * (--nav-offset-top 이 PC 에서 0) 그 높이만큼은 위를 비운다 — 안 비우면 nav 가 목록 칩 줄과 대화 머리를 덮는다.
  */
 export function MessengerShell({ children, userId }: { children: ReactNode; userId: string }) {
   const pathname = usePathname()
@@ -34,8 +36,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
   return (
     <ChatUser.Provider value={userId}>
     <RoomListReload.Provider value={reload}>
-      <div className="flex h-full min-h-0 flex-col">
-        <Header title="채팅" />
+      <div className="flex h-full min-h-0 flex-col md:pt-12">
         <div className="flex min-h-0 flex-1">
           <aside
             aria-label="채팅방 목록"
