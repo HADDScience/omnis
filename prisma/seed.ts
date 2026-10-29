@@ -14,7 +14,6 @@ async function main() {
     { name: "김아리", email: "arikim@haddscience.com",     position: "팀장",   department: "연구개발팀",     phoneLast4: "0310", role: "ADMIN" as const },
     { name: "윤훈",   email: "hyun@haddscience.com",       position: "상무",   department: "영업마케팅팀",   phoneLast4: "0838", role: "ADMIN" as const },
     { name: "노혜린", email: "hyerinnoh@haddscience.com",  position: "과장",   department: "제품개발팀",     phoneLast4: "4305", role: "ADMIN" as const },
-    { name: "김경훈", email: "khkim@haddscience.com",      position: "COO",    department: null,             phoneLast4: "8418", role: "ADMIN" as const },
     { name: "허찬",   email: "chanheo@haddscience.com",    position: "팀장",   department: "연구지원/재무팀", phoneLast4: "0855", role: "ADMIN" as const },
     { name: "정우창", email: "jwoochang@haddscience.com",  position: "사원",   department: "AI개발팀",       phoneLast4: "4671", role: "MEMBER" as const },
   ]
