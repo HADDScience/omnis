@@ -1,7 +1,6 @@
-import { startOfWeek, subDays } from "date-fns"
+import { subDays } from "date-fns"
 import { prisma } from "@/lib/db"
 import { assigneeLabel } from "@/lib/task-assignees"
-import type { GeminiUsageData } from "./dashboard-gemini-usage"
 import type { StalledGroups, StalledTask } from "./dashboard-stalled"
 import type { MemberStat } from "./dashboard-members"
 
@@ -17,9 +16,8 @@ const STALE_DAYS = 3
  */
 export async function loadTasksOverview() {
   const now = new Date()
-  const weekStart = startOfWeek(now, { weekStartsOn: 1 })
 
-  const [allTasks, users, gajumCard, gwajaeCard, products, allProjects, geminiAggregate, geminiByEndpoint, pendingActions] = await Promise.all([
+  const [allTasks, users, gajumCard, gwajaeCard, products, allProjects, pendingActions] = await Promise.all([
     prisma.task.findMany({
       where: { archived: false },
       select: {
@@ -55,17 +53,6 @@ export async function loadTasksOverview() {
       where: { archived: false },
       select: { id: true, name: true, productId: true },
       orderBy: { createdAt: "desc" },
-    }),
-    prisma.geminiUsage.aggregate({
-      where: { createdAt: { gte: weekStart } },
-      _sum: { totalTokens: true, promptTokens: true, candidateTokens: true },
-      _count: true,
-    }),
-    prisma.geminiUsage.groupBy({
-      by: ["endpoint"],
-      where: { createdAt: { gte: weekStart } },
-      _sum: { totalTokens: true },
-      _count: true,
     }),
     // 아직 응답이 없는 액션 알림 = 확인 안 한 업무 / 완료 확인 대기의 원천
     prisma.notification.findMany({
@@ -144,18 +131,6 @@ export async function loadTasksOverview() {
     [...stalledGroups.unacknowledged, ...stalledGroups.stale, ...stalledGroups.awaitingDone].map((t) => t.id)
   )
 
-  const geminiUsage: GeminiUsageData = {
-    totalTokens: geminiAggregate._sum.totalTokens ?? 0,
-    promptTokens: geminiAggregate._sum.promptTokens ?? 0,
-    candidateTokens: geminiAggregate._sum.candidateTokens ?? 0,
-    callCount: geminiAggregate._count,
-    byEndpoint: geminiByEndpoint.map((e) => ({
-      endpoint: e.endpoint,
-      totalTokens: e._sum.totalTokens ?? 0,
-      callCount: e._count,
-    })),
-  }
-
   return {
     now,
     allTasks,
@@ -163,7 +138,6 @@ export async function loadTasksOverview() {
     userStats,
     stalledGroups,
     stalledIds,
-    geminiUsage,
     gajumMarkdown: (gajumCard?.content as { text?: string })?.text ?? "",
     gwajaeMarkdown: (gwajaeCard?.content as { text?: string })?.text ?? "",
     workspaceProducts: products.map((p) => ({ id: p.id, name: p.name, color: p.color })),

@@ -3,6 +3,7 @@ import { InstallAppCard } from "@/components/layout/install-app-card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { AiUsage } from "@/components/settings/ai-usage"
 import { LinkedAccounts } from "@/components/settings/linked-accounts"
 import { MyShortcuts } from "@/components/settings/my-shortcuts"
 import { PushNotifications } from "@/components/settings/push-notifications"
@@ -44,9 +45,10 @@ export default async function SettingsPage() {
         <MyShortcuts />
 
         <Tabs defaultValue="push">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="push">기기 알림</TabsTrigger>
             <TabsTrigger value="accounts">연결된 계정</TabsTrigger>
+            <TabsTrigger value="ai">AI 사용량</TabsTrigger>
             <TabsTrigger value="system">시스템</TabsTrigger>
           </TabsList>
           <TabsContent value="push" className="mt-3">
@@ -54,6 +56,9 @@ export default async function SettingsPage() {
           </TabsContent>
           <TabsContent value="accounts" className="mt-3">
             <LinkedAccounts />
+          </TabsContent>
+          <TabsContent value="ai" className="mt-3">
+            <AiUsage />
           </TabsContent>
           <TabsContent value="system" className="mt-3">
             <Card>
