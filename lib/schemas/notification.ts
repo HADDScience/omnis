@@ -73,3 +73,18 @@ export function notificationHref(type: string, entityId: string | null): string 
   if (type.startsWith("column_")) return `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN ?? "https://haddscience.com"}/admin/column?draft=${entityId}`
   return null
 }
+
+/**
+ * 종류별 푸시 켜고 끄기(마이 → 기기 알림). PATCH /api/notification-prefs 본문이자 GET 응답의 모양.
+ * DB 는 NotificationPref(chatPush · taskPush · calendarPush). 종류 나눔은 lib/notify-rules.ts categoryOfType
+ */
+export const NotificationPrefsSchema = z.object({
+  chat: z.boolean(),
+  task: z.boolean(),
+  calendar: z.boolean(),
+})
+export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>
+export const NotificationPrefsPatchSchema = NotificationPrefsSchema.partial().refine(
+  (v) => v.chat !== undefined || v.task !== undefined || v.calendar !== undefined,
+  "바꿀 것이 없습니다",
+)
