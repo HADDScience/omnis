@@ -59,6 +59,8 @@ export function OmnisRoom({
   const [live, setLive] = useState<LiveAnswer | null>(null)
   const [deciding, setDeciding] = useState<{ id: string; decision: "approve" | "reject" } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** 하루 상한(429) 안내 — 데모 사이트. 입력창 위에 남겨 둔다(토스트만으로는 왜 안 되는지 금방 사라진다) */
+  const [quotaNotice, setQuotaNotice] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const [mountedAt] = useState(() => Date.now())
@@ -83,7 +85,7 @@ export function OmnisRoom({
   const consume = useCallback(async (res: Response, onHeaders?: (h: Headers) => void) => {
     if (!res.ok || !res.headers.get("content-type")?.includes("text/event-stream")) {
       const data = (await res.json().catch(() => null)) as { error?: string } | null
-      throw new Error(data?.error ?? `답을 받지 못했습니다 (${res.status})`)
+      throw Object.assign(new Error(data?.error ?? `답을 받지 못했습니다 (${res.status})`), { status: res.status })
     }
     onHeaders?.(res.headers)
     setLive(EMPTY_LIVE)
@@ -141,7 +143,8 @@ export function OmnisRoom({
       const message = err instanceof Error ? err.message : "보내지 못했습니다"
       // 질문 글이 남지 못했으면 입력창에 되돌린다(아래 refresh 가 남았는지 알려 준다)
       setError(message)
-      toast.error(message)
+      if ((err as { status?: number }).status === 429) setQuotaNotice(message)
+      else toast.error(message)
       if (id) {
         const state = await refresh(id)
         if ("content" in body && !state?.messages.some((m) => !m.fromOmnis && m.content === body.content)) setDraft(body.content)
@@ -293,6 +296,11 @@ export function OmnisRoom({
         </div>
       </div>
 
+      {quotaNotice && (
+        <p role="status" data-agent-quota className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-1 text-center text-[12.5px] text-amber-700 dark:text-amber-300">
+          {quotaNotice}
+        </p>
+      )}
       <Composer
         textareaRef={textareaRef}
         value={draft}

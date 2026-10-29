@@ -10,6 +10,7 @@ import { buildOmnisHistory, HISTORY_MAX_MESSAGES } from "@/lib/omnis-history"
 import { roomNameFrom, type OmnisRoomMessage } from "@/lib/omnis-room"
 import type { AskSource } from "@/lib/omnis-ask"
 import { modelFor, modelKey } from "@/lib/ai-models"
+import { agentQuota, kstDayStart, quotaEnabled, quotaRefusal } from "./quota"
 import { omnisAgentWorkflow } from "./workflow"
 import { approvalResponses } from "./messages"
 import { checkDecision, type StepStatus } from "./approval"
@@ -112,57 +113,57 @@ export interface Started {
 export async function startAgentTurn(input: { roomId: string; userId: string; content?: string; retryOf?: string }): Promise<Started | Fail> {
   const { roomId, userId } = input
   if (!(await ownRoom(roomId, userId))) return { ok: false, status: 404, error: "대화를 찾을 수 없습니다" }
+  if (!input.retryOf && !input.content) return { ok: false, status: 400, error: "보낼 내용이 없습니다" }
 
-  const running = await prisma.agentRun.findFirst({
-    where: { roomId, status: "RUNNING", updatedAt: { gt: new Date(Date.now() - RUNNING_STALE_MS) } },
-    select: { id: true },
+  // 받을지 정하고(돌고 있는 실행 · 하루 상한) 질문 글 · 실행을 만드는 것까지 한 트랜잭션 — 사람마다 잠근다.
+  // 잠그지 않으면 같은 사람이 연달아 보낸 두 요청이 둘 다 「돌고 있는 실행 없음」 을 보고 동시에 실행을 연다
+  const gate = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`agent-run:${userId}`}))`
+    const refused = await admissionRefusal(tx, userId, roomId)
+    if (refused) return refused
+
+    let question: { id: string; content: string; createdAt: Date; authorId: string }
+    if (input.retryOf) {
+      const target = await tx.chatMessage.findFirst({ where: { id: input.retryOf, roomId, authorId: userId, deletedAt: null } })
+      if (!target) return { ok: false as const, status: 404, error: "다시 물을 글을 찾을 수 없습니다" }
+      const answered = await tx.chatMessage.count({ where: { roomId, authorId: SYSTEM_USER_ID, createdAt: { gt: target.createdAt } } })
+      if (answered > 0) return { ok: false as const, status: 409, error: "이미 답을 받은 글입니다" }
+      question = target
+    } else {
+      const now = new Date()
+      question = await tx.chatMessage.create({ data: { roomId, authorId: userId, content: input.content!, createdAt: now } })
+      await tx.chatRoom.update({ where: { id: roomId }, data: { lastMessageAt: now } })
+    }
+
+    // 확인을 기다리던 앞 실행은 버린다
+    const stale = await tx.agentRun.findMany({ where: { roomId, status: "AWAITING_APPROVAL" }, select: { id: true } })
+    if (stale.length) {
+      await tx.agentStep.updateMany({ where: { runId: { in: stale.map((r) => r.id) }, status: "PENDING" }, data: { status: "EXPIRED" } })
+      await tx.agentRun.updateMany({ where: { id: { in: stale.map((r) => r.id) } }, data: { status: "CANCELLED" } })
+    }
+
+    const before = await tx.chatMessage.findMany({
+      where: { roomId, deletedAt: null, createdAt: { lt: question.createdAt } },
+      orderBy: { createdAt: "desc" },
+      take: HISTORY_MAX_MESSAGES * 2,
+      select: { content: true, authorId: true },
+    })
+    const history = buildOmnisHistory(before.reverse().map((m) => ({ fromOmnis: m.authorId === SYSTEM_USER_ID, content: m.content })))
+    const messages: ModelMessage[] = [
+      ...history.map((t) => ({ role: t.role === "model" ? ("assistant" as const) : ("user" as const), content: t.text })),
+      { role: "user", content: question.content },
+    ]
+    const run = await tx.agentRun.create({
+      data: {
+        roomId, userId, questionMessageId: question.id, model: modelKey(modelFor("agent")),
+        messages: messages as unknown as Prisma.InputJsonValue,
+      },
+    })
+    return { ok: true as const, run, question }
   })
-  if (running) return { ok: false, status: 409, error: "옴니스가 아직 앞의 글에 답하는 중입니다" }
+  if (!gate.ok) return gate
+  const { run, question } = gate
 
-  let question: { id: string; content: string; createdAt: Date; authorId: string }
-  if (input.retryOf) {
-    const target = await prisma.chatMessage.findFirst({ where: { id: input.retryOf, roomId, authorId: userId, deletedAt: null } })
-    if (!target) return { ok: false, status: 404, error: "다시 물을 글을 찾을 수 없습니다" }
-    const answered = await prisma.chatMessage.count({ where: { roomId, authorId: SYSTEM_USER_ID, createdAt: { gt: target.createdAt } } })
-    if (answered > 0) return { ok: false, status: 409, error: "이미 답을 받은 글입니다" }
-    question = target
-  } else if (input.content) {
-    const now = new Date()
-    ;[question] = await prisma.$transaction([
-      prisma.chatMessage.create({ data: { roomId, authorId: userId, content: input.content, createdAt: now } }),
-      prisma.chatRoom.update({ where: { id: roomId }, data: { lastMessageAt: now } }),
-    ])
-  } else {
-    return { ok: false, status: 400, error: "보낼 내용이 없습니다" }
-  }
-
-  // 확인을 기다리던 앞 실행은 버린다
-  const stale = await prisma.agentRun.findMany({ where: { roomId, status: "AWAITING_APPROVAL" }, select: { id: true } })
-  if (stale.length) {
-    await prisma.$transaction([
-      prisma.agentStep.updateMany({ where: { runId: { in: stale.map((r) => r.id) }, status: "PENDING" }, data: { status: "EXPIRED" } }),
-      prisma.agentRun.updateMany({ where: { id: { in: stale.map((r) => r.id) } }, data: { status: "CANCELLED" } }),
-    ])
-  }
-
-  const before = await prisma.chatMessage.findMany({
-    where: { roomId, deletedAt: null, createdAt: { lt: question.createdAt } },
-    orderBy: { createdAt: "desc" },
-    take: HISTORY_MAX_MESSAGES * 2,
-    select: { content: true, authorId: true },
-  })
-  const history = buildOmnisHistory(before.reverse().map((m) => ({ fromOmnis: m.authorId === SYSTEM_USER_ID, content: m.content })))
-  const messages: ModelMessage[] = [
-    ...history.map((t) => ({ role: t.role === "model" ? ("assistant" as const) : ("user" as const), content: t.text })),
-    { role: "user", content: question.content },
-  ]
-
-  const run = await prisma.agentRun.create({
-    data: {
-      roomId, userId, questionMessageId: question.id, model: modelKey(modelFor("agent")),
-      messages: messages as unknown as Prisma.InputJsonValue,
-    },
-  })
   const wf = await start(omnisAgentWorkflow, [run.id])
   await prisma.agentRun.update({ where: { id: run.id }, data: { workflowRunId: wf.runId } })
   const r = streamResponse(wf.runId, wf.readable, { "x-agent-run-id": run.id, "x-question-id": question.id })
@@ -173,8 +174,38 @@ export async function startAgentTurn(input: { roomId: string; userId: string; co
   }
 }
 
+/**
+ * 새 실행을 받지 않을 이유. 없으면 null.
+ * - 같은 사람이 돌고 있는 실행이 있으면 409 — 방이 달라도. 연달아 보낸 요청이 모델을 겹쳐 부르지 않게(앞 실행은 그대로 끝까지 간다)
+ * - 하루 상한(lib/agent/quota.ts)에 닿았으면 429. 환경변수가 없으면 DB 를 읽지 않는다
+ */
+async function admissionRefusal(db: Prisma.TransactionClient | typeof prisma, userId: string, roomId: string | null): Promise<Fail | null> {
+  const running = await db.agentRun.findFirst({
+    where: { userId, status: "RUNNING", updatedAt: { gt: new Date(Date.now() - RUNNING_STALE_MS) } },
+    select: { roomId: true },
+  })
+  if (running) {
+    return {
+      ok: false, status: 409,
+      error: running.roomId === roomId ? "옴니스가 아직 앞의 글에 답하는 중입니다" : "다른 대화에서 옴니스가 아직 답하는 중이에요. 끝난 뒤 보내 주세요",
+    }
+  }
+  const quota = agentQuota()
+  if (!quotaEnabled(quota)) return null
+  const since = kstDayStart()
+  const [spent, runs] = await Promise.all([
+    quota.dailyKrw === null ? null : db.aiUsage.aggregate({ where: { createdAt: { gte: since } }, _sum: { costKrw: true } }),
+    quota.userDailyRuns === null ? 0 : db.agentRun.count({ where: { userId, createdAt: { gte: since } } }),
+  ])
+  const refusal = quotaRefusal({ usedKrw: Number(spent?._sum.costKrw ?? 0), userRuns: runs }, quota)
+  return refusal ? { ok: false, status: refusal.status, error: refusal.error } : null
+}
+
 /** 새 대화 — 첫 글과 함께 방을 만들고 바로 연다. 빈 방은 만들지 않는다 */
 export async function startAgentRoom(userId: string, content: string): Promise<(Started & { roomId: string }) | Fail> {
+  // 받지 않을 요청이면 방부터 만들지 않는다(잠금 없이 먼저 본다 — 경합은 startAgentTurn 이 다시 막는다)
+  const early = await admissionRefusal(prisma, userId, null)
+  if (early) return early
   const room = await prisma.chatRoom.create({
     data: {
       name: roomNameFrom(content), kind: "OMNIS_DM", createdById: userId,
@@ -183,7 +214,11 @@ export async function startAgentRoom(userId: string, content: string): Promise<(
     select: { id: true },
   })
   const r = await startAgentTurn({ roomId: room.id, userId, content })
-  if (!r.ok) return r
+  if (!r.ok) {
+    // 경합으로 막혔으면 빈 방을 남기지 않는다(글이 없을 때만 — 참여자 행은 cascade)
+    if ((await prisma.chatMessage.count({ where: { roomId: room.id } })) === 0) await prisma.chatRoom.delete({ where: { id: room.id } })
+    return r
+  }
   return { ...r, roomId: room.id, headers: { ...r.headers, "x-room-id": room.id } }
 }
 
