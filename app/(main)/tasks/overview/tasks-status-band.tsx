@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import Link from "next/link"
 import { startOfMonth, startOfWeek } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Alert02Icon, ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
@@ -24,6 +23,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import { FilterLink, useTasksFilter } from "../filter-link"
 import { TasksOverviewSheet, type TasksOverviewSheetProps } from "./tasks-overview-sheet"
 
 type PeriodKey = "week" | "month" | "all"
@@ -49,9 +49,6 @@ interface TasksStatusBandProps extends TasksOverviewSheetProps {
   tasksForProgress: ProgressTask[]
   stalledCount: number
   members: MemberChip[]
-  /** 지금 걸린 목록 필터 — 같은 칩을 다시 누르면 풀린다 */
-  activeFilter: string | null
-  activeAssignee: string | null
 }
 
 const CHIP =
@@ -68,10 +65,10 @@ export function TasksStatusBand({
   tasksForProgress,
   stalledCount,
   members,
-  activeFilter,
-  activeAssignee,
   ...sheet
 }: TasksStatusBandProps) {
+  // 지금 걸린 목록 필터 — 같은 칩을 다시 누르면 풀린다. 칩은 서버에 다시 묻지 않고 주소만 바꾼다(filter-link.tsx)
+  const { filter: activeFilter, assignee: activeAssignee } = useTasksFilter()
   const [period, setPeriod] = useState<PeriodKey>("week")
 
   const stats = useMemo(() => {
@@ -139,7 +136,7 @@ export function TasksStatusBand({
 
         <Separator orientation="vertical" className="h-4 self-center!" />
 
-        <Link
+        <FilterLink
           href={stalledActive ? "/tasks" : "/tasks?filter=stalled"}
           aria-current={stalledActive ? "true" : undefined}
           title="확인 안 함 · 3일째 진행 중 · 완료 확인 대기"
@@ -154,12 +151,12 @@ export function TasksStatusBand({
           <HugeiconsIcon icon={Alert02Icon} size={13} aria-hidden />
           멈춤
           <span className="tabular-nums">{stalledCount}</span>
-        </Link>
+        </FilterLink>
 
         {members.map((m) => {
           const active = activeAssignee === m.id
           return (
-            <Link
+            <FilterLink
               key={m.id}
               href={active ? "/tasks" : `/tasks?assignee=${m.id}`}
               aria-current={active ? "true" : undefined}
@@ -187,7 +184,7 @@ export function TasksStatusBand({
               >
                 {m.inProgress}
               </span>
-            </Link>
+            </FilterLink>
           )
         })}
       </div>

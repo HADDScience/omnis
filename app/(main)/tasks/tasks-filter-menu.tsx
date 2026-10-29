@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { FilterLink } from "./filter-link"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowDown01Icon, FilterIcon } from "@hugeicons/core-free-icons"
 import {
@@ -34,13 +35,13 @@ export function TasksFilterMenu({ active }: { active: string | null }) {
         }
       />
       <DropdownMenuContent align="start" className="w-[180px]">
-        <DropdownMenuItem render={<Link href="/tasks" />} className={active ? "" : "font-semibold"}>
+        <DropdownMenuItem render={<FilterLink href="/tasks" />} className={active ? "" : "font-semibold"}>
           전체
         </DropdownMenuItem>
         {QUICK_FILTERS.map((f) => (
           <DropdownMenuItem
             key={f.key}
-            render={<Link href={`/tasks?filter=${f.key}`} />}
+            render={<FilterLink href={`/tasks?filter=${f.key}`} />}
             className={active === f.key ? "font-semibold" : ""}
           >
             {f.label}

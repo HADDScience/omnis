@@ -158,6 +158,9 @@ function Citation({ num, source }: { num: string; source?: Source }) {
           href ? "omnis-citation omnis-citation--link" : "omnis-citation"
         }
         onClick={href ? () => router.push(href) : undefined}
+        // 출처를 가리키면 그 화면을 미리 받아 둔다 — router.push 는 링크처럼 저절로 미리 받지 않는다
+        onPointerEnter={href ? () => router.prefetch(href) : undefined}
+        onFocus={href ? () => router.prefetch(href) : undefined}
       >
         {num}
       </TooltipTrigger>
