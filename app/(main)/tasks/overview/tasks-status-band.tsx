@@ -4,9 +4,15 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { startOfMonth, startOfWeek } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Alert02Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { Alert02Icon, ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { Progress } from "@/components/ui/progress"
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,7 +55,7 @@ interface TasksStatusBandProps extends TasksOverviewSheetProps {
 }
 
 const CHIP =
-  "touch-target inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-[11.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+  "touch-hit inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-[11.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 
 /**
  * 「업무」 탭 맨 위 현황 띠 한 줄 — 진행률 · 멈춤 · 사람별 진행 건수.
@@ -90,9 +96,11 @@ export function TasksStatusBand({
   const stalledActive = activeFilter === "stalled"
 
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b bg-background px-4 py-1.5">
-      {/* 칩이 늘어도 높이는 한 줄 — 넘치면 가로로 민다. 「상세」 는 밀려 나가지 않게 바깥에 둔다 */}
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none]">
+    <div className="flex shrink-0 items-center gap-2 border-b bg-background px-4 py-1.5 [@media(pointer:coarse)]:py-0">
+      {/* 칩이 늘어도 높이는 한 줄 — 넘치면 가로로 민다. 「상세」 는 밀려 나가지 않게 바깥에 둔다.
+          터치 기기에서는 칩의 44px 누름 막이 가로 스크롤 칸에 잘리지 않게 칸 높이를 44px 로 두고,
+          오른쪽 끝을 흐려 칩이 더 있다는 걸 보인다(잘린 칩이 깨진 것처럼 보였다) */}
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [mask-image:linear-gradient(to_right,#000_calc(100%-24px),transparent)] [scrollbar-width:none] [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:pr-4">
         <div
           className="flex shrink-0 items-center gap-2"
           title={`${PERIOD_LABELS[period]} 움직인 업무 ${stats.total}건 중 완료 ${stats.done}건`}
@@ -100,23 +108,34 @@ export function TasksStatusBand({
           <Progress
             value={stats.rate}
             aria-label={`${PERIOD_LABELS[period]} 완료율`}
-            className="w-20 sm:w-32"
+            className="w-12 sm:w-32"
           />
           <span className="text-[12px] font-medium tabular-nums">{stats.rate}%</span>
         </div>
-        <NativeSelect
-          size="sm"
-          aria-label="진행률 기간"
-          value={period}
-          onChange={(e) => setPeriod(e.target.value as PeriodKey)}
-          className="touch-target shrink-0 [&_select]:h-7 [&_select]:text-[11.5px]"
-        >
-          {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((key) => (
-            <NativeSelectOption key={key} value={key}>
-              {PERIOD_LABELS[key]}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
+        {/* 네이티브 select 는 누르는 자리를 막으로 넓힐 수 없어, 폰에서 44px 상자로 부풀었다 — 칩 모양 메뉴로 바꾼다 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                aria-label={`진행률 기간 · ${PERIOD_LABELS[period]}`}
+                className={cn(CHIP, "gap-1 bg-card text-foreground hover:bg-muted data-[popup-open]:bg-muted")}
+              />
+            }
+          >
+            {PERIOD_LABELS[period]}
+            <HugeiconsIcon icon={ArrowDown01Icon} size={10} aria-hidden className="text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[120px]">
+            <DropdownMenuRadioGroup value={period} onValueChange={(v) => setPeriod(v as PeriodKey)}>
+              {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((key) => (
+                <DropdownMenuRadioItem key={key} value={key}>
+                  {PERIOD_LABELS[key]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Separator orientation="vertical" className="h-4 self-center!" />
 

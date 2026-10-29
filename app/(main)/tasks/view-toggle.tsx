@@ -25,15 +25,18 @@ export function ViewToggle({ view, onChange }: ViewToggleProps) {
           type="button"
           onClick={() => onChange(o.key)}
           aria-pressed={view === o.key}
+          aria-label={o.label}
+          // 폰에서는 글자를 숨기고 아이콘만 둔다 — 셋이 글자까지 달면 툴바가 두 줄로 꺾였다.
+          // 누르는 자리는 가로 44px 를 실제 폭으로, 세로는 touch-hit 막으로 채운다(묶음 테두리가 44px 로 부풀지 않게)
           className={[
-            "touch-target inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11.5px] transition-colors",
+            "touch-hit inline-flex items-center justify-center gap-1.5 rounded px-2 py-1 text-[11.5px] transition-colors [@media(pointer:coarse)]:min-w-[44px]",
             view === o.key
               ? "bg-muted font-medium text-foreground"
               : "text-muted-foreground hover:text-foreground",
           ].join(" ")}
         >
           <HugeiconsIcon icon={o.icon} size={12} aria-hidden />
-          {o.label}
+          <span className="sr-only sm:not-sr-only">{o.label}</span>
         </button>
       ))}
     </div>

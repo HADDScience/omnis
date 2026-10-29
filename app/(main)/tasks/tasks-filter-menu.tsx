@@ -7,6 +7,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
@@ -24,7 +25,7 @@ export function TasksFilterMenu({ active }: { active: string | null }) {
         render={
           <button
             type="button"
-            className="touch-target inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted"
+            className="touch-hit inline-flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted"
           >
             <HugeiconsIcon icon={FilterIcon} size={11} aria-hidden />
             필터
@@ -45,6 +46,11 @@ export function TasksFilterMenu({ active }: { active: string | null }) {
             {f.label}
           </DropdownMenuItem>
         ))}
+        {/* 폰 툴바에는 「프로젝트 정리」 를 둘 자리가 없어 여기로 옮긴다 */}
+        <DropdownMenuSeparator className="sm:hidden" />
+        <DropdownMenuItem render={<Link href="/tasks/projects" />} className="sm:hidden">
+          프로젝트 정리
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

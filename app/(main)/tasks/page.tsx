@@ -114,7 +114,15 @@ export default async function TasksPage({ searchParams }: Props) {
     // 바깥 스크롤러(main-with-chat)는 block 이라 flex-1 이 먹지 않아, 보드가 완료 600여 장 길이로 늘어났다.
     // 드래그하면 그 긴 페이지 전체가 자동 스크롤돼 화면이 튀었다 — 화면 높이에 묶고 컬럼 안에서 스크롤한다
     <div className="flex h-full flex-col">
-      <Header title="업무" actions={<DashboardGeminiBadge data={overview.geminiUsage} />} />
+      {/* 300px 아래에서는 AI 사용량을 접는다 — 남겨 두면 맨 끝 「마이」 동그라미가 화면 밖으로 밀려났다(200px 실측) */}
+      <Header
+        title="업무"
+        actions={
+          <span className="contents max-[300px]:hidden">
+            <DashboardGeminiBadge data={overview.geminiUsage} />
+          </span>
+        }
+      />
       <TasksStatusBand
         tasksForProgress={allTasks.map((t) => ({
           status: t.status,
@@ -151,7 +159,7 @@ export default async function TasksPage({ searchParams }: Props) {
                   <HugeiconsIcon icon={Cancel01Icon} size={10} aria-hidden />
                 </Link>
               ) : (
-                <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                <Badge variant="outline" className="hidden text-[10px] text-muted-foreground sm:inline-flex">
                   전체
                 </Badge>
               )}
@@ -162,11 +170,15 @@ export default async function TasksPage({ searchParams }: Props) {
             <>
               <Link
                 href="/tasks/projects"
-                className="inline-flex h-8 shrink-0 items-center rounded-md px-2.5 text-[11.5px] font-medium transition-colors hover:bg-muted hover:text-foreground"
+                className="hidden h-8 shrink-0 items-center rounded-md px-2.5 text-[11.5px] font-medium transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"
               >
                 프로젝트 정리
               </Link>
-              <TaskCreateButton />
+              {/* 폰은 + 만 — 「프로젝트 정리」 는 필터 메뉴 안에 있다 */}
+              <TaskCreateButton
+                className="touch-hit max-sm:size-8 max-sm:px-0"
+                labelClassName="sr-only sm:not-sr-only"
+              />
             </>
           }
         />
