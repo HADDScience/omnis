@@ -4,6 +4,29 @@ import { hashSync } from "bcryptjs"
 import { randomUUID } from "node:crypto"
 import { prisma } from "../../lib/db"
 
+// 온보딩은 스포트라이트 하나다(2026-10-29) — 간편 로그인 → 옴니스 시연 둘 → 업무 · 캘린더 · 아카이브 탭.
+// mydocs/plans/2026-10-29-onboarding-tab-tour.md
+const STOPS = [
+  "social",
+  "create-task",
+  "write-doc",
+  "tasks",
+  "calendar",
+  "archive",
+] as const
+const ROUTES: Partial<Record<(typeof STOPS)[number], string>> = {
+  "create-task": "/chat/new",
+  "write-doc": "/chat/new",
+  tasks: "/tasks",
+  calendar: "/calendar",
+  archive: "/omnis",
+}
+const NAV_TARGET: Partial<Record<(typeof STOPS)[number], string>> = {
+  tasks: "tasks",
+  calendar: "calendar",
+  archive: "resources",
+}
+
 test.describe("onboarding", () => {
   test.skip(
     !!process.env.BASE_URL &&
@@ -41,414 +64,326 @@ test.describe("onboarding", () => {
     await page.getByRole("button", { name: "로그인", exact: true }).click()
     await page.waitForURL("**/chat")
   }
-  async function skipVideo(page: Page) {
-    await page.getByRole("button", { name: "건너뛰기", exact: true }).click()
-    await expect(
-      page.getByRole("dialog", { name: "Omnis 화면 안내" })
-    ).toBeVisible()
+  const tour = (page: Page) =>
+    page.getByRole("dialog", { name: "Omnis 화면 안내" })
+  async function atStop(page: Page, stop: (typeof STOPS)[number]) {
+    await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
+      "data-tour-stop",
+      stop
+    )
+    const route = ROUTES[stop]
+    if (route) await page.waitForURL(`**${route}`)
   }
-  async function finish(page: Page) {
-    await skipVideo(page)
-    await page.getByRole("button", { name: "안내 건너뛰기" }).click()
-    await expect
-      .poll(
-        async () =>
-          (await prisma.user.findUniqueOrThrow({ where: { id } }))
-            .onboardingCompletedAt !== null
-      )
-      .toBe(true)
+  const next = (page: Page) => page.locator(".spotlight-next")
+  async function completed() {
+    return (
+      (await prisma.user.findUniqueOrThrow({ where: { id } }))
+        .onboardingCompletedAt !== null
+    )
   }
 
-  test("낮은 창과 확대 배율에서도 장면과 재생 버튼이 잘리지 않는다", async ({
+  /** 탭 장면 — 보이는 nav 탭에 강조가 꼭 맞고, 설명창은 그 강조와 겹치지 않으며 화면 안에 있다 */
+  async function spotlightFitsTab(page: Page, target: string) {
+    await expect
+      .poll(
+        () =>
+          page.evaluate((name) => {
+            const node = [
+              ...document.querySelectorAll(`[data-onboarding="${name}"]`),
+            ].find((item) => {
+              const r = item.getBoundingClientRect()
+              return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight
+            })
+            const hole = document.querySelector(".spotlight-shade > rect[stroke]")
+            const card = document.querySelector(".spotlight-card")
+            if (!node || !hole || !card) return "대상 · 강조 · 설명창 중 없는 것이 있다"
+            const t = node.getBoundingClientRect(),
+              h = hole.getBoundingClientRect(),
+              c = card.getBoundingClientRect()
+            const tight =
+              Math.abs(t.left - h.left) <= 8 &&
+              Math.abs(t.top - h.top) <= 8 &&
+              Math.abs(t.right - h.right) <= 8 &&
+              Math.abs(t.bottom - h.bottom) <= 8
+            const separate =
+              c.right <= h.left ||
+              c.left >= h.right ||
+              c.bottom <= h.top ||
+              c.top >= h.bottom
+            const inside =
+              c.top >= 0 &&
+              c.bottom <= innerHeight &&
+              c.left >= 0 &&
+              c.right <= innerWidth
+            const body = !!document.querySelector("[data-spotlight-body]")
+            return tight && separate && inside && body
+              ? "ok"
+              : JSON.stringify({ tight, separate, inside, body })
+          }, target),
+        { message: `탭 강조와 설명 위치: ${target}` }
+      )
+      .toBe("ok")
+  }
+
+  /** 시연 장면 — 시연 층이 화면 안에 있고 설명창과 겹치지 않는다. 가로로 넘치지 않는다 */
+  async function demoFits(page: Page) {
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const demo = document.querySelector("[data-tour-demo]")
+          const card = document.querySelector(".spotlight-card")
+          if (!demo || !card) return "시연 층 · 설명창 중 없는 것이 있다"
+          const d = demo.getBoundingClientRect(),
+            c = card.getBoundingClientRect()
+          const inside =
+            d.left >= 0 && d.top >= 0 && d.right <= innerWidth && d.bottom <= innerHeight
+          const separate =
+            c.right <= d.left || c.left >= d.right || c.bottom <= d.top || c.top >= d.bottom
+          const noScroll = document.documentElement.scrollWidth <= innerWidth
+          return inside && separate && noScroll
+            ? "ok"
+            : JSON.stringify({ inside, separate, noScroll })
+        })
+      )
+      .toBe("ok")
+  }
+
+  test("장면 순서대로 화면을 옮겨 다니며 비추고, 끝나면 시작한 화면으로 돌아온다", async ({
     page,
   }) => {
+    const errors: string[] = []
+    page.on("pageerror", (error) => errors.push(error.message))
     await page.clock.install()
     await login(page)
-    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
-    await page.clock.fastForward(4100)
-    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "2")
-    await page.clock.fastForward(5100)
-    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "3")
-    await page.clock.fastForward(9000)
-    await page.getByRole("button", { name: "일시정지", exact: true }).click()
-    await page.emulateMedia({ reducedMotion: "reduce" })
-    for (const [width, height, zoom] of [
-      [1440, 800, 1.25],
-      [1024, 600, 1.1],
-      [390, 844, 1],
-      [320, 568, 1],
-    ]) {
-      await page.setViewportSize({ width, height })
-      await page.evaluate(
-        (value) =>
-          document.documentElement.style.setProperty(
-            "--ui-zoom",
-            String(value)
-          ),
-        zoom
-      )
-      await expect
-        .poll(
-          async () =>
-            page.evaluate(() => {
-              const surface = document.querySelector(".intro-surface")!
-              const selectors = [
-                ".intro-header",
-                ".intro-copy",
-                ".intro-workflow",
-                ".intro-footer",
-              ]
-              return (
-                surface.scrollHeight <= surface.clientHeight + 1 &&
-                selectors.every((selector) => {
-                  const box = document
-                    .querySelector(selector)!
-                    .getBoundingClientRect()
-                  return (
-                    box.top >= -1 &&
-                    box.left >= -1 &&
-                    box.bottom <= innerHeight + 1 &&
-                    box.right <= innerWidth + 1
-                  )
-                })
-              )
-            }),
-          { message: `${width}×${height}, zoom ${zoom}` }
-        )
-        .toBe(true)
-    }
+    await atStop(page, "social")
+    // 고르는 장면이라 저절로 넘어가지 않는다
+    await page.clock.runFor(10_000)
+    await atStop(page, "social")
+    await expect(page.getByText(`OMNIS GUIDE · 1 / ${STOPS.length}`)).toBeVisible()
+    await expect(page.locator(".spotlight-playback")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "이전 안내" })).toBeDisabled()
+    await next(page).click()
+    await atStop(page, "create-task")
+    await page.clock.runFor(1500)
+    await demoFits(page)
+    // 이전 · 다음
+    await page.getByRole("button", { name: "이전 안내" }).click()
+    await atStop(page, "social")
+    await next(page).click()
+    await atStop(page, "create-task")
+    await next(page).click()
+    await atStop(page, "write-doc")
+    await next(page).click()
+    await atStop(page, "tasks")
+    await page.clock.runFor(1500)
+    await spotlightFitsTab(page, "tasks")
+    // 탭 장면은 읽을 시간이 지나면 저절로 넘어간다
+    await page.clock.runFor(7500)
+    await atStop(page, "calendar")
+    await page.clock.runFor(1500)
+    await spotlightFitsTab(page, "calendar")
+    await next(page).click()
+    await atStop(page, "archive")
+    await page.clock.runFor(1500)
+    await spotlightFitsTab(page, "resources")
+    await expect(page.locator(".spotlight-card")).toContainText(
+      "지식 카드 · 시놀로지 · 지식재산권 · 고객·견적"
+    )
+    await expect(page.locator(".spotlight-card")).toContainText(
+      "안내는 마이에서 다시 볼 수 있어요"
+    )
     await page.screenshot({
       animations: "disabled",
-      path: "/tmp/omnis-onboarding-fit-mobile.png",
+      path: "/tmp/omnis-onboarding-archive.png",
     })
-  })
-
-  test("업무 지시·완료 보고·추가 지시는 타이핑 후 전송되며 실제 쓰기는 없다", async ({
-    page,
-  }) => {
-    await page.clock.install()
-    await login(page)
-    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
-    await page.clock.fastForward(4100)
-    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "2")
-    await page.clock.fastForward(5100)
-    const writes: string[] = []
-    page.on("request", (request) => {
-      if (
-        request.method() === "POST" &&
-        /\/api\/(tasks|chat)/.test(request.url())
-      )
-        writes.push(request.url())
-    })
-    for (const [step, duration] of [
-      [3, 12000],
-      [4, 12000],
-      [5, 10000],
-    ]) {
-      await expect(page.locator(".intro-stage")).toHaveAttribute(
-        "data-step",
-        String(step)
-      )
-      await page.clock.fastForward(900)
-      const input = page.locator(".intro-composer textarea")
-      await expect(input).not.toHaveValue("")
-      await expect(page.locator(".intro-bubble")).toHaveCount(0)
-      await page.clock.fastForward(1800)
-      await expect(input).toHaveValue("")
-      await expect(page.locator(".intro-message-sent")).toBeVisible()
-      await expect(page.locator(".intro-send-confirmed")).toHaveText("✓")
-      await page.clock.fastForward(duration - 2600)
-    }
-    expect(writes).toEqual([])
-  })
-
-  test("스토리 탭 이동은 장면을 재시작하고 마지막 CTA를 기다린다", async ({
-    page,
-  }) => {
-    await page.clock.install()
-    await login(page)
-    const stage = page.locator(".intro-stage")
-    const next = page.getByRole("button", { name: "다음 장면", exact: true })
-    const previous = page.getByRole("button", {
-      name: "이전 장면",
-      exact: true,
-    })
-    await expect(previous).toBeDisabled()
-    await next.click()
-    await expect(stage).toHaveAttribute("data-step", "2")
-    await next.click()
-    await page.clock.fastForward(3500)
-    await expect(page.locator(".intro-message-sent")).toBeVisible()
-    await previous.click()
-    await next.click()
-    await expect(page.locator(".intro-message-sent")).toHaveCount(0)
-    await page.clock.fastForward(900)
-    await expect(stage).toHaveAttribute("data-step", "3")
-    await page.clock.fastForward(11200)
-    await expect(stage).toHaveAttribute("data-step", "4")
-    for (let i = 0; i < 4; i++) await next.click()
-    await expect(stage).toHaveAttribute("data-step", "8")
-    await expect(next).toBeDisabled()
-    await page.clock.fastForward(30000)
-    await expect(stage).toHaveAttribute("data-step", "8")
-    await expect(
-      page.getByRole("button", { name: "업무 시작하기" })
-    ).toBeVisible()
-    await previous.click()
-    await expect(stage).toHaveAttribute("data-step", "7")
-  })
-
-  test("입력 확대·전송 복귀·메시지 확대가 모바일 경계와 모션 감소를 지킨다", async ({
-    page,
-  }) => {
-    await page.clock.install()
-    await login(page)
-    await page.getByRole("button", { name: "다음 장면", exact: true }).click()
-    await page.getByRole("button", { name: "다음 장면", exact: true }).click()
-    const workflow = page.locator(".intro-workflow")
-    await page.clock.fastForward(1200)
-    await expect(workflow).toHaveAttribute("data-focus", "composer")
-    await expect(page.locator(".intro-composer")).not.toHaveCSS(
-      "transform",
-      "none"
-    )
-    await page.clock.fastForward(1400)
-    await expect(workflow).toHaveAttribute("data-focus", "overview")
-    await page.clock.fastForward(1600)
-    await expect(workflow).toHaveAttribute("data-focus", "message")
-    await page.getByRole("button", { name: "일시정지", exact: true }).click()
-    await page.clock.fastForward(8000)
-    await expect(workflow).toHaveAttribute("data-focus", "message")
-    for (const [width, height] of [
-      [1440, 800],
-      [390, 844],
-      [320, 568],
-    ]) {
-      await page.setViewportSize({ width, height })
-      await expect
-        .poll(() =>
-          page.locator(".intro-message-focus").evaluate((node) => {
-            const box = node.getBoundingClientRect()
-            return (
-              box.left >= 0 &&
-              box.right <= innerWidth &&
-              box.top >= 0 &&
-              box.bottom <= innerHeight
-            )
-          })
-        )
-        .toBe(true)
-    }
-    await page.emulateMedia({ reducedMotion: "reduce" })
-    await expect(page.locator(".intro-message-focus")).toHaveCSS(
-      "transform",
-      "none"
-    )
-  })
-
-  test("스포트라이트는 실제 대상에 밀착하고 설명창이 겹치지 않으며 앞뒤로 이동한다", async ({
-    page,
-  }) => {
-    await page.clock.install()
-    await login(page)
-    await skipVideo(page)
-    const targets = [
-      "tasks",
-      "conversation",
-      "ai",
-      "resources",
-      "profile",
-    ]
-    for (const target of targets) {
-      await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
-        "data-tour-stop",
-        target
-      )
-      await page.clock.fastForward(1300)
-      await expect
-        .poll(
-          async () =>
-            page.evaluate((name) => {
-              const target = document.querySelector(
-                name === "conversation"
-                  ? '[data-onboarding="conversation"] textarea'
-                  : `[data-onboarding="${name}"]`
-              )
-              const hole = document.querySelector(
-                ".spotlight-shade > rect[stroke]"
-              )
-              const card = document.querySelector(".spotlight-card")
-              if (!target || !hole || !card) return false
-              const t = target.getBoundingClientRect(),
-                h = hole.getBoundingClientRect(),
-                c = card.getBoundingClientRect()
-              const tight =
-                Math.abs(t.left - h.left) <= 8 &&
-                Math.abs(t.top - h.top) <= 8 &&
-                Math.abs(t.right - h.right) <= 8 &&
-                Math.abs(t.bottom - h.bottom) <= 8
-              const separate =
-                c.right <= h.left ||
-                c.left >= h.right ||
-                c.bottom <= h.top ||
-                c.top >= h.bottom
-              return (
-                tight &&
-                separate &&
-                c.top >= 0 &&
-                c.bottom <= innerHeight &&
-                c.left >= 0 &&
-                c.right <= innerWidth
-              )
-            }, target),
-          { message: `정확한 강조 영역과 설명 위치: ${target}` }
-        )
-        .toBe(true)
-      if (target === "conversation") {
-        await page.getByRole("button", { name: "이전 안내" }).click()
-        await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
-          "data-tour-stop",
-          "tasks"
-        )
-        await page.getByRole("button", { name: "다음 →", exact: true }).click()
-        await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
-          "data-tour-stop",
-          "conversation"
-        )
-      }
-      if (target === "profile")
-        await page.screenshot({
-          animations: "disabled",
-          path: "/tmp/omnis-onboarding-precise-spotlight.png",
-        })
-      await page
-        .getByRole("button", {
-          name: target === "profile" ? "안내 마치기" : "다음 →",
-          exact: true,
-        })
-        .click()
-    }
+    await page.getByRole("button", { name: "안내 마치기", exact: true }).click()
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
-  })
-
-  test("8장면 자동 재생·일시정지·최종 CTA·스포트라이트", async ({ page }) => {
-    const errors: string[] = []
-    page.on("pageerror", (error) => errors.push(error.message))
-    await page.clock.install()
-    await login(page)
-    const stage = page.locator(".intro-stage")
-    await expect(stage).toHaveAttribute("data-step", "1")
-    await expect(stage).toHaveAttribute("data-step", "1")
-    await page.getByRole("button", { name: "일시정지", exact: true }).click()
-    await page.clock.fastForward(5000)
-    await expect(stage).toHaveAttribute("data-step", "1")
-    await page.getByRole("button", { name: "재생", exact: true }).click()
-    const durations = [4100, 5100, 6100, 12100, 10100, 12100, 7100]
-    for (let index = 0; index < durations.length; index++) {
-      await page.clock.fastForward(durations[index])
-      await expect(stage).toHaveAttribute("data-step", String(index + 2))
-      if (index === 1) {
-        await page.clock.fastForward(6000)
-        await page.waitForTimeout(1200)
-        await page.screenshot({
-          animations: "disabled",
-          path: "/tmp/omnis-onboarding-workflow.png",
-        })
-        await expect(
-          page.locator('.intro-real-task [data-slot="badge"]')
-        ).toHaveText("할 일")
-      }
-    }
-    await page.clock.fastForward(15000)
-    await expect(stage).toHaveAttribute("data-step", "8")
-    await page.getByRole("button", { name: "업무 시작하기" }).click()
-    const stops = [
-      "tasks",
-      "conversation",
-      "ai",
-      "resources",
-      "profile",
-    ]
-    for (const stop of stops) {
-      await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
-        "data-tour-stop",
-        stop
-      )
-      await page.clock.fastForward(1300)
-      await expect(page.locator(".spotlight-shade mask rect")).toHaveCount(2)
-      if (stop === "profile") {
-        await page.waitForTimeout(1200)
-        await page.screenshot({
-          animations: "disabled",
-          path: "/tmp/omnis-onboarding-spotlight.png",
-        })
-      }
-      await page.clock.fastForward(7100)
-    }
-    await expect(
-      page.getByRole("dialog", { name: "Omnis 화면 안내" })
-    ).toHaveCount(0)
-    await expect
-      .poll(
-        async () =>
-          (await prisma.user.findUniqueOrThrow({ where: { id } }))
-            .onboardingCompletedAt !== null
-      )
-      .toBe(true)
+    await page.waitForURL("**/chat")
+    await expect.poll(completed).toBe(true)
     expect(errors).toEqual([])
   })
 
-  test("AI 연결 장면의 카운트다운 버튼은 안내를 멈추고 MCP 등록으로 갔다가 같은 장면으로 돌아온다", async ({
+  test("옴니스 시연은 실제 컴포넌트로 대본을 재생하고 API 를 부르거나 쓰지 않는다", async ({
     page,
   }) => {
-    const errors: string[] = []
-    page.on("pageerror", (error) => errors.push(error.message))
     await page.clock.install()
     await login(page)
-    const stage = page.locator(".intro-stage")
-    await expect(stage).toHaveAttribute("data-step", "1")
-    for (let i = 0; i < 5; i++)
-      await page.getByRole("button", { name: "다음 장면" }).click()
-    await expect(stage).toHaveAttribute("data-step", "6")
-    const connect = page.getByRole("button", { name: /지금 연결하기/ })
-    await expect(connect).toContainText(/\d+초/)
-    await page.clock.fastForward(3000)
-    // 실제 시간도 조금 흐르므로 초 단위 글자를 통째로 비교하지 않고 숫자로 잰다.
-    const seconds = async () => Number((await connect.textContent())?.match(/(\d+)초/)?.[1])
-    const before = await seconds()
-    expect(before).toBeLessThanOrEqual(10)
-    await connect.click()
-    const input = page.getByRole("textbox", { name: "MCP 서버 주소" })
-    await expect(input).toBeVisible()
-    await expect(page.locator(".omnis-tour-surface")).toBeHidden()
-    await page.getByRole("tab", { name: "Codex" }).click()
-    await expect(page.getByText("codex mcp login hadd-omnis")).toBeVisible()
-    // 설정하는 동안에는 안내가 넘어가지 않는다.
-    await page.clock.fastForward(30000)
-    await page.getByRole("button", { name: "온보딩으로 돌아가기" }).click()
-    await expect(input).toHaveCount(0)
-    await expect(stage).toBeVisible()
-    await expect(stage).toHaveAttribute("data-step", "6")
-    // 등록 창이 떠 있던 30초(가짜 시계)는 쓰이지 않았다 — 남은 초가 그대로이거나 실제 흐른 만큼만 줄었다.
-    const after = await seconds()
-    expect(after).toBeLessThanOrEqual(before)
-    expect(after).toBeGreaterThanOrEqual(before - 2)
-    // 돌아오면 남은 시간부터 다시 흐른다.
-    await page.clock.fastForward(10000)
-    await expect(stage).toHaveAttribute("data-step", "7")
-    expect(errors).toEqual([])
+    await atStop(page, "social")
+    const calls: string[] = []
+    page.on("request", (request) => {
+      const url = new URL(request.url())
+      if (
+        url.pathname.includes("/api/agent") ||
+        (request.method() !== "GET" && url.pathname.includes("/api/"))
+      )
+        calls.push(`${request.method()} ${url.pathname}`)
+    })
+    await next(page).click()
+    await atStop(page, "create-task")
+    const demo = page.locator('[data-tour-demo="create-task"]')
+    await page.clock.runFor(1500)
+    await expect(demo).toBeVisible()
+    // 입력칸에 한 글자씩
+    await page.clock.runFor(1800)
+    await expect(demo.locator("textarea")).toHaveValue(/^다음 주 금요일까지/)
+    await expect(demo.locator("textarea")).not.toHaveValue(/사원2$/)
+    // 보냄 → 내 말풍선 · 도구 줄
+    await page.clock.runFor(2500)
+    await expect(demo.locator("textarea")).toHaveValue("")
+    await expect(demo).toContainText("가벽 블라인드 설치 견적 받아줘")
+    await expect(demo.locator("[data-agent-live]")).toBeVisible()
+    // 확인 카드 → 눌린 표시 → 실행됨
+    await page.clock.runFor(2000)
+    await expect(demo.locator('[data-agent-card="PENDING"]')).toBeVisible()
+    await expect(demo.locator("[data-tool-trail]").first()).toContainText("도구 2개")
+    await page.clock.runFor(5500)
+    await expect(demo.locator('[data-agent-card="EXECUTED"]')).toBeVisible()
+    await expect(demo).toContainText("업무를 만들었어요")
+    // 시연 층은 inert — 확인 카드 버튼 · 입력칸을 눌러도 아무 일이 없다. 진짜 입력칸은 비어 있다
+    await expect(demo).toHaveAttribute("inert", "")
+    await expect(
+      page.locator('[data-onboarding="omnis-room"] textarea')
+    ).toHaveValue("")
+    // 대본이 끝나면 저절로 지식 카드 시연으로
+    await page.clock.runFor(4500)
+    await atStop(page, "write-doc")
+    const doc = page.locator('[data-tour-demo="write-doc"]')
+    await page.clock.runFor(1500)
+    await expect(doc).toBeVisible()
+    await page.clock.runFor(7500)
+    await expect(doc.locator("[data-agent-live]")).toContainText("진행 상황")
+    // 확인 카드는 대본 10.9~13.7초에만 떠 있다 — 그 한가운데(약 11.5초)에서 본다. 끝자락에서 보면 시계가 조금만 앞서도 이미 실행됨이다
+    await page.clock.runFor(2500)
+    await expect(doc.locator('[data-agent-card="PENDING"]')).toContainText("새 지식 카드")
+    await page.clock.runFor(4500)
+    await expect(doc.locator('[data-agent-card="EXECUTED"]')).toBeVisible()
+    await page.clock.runFor(5000)
+    await atStop(page, "tasks")
+    expect(calls).toEqual([])
+    // DB 도 그대로 — 옴니스 방도 업무도 생기지 않았다
+    expect(
+      await prisma.chatRoom.count({
+        where: { kind: "OMNIS_DM", members: { some: { userId: id } } },
+      })
+    ).toBe(0)
+    expect(
+      await prisma.task.count({ where: { instructorId: id } })
+    ).toBe(0)
   })
 
-  test("계정 저장·새 브라우저·다른 계정·재생·MCP 주소 복사", async ({
+  test("폰 폭 · 다크 · 모션 감소에서 시연은 끝 장면을 바로 보이고 탭 장면은 하단 nav 를 비춘다", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" })
+    await page.addInitScript(() => localStorage.setItem("theme", "dark"))
+    await page.clock.install()
+    await login(page)
+    await atStop(page, "social")
+    await page.clock.runFor(1500)
+    expect(
+      await page.locator(".spotlight-card").evaluate((node) => {
+        const r = node.getBoundingClientRect()
+        return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth
+      })
+    ).toBe(true)
+    await next(page).click()
+    await atStop(page, "create-task")
+    await page.clock.runFor(1500)
+    await demoFits(page)
+    // 타이핑 · 스트리밍 없이 끝 장면
+    const demo = page.locator('[data-tour-demo="create-task"]')
+    await expect(demo.locator('[data-agent-card="EXECUTED"]')).toBeVisible()
+    await expect(demo.locator("textarea")).toHaveValue("")
+    await page.screenshot({
+      animations: "disabled",
+      path: "/tmp/omnis-onboarding-mobile-demo.png",
+    })
+    await next(page).click()
+    await atStop(page, "write-doc")
+    await page.clock.runFor(1500)
+    await demoFits(page)
+    await expect(
+      page.locator('[data-tour-demo="write-doc"] [data-agent-card="EXECUTED"]')
+    ).toBeVisible()
+    await next(page).click()
+    await atStop(page, "tasks")
+    await page.clock.runFor(1500)
+    await spotlightFitsTab(page, NAV_TARGET.tasks!)
+    await page.screenshot({
+      animations: "disabled",
+      path: "/tmp/omnis-onboarding-mobile-spotlight.png",
+    })
+    await page.getByRole("button", { name: "안내 건너뛰기" }).click()
+    await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
+    await expect.poll(completed).toBe(true)
+  })
+
+  test("간편 로그인 장면 — 「나중에」 로 넘어가고, 연결하고 돌아오면 다음 장면부터 잇는다", async ({
+    page,
+  }) => {
+    await login(page)
+    await atStop(page, "social")
+    // 켜진 제공자가 없으면(로컬 · CI) 버튼 대신 마이 안내, 있으면 연결 버튼
+    const providers = Object.keys(
+      await page.request.get("/api/auth/providers").then((r) => r.json())
+    ).filter((p) => p === "google" || p === "kakao")
+    if (providers.length === 0)
+      await expect(
+        page.getByText("마이의 「소셜 로그인 연결」에서 언제든 연결할 수 있어요.")
+      ).toBeVisible()
+    else
+      await expect(
+        page.getByRole("button", { name: /연결하기$/ }).first()
+      ).toBeVisible()
+    await expect(next(page)).toHaveText("나중에")
+    await next(page).click()
+    await atStop(page, "create-task")
+
+    // 제공자 화면에서 돌아온 것처럼 — 나가기 전에 적어 두는 기록을 넣고 다시 연다.
+    // 안내가 뜬 뒤에 적는다 — 먼저 적으면 뒤늦게 뜬 안내가 그 기록으로 이어 가며 지워, 다시 열 때 남아 있지 않다
+    await page.goto("/settings")
+    await atStop(page, "social")
+    await page.evaluate(() =>
+      sessionStorage.setItem(
+        "omnis-tour-resume",
+        JSON.stringify({ stop: 3, from: "/settings", at: Date.now() })
+      )
+    )
+    await page.reload()
+    await atStop(page, "tasks")
+    // 한 번만 잇는다 — 다시 열면 처음부터
+    await page.reload()
+    await atStop(page, "social")
+
+    // 켜진 제공자가 있으면 연결 버튼을 그린다(제공자 목록만 바꿔 본다 — 실제로 누르지 않는다)
+    await page.route("**/api/auth/providers", (route) =>
+      route.fulfill({
+        json: {
+          credentials: { id: "credentials" },
+          google: { id: "google" },
+          kakao: { id: "kakao" },
+        },
+      })
+    )
+    await page.reload()
+    await atStop(page, "social")
+    await expect(
+      page.getByRole("button", { name: "Google 연결하기" })
+    ).toBeVisible()
+    await expect(page.getByRole("button", { name: "카카오 연결하기" })).toBeVisible()
+  })
+
+  test("계정 저장·새 브라우저·다른 계정·다시 보기·MCP 주소 복사", async ({
     page,
     browser,
   }) => {
     await login(page)
-    await finish(page)
+    await atStop(page, "social")
+    await page.getByRole("button", { name: "안내 건너뛰기" }).click()
+    await expect.poll(completed).toBe(true)
     await page.reload()
-    await expect(
-      page.getByRole("link", { name: "마이" }).first()
-    ).toBeVisible()
+    await expect(page.getByRole("link", { name: /^마이/ }).first()).toBeVisible()
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
     const other = await browser.newContext()
     const otherPage = await other.newPage()
@@ -465,9 +400,14 @@ test.describe("onboarding", () => {
       await input.inputValue()
     )
     await page.getByRole("button", { name: "닫기", exact: true }).click()
-    await page.goto("/settings")
+    // 다시 보기는 스포트라이트 첫 장면부터, 끝나면 마이로 돌아온다
     await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
-    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
+    await atStop(page, "social")
+    await next(page).click()
+    await atStop(page, "create-task")
+    await page.keyboard.press("Escape")
+    await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
+    await page.waitForURL("**/settings")
     const second = await prisma.user.create({
       data: { name: `${name}-other`, passwordHash: hashSync(password, 4) },
     })
@@ -478,10 +418,7 @@ test.describe("onboarding", () => {
       name = second.name
       await login(secondPage)
       name = firstName
-      await expect(secondPage.locator(".intro-stage")).toHaveAttribute(
-        "data-step",
-        "1"
-      )
+      await atStop(secondPage, "social")
       await context.close()
     } finally {
       await prisma.user.delete({ where: { id: second.id } })
@@ -521,6 +458,7 @@ test.describe("onboarding", () => {
       .get("/api/onboarding")
       .then((r) => r.json())
     await page.request.post("/api/onboarding", { data: { phase: "complete" } })
+    // 옛 클라이언트가 보내던 phase: "video" 도 받는 쪽은 그대로 받는다 — 이미 마친 기록은 바뀌지 않는다
     await page.request.post("/api/onboarding", { data: { phase: "video" } })
     expect(
       await page.request.get("/api/onboarding").then((r) => r.json())
@@ -536,23 +474,15 @@ test.describe("onboarding", () => {
     ).toBe(401)
   })
 
-  test("영상만 마치면 스포트라이트부터 재개, 실패해도 서비스 이용 가능", async ({
+  test("영상만 본 사람도 새 안내를 처음부터 보고, 저장에 실패해도 서비스는 쓸 수 있다", async ({
     page,
   }) => {
+    await prisma.user.update({
+      where: { id },
+      data: { onboardingVideoSeenAt: new Date() },
+    })
     await login(page)
-    await skipVideo(page)
-    await expect
-      .poll(
-        async () =>
-          (await prisma.user.findUniqueOrThrow({ where: { id } }))
-            .onboardingVideoSeenAt !== null
-      )
-      .toBe(true)
-    await page.reload()
-    await expect(
-      page.getByRole("dialog", { name: "Omnis 화면 안내" })
-    ).toBeVisible()
-    await expect(page.locator(".intro-stage")).toHaveCount(0)
+    await atStop(page, "social")
     await page.route("**/api/onboarding", (route) =>
       route.request().method() === "POST"
         ? route.fulfill({ status: 500, body: "failed" })
@@ -565,20 +495,21 @@ test.describe("onboarding", () => {
     ).toBeVisible()
     await page.unroute("**/api/onboarding")
     await page.getByRole("button", { name: "다시 저장", exact: true }).click()
-    await expect
-      .poll(
-        async () =>
-          (await prisma.user.findUniqueOrThrow({ where: { id } }))
-            .onboardingCompletedAt !== null
-      )
-      .toBe(true)
+    await expect.poll(completed).toBe(true)
   })
 
-  test("비활성 탭에서 재생 정지, 키보드 종료, 작성 중인 패널 메시지 보존", async ({
+  test("숨은 탭에서는 멈추고, 일시정지 · Esc 종료 · 포커스 가두기", async ({
     page,
   }) => {
     await page.clock.install()
     await login(page)
+    await atStop(page, "social")
+    await next(page).click()
+    await atStop(page, "create-task")
+    await next(page).click()
+    await atStop(page, "write-doc")
+    await next(page).click()
+    await atStop(page, "tasks")
     await page.evaluate(() => {
       Object.defineProperty(document, "hidden", {
         configurable: true,
@@ -586,8 +517,8 @@ test.describe("onboarding", () => {
       })
       document.dispatchEvent(new Event("visibilitychange"))
     })
-    await page.clock.fastForward(10000)
-    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
+    await page.clock.runFor(15_000)
+    await atStop(page, "tasks")
     await page.evaluate(() => {
       Object.defineProperty(document, "hidden", {
         configurable: true,
@@ -595,95 +526,24 @@ test.describe("onboarding", () => {
       })
       document.dispatchEvent(new Event("visibilitychange"))
     })
-    await page.clock.fastForward(4200)
-    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "2")
-    await page.keyboard.press("Escape")
-    await expect(
-      page.getByRole("dialog", { name: "Omnis 화면 안내" })
-    ).toBeVisible()
-    await page.keyboard.press("Escape")
-    await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
-    // 패널의 「Omnis AI」 탭은 메신저의 옴니스 1:1 방으로 옮겨 없어졌다(d7a76ed). 투어가 지켜야 하는 것 —
-    // 「대화」 장면이 패널을 열 때 탭을 바꿔 쓰던 글을 버리지 않는다 — 은 패널에 남은 「전체」 대화 입력으로 본다.
-    // nav 채팅 탭은 이제 /chat 으로 가는 링크라 패널은 따로 연다. 제목줄의 「채팅 열기」 는 지웠고(2026-10-29)
-    // 오른쪽 아래 둥근 단추(PanelDock)가 그 자리를 맡는다 — 지키는 것(쓰던 글 보존)은 그대로다.
-    // 그 단추는 채팅 화면에서는 숨는다(2026-10-29) — nav 의 업무 탭으로 화면 안에서 옮겨 가서 연다
-    await page
-      .getByRole("navigation", { name: "주 메뉴" })
-      .filter({ visible: true })
-      .getByRole("link", { name: "업무", exact: true })
-      .click()
-    await page.waitForURL("**/tasks")
-    await page.getByRole("button", { name: "대화 패널 열기", exact: true }).click()
-    const panel = page.locator('aside[data-onboarding="conversation"]')
-    await expect(
-      panel.getByRole("button", { name: "전체", exact: true })
-    ).toHaveAttribute("aria-pressed", "true")
-    const input = panel.getByRole("textbox", { name: "메시지 입력" })
-    await input.fill("아직 전송하지 않은 질문입니다")
-    // 튜토리얼 다시 보기는 프로필 메뉴에서 마이 화면으로 옮겼다. page.goto 로 가면 문서를 새로 읽어
-    // 작성 중인 질문이 사라지니, 사람처럼 마이 동그라미를 눌러 화면 안에서 옮겨 간다
-    await page.getByRole("link", { name: /^마이/ }).first().click()
-    await page.waitForURL("**/settings")
-    await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
-    await skipVideo(page)
-    for (let index = 0; index < 1; index++) {
-      await page.clock.fastForward(1300)
-      await page.clock.fastForward(7100)
+    await page.getByRole("button", { name: "Ⅱ 일시정지" }).click()
+    await page.clock.runFor(15_000)
+    await atStop(page, "tasks")
+    await page.getByRole("button", { name: "▷ 재생" }).click()
+    await page.clock.runFor(8_500)
+    await atStop(page, "calendar")
+    // 포커스는 안내 안에서만 돈다
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press("Tab")
+      expect(
+        await page.evaluate(
+          () => !!document.activeElement?.closest(".omnis-tour-surface")
+        )
+      ).toBe(true)
     }
-    await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
-      "data-tour-stop",
-      "conversation"
-    )
-    await page.getByRole("button", { name: "안내 건너뛰기" }).click()
-    await expect(input).toHaveValue("아직 전송하지 않은 질문입니다")
-    await expect(input).toBeVisible()
-  })
-
-  test("모바일·다크·모션 감소에서 메뉴 안내와 종료 버튼 도달", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 844 })
-    await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" })
-    await page.addInitScript(() => localStorage.setItem("theme", "dark"))
-    await page.clock.install()
-    await login(page)
-    await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
-    await page.waitForTimeout(1200)
-    await page.screenshot({
-      animations: "disabled",
-      path: "/tmp/omnis-onboarding-mobile.png",
-    })
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth
-      )
-    ).toBe(true)
-    await skipVideo(page)
-    await page.clock.fastForward(1300)
-    await expect(page.locator(".spotlight-shade mask rect")).toHaveCount(2)
-    expect(
-      await page
-        .locator(".spotlight-card")
-        .evaluate((node) => node.getBoundingClientRect().height)
-    ).toBeLessThan(350)
-    // 장면 다섯(업무 · 대화 · 옴니스 · 아카이브 · 마이) — 첫 장면에서 네 번 넘기면 마이다
-    for (let index = 0; index < 4; index++) {
-      await page.clock.fastForward(1300)
-      await page.clock.fastForward(7100)
-    }
-    await page.clock.fastForward(1300)
-    await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
-      "data-tour-stop",
-      "profile"
-    )
-    await expect(page.locator(".spotlight-shade mask rect")).toHaveCount(2)
-    await page.waitForTimeout(1200)
-    await page.screenshot({
-      animations: "disabled",
-      path: "/tmp/omnis-onboarding-mobile-spotlight.png",
-    })
-    await page.getByRole("button", { name: "안내 건너뛰기" }).click()
-    await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
+    await page.keyboard.press("Escape")
+    await expect(tour(page)).toHaveCount(0)
+    await page.waitForURL("**/chat")
+    await expect.poll(completed).toBe(true)
   })
 })
