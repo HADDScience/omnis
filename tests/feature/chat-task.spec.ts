@@ -1,12 +1,14 @@
 import { test, expect } from "@playwright/test"
-import { login, openChatDock } from "./_setup"
+import { login } from "./_setup"
+import { openChatPanel } from "./_actions"
 
-test.describe("/업무 슬래시 명령 → 업무 자동 등록", () => {
+test.describe("/업무 슬래시 명령 → 업무 자동 등록", { tag: "@chat" }, () => {
   test.beforeEach(async ({ page }) => {
     await login(page, "팀장")
-    await openChatDock(page)
+    await openChatPanel(page)
   })
 
+  // 지키는 것: 채팅에서 「/업무 …」 한 줄을 보내면 업무 등록 창이 열린다
   test("/업무 + 텍스트 + Enter → 업무 등록 다이얼로그가 열린다", async ({
     page,
   }) => {
@@ -23,6 +25,7 @@ test.describe("/업무 슬래시 명령 → 업무 자동 등록", () => {
     ).toBeVisible()
   })
 
+  // 지키는 것: 업무 등록 창에서 제목 · 담당자 · 마감 · 체크리스트 · AI 자동완성을 다룰 수 있다
   test("다이얼로그가 제목·담당자·속성·체크리스트·AI 자동완성 버튼을 모두 노출한다", async ({
     page,
   }) => {
@@ -53,6 +56,7 @@ test.describe("/업무 슬래시 명령 → 업무 자동 등록", () => {
     ).toBeVisible()
   })
 
+  // 지키는 것: AI 자동완성이 실제 응답으로 지시사항 · 체크리스트를 채운다
   test("AI 자동완성 → 지시사항·체크리스트가 자동으로 채워진다 (Gemini 라이브 호출)", async ({
     page,
   }) => {

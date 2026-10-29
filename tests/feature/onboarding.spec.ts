@@ -3,8 +3,9 @@ import { test, expect, type Page } from "@playwright/test"
 import { hashSync } from "bcryptjs"
 import { randomUUID } from "node:crypto"
 import { prisma } from "../../lib/db"
+import { openMy, openOmnisAi, replayTutorial } from "./_actions"
 
-test.describe("onboarding", () => {
+test.describe("onboarding", { tag: ["@onboarding", "@nav"] }, () => {
   test.skip(
     !!process.env.BASE_URL &&
       !/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(process.env.BASE_URL),
@@ -59,6 +60,7 @@ test.describe("onboarding", () => {
       .toBe(true)
   }
 
+  // 지키는 것: 창이 낮거나 확대해도 소개 영상의 장면과 재생 버튼이 잘리지 않는다
   test("낮은 창과 확대 배율에서도 장면과 재생 버튼이 잘리지 않는다", async ({
     page,
   }) => {
@@ -123,6 +125,7 @@ test.describe("onboarding", () => {
     })
   })
 
+  // 지키는 것: 소개 장면의 시연 입력은 화면에서만 움직이고 실제 데이터를 쓰지 않는다
   test("업무 지시·완료 보고·추가 지시는 타이핑 후 전송되며 실제 쓰기는 없다", async ({
     page,
   }) => {
@@ -162,6 +165,7 @@ test.describe("onboarding", () => {
     expect(writes).toEqual([])
   })
 
+  // 지키는 것: 소개 장면을 골라 옮기면 그 장면부터 다시 보고, 끝에서 다음 단계를 기다린다
   test("스토리 탭 이동은 장면을 재시작하고 마지막 CTA를 기다린다", async ({
     page,
   }) => {
@@ -198,6 +202,7 @@ test.describe("onboarding", () => {
     await expect(stage).toHaveAttribute("data-step", "7")
   })
 
+  // 지키는 것: 폰 화면과 모션 줄이기에서도 소개 장면이 화면 밖으로 나가지 않는다
   test("입력 확대·전송 복귀·메시지 확대가 모바일 경계와 모션 감소를 지킨다", async ({
     page,
   }) => {
@@ -246,6 +251,7 @@ test.describe("onboarding", () => {
     )
   })
 
+  // 지키는 것: 화면 안내가 실제 메뉴를 정확히 가리키고, 설명이 대상을 덮지 않으며 앞뒤로 오간다
   test("스포트라이트는 실제 대상에 밀착하고 설명창이 겹치지 않으며 앞뒤로 이동한다", async ({
     page,
   }) => {
@@ -332,6 +338,7 @@ test.describe("onboarding", () => {
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
   })
 
+  // 지키는 것: 소개 영상이 저절로 넘어가고 멈출 수 있으며, 끝나면 화면 안내로 이어진다
   test("8장면 자동 재생·일시정지·최종 CTA·스포트라이트", async ({ page }) => {
     const errors: string[] = []
     page.on("pageerror", (error) => errors.push(error.message))
@@ -400,6 +407,7 @@ test.describe("onboarding", () => {
     expect(errors).toEqual([])
   })
 
+  // 지키는 것: 소개 도중 MCP 등록에 다녀와도 보던 장면으로 돌아온다
   test("AI 연결 장면의 카운트다운 버튼은 안내를 멈추고 MCP 등록으로 갔다가 같은 장면으로 돌아온다", async ({
     page,
   }) => {
@@ -441,6 +449,7 @@ test.describe("onboarding", () => {
     expect(errors).toEqual([])
   })
 
+  // 지키는 것: 온보딩을 마친 기록은 계정에 남아 다른 브라우저에서 다시 뜨지 않고, 마이에서 다시 볼 수 있다
   test("계정 저장·새 브라우저·다른 계정·재생·MCP 주소 복사", async ({
     page,
     browser,
@@ -457,7 +466,7 @@ test.describe("onboarding", () => {
     await login(otherPage)
     await expect(otherPage.locator(".omnis-tour-surface")).toHaveCount(0)
     await other.close()
-    await page.goto("/settings")
+    await openMy(page)
     await page.getByRole("button", { name: /Omnis MCP 등록/ }).click()
     const input = page.getByRole("textbox", { name: "MCP 서버 주소" })
     await expect(input).toHaveValue(/\/api\/ip-mcp$/)
@@ -467,8 +476,7 @@ test.describe("onboarding", () => {
       await input.inputValue()
     )
     await page.getByRole("button", { name: "닫기", exact: true }).click()
-    await page.goto("/settings")
-    await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
+    await replayTutorial(page)
     await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
     const second = await prisma.user.create({
       data: { name: `${name}-other`, passwordHash: hashSync(password, 4) },
@@ -490,6 +498,7 @@ test.describe("onboarding", () => {
     }
   })
 
+  // 지키는 것: 온보딩 기록 API 는 남의 계정 · 비활성 계정 · 잘못된 요청을 거부한다
   test("잘못된 요청·타 계정 쓰기·비활성 계정 거부, 반복 완료 멱등성", async ({
     page,
     request,
@@ -538,6 +547,7 @@ test.describe("onboarding", () => {
     ).toBe(401)
   })
 
+  // 지키는 것: 영상만 보고 나가도 다음엔 화면 안내부터 이어지고, 저장이 실패해도 앱은 쓸 수 있다
   test("영상만 마치면 스포트라이트부터 재개, 실패해도 서비스 이용 가능", async ({
     page,
   }) => {
@@ -576,6 +586,7 @@ test.describe("onboarding", () => {
       .toBe(true)
   })
 
+  // 지키는 것: 다른 탭에 가 있으면 영상이 멈추고, 튜토리얼을 다시 봐도 작성 중인 질문이 사라지지 않는다
   test("비활성 탭에서 재생 정지, 키보드 종료, 작성 중인 AI 질문 보존", async ({
     page,
   }) => {
@@ -605,16 +616,10 @@ test.describe("onboarding", () => {
     ).toBeVisible()
     await page.keyboard.press("Escape")
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
-    // 사이드바의 「Omnis AI 에게 질문」 자리는 nav 채팅 탭 → 패널의 Omnis AI 탭이다
-    await page.getByRole("button", { name: "채팅", exact: true }).click()
-    await page.getByRole("button", { name: "Omnis AI", exact: true }).click()
-    const input = page.getByRole("textbox", { name: "옴니스에게 보낼 질문" })
+    const input = await openOmnisAi(page)
     await input.fill("아직 전송하지 않은 질문입니다")
-    // 튜토리얼 다시 보기는 프로필 메뉴에서 마이 화면으로 옮겼다. page.goto 로 가면 문서를 새로 읽어
-    // 작성 중인 질문이 사라지니, 사람처럼 마이 동그라미를 눌러 화면 안에서 옮겨 간다
-    await page.getByRole("link", { name: /^마이/ }).first().click()
-    await page.waitForURL("**/settings")
-    await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
+    // 화면 안에서 옮겨 간다 — page.goto 는 문서를 새로 읽어 작성 중인 질문을 지운다(replayTutorial)
+    await replayTutorial(page)
     await skipVideo(page)
     for (let index = 0; index < 2; index++) {
       await page.clock.fastForward(1300)
@@ -629,6 +634,7 @@ test.describe("onboarding", () => {
     await expect(input).toBeVisible()
   })
 
+  // 지키는 것: 폰 · 다크 · 모션 줄이기에서도 화면 안내를 끝까지 보고 닫을 수 있다
   test("모바일·다크·모션 감소에서 메뉴 안내와 종료 버튼 도달", async ({
     page,
   }) => {

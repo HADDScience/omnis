@@ -28,13 +28,3 @@ export async function quickLogin(page: Page, name: DemoUser) {
 export async function expectLoggedIn(page: Page, name: DemoUser) {
   await expect(page.getByText(name).first()).toBeVisible({ timeout: 5_000 })
 }
-
-export async function openChatDock(page: Page) {
-  const input = page.getByPlaceholder(
-    "메시지 입력...  / 명령 · @ 사람 · # 업무"
-  )
-  if (!(await input.isVisible())) {
-    await page.getByRole("button", { name: "채팅 열기", exact: true }).click()
-  }
-  await expect(input).toBeVisible()
-}
