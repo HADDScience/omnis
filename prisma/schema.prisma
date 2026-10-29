@@ -615,6 +615,12 @@ model File {
   taskId    String?
   task      Task?        @relation(fields: [taskId], references: [id])
   createdAt DateTime     @default(now())
+  /// 사진 설명 — 검색 색인(EmbeddingSource.PHOTO)에 들어가는 글. 이미지가 아니거나 아직 안 만들었으면 null.
+  /// 사진 안의 내용으로 찾게 하려고 둔다(mydocs/plans/2026-10-29-photo-search.md)
+  description String?   @db.Text
+  describedAt DateTime?
+  /// 만든 모델 — "openai:gpt-6.1-terra" (앱 업로드) · "claude-cli:sonnet" (카톡 이식 · 일괄)
+  describedBy String?
 }
 
 // ─── Gemini 토큰 사용 로그 ───────────────────────────────
@@ -705,6 +711,8 @@ enum EmbeddingSource {
   CHAT_MESSAGE
   /// 지식재산권 건 (상표·특허). sourceId 는 "trademark:TM-01" 꼴.
   IP_CASE
+  /// 사진 설명. sourceId 는 File.id
+  PHOTO
 }
 
 model EmbeddingChunk {

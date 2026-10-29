@@ -134,7 +134,7 @@ export const OMNIS_TOOLS = [
         query: { type: "string" },
         sources: {
           type: "array",
-          items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE"] },
+          items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO"] },
           description: "생략하면 전부",
         },
         limit: { type: "integer", description: "기본 8, 최대 30" },
@@ -794,7 +794,7 @@ export async function runTool(
       return {
         text: chunks
           // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
-          .map((c, i) => `[${i + 1}] ${SOURCE_LABEL[c.source]} · ${c.title} (${Math.round(c.similarity * 100)}%)\n${c.content.slice(0, c.source === "CHAT_MESSAGE" ? 1500 : 600)}`)
+          .map((c, i) => `[${i + 1}] ${SOURCE_LABEL[c.source]} · ${c.title} (${Math.round(c.similarity * 100)}%)\n${c.content.slice(0, c.source === "CHAT_MESSAGE" || c.source === "PHOTO" ? 1500 : 600)}`)
           .join("\n\n"),
       }
     }

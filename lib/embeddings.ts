@@ -17,6 +17,7 @@ export type EmbeddingSource =
   | "WEEKLY_REPORT"
   | "CHAT_MESSAGE"
   | "IP_CASE"
+  | "PHOTO"
 
 const ALL_SOURCES: EmbeddingSource[] = [
   "OMNIS_CARD",
@@ -24,6 +25,7 @@ const ALL_SOURCES: EmbeddingSource[] = [
   "WEEKLY_REPORT",
   "CHAT_MESSAGE",
   "IP_CASE",
+  "PHOTO",
 ]
 
 /** 채팅 메시지 임베딩 최소 길이 (짧은 잡담 제외) */
@@ -183,6 +185,25 @@ async function buildChatMessageChunks(
   return [{ title: `${msg.author.name}의 메시지 (${when.slice(0, 10)})`, content: lines.join("\n") }]
 }
 
+/**
+ * 사진 하나를 청크 하나로 — File.description(사진 설명, lib/photo-describe.ts)에 올린 시각 · 사람 · 업무를 붙인다.
+ * 채팅과 같은 범위만: 전사방에 올라온, 지워지지 않은 메시지의 사진.
+ */
+async function buildPhotoChunks(fileId: string): Promise<RawChunk[] | null> {
+  const file = await prisma.file.findUnique({
+    where: { id: fileId },
+    select: {
+      name: true, description: true,
+      message: { select: { createdAt: true, deletedAt: true, author: { select: { name: true } }, task: { select: { name: true } }, room: { select: { kind: true } } } },
+    },
+  })
+  const msg = file?.message
+  if (!file?.description || !msg || msg.deletedAt || msg.room.kind !== "COMPANY") return null
+  const when = msg.createdAt.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16)
+  const head = `[사진 ${when}] ${msg.author.name}이 올림${msg.task?.name ? ` · 관련 업무: ${msg.task.name}` : ""}`
+  return [{ title: `${msg.author.name}의 사진 (${when.slice(0, 10)})`, content: `${head}\n${file.description}` }]
+}
+
 const TURN_LABEL: Record<string, string> = {
   us: "우리 차례",
   firm: "대리인 차례",
@@ -260,6 +281,8 @@ async function buildChunks(
       return buildChatMessageChunks(sourceId)
     case "IP_CASE":
       return buildIpCaseChunks(sourceId)
+    case "PHOTO":
+      return buildPhotoChunks(sourceId)
   }
 }
 

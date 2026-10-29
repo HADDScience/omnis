@@ -16,7 +16,7 @@ export interface OmnisModelSpec {
   model: string
 }
 
-async function realModel(spec: OmnisModelSpec): Promise<V4> {
+export async function realModel(spec: OmnisModelSpec): Promise<V4> {
   switch (spec.vendor) {
     case "openai": {
       const { createOpenAI } = await import("@ai-sdk/openai")

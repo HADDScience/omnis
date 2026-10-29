@@ -88,6 +88,9 @@ function sourceHref(s: Source): string | null {
     case "IP_CASE":
       // 지식재산권은 아직 옴니스 안에 상세 화면이 없다. 외부 플랫폼으로 보낸다.
       return IP_PLATFORM_URL
+    case "PHOTO":
+      // 사진 자체를 새 탭으로 연다 — 찾던 것이 사진이다
+      return apiUrl(`/api/files/${s.sourceId}/raw`)
     default:
       // 위 case 가 하나라도 빠지면 여기서 컴파일이 깨진다 — 흰 화면 대신
       // 빌드가 먼저 막힌다. 런타임에 모르는 값이 와도 null 이라 안전하다.
@@ -157,7 +160,7 @@ function Citation({ num, source }: { num: string; source?: Source }) {
         className={
           href ? "omnis-citation omnis-citation--link" : "omnis-citation"
         }
-        onClick={href ? () => router.push(href) : undefined}
+        onClick={href ? () => (source.source === "PHOTO" ? window.open(href, "_blank", "noopener") : router.push(href)) : undefined}
         // 출처를 가리키면 그 화면을 미리 받아 둔다 — router.push 는 링크처럼 저절로 미리 받지 않는다
         onPointerEnter={href ? () => router.prefetch(href) : undefined}
         onFocus={href ? () => router.prefetch(href) : undefined}
@@ -562,12 +565,24 @@ export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: 
 /** 출처 한 줄. 열 곳이 없으면 링크가 아니라 그냥 줄로 그린다. */
 function SourceRow({ index, source }: { index: number; source: Source }) {
   const href = sourceHref(source)
-  const external = href?.startsWith("http") ?? false
+  const photo = source.source === "PHOTO"
+  // 사진은 화면이 아니라 파일이라 새 탭으로 연다
+  const external = (href?.startsWith("http") ?? false) || photo
   const body = (
     <>
       <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[9px] font-semibold text-primary">
         {index + 1}
       </span>
+      {photo && (
+        // 줄인 썸네일(?w=) — 원본은 평균 1.4MB 라 목록에 그대로 띄우지 않는다
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={apiUrl(`/api/files/${source.sourceId}/raw?w=96`)}
+          alt=""
+          loading="lazy"
+          className="h-8 w-8 shrink-0 rounded object-cover"
+        />
+      )}
       <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
         {source.sourceLabel}
       </span>

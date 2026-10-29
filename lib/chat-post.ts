@@ -17,6 +17,7 @@ import { getSystemUserId } from "@/lib/system-user"
 import { writeActivity } from "@/lib/api"
 import { recordTaskEvents } from "@/lib/task-events"
 import { queueChatPush, type ChatPushRoom } from "@/lib/chat-push"
+import { describePhotosSafe } from "@/lib/photo-describe"
 
 export interface PostMessageInput {
   user: { id: string; name: string }
@@ -180,6 +181,8 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
   void syncEmbeddings("CHAT_MESSAGE", message.id, user.id).catch((err) =>
     console.error("[embeddings] 채팅 메시지 동기화 실패", err)
   )
+  // 사진은 설명을 만들어 따로 색인한다 — 사진 안의 내용으로 찾게(사진이 아닌 파일은 안에서 건너뛴다)
+  if (fileIds && fileIds.length > 0) describePhotosSafe(fileIds, user.id)
 
 
   return { message: updatedMessage, taskUpdate, rebuild }
