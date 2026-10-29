@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { RightPanel } from "./right-panel"
 import { useRightPanel } from "./right-panel-context"
 import { CommandPalette } from "./command-palette"
+import { PanelDock } from "./panel-dock"
 
 interface Message {
   id: string
@@ -63,6 +64,7 @@ export function MainWithChat({
           onTaskUpdated={() => router.refresh()}
         />
       </div>
+      <PanelDock />
       <CommandPalette />
     </>
   )

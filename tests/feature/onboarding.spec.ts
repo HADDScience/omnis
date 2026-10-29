@@ -607,8 +607,9 @@ test.describe("onboarding", () => {
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
     // 패널의 「Omnis AI」 탭은 메신저의 옴니스 1:1 방으로 옮겨 없어졌다(d7a76ed). 투어가 지켜야 하는 것 —
     // 「대화」 장면이 패널을 열 때 탭을 바꿔 쓰던 글을 버리지 않는다 — 은 패널에 남은 「전체」 대화 입력으로 본다.
-    // nav 채팅 탭은 이제 /chat 으로 가는 링크라, 패널은 헤더의 「채팅 열기」 로 연다
-    await page.getByRole("button", { name: "채팅 열기", exact: true }).click()
+    // nav 채팅 탭은 이제 /chat 으로 가는 링크라 패널은 따로 연다. 제목줄의 「채팅 열기」 는 지웠고(2026-10-29)
+    // 오른쪽 아래 둥근 단추(PanelDock)가 그 자리를 맡는다 — 지키는 것(쓰던 글 보존)은 그대로다
+    await page.getByRole("button", { name: "대화 패널 열기", exact: true }).click()
     const panel = page.locator('aside[data-onboarding="conversation"]')
     await expect(
       panel.getByRole("button", { name: "전체", exact: true })

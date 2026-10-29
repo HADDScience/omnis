@@ -54,11 +54,10 @@ export async function createActor(browser: Browser, name: string, password: stri
 
 // ─── 우측 패널 (채팅 · 업무 스레드) ─────────────────────────────
 
-/** 헤더 버튼으로 패널을 연다. 이미 열려 있으면 그대로. */
+/** 오른쪽 아래 둥근 단추(PanelDock)로 패널을 연다. 이미 열려 있으면 그대로. */
 export async function openPanel(page: Page) {
   const closeBtn = page.getByRole("button", { name: "패널 닫기" }).first()
-  const header = page.locator("header")
-  const trigger = header.getByRole("button", { name: /채팅 열기|스레드 열기/ })
+  const trigger = page.getByRole("button", { name: /^대화 패널 열기/ })
   if (await trigger.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await trigger.click()
   }

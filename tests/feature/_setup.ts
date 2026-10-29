@@ -34,7 +34,8 @@ export async function openChatDock(page: Page) {
     "메시지 입력...  / 명령 · @ 사람 · # 업무"
   )
   if (!(await input.isVisible())) {
-    await page.getByRole("button", { name: "채팅 열기", exact: true }).click()
+    // 제목줄의 「채팅 열기」 는 지웠다(2026-10-29) — 오른쪽 아래 둥근 단추가 패널을 연다
+    await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
   }
   await expect(input).toBeVisible()
 }

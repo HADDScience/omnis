@@ -3,7 +3,6 @@
 import { Fragment, type ReactNode } from "react"
 import { Separator } from "@/components/ui/separator"
 import { NotificationBell } from "./notification-bell"
-import { RightPanelTrigger } from "./right-panel-trigger"
 import { NAV_DESKTOP_QUERY } from "./floating-nav"
 import { useHeaderSubnav } from "./header-subnav"
 import { useMediaQuery } from "@/hooks/use-media-query"
@@ -58,7 +57,6 @@ export function Header({ title, crumbs, actions }: HeaderProps) {
         <div aria-hidden className="hidden md:block" />
         <div className="flex min-w-0 items-center gap-1 md:justify-self-end">
           {actions}
-          <RightPanelTrigger />
           {!isMdUp && (
             <>
               {actions && <Separator orientation="vertical" className="mx-1 h-4 self-center!" />}
