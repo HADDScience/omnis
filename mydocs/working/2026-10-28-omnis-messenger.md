@@ -637,7 +637,7 @@ A=윤훈 · B=팀장
 
 ## 운영 반영 순서 — migrate 먼저, 머지 나중
 
-1. 운영 DB 를 가리키는지 호스트부터 찍고 확인한 뒤 `pnpm run db:deploy` — `20261028010000_chat_room_kinds` · `20261029010000_chat_folders` 둘. 추가만 하는 변경이라 지금 운영 코드는 그대로 돈다
+1. 운영 DB 를 가리키는지 호스트부터 찍고 확인한 뒤 `pnpm run db:deploy` — `20261028010000_chat_room_kinds` · `20261029010000_chat_folders` · `20261029020000_chat_folder_rules` 셋. 칸 · 표 · enum 값은 추가만 하고, 셋째는 아직 운영 코드가 모르는 `ChatFolder` 의 유일 색인만 바꾼다 — 지금 운영 코드는 그대로 돈다
 2. 그 다음 머지. 순서는 nav 계획대로 **캘린더(머지됨) → nav(`feat/floating-nav`, 그 아래 `feat/tasks-tab-status`) → 이 브랜치**
 3. migrate 전에 이 코드가 나가면: 목록 · 피드 · 지표 · 색인이 `ChatRoom.kind` 를 읽다 오류가 난다(`lib/kpi.ts` 의 raw SQL 포함). kpi-export 를 운영에 돌릴 때도 migrate 뒤에
 4. 데모(`omnis`) 프로젝트는 main 빌드가 `prisma migrate deploy` 를 돌려 따로 할 일이 없다
