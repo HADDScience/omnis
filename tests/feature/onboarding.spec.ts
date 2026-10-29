@@ -667,7 +667,8 @@ test.describe("onboarding", () => {
         .locator(".spotlight-card")
         .evaluate((node) => node.getBoundingClientRect().height)
     ).toBeLessThan(350)
-    for (let index = 0; index < 5; index++) {
+    // 장면 다섯(업무 · 대화 · 옴니스 · 아카이브 · 마이) — 첫 장면에서 네 번 넘기면 마이다
+    for (let index = 0; index < 4; index++) {
       await page.clock.fastForward(1300)
       await page.clock.fastForward(7100)
     }
