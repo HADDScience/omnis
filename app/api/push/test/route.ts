@@ -22,6 +22,10 @@ export async function POST() {
     tag: "omnis:test",
   })
 
+  // 로컬 검증(PUSH_DRY_RUN=1)은 푸시 서비스에 보내지 않는다 — 기록만 남았다고 알린다
+  if (result.skipped === "dry_run") {
+    return NextResponse.json({ ...result, note: "dry run — 기록만 남기고 보내지 않았습니다" })
+  }
   if (result.skipped === "unconfigured") {
     return NextResponse.json({ error: "서버에 푸시 키가 설정되지 않았습니다" }, { status: 503 })
   }

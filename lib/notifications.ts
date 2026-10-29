@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { sendPushToUser } from "@/lib/push"
+import { categoryOfType } from "@/lib/notify-rules"
 import { recordTaskEvents } from "@/lib/task-events"
 import {
   ALLOWED_RESPONSES,
@@ -142,13 +143,21 @@ export async function createNotification(
 
   // 탭이 닫혀 있어도 닿게 한다. 기다리지 않는다 — 푸시 서비스가 느리다고 업무 처리가
   // 함께 느려지면 안 되고, 실패해도 알림 행은 이미 만들어졌으므로 벨에서 보인다.
-  void sendPushToUser(userId, {
-    title,
-    body: content,
-    url: notificationHref(type, entityId) ?? undefined,
-    // 같은 대상의 알림은 기기에서 서로를 덮어쓴다 — 잠금화면에 같은 업무가 쌓이지 않게
-    tag: `omnis:${entityId}`,
-  }).catch(() => {})
+  // 종류(채팅 · 업무 · 일정)를 끈 사람에게는 푸시만 가지 않는다 — 벨 행은 위에서 이미 만들었다(놓치지 않게).
+  const href = notificationHref(type, entityId) ?? undefined
+  void sendPushToUser(
+    userId,
+    {
+      title,
+      body: content,
+      url: href,
+      // 같은 대상의 알림은 기기에서 서로를 덮어쓴다 — 잠금화면에 같은 업무가 쌓이지 않게
+      tag: `omnis:${entityId}`,
+      // 방에서 나를 부른 글 — 그 방을 보고 있으면 띄우지 않는다(채팅 글과 같다)
+      ...(type === "chat_mention" && href ? { roomPath: href } : {}),
+    },
+    categoryOfType(type)
+  ).catch(() => {})
 
   return notification
 }
