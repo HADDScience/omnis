@@ -8,6 +8,7 @@ import {
   effectiveReadAt,
   filterRooms,
   folderHasRoom,
+  isLiveFolderRule,
   matchesRoomQuery,
   parseRoomKey,
   resolveChip,
@@ -33,15 +34,20 @@ const company = room({ key: "room:default-room", kind: "COMPANY", name: "하드�
 const dm = room({ key: "room:dm1", kind: "OMNIS_DM", name: "지연 업무 몇 건?", lastAt: "2026-10-29T05:00:00.000Z", unread: 1 })
 const task = room({
   key: "task:t1", kind: "TASK", name: "견적서 보내기", slug: "task-14139531", preview: "윤훈: 견적 금액 확인 부탁드립니다",
-  lastAt: "2026-10-29T04:00:00.000Z", favorite: true, unread: 3,
+  lastAt: "2026-10-29T04:00:00.000Z", favorite: true, unread: 3, mine: true, projectId: "p-bio",
 })
-const newTask = room({ key: "task:t2", kind: "TASK", name: "새 업무", lastAt: "2026-10-28T00:00:00.000Z" })
-const rooms = [company, dm, task, newTask]
+const newTask = room({ key: "task:t2", kind: "TASK", name: "새 업무", lastAt: "2026-10-28T00:00:00.000Z", mine: false, projectId: "p-bio" })
+const otherTask = room({ key: "task:t3", kind: "TASK", name: "남의 업무", lastAt: "2026-10-27T00:00:00.000Z", mine: false, projectId: null })
+const rooms = [company, dm, task, newTask, otherTask]
 
-const ruleTask: ChatFolderView = { id: "f1", name: "업무방", rule: "TASK", order: 0, roomKeys: [] }
-const ruleCompany: ChatFolderView = { id: "f2", name: "전사방", rule: "COMPANY", order: 1, roomKeys: [] }
-const manual: ChatFolderView = { id: "f3", name: "견적", rule: null, order: 2, roomKeys: ["task:t1", "room:dm1"] }
-const folders = [ruleTask, ruleCompany, manual]
+const folder = (over: Partial<ChatFolderView> & Pick<ChatFolderView, "id">): ChatFolderView => ({
+  name: over.id, rule: null, order: 0, roomKeys: [], projectId: null, project: null, ...over,
+})
+const myTasks = folder({ id: "f1", name: "내 업무", rule: "MY_TASKS" })
+const bio = folder({ id: "f2", name: "AI 바이오 소재 사업", rule: "PROJECT", projectId: "p-bio", project: { name: "AI 바이오 소재 사업", archived: false } })
+// 상표 업무방 + 상표 관련 옴니스 대화 + 전사방을 섞은 수동 폴더
+const manual = folder({ id: "f3", name: "상표", roomKeys: ["task:t1", "room:dm1", "room:default-room"] })
+const folders = [myTasks, bio, manual]
 
 // ─── 방 키 ───
 
@@ -91,27 +97,56 @@ test("없는 방 · 없는 업무는 missing, 잘못된 키는 invalid (거부�
 
 // ─── 규칙 폴더 ───
 
-test("규칙 폴더는 방 종류로 채운다 — 새 업무방도 저절로", () => {
-  assert.equal(folderHasRoom(ruleTask, task), true)
-  assert.equal(folderHasRoom(ruleTask, newTask), true)
-  assert.equal(folderHasRoom(ruleTask, company), false)
-  assert.equal(folderHasRoom(ruleTask, dm), false)
-  assert.deepEqual(roomsInChip(rooms, "folder:f2", folders).map((r) => r.key), ["room:default-room"])
+test("내 업무 — 내가 담당이거나 지시한 업무방만", () => {
+  assert.equal(folderHasRoom(myTasks, task), true)
+  assert.equal(folderHasRoom(myTasks, newTask), false)
+  assert.deepEqual(roomsInChip(rooms, "folder:f1", folders).map((r) => r.key), ["task:t1"])
+})
+
+test("내 업무 — 업무방이 아닌 방은 들지 않는다 (거부되어야 하는 경우)", () => {
+  assert.equal(folderHasRoom(myTasks, { ...dm, mine: true }), false)
+  assert.equal(folderHasRoom(myTasks, { ...company, mine: true }), false)
+})
+
+test("프로젝트 폴더 — 그 프로젝트의 업무방이 저절로, 새 업무방도", () => {
+  assert.deepEqual(roomsInChip(rooms, "folder:f2", folders).map((r) => r.key), ["task:t1", "task:t2"])
+  assert.equal(folderHasRoom(bio, otherTask), false)
+})
+
+test("프로젝트가 지워진 폴더(projectId null)는 비어 있다 — 프로젝트 없는 업무와 맞추지 않는다", () => {
+  const gone = folder({ id: "g", rule: "PROJECT", projectId: null, project: null })
+  assert.equal(folderHasRoom(gone, otherTask), false)
+  assert.deepEqual(roomsInChip(rooms, "folder:g", [gone]), [])
 })
 
 test("규칙 폴더는 손으로 넣은 키를 보지 않는다", () => {
-  const odd: ChatFolderView = { ...ruleCompany, roomKeys: ["task:t1"] }
-  assert.equal(folderHasRoom(odd, task), false)
+  assert.equal(folderHasRoom({ ...bio, roomKeys: ["room:dm1"] }, dm), false)
 })
 
-test("수동 폴더는 넣은 방만", () => {
-  assert.deepEqual(roomsInChip(rooms, "folder:f3", folders).map((r) => r.key), ["room:dm1", "task:t1"])
+test("수동 폴더는 종류를 섞는다 — 업무방 · 옴니스 대화 · 전사방", () => {
+  assert.deepEqual(roomsInChip(rooms, "folder:f3", folders).map((r) => r.key), ["room:dm1", "task:t1", "room:default-room"])
+})
+
+test("옛 규칙(전사방 · 업무방 · 단톡방)은 숨긴다", () => {
+  assert.equal(isLiveFolderRule(null), true)
+  assert.equal(isLiveFolderRule("MY_TASKS"), true)
+  assert.equal(isLiveFolderRule("PROJECT"), true)
+  assert.equal(isLiveFolderRule("COMPANY"), false)
+  assert.equal(isLiveFolderRule("TASK"), false)
+  assert.equal(isLiveFolderRule("GROUP"), false)
+})
+
+test("방금 만든 폴더의 칩을 고를 수 있다 — 목록에 그 폴더가 오면 「전체」 로 튕기지 않는다", () => {
+  const fresh = folder({ id: "new1", name: "테스트" })
+  assert.equal(resolveChip("folder:new1", [...folders, fresh]), "folder:new1")
+  assert.equal(resolveChip("folder:new1", folders), "all")
 })
 
 // ─── 칩 ───
 
 test("전체는 종류를 가리지 않고 최근 글 순 한 목록", () => {
-  assert.deepEqual(roomsInChip(rooms, "all", folders).map((r) => r.key), ["room:dm1", "task:t1", "room:default-room", "task:t2"])
+  // 전사방도 다른 방과 같이 최근 글 순 — 맨 위에 고정하지 않는다
+  assert.deepEqual(roomsInChip(rooms, "all", folders).map((r) => r.key), ["room:dm1", "task:t1", "room:default-room", "task:t2", "task:t3"])
 })
 
 test("옴니스 · 안읽음 · 즐겨찾기", () => {

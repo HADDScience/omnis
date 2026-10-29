@@ -51,6 +51,9 @@ export interface RoomListItem {
   /** 업무방만 */
   slug?: string
   status?: string
+  /** 업무방만 — 규칙 폴더가 본다. 프로젝트 폴더는 projectId, 내 업무 폴더는 mine(담당 · 지시) */
+  projectId?: string | null
+  mine?: boolean
   /** 안 읽은 글 수 — 셈법은 lib/chat-list.ts countsAsUnread */
   unread: number
   favorite: boolean
@@ -92,7 +95,7 @@ function authorLabel(authorId: string, name: string): string {
 
 type TaskHead = {
   taskId: string; createdAt: Date; content: string; kind: string; authorId: string; authorName: string
-  name: string; slug: string; status: string
+  name: string; slug: string; status: string; projectId: string | null; mine: boolean
 }
 
 /**
@@ -101,14 +104,17 @@ type TaskHead = {
  * 조건은 SQL 조각(Prisma.sql)이 아니라 매개변수로 넘긴다 — next dev(webpack) 에서는 조각이 jsonb 매개변수로 직렬화돼
  * 「argument of AND must be type boolean, not type jsonb」 로 실패했다(tsx 에서는 통과한다).
  */
-function taskHeads(opts: { taskIds?: string[]; pattern?: string; limit: number }) {
+function taskHeads(userId: string, opts: { taskIds?: string[]; pattern?: string; limit: number }) {
   const ids = opts.taskIds ?? null
   const pattern = opts.pattern ?? null
   return prisma.$queryRaw<TaskHead[]>`
     SELECT * FROM (
       SELECT DISTINCT ON (m."taskId")
              m."taskId", m."createdAt", m.content, m.kind::text AS kind, m."authorId", u.name AS "authorName",
-             t.name, t.slug, t.status::text AS status
+             t.name, t.slug, t.status::text AS status, t."projectId",
+             -- 내 업무 폴더 기준 — 업무 탭의 i-assigned(지시) · i-own(담당)과 같다
+             (t."instructorId" = ${userId}
+              OR EXISTS (SELECT 1 FROM "TaskAssignee" a WHERE a."taskId" = t.id AND a."userId" = ${userId})) AS mine
         FROM "ChatMessage" m
         JOIN "Task" t ON t.id = m."taskId"
         JOIN "User" u ON u.id = m."authorId"
@@ -122,6 +128,37 @@ function taskHeads(opts: { taskIds?: string[]; pattern?: string; limit: number }
        OR last.content ILIKE ${pattern}::text OR last."authorName" ILIKE ${pattern}::text
     ORDER BY last."createdAt" DESC
     LIMIT ${opts.limit}`
+}
+
+/** 규칙 폴더 하나가 끌어오는 업무방 수 상한(최근에 고친 업무부터). 넘는 것은 검색으로 찾는다 */
+const RULE_TASK_LIMIT = 200
+
+/** 업무방이 있는 업무 — 전사방에 지우지 않은 글이 하나라도 있다. 상한을 글 없는 업무가 먹지 않게 */
+const HAS_ROOM = { some: { deletedAt: null, room: { kind: "COMPANY" as const } } }
+
+/** 내 규칙 폴더(내 업무 · 프로젝트)에 드는 업무 id. 보관한 업무는 뺀다(업무방 목록과 같다) */
+async function ruleFolderTaskIds(userId: string, folders: ChatFolderView[]): Promise<string[]> {
+  const wantMine = folders.some((f) => f.rule === "MY_TASKS")
+  const projectIds = folders.flatMap((f) => (f.rule === "PROJECT" && f.projectId ? [f.projectId] : []))
+  const [mine, inProjects] = await Promise.all([
+    wantMine
+      ? prisma.task.findMany({
+          where: { archived: false, messages: HAS_ROOM, OR: [{ instructorId: userId }, { assignees: { some: { userId } } }] },
+          orderBy: { updatedAt: "desc" },
+          take: RULE_TASK_LIMIT,
+          select: { id: true },
+        })
+      : [],
+    projectIds.length
+      ? prisma.task.findMany({
+          where: { archived: false, messages: HAS_ROOM, projectId: { in: projectIds } },
+          orderBy: { updatedAt: "desc" },
+          take: RULE_TASK_LIMIT * projectIds.length,
+          select: { id: true },
+        })
+      : [],
+  ])
+  return [...mine, ...inProjects].map((t) => t.id)
 }
 
 /** ILIKE 에 넣을 글자 — `%` · `_` · `\` 를 이스케이프한다(Prisma 의 contains 도, 날 SQL 도 해 주지 않는다) */
@@ -176,14 +213,17 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
   ])
   const favorites = new Set(prefs.filter((p) => p.favorite).map((p) => p.roomKey))
 
-  // 최근 30개 밖이라도 즐겨찾기 · 수동 폴더에 넣은 업무방은 목록에 와야 칩에서 보인다
+  // 최근 30개 밖이라도 즐겨찾기 · 수동 폴더에 넣은 업무방, 규칙 폴더(내 업무 · 프로젝트)에 드는 업무방은
+  // 목록에 와야 칩에서 보인다. 규칙 폴더 쪽은 업무 수가 많을 수 있어 RULE_TASK_LIMIT 개까지
+  const ruleTaskIds = query ? [] : await ruleFolderTaskIds(userId, folders)
   const pinnedTaskIds = [
-    ...new Set(
-      [...favorites, ...folders.flatMap((f) => f.roomKeys)]
+    ...new Set([
+      ...[...favorites, ...folders.flatMap((f) => f.roomKeys)]
         .map(parseRoomKey)
         .filter((k): k is { type: "task"; id: string } => k?.type === "task")
         .map((k) => k.id),
-    ),
+      ...ruleTaskIds,
+    ]),
   ]
 
   const [mine, companyRooms, recentTasks, pinnedTasks] = await Promise.all([
@@ -215,10 +255,10 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
         },
       },
     }),
-    query ? taskHeads({ pattern: likePattern(query), limit: TASK_SEARCH_LIMIT }) : taskHeads({ limit: TASK_ROOM_LIMIT }),
+    query ? taskHeads(userId, { pattern: likePattern(query), limit: TASK_SEARCH_LIMIT }) : taskHeads(userId, { limit: TASK_ROOM_LIMIT }),
     pinnedTaskIds.length === 0 || query
       ? ([] as TaskHead[])
-      : taskHeads({ taskIds: pinnedTaskIds, limit: pinnedTaskIds.length }),
+      : taskHeads(userId, { taskIds: pinnedTaskIds, limit: pinnedTaskIds.length }),
   ])
 
   const omnis: RoomListItem[] = []
@@ -268,6 +308,8 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       name: t.name,
       slug: t.slug,
       status: t.status,
+      projectId: t.projectId,
+      mine: t.mine,
       lastAt: t.createdAt.toISOString(),
       preview: `${authorLabel(t.authorId, t.authorName)}: ${previewText(t.content, t.kind)}`,
       unread: 0,

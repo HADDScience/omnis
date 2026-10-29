@@ -51,8 +51,8 @@ async function call(cookie: string | null, path: string, init: RequestInit & { j
   return { status: res.status, json }
 }
 
-type Item = { id: string; key: string; kind: string; name: string; unread: number; favorite: boolean; slug?: string }
-type List = { omnis: Item[]; company: Item[]; tasks: Item[]; groups: Item[]; folders: { id: string; name: string; rule: string | null; roomKeys: string[] }[] }
+type Item = { id: string; key: string; kind: string; name: string; unread: number; favorite: boolean; slug?: string; mine?: boolean; projectId?: string | null }
+type List = { omnis: Item[]; company: Item[]; tasks: Item[]; groups: Item[]; folders: { id: string; name: string; rule: string | null; roomKeys: string[]; projectId?: string | null; project?: unknown }[] }
 const flat = (l: List) => [...l.omnis, ...l.company, ...l.tasks, ...l.groups]
 
 async function main() {
@@ -133,13 +133,67 @@ async function main() {
     check("빼기 200", (await call(A, `/api/chat/folders/${fid}/rooms?roomKey=${encodeURIComponent(`room:${dmA.id}`)}`, { method: "DELETE" })).status === 200)
     check("빼면 한 방", (await listA()).folders.find((x) => x.id === fid)?.roomKeys.length === 1)
 
-    console.log("\n[4] 추천(규칙) 폴더")
-    const hadTaskRule = (await listA()).folders.some((x) => x.rule === "TASK")
-    const r1 = hadTaskRule ? { status: 201, json: (await listA()).folders.find((x) => x.rule === "TASK") } : await call(A, "/api/chat/folders", { method: "POST", json: { rule: "TASK" } })
-    check("「업무방」 추가", r1.status === 201 && r1.json?.name === "업무방", r1)
-    check("두 번째 「업무방」 은 409 (거부되어야 하는 경우)", (await call(A, "/api/chat/folders", { method: "POST", json: { rule: "TASK" } })).status === 409)
-    check("없는 규칙은 400", (await call(A, "/api/chat/folders", { method: "POST", json: { rule: "OMNIS_DM" } })).status === 400)
-    check("규칙 폴더에 방을 직접 넣으면 400", (await call(A, `/api/chat/folders/${r1.json.id}/rooms`, { method: "POST", json: { roomKey: companyKey } })).status === 400)
+    console.log("\n[4] 추천(규칙) 폴더 — 내 업무 · 프로젝트별")
+    // 폴더 = 고른 방을 묶는 상자. 하나뿐인 방(전사방)의 옛 추천 폴더 규칙은 받지 않는다
+    for (const legacy of ["COMPANY", "TASK", "GROUP"]) {
+      check(`옛 규칙 ${legacy} 로 만들기 400 (거부되어야 하는 경우)`, (await call(A, "/api/chat/folders", { method: "POST", json: { rule: legacy } })).status === 400)
+    }
+    const my = await call(A, "/api/chat/folders", { method: "POST", json: { rule: "MY_TASKS" } })
+    check("「내 업무」 추가 201", my.status === 201 && my.json?.name === "내 업무" && my.json?.rule === "MY_TASKS", my)
+    check("두 번째 「내 업무」 409 (거부되어야 하는 경우)", (await call(A, "/api/chat/folders", { method: "POST", json: { rule: "MY_TASKS" } })).status === 409)
+    check("「내 업무」 에 방을 직접 넣으면 400", (await call(A, `/api/chat/folders/${my.json.id}/rooms`, { method: "POST", json: { roomKey: companyKey } })).status === 400)
+    check("「내 업무」 에서 방을 빼도 400", (await call(A, `/api/chat/folders/${my.json.id}/rooms?roomKey=${encodeURIComponent(taskKey)}`, { method: "DELETE" })).status === 400)
+    l = await listA()
+    const tasksOfA = l.tasks.filter((r) => r.mine)
+    const mineInDb = new Set(
+      (await prisma.task.findMany({
+        where: { id: { in: l.tasks.map((r) => r.id) }, OR: [{ instructorId: a.id }, { assignees: { some: { userId: a.id } } }] },
+        select: { id: true },
+      })).map((t) => t.id),
+    )
+    check(`업무방 mine 표시가 DB(담당 · 지시)와 같다 — ${tasksOfA.length}/${l.tasks.length}개`, l.tasks.every((r) => !!r.mine === mineInDb.has(r.id)))
+
+    const proj = await prisma.project.findFirst({
+      where: { archived: false, tasks: { some: { archived: false, messages: { some: { room: { kind: "COMPANY" }, deletedAt: null } } } } },
+      select: { id: true, name: true },
+    })
+    if (!proj) throw new Error("업무방이 있는 프로젝트가 없다")
+    const pf = await call(A, "/api/chat/folders", { method: "POST", json: { rule: "PROJECT", projectId: proj.id } })
+    check(`프로젝트 폴더 추가 — 이름 기본값은 프로젝트 이름 「${proj.name}」`, pf.status === 201 && pf.json?.name === proj.name.slice(0, 20) && pf.json?.projectId === proj.id, pf)
+    check("같은 프로젝트 두 번째 409 (거부되어야 하는 경우)", (await call(A, "/api/chat/folders", { method: "POST", json: { rule: "PROJECT", projectId: proj.id } })).status === 409)
+    check("없는 프로젝트 404", (await call(A, "/api/chat/folders", { method: "POST", json: { rule: "PROJECT", projectId: "no-such-project" } })).status === 404)
+    const archived = await prisma.project.findFirst({ where: { archived: true }, select: { id: true } })
+    if (archived) check("보관된 프로젝트로 새로 만들기 404", (await call(A, "/api/chat/folders", { method: "POST", json: { rule: "PROJECT", projectId: archived.id } })).status === 404)
+    check("projectId 없는 PROJECT 400", (await call(A, "/api/chat/folders", { method: "POST", json: { rule: "PROJECT" } })).status === 400)
+    check("프로젝트 폴더 이름 바꾸기 200", (await call(A, `/api/chat/folders/${pf.json.id}`, { method: "PATCH", json: { name: "바이오" } })).status === 200)
+    l = await listA()
+    const pfView = l.folders.find((x) => x.id === pf.json.id) as { name: string; project: { name: string } | null } | undefined
+    check("바꾼 이름 · 프로젝트 정보가 목록에", pfView?.name === "바이오" && pfView?.project?.name === proj.name, pfView)
+    const projTasks = l.tasks.filter((r) => r.projectId === proj.id)
+    const projTaskDb = await prisma.task.count({
+      where: { projectId: proj.id, archived: false, messages: { some: { room: { kind: "COMPANY" }, deletedAt: null } } },
+    })
+    // 규칙 폴더 하나는 업무방 200개까지 끌어온다(최근 30개와 겹치는 만큼 더 올 수 있다)
+    check(
+      `프로젝트 업무방이 최근 30개 밖까지 목록에 온다 — ${projTasks.length}개 (DB ${projTaskDb}개, 상한 200)`,
+      projTasks.length >= Math.min(projTaskDb, 200) && projTasks.length <= projTaskDb,
+    )
+
+    // 옛 규칙 폴더 행은 지우지 않고 숨긴다
+    const legacyRow = await prisma.chatFolder.create({ data: { userId: a.id, name: "옛 업무방", rule: "TASK", order: 99 } })
+    l = await listA()
+    check("옛 규칙 폴더는 목록 · 칩에 없다", !l.folders.some((x) => x.id === legacyRow.id))
+    check("…이름 바꾸기 404", (await call(A, `/api/chat/folders/${legacyRow.id}`, { method: "PATCH", json: { name: "x" } })).status === 404)
+    check("…순서 목록에 없어도 순서 바꾸기 200", (await call(A, "/api/chat/folders", { method: "PATCH", json: { order: l.folders.map((x) => x.id) } })).status === 200)
+    check("…행은 DB 에 그대로", !!(await prisma.chatFolder.findUnique({ where: { id: legacyRow.id } })))
+
+    console.log("\n[4-b] 수동 폴더는 종류를 섞는다")
+    const mix = await call(A, "/api/chat/folders", { method: "POST", json: { name: "상표" } })
+    for (const key of [taskKey, `room:${dmA.id}`, companyKey]) {
+      await call(A, `/api/chat/folders/${mix.json.id}/rooms`, { method: "POST", json: { roomKey: key } })
+    }
+    const mixed = (await listA()).folders.find((x) => x.id === mix.json.id)
+    check("업무방 · 옴니스 대화 · 전사방이 한 폴더에", mixed?.roomKeys.length === 3 && [taskKey, `room:${dmA.id}`, companyKey].every((k) => mixed.roomKeys.includes(k)), mixed)
 
     console.log("\n[5] 남의 방 · 남의 폴더 (모두 거부되어야 하는 경우)")
     const dmBKey = `room:${dmB.id}`
@@ -157,7 +211,7 @@ async function main() {
     check("A 가 B 폴더 이름 바꾸면 404", (await call(A, `/api/chat/folders/${fbId}`, { method: "PATCH", json: { name: "가로채기" } })).status === 404)
     check("A 가 B 폴더에 방 넣으면 404", (await call(A, `/api/chat/folders/${fbId}/rooms`, { method: "POST", json: { roomKey: companyKey } })).status === 404)
     check("A 가 B 폴더 지우면 404", (await call(A, `/api/chat/folders/${fbId}`, { method: "DELETE" })).status === 404)
-    check("A 순서에 B 폴더를 섞으면 400", (await call(A, "/api/chat/folders", { method: "PATCH", json: { order: [...reversed, fbId] } })).status === 400)
+    check("A 순서에 B 폴더를 섞으면 400", (await call(A, "/api/chat/folders", { method: "PATCH", json: { order: [...(await listA()).folders.map((x) => x.id), fbId] } })).status === 400)
     check("B 폴더는 그대로", (await prisma.chatFolder.findUnique({ where: { id: fbId } }))?.name === "B 폴더")
     check("A 목록에 B 폴더가 없다", !(await listA()).folders.some((x) => x.id === fbId))
     check("B 목록에 A 폴더가 없다", !((await call(B, "/api/chat/rooms")).json as List).folders.some((x) => x.id === fid))

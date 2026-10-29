@@ -61,14 +61,26 @@ export function decideRoomKeyAccess(input: {
 
 // ─── 폴더 ────────────────────────────────────────────────
 
-/** 추천 폴더 — 규칙 폴더. 방 종류로 저절로 채운다 */
-export const FOLDER_RULES = ["COMPANY", "TASK", "GROUP"] as const
+// 폴더 = 내가 고른 방들을 묶는 상자. 하나뿐인 방(전사방)은 폴더가 될 수 없다(2026-10-29 작업지시자).
+// 수동 폴더에는 어느 종류의 방이든 섞어 넣는다. 규칙 폴더는 규칙으로만 채우고 방을 손으로 넣거나 빼지 않는다.
+
+/** 지금 쓰는 규칙 — 내 업무 · 프로젝트별 */
+export const FOLDER_RULES = ["MY_TASKS", "PROJECT"] as const
 export type FolderRule = (typeof FOLDER_RULES)[number]
+/**
+ * 처음 둔 추천 폴더의 규칙(방 종류로 채웠다). enum 값과 DB 행은 남기고 목록 · 칩 · API 가 숨긴다 —
+ * 지우면 사용자가 만든 것이 말없이 사라지고, 수동 폴더로 바꾸면 빈 폴더가 칩에 생긴다
+ */
+export const LEGACY_FOLDER_RULES = ["COMPANY", "TASK", "GROUP"] as const
+export type AnyFolderRule = FolderRule | (typeof LEGACY_FOLDER_RULES)[number]
+
+export function isLiveFolderRule(rule: AnyFolderRule | null): rule is FolderRule | null {
+  return rule === null || (FOLDER_RULES as readonly string[]).includes(rule)
+}
 
 export const RULE_FOLDER_INFO: Record<FolderRule, { name: string; hint: string }> = {
-  COMPANY: { name: "전사방", hint: "구성원 모두가 있는 방" },
-  TASK: { name: "업무방", hint: "업무 스레드 — 새 업무방이 생기면 저절로 들어와요" },
-  GROUP: { name: "단톡방", hint: "팀원과 만든 단톡방" },
+  MY_TASKS: { name: "내 업무", hint: "내가 담당이거나 지시한 업무의 업무방 — 새 업무가 생기면 저절로 들어와요" },
+  PROJECT: { name: "프로젝트", hint: "프로젝트 하나의 업무방을 모아요. 이름은 프로젝트 이름으로 시작해요" },
 }
 
 export const FOLDER_NAME_MAX = 20
@@ -81,14 +93,29 @@ export interface ChatFolderView {
   order: number
   /** 수동 폴더에 넣은 방 키. 규칙 폴더는 비어 있다 */
   roomKeys: string[]
+  /** rule = PROJECT 일 때. 프로젝트 행이 지워졌으면 null */
+  projectId: string | null
+  /** rule = PROJECT 일 때 그 프로젝트 — 보관됐으면 archived. 지워졌으면 null */
+  project: { name: string; archived: boolean } | null
 }
 
-export function ruleMatches(rule: FolderRule, kind: RoomKind): boolean {
-  return kind === rule
+/** 규칙 폴더가 보는 업무방의 속성 — 서버가 업무방마다 채운다 */
+export interface RuleFacts {
+  kind: RoomKind
+  /** 업무방: 내가 담당자 중 한 명이거나 지시한 사람(업무 탭 i-own · i-assigned) */
+  mine?: boolean
+  /** 업무방: 그 업무의 프로젝트 */
+  projectId?: string | null
 }
 
-export function folderHasRoom(folder: ChatFolderView, room: { key: string; kind: RoomKind }): boolean {
-  return folder.rule ? ruleMatches(folder.rule, room.kind) : folder.roomKeys.includes(room.key)
+export function ruleMatches(folder: { rule: FolderRule; projectId: string | null }, room: RuleFacts): boolean {
+  if (room.kind !== "TASK") return false
+  if (folder.rule === "MY_TASKS") return room.mine === true
+  return folder.projectId !== null && room.projectId === folder.projectId
+}
+
+export function folderHasRoom(folder: ChatFolderView, room: { key: string } & RuleFacts): boolean {
+  return folder.rule ? ruleMatches({ rule: folder.rule, projectId: folder.projectId }, room) : folder.roomKeys.includes(room.key)
 }
 
 // ─── 칩 ──────────────────────────────────────────────────
@@ -105,9 +132,8 @@ export type FixedChipId = (typeof FIXED_CHIPS)[number]["id"]
 /** 폴더 칩은 `folder:<id>` */
 export type ChipId = FixedChipId | `folder:${string}`
 
-export interface ListRoom {
+export interface ListRoom extends RuleFacts {
   key: string
-  kind: RoomKind
   name: string
   lastAt: string
   preview: string | null

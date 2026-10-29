@@ -15,11 +15,17 @@ export const FolderNameSchema = z
 
 export const FolderRuleSchema = z.enum(FOLDER_RULES)
 
-/** 폴더 만들기 — 이름이면 수동 폴더, rule 이면 추천(규칙) 폴더 */
+/**
+ * 폴더 만들기 — { name } 은 수동 폴더, { rule: "MY_TASKS" } 는 내 업무,
+ * { rule: "PROJECT", projectId, name? } 은 프로젝트 폴더(이름을 비우면 프로젝트 이름).
+ * 옛 규칙(COMPANY · TASK · GROUP)은 받지 않는다
+ */
 export const CreateFolderSchema = z.union([
   z.object({ name: FolderNameSchema }).strict(),
-  z.object({ rule: FolderRuleSchema }).strict(),
+  z.object({ rule: z.literal("MY_TASKS") }).strict(),
+  z.object({ rule: z.literal("PROJECT"), projectId: z.string().min(1).max(64), name: FolderNameSchema.optional() }).strict(),
 ])
+export type CreateFolderInput = z.infer<typeof CreateFolderSchema>
 
 /** 폴더 순서 바꾸기 — 내 폴더 id 전부를 새 순서로 */
 export const ReorderFoldersSchema = z.object({ order: z.array(z.string().min(1)).min(1).max(100) })

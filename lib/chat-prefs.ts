@@ -7,9 +7,13 @@ import {
   parseRoomKey,
   READ_BASELINE_KEY,
   RULE_FOLDER_INFO,
+  FOLDER_NAME_MAX,
+  FOLDER_RULES,
+  isLiveFolderRule,
   type ChatFolderView,
   type FolderRule,
 } from "@/lib/chat-list"
+import type { CreateFolderInput } from "@/lib/schemas/chat-folder"
 
 export type PrefResult<T = undefined> = { ok: true; value: T } | { ok: false; status: number; error: string }
 
@@ -75,38 +79,64 @@ export async function setRoomPref(
 
 // ─── 폴더 ────────────────────────────────────────────────
 
+/**
+ * 보이는 폴더 — 수동 폴더와 지금 규칙(내 업무 · 프로젝트). 옛 규칙(전사방 · 업무방 · 단톡방) 폴더는 행을 남기고
+ * 여기서 거른다. 목록 · 칩 · 순서 · 한도 · 이름 바꾸기 · 지우기가 모두 이 조건을 쓴다 — 숨긴 폴더는 없는 폴더와 같다
+ */
+const visibleFolders = (userId: string) => ({ userId, OR: [{ rule: null }, { rule: { in: [...FOLDER_RULES] } }] })
+
 export async function listFolders(userId: string): Promise<ChatFolderView[]> {
   const rows = await prisma.chatFolder.findMany({
-    where: { userId },
+    where: visibleFolders(userId),
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-    select: { id: true, name: true, rule: true, order: true, rooms: { select: { roomKey: true }, orderBy: { addedAt: "asc" } } },
+    select: {
+      id: true, name: true, rule: true, order: true, projectId: true,
+      project: { select: { name: true, archived: true } },
+      rooms: { select: { roomKey: true }, orderBy: { addedAt: "asc" } },
+    },
   })
-  return rows.map((f) => ({ id: f.id, name: f.name, rule: f.rule, order: f.order, roomKeys: f.rooms.map((r) => r.roomKey) }))
+  return rows.flatMap((f) =>
+    isLiveFolderRule(f.rule)
+      ? [{ id: f.id, name: f.name, rule: f.rule, order: f.order, projectId: f.projectId, project: f.project, roomKeys: f.rule ? [] : f.rooms.map((r) => r.roomKey) }]
+      : [],
+  )
 }
 
-export async function createFolder(
-  userId: string,
-  input: { name: string } | { rule: FolderRule },
-): Promise<PrefResult<ChatFolderView>> {
+export async function createFolder(userId: string, input: CreateFolderInput): Promise<PrefResult<ChatFolderView>> {
   const [count, last] = await Promise.all([
-    prisma.chatFolder.count({ where: { userId } }),
+    prisma.chatFolder.count({ where: visibleFolders(userId) }),
     prisma.chatFolder.findFirst({ where: { userId }, orderBy: { order: "desc" }, select: { order: true } }),
   ])
   if (count >= FOLDER_LIMIT) return fail(400, `폴더는 ${FOLDER_LIMIT}개까지 만들 수 있어요`)
-  const rule = "rule" in input ? input.rule : null
-  if (rule && (await prisma.chatFolder.findFirst({ where: { userId, rule }, select: { id: true } }))) {
-    return fail(409, `「${RULE_FOLDER_INFO[rule].name}」 폴더가 이미 있어요`)
+
+  let data: { name: string; rule: FolderRule | null; projectId: string | null }
+  if (!("rule" in input)) {
+    data = { name: input.name, rule: null, projectId: null }
+  } else if (input.rule === "MY_TASKS") {
+    // projectId 가 NULL 이라 DB 유일 제약이 걸러 주지 않는다 — 여기서 하나만
+    if (await prisma.chatFolder.findFirst({ where: { userId, rule: "MY_TASKS" }, select: { id: true } })) {
+      return fail(409, "「내 업무」 폴더가 이미 있어요")
+    }
+    data = { name: RULE_FOLDER_INFO.MY_TASKS.name, rule: "MY_TASKS", projectId: null }
+  } else {
+    const project = await prisma.project.findUnique({ where: { id: input.projectId }, select: { name: true, archived: true } })
+    if (!project || project.archived) return fail(404, "프로젝트를 찾을 수 없습니다")
+    if (await prisma.chatFolder.findFirst({ where: { userId, rule: "PROJECT", projectId: input.projectId }, select: { id: true } })) {
+      return fail(409, `「${project.name}」 프로젝트 폴더가 이미 있어요`)
+    }
+    data = { name: (input.name ?? project.name).slice(0, FOLDER_NAME_MAX), rule: "PROJECT", projectId: input.projectId }
   }
+
   const f = await prisma.chatFolder.create({
-    data: { userId, name: rule ? RULE_FOLDER_INFO[rule].name : (input as { name: string }).name, rule, order: (last?.order ?? -1) + 1 },
-    select: { id: true, name: true, rule: true, order: true },
+    data: { userId, ...data, order: (last?.order ?? -1) + 1 },
+    select: { id: true, name: true, order: true, projectId: true, project: { select: { name: true, archived: true } } },
   })
-  return { ok: true, value: { ...f, roomKeys: [] } }
+  return { ok: true, value: { ...f, rule: data.rule, roomKeys: [] } }
 }
 
-/** 내 폴더만 찾는다 — 남의 폴더 id 는 없는 폴더와 같다 */
+/** 내 보이는 폴더만 찾는다 — 남의 폴더 · 숨긴 옛 규칙 폴더 id 는 없는 폴더와 같다 */
 async function ownFolder(userId: string, folderId: string) {
-  return prisma.chatFolder.findFirst({ where: { id: folderId, userId }, select: { id: true, rule: true } })
+  return prisma.chatFolder.findFirst({ where: { id: folderId, ...visibleFolders(userId) }, select: { id: true, rule: true } })
 }
 
 export async function renameFolder(userId: string, folderId: string, name: string): Promise<PrefResult> {
@@ -116,13 +146,13 @@ export async function renameFolder(userId: string, folderId: string, name: strin
 }
 
 export async function deleteFolder(userId: string, folderId: string): Promise<PrefResult> {
-  const { count } = await prisma.chatFolder.deleteMany({ where: { id: folderId, userId } })
+  const { count } = await prisma.chatFolder.deleteMany({ where: { id: folderId, ...visibleFolders(userId) } })
   return count ? { ok: true, value: undefined } : fail(404, "폴더를 찾을 수 없습니다")
 }
 
-/** 새 순서는 내 폴더 id 전부여야 한다 — 빠지거나 남의 것이 섞이면 거부 */
+/** 새 순서는 내 보이는 폴더 id 전부여야 한다 — 빠지거나 남의 것이 섞이면 거부 */
 export async function reorderFolders(userId: string, order: string[]): Promise<PrefResult> {
-  const mine = await prisma.chatFolder.findMany({ where: { userId }, select: { id: true } })
+  const mine = await prisma.chatFolder.findMany({ where: visibleFolders(userId), select: { id: true } })
   const ids = new Set(mine.map((f) => f.id))
   if (order.length !== ids.size || new Set(order).size !== order.length || !order.every((id) => ids.has(id))) {
     return fail(400, "폴더 목록이 바뀌었습니다. 다시 불러온 뒤 순서를 바꿔 주세요")
@@ -131,10 +161,12 @@ export async function reorderFolders(userId: string, order: string[]): Promise<P
   return { ok: true, value: undefined }
 }
 
+const RULE_FOLDER_REFUSAL = "자동 폴더는 규칙으로만 채워져요 — 방을 넣거나 빼려면 직접 만든 폴더를 쓰세요"
+
 export async function addRoomToFolder(userId: string, folderId: string, roomKey: string): Promise<PrefResult> {
   const folder = await ownFolder(userId, folderId)
   if (!folder) return fail(404, "폴더를 찾을 수 없습니다")
-  if (folder.rule) return fail(400, "추천 폴더는 방 종류로 저절로 채워져요")
+  if (folder.rule) return fail(400, RULE_FOLDER_REFUSAL)
   const access = await checkRoomKey(userId, roomKey)
   if (access !== "ok") return keyRefusal(access)
   await prisma.chatFolderRoom.upsert({
@@ -146,7 +178,9 @@ export async function addRoomToFolder(userId: string, folderId: string, roomKey:
 }
 
 export async function removeRoomFromFolder(userId: string, folderId: string, roomKey: string): Promise<PrefResult> {
-  if (!(await ownFolder(userId, folderId))) return fail(404, "폴더를 찾을 수 없습니다")
+  const folder = await ownFolder(userId, folderId)
+  if (!folder) return fail(404, "폴더를 찾을 수 없습니다")
+  if (folder.rule) return fail(400, RULE_FOLDER_REFUSAL)
   await prisma.chatFolderRoom.deleteMany({ where: { folderId, roomKey } })
   return { ok: true, value: undefined }
 }

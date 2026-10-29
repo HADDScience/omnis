@@ -771,8 +771,10 @@ function EmptyState({
   else if (chip === "omnis") text = "옴니스와 나눈 대화가 여기에 모여요"
   else if (chip === "unread") text = "안 읽은 글이 없어요"
   else if (chip === "favorite") text = "방의 ⋯ 메뉴에서 즐겨찾기를 켜면 여기에 모여요"
-  else if (folder?.rule === "GROUP") text = "팀원과 단톡방은 곧 만들 수 있어요"
-  else if (folder?.rule) text = "이 폴더에 방이 없어요"
+  else if (folder?.rule === "MY_TASKS") text = "내가 담당이거나 지시한 업무에 아직 글이 없어요. 업무 스레드에 글이 생기면 저절로 들어와요"
+  else if (folder?.rule === "PROJECT" && !folder.project) text = "이 폴더의 프로젝트가 지워졌어요. 폴더 관리에서 지울 수 있어요"
+  else if (folder?.rule === "PROJECT" && folder.project)
+    text = `「${folder.project.name}」 업무방에 아직 글이 없어요. 업무 스레드에 글이 생기면 저절로 들어와요`
   else if (folder) text = "이 폴더에 방이 없어요. 방의 ⋯ 메뉴나 아래 버튼으로 넣을 수 있어요"
   else text = "아직 방이 없어요"
   return (

@@ -7,39 +7,43 @@ import {
   Add01Icon,
   ArrowDown01Icon,
   ArrowLeft01Icon,
+  ArrowRight01Icon,
   ArrowUp01Icon,
-  Building03Icon,
+  Briefcase01Icon,
   Delete02Icon,
   Folder01Icon,
   MoreHorizontalIcon,
   PencilEdit01Icon,
-  Task01Icon,
   Tick02Icon,
-  UserGroupIcon,
+  UserCheck01Icon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import {
-  FOLDER_NAME_MAX,
-  FOLDER_RULES,
-  filterRooms,
-  RULE_FOLDER_INFO,
-  sortByRecent,
-  type ChatFolderView,
-  type FolderRule,
-} from "@/lib/chat-list"
+import { FOLDER_NAME_MAX, filterRooms, normalizeQuery, RULE_FOLDER_INFO, sortByRecent, type ChatFolderView } from "@/lib/chat-list"
 import type { RoomListItem } from "@/lib/chat-rooms"
 import { chatPrefs } from "./chat-prefs-client"
 
-const RULE_ICON = { COMPANY: Building03Icon, TASK: Task01Icon, GROUP: UserGroupIcon } as const
+const RULE_ICON = { MY_TASKS: UserCheck01Icon, PROJECT: Briefcase01Icon } as const
+
+/** 폴더 목록의 둘째 줄 — 무엇으로 채워지는지 */
+function folderMeta(f: ChatFolderView): string {
+  if (f.rule === "MY_TASKS") return "자동 · 내가 담당이거나 지시한 업무"
+  if (f.rule === "PROJECT") {
+    if (!f.project) return "자동 · 프로젝트가 지워졌어요 — 이 폴더는 비어 있어요"
+    return f.project.archived ? `자동 · 보관된 프로젝트 「${f.project.name}」` : `자동 · 프로젝트 「${f.project.name}」`
+  }
+  return `방 ${f.roomKeys.length}개 · 직접 고른 방`
+}
 
 const errText = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback)
 
 /**
  * 채팅방 폴더 관리 — 만들기 · 이름 바꾸기 · 지우기 · 순서 · 방 넣고 빼기 · 추천(규칙) 폴더 추가.
+ * 폴더 = 내가 고른 방들을 묶는 상자. 직접 만든 폴더에는 옴니스 대화 · 업무방 · 전사방 · 단톡방을 섞어 넣는다.
+ * 추천 폴더(내 업무 · 프로젝트별)는 규칙으로만 채워 방을 넣고 빼는 메뉴가 없다.
  * 폴더는 내 설정이다(남에게 보이지 않는다). 바꿀 때마다 서버에 바로 쓰고 목록을 다시 읽는다(onChanged).
  * 지우기는 창을 띄우지 않고 그 줄에서 한 번 더 묻는다(ux-rules 11).
  */
@@ -62,17 +66,28 @@ export function FolderManager({
   /** 열자마자 이 폴더의 「방 고르기」 로 */
   pickFolderId?: string
 }) {
+  // 폴더 id 면 그 폴더의 방 고르기, "projects" 면 프로젝트 고르기
   const [picking, setPicking] = useState<string | null>(null)
   useEffect(() => {
     if (open) setPicking(pickFolderId ?? null)
   }, [open, pickFolderId])
 
-  const pickFolder = picking ? folders.find((f) => f.id === picking && !f.rule) : undefined
+  const pickFolder = picking && picking !== "projects" ? folders.find((f) => f.id === picking && !f.rule) : undefined
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[min(640px,calc(var(--app-vh)-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
-        {pickFolder ? (
+        {picking === "projects" ? (
+          <ProjectPicker
+            folders={folders}
+            onBack={() => setPicking(null)}
+            onChanged={onChanged}
+            onCreated={(id) => {
+              onCreated(id)
+              setPicking(null)
+            }}
+          />
+        ) : pickFolder ? (
           <RoomPicker folder={pickFolder} rooms={rooms} onBack={() => setPicking(null)} onChanged={onChanged} />
         ) : (
           <FolderList folders={folders} onChanged={onChanged} onCreated={onCreated} onPick={(id) => setPicking(id)} />
@@ -93,6 +108,7 @@ function FolderList({
   folders: ChatFolderView[]
   onChanged: () => Promise<void>
   onCreated: (folderId: string) => void
+  /** 폴더 id(방 고르기) 또는 "projects"(프로젝트 고르기) */
   onPick: (id: string) => void
 }) {
   // 순서를 바꾸면 서버 응답 전에 먼저 그린다
@@ -145,7 +161,7 @@ function FolderList({
     void run(() => chatPrefs.renameFolder(renaming.id, name), "이름을 바꾸지 못했습니다").then(() => setRenaming(null))
   }
 
-  const existingRules = new Set(items.map((f) => f.rule).filter(Boolean) as FolderRule[])
+  const hasMyTasks = items.some((f) => f.rule === "MY_TASKS")
 
   return (
     <>
@@ -223,9 +239,7 @@ function FolderList({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[13px] font-medium">{f.name}</span>
-                      <span className="block text-[11px] text-muted-foreground">
-                        {f.rule ? "추천 폴더 · 방 종류로 자동" : `방 ${f.roomKeys.length}개`}
-                      </span>
+                      <span className="block text-[11px] text-muted-foreground">{folderMeta(f)}</span>
                     </span>
                     <span className="flex shrink-0 items-center">
                       <IconButton label={`${f.name} 앞으로`} disabled={busy || i === 0} onClick={() => move(i, -1)}>
@@ -291,34 +305,43 @@ function FolderList({
           </Button>
         </form>
 
-        <h3 className="mt-5 mb-1.5 text-[11px] font-semibold text-muted-foreground">추천 폴더</h3>
+        <h3 className="mt-5 mb-1.5 text-[11px] font-semibold text-muted-foreground">추천 폴더 · 자동으로 채워져요</h3>
         <ul className="flex flex-col divide-y rounded-lg border">
-          {FOLDER_RULES.map((rule) => {
-            const added = existingRules.has(rule)
-            return (
-              <li key={rule} className="flex min-w-0 items-center gap-2 px-2.5 py-2">
-                <HugeiconsIcon icon={RULE_ICON[rule]} size={15} aria-hidden className="shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium">{RULE_FOLDER_INFO[rule].name}</span>
-                  <span className="block text-[11px] text-muted-foreground">{RULE_FOLDER_INFO[rule].hint}</span>
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="touch-target shrink-0 gap-1"
-                  disabled={busy || added}
-                  aria-label={added ? `${RULE_FOLDER_INFO[rule].name} 추가됨` : `${RULE_FOLDER_INFO[rule].name} 추가`}
-                  onClick={async () => {
-                    const f = await run(() => chatPrefs.createFolder({ rule }), "추천 폴더를 추가하지 못했습니다")
-                    if (f) onCreated(f.id)
-                  }}
-                >
-                  {added && <HugeiconsIcon icon={Tick02Icon} size={13} aria-hidden />}
-                  {added ? "추가됨" : "추가"}
-                </Button>
-              </li>
-            )
-          })}
+          <li className="flex min-w-0 items-center gap-2 px-2.5 py-2">
+            <HugeiconsIcon icon={RULE_ICON.MY_TASKS} size={15} aria-hidden className="shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-medium">{RULE_FOLDER_INFO.MY_TASKS.name}</span>
+              <span className="block text-[11px] text-muted-foreground">{RULE_FOLDER_INFO.MY_TASKS.hint}</span>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="touch-target shrink-0 gap-1"
+              disabled={busy || hasMyTasks}
+              aria-label={hasMyTasks ? "내 업무 추가됨" : "내 업무 추가"}
+              onClick={async () => {
+                const f = await run(() => chatPrefs.createFolder({ rule: "MY_TASKS" }), "추천 폴더를 추가하지 못했습니다")
+                if (f) onCreated(f.id)
+              }}
+            >
+              {hasMyTasks && <HugeiconsIcon icon={Tick02Icon} size={13} aria-hidden />}
+              {hasMyTasks ? "추가됨" : "추가"}
+            </Button>
+          </li>
+          <li>
+            <button
+              type="button"
+              onClick={() => onPick("projects")}
+              className="touch-target flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <HugeiconsIcon icon={RULE_ICON.PROJECT} size={15} aria-hidden className="shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">프로젝트 폴더 추가</span>
+                <span className="block text-[11px] text-muted-foreground">{RULE_FOLDER_INFO.PROJECT.hint}</span>
+              </span>
+              <HugeiconsIcon icon={ArrowRight01Icon} size={14} aria-hidden className="shrink-0 text-muted-foreground" />
+            </button>
+          </li>
         </ul>
       </div>
     </>
@@ -449,6 +472,125 @@ function RoomPicker({
                   </span>
                 </span>
               </button>
+            </li>
+          )
+        })}
+      </ul>
+    </>
+  )
+}
+
+// ─── 프로젝트 고르기 ──────────────────────────────────────
+
+function ProjectPicker({
+  folders,
+  onBack,
+  onChanged,
+  onCreated,
+}: {
+  folders: ChatFolderView[]
+  onBack: () => void
+  onChanged: () => Promise<void>
+  onCreated: (folderId: string) => void
+}) {
+  const [projects, setProjects] = useState<{ id: string; name: string; status: string }[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [q, setQ] = useState("")
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const load = async () => {
+    setError(null)
+    try {
+      setProjects(await chatPrefs.projects())
+    } catch (err) {
+      setError(errText(err, "프로젝트를 불러오지 못했습니다"))
+    }
+  }
+  useEffect(() => {
+    void load()
+  }, [])
+
+  const taken = new Set(folders.flatMap((f) => (f.rule === "PROJECT" && f.projectId ? [f.projectId] : [])))
+  const needle = normalizeQuery(q)
+  const shown = (projects ?? []).filter((p) => !needle || p.name.toLowerCase().includes(needle))
+
+  const add = async (projectId: string) => {
+    setBusy(projectId)
+    try {
+      const f = await chatPrefs.createFolder({ rule: "PROJECT", projectId })
+      await onChanged()
+      onCreated(f.id)
+    } catch (err) {
+      toast.error(errText(err, "프로젝트 폴더를 만들지 못했습니다"))
+      await onChanged()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <>
+      <DialogHeader className="border-b p-4 pr-12">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="폴더 목록으로"
+            className="touch-target -ml-1.5 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <HugeiconsIcon icon={ArrowLeft01Icon} size={16} aria-hidden />
+          </button>
+          <DialogTitle>프로젝트 폴더 추가</DialogTitle>
+        </div>
+        <DialogDescription className="text-[12px]">
+          고른 프로젝트의 업무방이 저절로 모여요. 폴더 이름은 프로젝트 이름으로 시작하고 나중에 바꿀 수 있어요.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="shrink-0 px-4 pt-3">
+        <Input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="프로젝트 이름으로 찾기"
+          aria-label="프로젝트 찾기"
+          className="touch-target h-8 text-[12.5px]"
+        />
+      </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+        {error && (
+          <li role="alert" className="m-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-[12.5px]">
+            <p className="text-destructive">{error}</p>
+            <Button variant="outline" size="sm" className="touch-target mt-2" onClick={() => void load()}>
+              다시 불러오기
+            </Button>
+          </li>
+        )}
+        {!projects && !error && <li className="px-3 py-2 text-[12px] text-muted-foreground">프로젝트를 불러오는 중…</li>}
+        {projects && shown.length === 0 && (
+          <li className="px-3 py-2 text-[12px] text-muted-foreground">
+            {projects.length ? "맞는 프로젝트가 없어요" : "진행 중인 프로젝트가 없어요"}
+          </li>
+        )}
+        {shown.map((p) => {
+          const added = taken.has(p.id)
+          return (
+            <li key={p.id} className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5">
+              <HugeiconsIcon icon={Briefcase01Icon} size={14} aria-hidden className="shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px]">{p.name}</span>
+                <span className="block text-[11px] text-muted-foreground">{p.status}</span>
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="touch-target shrink-0 gap-1"
+                disabled={added || busy !== null}
+                aria-label={added ? `${p.name} 추가됨` : `${p.name} 폴더 추가`}
+                onClick={() => void add(p.id)}
+              >
+                {added && <HugeiconsIcon icon={Tick02Icon} size={13} aria-hidden />}
+                {added ? "추가됨" : busy === p.id ? "추가 중…" : "추가"}
+              </Button>
             </li>
           )
         })}

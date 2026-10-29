@@ -1,6 +1,7 @@
 // 메신저 목록의 내 설정 API 를 부르는 곳 — 목록(room-list)과 폴더 관리(folder-manager)가 같이 쓴다.
 import { apiUrl } from "@/lib/base-path"
-import type { ChatFolderView, FolderRule } from "@/lib/chat-list"
+import type { ChatFolderView } from "@/lib/chat-list"
+import type { CreateFolderInput } from "@/lib/schemas/chat-folder"
 
 async function call<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl(path), {
@@ -17,11 +18,13 @@ const json = (method: string, body: unknown): RequestInit => ({ method, body: JS
 export const chatPrefs = {
   markRead: (roomKey: string) => call("/api/chat/prefs", json("PATCH", { roomKey, read: true })),
   setFavorite: (roomKey: string, favorite: boolean) => call("/api/chat/prefs", json("PATCH", { roomKey, favorite })),
-  createFolder: (input: { name: string } | { rule: FolderRule }) => call<ChatFolderView>("/api/chat/folders", json("POST", input)),
+  createFolder: (input: CreateFolderInput) => call<ChatFolderView>("/api/chat/folders", json("POST", input)),
   reorderFolders: (order: string[]) => call("/api/chat/folders", json("PATCH", { order })),
   renameFolder: (id: string, name: string) => call(`/api/chat/folders/${id}`, json("PATCH", { name })),
   deleteFolder: (id: string) => call(`/api/chat/folders/${id}`, { method: "DELETE" }),
   addToFolder: (id: string, roomKey: string) => call(`/api/chat/folders/${id}/rooms`, json("POST", { roomKey })),
+  /** 프로젝트 폴더를 고를 때 — 보관하지 않은 프로젝트(업무 탭과 같은 /api/projects) */
+  projects: () => call<{ id: string; name: string; status: string }[]>("/api/projects"),
   removeFromFolder: (id: string, roomKey: string) =>
     call(`/api/chat/folders/${id}/rooms?roomKey=${encodeURIComponent(roomKey)}`, { method: "DELETE" }),
 }
