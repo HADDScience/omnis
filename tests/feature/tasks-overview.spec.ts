@@ -24,7 +24,7 @@ test.describe("업무 탭 — 현황 띠 / 관계도", () => {
     await page.getByRole("button", { name: "상세" }).click()
     await expect(page.getByText("멈춰 있는 업무").first()).toBeVisible()
     await page.getByRole("tab", { name: "팀원별" }).click()
-    await expect(page.getByText("팀원별 현황")).toBeVisible()
+    await expect(page.getByText("팀원별 현황", { exact: true })).toBeVisible()
   })
 
   test("관계도 보기가 0이 아닌 노드를 그린다 (시드 데이터 검증)", async ({ page }) => {

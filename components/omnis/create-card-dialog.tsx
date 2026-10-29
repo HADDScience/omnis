@@ -66,7 +66,8 @@ export function CreateCardDialog({ categories }: CreateCardDialogProps) {
     params.delete("create")
     params.delete("categoryId")
     const qs = params.toString()
-    router.replace(qs ? `${pathname}?${qs}` : pathname)
+    // ?create= 는 이 창만 읽는다 — router.replace 는 지식 카드 화면을 서버에서 통째로 다시 그려 창을 닫을 때 멈췄다
+    window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname)
   }
 
   function handleOpenChange(next: boolean) {

@@ -94,7 +94,7 @@ export function MyShortcuts() {
             label="온보딩 튜토리얼 다시 보기"
             onClick={() => onboarding.replay()}
           />
-          {/* PC 는 nav 의 돋보기·⌘K 로 연다. 폰에는 그 자리가 없어 여기 둔다 */}
+          {/* PC 는 ⌘K 로 연다(nav 에서 돋보기는 뺐다). 폰에는 단축키가 없어 여기 둔다 */}
           <Row
             itemClassName="md:hidden"
             icon={<HugeiconsIcon icon={Search01Icon} size={16} className="text-muted-foreground" aria-hidden />}

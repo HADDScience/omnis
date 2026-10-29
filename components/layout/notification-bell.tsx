@@ -143,8 +143,21 @@ export function NotificationBell() {
     setNotifications([])
   }
 
+  // 벨을 열면 위쪽 알림이 갈 화면을 미리 받아 둔다 — 코드로 옮기는 이동(router.push)은 링크와 달리
+  // 저절로 미리 받지 않아, 누른 뒤에야 다음 화면을 받으러 갔다
+  useEffect(() => {
+    if (!open) return
+    for (const n of notifications.slice(0, 8)) {
+      const href =
+        notificationHref(n.type, n.entityId) ??
+        (n.entityId && n.type === "website_inquiry" ? `/crm/inquiries/${n.entityId}` : null)
+      if (href) router.prefetch(href)
+    }
+  }, [open, notifications, router])
+
   async function openNotification(notification: Notification) {
-    if (!notification.read) await markRead(notification.id)
+    // 읽음 표시는 기다리지 않는다 — 기다리면 그 요청이 끝날 때까지 화면이 안 넘어갔다
+    if (!notification.read) void markRead(notification.id)
     // 갈 곳의 판단은 lib/schemas/notification 에 있다 — 푸시를 눌렀을 때와 같은 곳으로 간다.
     const href = notificationHref(notification.type, notification.entityId)
     if (href) {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
@@ -49,7 +49,6 @@ type View = "task" | "all"
  */
 export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Props) {
   const { open, setOpen, task, requestedView, clearRequestedView } = useRightPanel()
-  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const urlTaskId = searchParams.get("taskId")
@@ -129,9 +128,11 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
       const p = new URLSearchParams(searchParams.toString())
       if (id) p.set("taskId", id)
       else p.delete("taskId")
-      router.replace(`${pathname}${p.toString() ? `?${p}` : ""}`, { scroll: false })
+      // ?taskId= 는 이 패널만 읽는다. router.replace 로 바꾸면 서버가 지금 화면(업무면 682건)을 통째로
+      // 다시 그려, 스레드를 고를 때마다 그만큼 멈췄다 — 주소만 바꾼다(useSearchParams 는 따라온다)
+      window.history.replaceState(null, "", `${pathname}${p.toString() ? `?${p}` : ""}`)
     },
-    [pathname, router, searchParams]
+    [pathname, searchParams]
   )
 
   const tabs = useMemo(() => {

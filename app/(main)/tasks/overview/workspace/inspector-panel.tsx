@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -44,6 +45,11 @@ interface InspectorPanelProps {
 
 export function InspectorPanel({ data, dockOpen, onClose }: InspectorPanelProps) {
   const router = useRouter()
+  // 업무를 고르면 상세 화면을 미리 받아 둔다 — 「상세 열기」·더블클릭이 router.push 라 저절로 미리 받지 않는다
+  const taskHref = data?.type === "task" ? `/tasks/${data.id}` : null
+  useEffect(() => {
+    if (taskHref) router.prefetch(taskHref)
+  }, [taskHref, router])
   if (!data) return null
   const width = dockOpen ? "w-48" : "w-[260px]"
   const icon =
