@@ -22,17 +22,15 @@ const loadingTour = () => (
   </div>
 )
 
-const WelcomeTour = dynamic(() => import("./welcome-tour"), {
-  ssr: false,
-  loading: loadingTour,
-})
+// 풀스크린 영상(welcome-tour.tsx)은 랜딩페이지로 옮겨 쓰려고 파일만 남기고 온보딩에서는 뗐다(2026-10-29 작업지시자).
+// 안내는 실제 화면을 비추는 스포트라이트 하나다 — mydocs/plans/2026-10-29-onboarding-tab-tour.md
 const SpotlightTour = dynamic(() => import("./spotlight-tour"), {
   ssr: false,
   loading: loadingTour,
 })
 const McpDialog = dynamic(() => import("./mcp-dialog"), { ssr: false })
 
-type Phase = "video" | "spotlight" | "app"
+type Phase = "spotlight" | "app"
 /** 온보딩 안에서 열 때 — 닫기 버튼 이름과 닫힌 뒤 안내로 돌아가는 일 */
 export interface McpOpenOptions {
   closeLabel?: string
@@ -54,18 +52,15 @@ export function OnboardingProvider({
   children: ReactNode
   initialState: OnboardingState
 }) {
+  // 영상만 보고 안내를 마치지 않은 사람(onboardingVideoSeenAt 만 있는 사람)도 새 안내를 처음부터 본다
   const [phase, setPhase] = useState<Phase>(
-    initialState.onboardingCompletedAt
-      ? "app"
-      : initialState.onboardingVideoSeenAt
-        ? "spotlight"
-        : "video"
+    initialState.onboardingCompletedAt ? "app" : "spotlight"
   )
   const [spotlightTarget, setSpotlightTarget] = useState<string | null>(null)
   const [mcpOpen, setMcpOpen] = useState<McpOpenOptions | null>(null)
   // Serialize writes so an earlier, slow request cannot race the final completion.
   const saves = useRef(Promise.resolve())
-  const persist = useCallback((next: "video" | "complete") => {
+  const persist = useCallback((next: "complete") => {
     const save = async () => {
       const res = await fetch(apiUrl("/api/onboarding"), {
         method: "POST",
@@ -90,10 +85,6 @@ export function OnboardingProvider({
       )
     })
   }, [])
-  const finishVideo = useCallback(() => {
-    persist("video")
-    setPhase("spotlight")
-  }, [persist])
   const finishTour = useCallback(() => {
     persist("complete")
     setSpotlightTarget(null)
@@ -104,7 +95,7 @@ export function OnboardingProvider({
       value={{
         replay: () => {
           setMcpOpen(null)
-          setPhase("video")
+          setPhase("spotlight")
         },
         // 메뉴의 onClick 이 이벤트를 넘겨도 옵션으로 읽히지 않게 필요한 칸만 꺼낸다.
         openMcp: (options) =>
@@ -115,7 +106,6 @@ export function OnboardingProvider({
       }}
     >
       {children}
-      {phase === "video" && <WelcomeTour onFinish={finishVideo} />}
       {phase === "spotlight" && <SpotlightTour onFinish={finishTour} />}
       {mcpOpen && (
         <McpDialog

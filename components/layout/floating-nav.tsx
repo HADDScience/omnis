@@ -42,7 +42,7 @@ const TABS: readonly Tab[] = [
   // 방 주소(/chat/[roomId] · /chat/task/[taskId] · /chat/new)는 접두사 /chat 이 켠다
   { key: "chat", href: "/chat", label: "채팅", match: ["/chat"], onboarding: "ai" },
   { key: "tasks", href: "/tasks", label: "업무", match: ["/tasks"], onboarding: "tasks" },
-  { key: "calendar", href: "/calendar", label: "캘린더", match: ["/calendar"] },
+  { key: "calendar", href: "/calendar", label: "캘린더", match: ["/calendar"], onboarding: "calendar" },
   // 아카이브 = 회사가 가진 것: 지식 카드 · 시놀로지 NAS · 지식재산권 · 고객·견적
   { key: "archive", href: "/omnis", label: "아카이브", match: ["/omnis", "/nas", "/crm"], onboarding: "resources" },
 ]
