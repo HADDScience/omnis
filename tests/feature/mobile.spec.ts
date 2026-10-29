@@ -32,8 +32,12 @@ test.describe("폰 화면", { tag: "@mobile" }, () => {
     }
   })
 
-  // 지키는 것: 폰에서도 마이(계정·설정)에 갈 수 있다
+  // 지키는 것: 폰에서도 하단 nav 오른쪽의 마이 원으로 계정 화면에 간다(PC 와 같은 「캡슐 + 내 원」)
   test("마이 동그라미로 계정 화면에 간다", async ({ page }) => {
+    const nav = page.getByRole("navigation", { name: "주 메뉴" }).filter({ visible: true })
+    const me = nav.getByRole("link", { name: /^마이/ })
+    const box = await me.boundingBox()
+    expect(Math.abs(box!.width - box!.height), "마이는 동그란 원이다").toBeLessThan(2)
     await openMy(page)
     await expect(page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" })).toBeVisible()
     await expectNoHorizontalScroll(page)
