@@ -10,15 +10,17 @@ export const runtime = "nodejs"
 export const maxDuration = 60
 
 /**
- * 메신저 왼쪽 목록 — 내 옴니스 1:1 방 · 전사방 · 업무방(최근 글 순) · 단톡방(5단계).
+ * 메신저 왼쪽 목록 — 내 옴니스 1:1 방 · 전사방 · 업무방(최근 글 순) · 단톡방(5단계) + 내 폴더 · 안 읽은 수 · 즐겨찾기.
  * 예전에는 모든 방을 마지막 글과 함께 돌려줬다. 이제 방에 참여자가 있어 남의 1:1 방이 섞이면 안 된다.
+ * `?q=` 는 방 이름 · 업무 이름 · 슬러그 · 마지막 글 미리보기로 거른다(업무방은 최근 30개 밖까지 찾는다).
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: "인증 필요" }, { status: 401 })
   }
-  return NextResponse.json(await listRooms(session.user.id))
+  const q = req.nextUrl.searchParams.get("q")?.slice(0, 100) ?? ""
+  return NextResponse.json(await listRooms(session.user.id, { q }))
 }
 
 /**
