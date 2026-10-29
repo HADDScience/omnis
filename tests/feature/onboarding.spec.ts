@@ -39,7 +39,7 @@ test.describe("onboarding", () => {
       .getByRole("textbox", { name: "비밀번호", exact: true })
       .fill(password)
     await page.getByRole("button", { name: "로그인", exact: true }).click()
-    await page.waitForURL("**/tasks")
+    await page.waitForURL("**/chat")
   }
   async function skipVideo(page: Page) {
     await page.getByRole("button", { name: "건너뛰기", exact: true }).click()
@@ -576,7 +576,7 @@ test.describe("onboarding", () => {
       .toBe(true)
   })
 
-  test("비활성 탭에서 재생 정지, 키보드 종료, 작성 중인 AI 질문 보존", async ({
+  test("비활성 탭에서 재생 정지, 키보드 종료, 작성 중인 패널 메시지 보존", async ({
     page,
   }) => {
     await page.clock.install()
@@ -605,10 +605,15 @@ test.describe("onboarding", () => {
     ).toBeVisible()
     await page.keyboard.press("Escape")
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
-    // 사이드바의 「Omnis AI 에게 질문」 자리는 nav 채팅 탭 → 패널의 Omnis AI 탭이다
-    await page.getByRole("button", { name: "채팅", exact: true }).click()
-    await page.getByRole("button", { name: "Omnis AI", exact: true }).click()
-    const input = page.getByRole("textbox", { name: "옴니스에게 보낼 질문" })
+    // 패널의 「Omnis AI」 탭은 메신저의 옴니스 1:1 방으로 옮겨 없어졌다(d7a76ed). 투어가 지켜야 하는 것 —
+    // 「대화」 장면이 패널을 열 때 탭을 바꿔 쓰던 글을 버리지 않는다 — 은 패널에 남은 「전체」 대화 입력으로 본다.
+    // nav 채팅 탭은 이제 /chat 으로 가는 링크라, 패널은 헤더의 「채팅 열기」 로 연다
+    await page.getByRole("button", { name: "채팅 열기", exact: true }).click()
+    const panel = page.locator('aside[data-onboarding="conversation"]')
+    await expect(
+      panel.getByRole("button", { name: "전체", exact: true })
+    ).toHaveAttribute("aria-pressed", "true")
+    const input = panel.getByRole("textbox", { name: "메시지 입력" })
     await input.fill("아직 전송하지 않은 질문입니다")
     // 튜토리얼 다시 보기는 프로필 메뉴에서 마이 화면으로 옮겼다. page.goto 로 가면 문서를 새로 읽어
     // 작성 중인 질문이 사라지니, 사람처럼 마이 동그라미를 눌러 화면 안에서 옮겨 간다

@@ -16,13 +16,13 @@ export async function login(
   await page.getByRole("textbox", { name: "이름" }).fill(name)
   await page.getByRole("textbox", { name: "비밀번호" }).fill(password)
   await page.getByRole("button", { name: "로그인", exact: true }).click()
-  await page.waitForURL("**/tasks", { timeout: 15_000 })
+  await page.waitForURL("**/chat", { timeout: 15_000 })
 }
 
 export async function quickLogin(page: Page, name: DemoUser) {
   await page.goto("/login")
   await page.getByRole("button", { name, exact: true }).click()
-  await page.waitForURL("**/tasks", { timeout: 15_000 })
+  await page.waitForURL("**/chat", { timeout: 15_000 })
 }
 
 export async function expectLoggedIn(page: Page, name: DemoUser) {

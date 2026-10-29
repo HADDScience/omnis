@@ -4,6 +4,8 @@ import { login } from "./_setup"
 test.describe("업무 탭 — 현황 띠 / 관계도", () => {
   test.beforeEach(async ({ page }) => {
     await login(page, "팀장")
+    // 로그인 뒤 첫 화면은 채팅이다 — 업무 탭은 직접 연다
+    await page.goto("/tasks")
   })
 
   test("현황 띠가 진행률·멈춤 칩·상세를 한 줄에 렌더한다", async ({ page }) => {
