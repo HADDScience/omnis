@@ -16,6 +16,7 @@ import { checkExecution, planHash, type StepStatus } from "./approval"
 import { redactSecrets, secretBlockReason } from "./secrets"
 import { limitMessage, limitReason, type Spent, type StepUsage } from "./limits"
 import { approvalResponses, pendingApprovals } from "./messages"
+import { dispatchAgentPushSafe } from "@/lib/chat-push"
 
 export interface AgentContext {
   ok: true
@@ -200,12 +201,15 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
       if (reason) {
         await prisma.agentRun.update({ where: { id: runId }, data: { ...base, messages: nextMessages as unknown as Prisma.InputJsonValue, status: "LIMIT" } })
         await postOmnisMessage(run.roomId, limitMessage(reason, spent))
+        await dispatchAgentPushSafe({ roomId: run.roomId, userId: run.userId, kind: "limit", text: limitMessage(reason, spent) })
         return { autoContinue: false, status: "LIMIT" }
       }
       await prisma.agentRun.update({ where: { id: runId }, data: { ...base, messages: nextMessages as unknown as Prisma.InputJsonValue, status: "RUNNING" } })
       return { autoContinue: true, status: "RUNNING" }
     }
     await prisma.agentRun.update({ where: { id: runId }, data: { ...base, status: "AWAITING_APPROVAL" } })
+    // 확인 카드가 떴다 — 사람이 눌러야 이어 간다. 그 방을 보고 있지 않으면 기기로 알린다(보고 있으면 service worker 가 거른다)
+    await dispatchAgentPushSafe({ roomId: run.roomId, userId: run.userId, kind: "approval" })
     return { autoContinue: false, status: "AWAITING_APPROVAL" }
   }
 
@@ -215,6 +219,7 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
   if (last?.finishReason === "tool-calls" && reason) {
     await prisma.agentRun.update({ where: { id: runId }, data: { ...base, status: "LIMIT" } })
     await postOmnisMessage(run.roomId, [lastText, limitMessage(reason, spent)].filter(Boolean).join("\n\n"))
+    await dispatchAgentPushSafe({ roomId: run.roomId, userId: run.userId, kind: "limit", text: lastText || limitMessage(reason, spent) })
     return { autoContinue: false, status: "LIMIT" }
   }
 
@@ -227,6 +232,7 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
   await writeActivity({ userId: run.userId, action: "omnis.asked", entity: "OMNIS_QUERY", entityId: saved.id, title: `질문: ${question?.content ?? ""}` })
   await postOmnisMessage(run.roomId, answer, saved.id)
   await prisma.agentRun.update({ where: { id: runId }, data: { ...base, status: "DONE" } })
+  await dispatchAgentPushSafe({ roomId: run.roomId, userId: run.userId, kind: "answer", text: answer })
   return { autoContinue: false, status: "DONE" }
 }
 

@@ -25,6 +25,7 @@ import { apiUrl } from "@/lib/base-path"
 import { PEOPLE_ROOM_NAME_MAX } from "@/lib/chat-people-rules"
 import type { PeopleRoomView } from "@/lib/chat-people"
 import { RoomHeader } from "./room-header"
+import { RoomMuteButton } from "./room-mute-button"
 import { PeoplePicker, type Person } from "./people-picker"
 import { useRoomListReload } from "./messenger-shell"
 
@@ -39,10 +40,13 @@ export function PeopleRoom({
   room: initialRoom,
   currentUserId,
   initialMessages,
+  muted,
 }: {
   room: PeopleRoomView
   currentUserId: string
   initialMessages: Messages
+  /** 이 방의 채팅 푸시를 껐는가 */
+  muted: boolean
 }) {
   const [room, setRoom] = useState(initialRoom)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -61,6 +65,7 @@ export function PeopleRoom({
         subtitle={group ? `단톡방 · ${room.members.length}명 · 참여자만 보여요` : "1:1 대화 · 두 사람만 보여요"}
         actions={
           <>
+            <RoomMuteButton roomKey={`room:${room.id}`} initialMuted={muted} />
             <Button
               variant="ghost"
               size="icon-sm"

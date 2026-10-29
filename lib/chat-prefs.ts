@@ -61,8 +61,8 @@ export async function ensureReadBaseline(userId: string): Promise<Date> {
 
 export async function setRoomPref(
   userId: string,
-  input: { roomKey: string; favorite?: boolean; read?: true; hidden?: true },
-): Promise<PrefResult<{ favorite: boolean; lastReadAt: string | null }>> {
+  input: { roomKey: string; favorite?: boolean; read?: true; hidden?: true; muted?: boolean },
+): Promise<PrefResult<{ favorite: boolean; lastReadAt: string | null; muted: boolean }>> {
   const access = await checkRoomKey(userId, input.roomKey)
   if (access !== "ok") return keyRefusal(access)
   if (input.hidden) {
@@ -77,14 +77,22 @@ export async function setRoomPref(
     ...(input.favorite !== undefined ? { favorite: input.favorite } : {}),
     ...(input.read ? { lastReadAt: new Date() } : {}),
     ...(input.hidden ? { hiddenAt: new Date(), favorite: false } : {}),
+    // 채팅 푸시 끄기 — 어느 방이든(전사방 · 업무방 포함). 멘션 푸시 · 벨은 그대로(lib/notify-rules.ts)
+    ...(input.muted !== undefined ? { muted: input.muted } : {}),
   }
   const row = await prisma.chatRoomPref.upsert({
     where: { userId_roomKey: { userId, roomKey: input.roomKey } },
     create: { userId, roomKey: input.roomKey, ...data },
     update: data,
-    select: { favorite: true, lastReadAt: true },
+    select: { favorite: true, lastReadAt: true, muted: true },
   })
-  return { ok: true, value: { favorite: row.favorite, lastReadAt: row.lastReadAt?.toISOString() ?? null } }
+  return { ok: true, value: { favorite: row.favorite, lastReadAt: row.lastReadAt?.toISOString() ?? null, muted: row.muted } }
+}
+
+/** 이 방의 채팅 푸시를 껐는가 — 방 머리줄의 「알림 끄기 / 켜기」 첫 상태 */
+export async function roomMuted(userId: string, roomKey: string): Promise<boolean> {
+  const row = await prisma.chatRoomPref.findUnique({ where: { userId_roomKey: { userId, roomKey } }, select: { muted: true } })
+  return row?.muted ?? false
 }
 
 // ─── 폴더 ────────────────────────────────────────────────

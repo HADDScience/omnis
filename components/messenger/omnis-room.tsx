@@ -25,6 +25,7 @@ import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type Live
 import { AgentCard } from "./agent-card"
 import { ToolTrail } from "./tool-trail"
 import { RoomHeader } from "./room-header"
+import { RoomMuteButton } from "./room-mute-button"
 import { useChatUserId, useRoomListReload } from "./messenger-shell"
 
 const EXAMPLES = [
@@ -50,6 +51,7 @@ export function OmnisRoom({
   initialHasMore = false,
   activeRun = null,
   embedded,
+  muted = false,
 }: {
   roomId: string | null
   roomName?: string
@@ -64,6 +66,8 @@ export function OmnisRoom({
    * 패널은 어느 화면 위에나 열린다. 확인 카드 · 다시 붙기는 방 화면과 같은 코드다
    */
   embedded?: { onRoomCreated?: (roomId: string) => void }
+  /** 이 방의 옴니스 답 푸시를 껐는가 */
+  muted?: boolean
 }) {
   const reloadList = useRoomListReload()
   const [roomId, setRoomId] = useState(initialRoomId)
@@ -411,6 +415,7 @@ export function OmnisRoom({
         <RoomHeader
           title={isNew ? "새 대화" : (roomName ?? (messages[0] ? messages[0].content.replace(/\s+/g, " ").slice(0, 30) : "옴니스"))}
           subtitle={isNew ? "옴니스와 1:1 · 첫 글을 보내면 대화방이 생깁니다" : "옴니스와 1:1 · 앞의 대화를 이어서 답합니다"}
+          actions={roomId ? <RoomMuteButton key={roomId} roomKey={`room:${roomId}`} initialMuted={muted} /> : undefined}
         />
       )}
 

@@ -36,7 +36,8 @@ export const FolderRoomSchema = z.object({ roomKey: RoomKeySchema })
 
 /**
  * 방 하나에 대한 내 설정. read: true 면 지금까지 읽은 것으로, hidden: true 면 내 목록에서 지운다(옴니스 1:1 = 대화 삭제 ·
- * 사람 1:1 = 숨기기). 숨김을 받는 방 종류는 lib/chat-list.ts acceptsHidden — 서버가 방 종류를 보고 거부한다
+ * 사람 1:1 = 숨기기). 숨김을 받는 방 종류는 lib/chat-list.ts acceptsHidden — 서버가 방 종류를 보고 거부한다.
+ * muted 는 이 방의 채팅 푸시 끄기(2026-10-29) — 어느 방이든 받는다(멘션 푸시 · 벨은 그대로)
  */
 export const RoomPrefSchema = z
   .object({
@@ -44,5 +45,9 @@ export const RoomPrefSchema = z
     favorite: z.boolean().optional(),
     read: z.literal(true).optional(),
     hidden: z.literal(true).optional(),
+    muted: z.boolean().optional(),
   })
-  .refine((v) => v.favorite !== undefined || v.read !== undefined || v.hidden !== undefined, "바꿀 것이 없습니다")
+  .refine(
+    (v) => v.favorite !== undefined || v.read !== undefined || v.hidden !== undefined || v.muted !== undefined,
+    "바꿀 것이 없습니다",
+  )

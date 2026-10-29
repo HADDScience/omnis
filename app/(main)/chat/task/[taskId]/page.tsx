@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db"
 import { CHAT_DELETED_TEXT, TASK_STATUS_LABELS } from "@/lib/constants"
 import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import { RoomHeader } from "@/components/messenger/room-header"
+import { RoomMuteButton } from "@/components/messenger/room-mute-button"
+import { roomMuted } from "@/lib/chat-prefs"
 import { TaskThread } from "@/app/(main)/tasks/[taskId]/task-sidebar"
 
 export const dynamic = "force-dynamic"
@@ -14,7 +16,7 @@ export default async function TaskRoomPage({ params }: { params: Promise<{ taskI
   if (!session?.user?.id) notFound()
   const { taskId } = await params
 
-  const [task, rows] = await Promise.all([
+  const [task, rows, muted] = await Promise.all([
     prisma.task.findUnique({ where: { id: taskId }, select: { id: true, name: true, slug: true, status: true } }),
     prisma.chatMessage.findMany({
       where: { taskId, ...PUBLIC_MESSAGE_WHERE },
@@ -25,6 +27,7 @@ export default async function TaskRoomPage({ params }: { params: Promise<{ taskI
         replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
       },
     }),
+    roomMuted(session.user.id, `task:${taskId}`),
   ])
   if (!task) notFound()
 
@@ -53,6 +56,7 @@ export default async function TaskRoomPage({ params }: { params: Promise<{ taskI
       <RoomHeader
         title={<><span className="mr-0.5 text-muted-foreground">#</span>{task.name}</>}
         subtitle={`업무방 · ${TASK_STATUS_LABELS[task.status] ?? task.status} · 글을 남기면 옴니스가 업무 카드를 갱신합니다`}
+        actions={<RoomMuteButton roomKey={`task:${task.id}`} initialMuted={muted} />}
         link={{ href: `/tasks/${task.id}`, label: "업무 열기" }}
       />
       <div className="min-h-0 flex-1">

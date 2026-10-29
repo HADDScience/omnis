@@ -36,6 +36,7 @@ import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
 import { recordTaskEvents } from "@/lib/task-events"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { assignmentTargets } from "@/lib/notify-rules"
 import * as XLSX from "xlsx"
 import {
   TOOLS as IP_TOOLS,
@@ -1190,8 +1191,8 @@ export async function runTool(
         { field: "created", before: null, after: { status: "TODO", assignees: [...assigneeIds].sort(), deadline: deadline?.toISOString() ?? null } },
       ])
 
-      // 담당자 전원에게 수락 알림 — 화면에서 만든 것과 같다.
-      for (const userId of assigneeIds.filter((id) => id !== caller.userId)) {
+      // 담당자 전원에게 수락 알림 — 화면에서 만든 것과 같다. 에이전트 확인 카드도 이 길을 지난다(executeWrite → runTool).
+      for (const userId of assignmentTargets({ previous: [], next: assigneeIds, actorId: caller.userId, systemUserId: SYSTEM_USER_ID })) {
         await createNotification(userId, "task_assigned", `새 업무: ${task.name}`, `${caller.name}님이 업무를 지시했습니다.`, task.id, "accept_task")
       }
       // 채팅에 지시 원문과 카드를 올린다 — 채팅이 기록의 원본이다.

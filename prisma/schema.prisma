@@ -41,6 +41,7 @@ model User {
   omnisQueries     OmnisQuery[]
   notifications    Notification[]
   pushSubscriptions PushSubscription[]
+  notificationPref NotificationPref?
   omnisViewLogs    OmnisViewLog[]
   bookmarks        Bookmark[]
   activityLogs     ActivityLog[]
@@ -150,6 +151,8 @@ model ChatRoomPref {
   /// 내 목록에서 지운 · 숨긴 시각(2026-10-29). 옴니스 1:1 = 대화 삭제(나에게서 숨김 · AgentRun · AiUsage 는 남는다),
   /// 사람 1:1 = 숨기기(이 시각 뒤에 새 글이 오면 다시 보인다). 단톡방은 나가기(참여자 행 삭제)라 쓰지 않는다
   hiddenAt   DateTime?
+  /// 이 방의 채팅 푸시를 끈다(2026-10-29). 멘션 푸시와 벨 기록은 그대로 — mydocs/plans/2026-10-29-push-notifications.md
+  muted      Boolean   @default(false)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -674,6 +677,21 @@ model PushSubscription {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+/// 사람마다 종류별 기기 알림(푸시) 켜고 끄기(2026-10-29). 행이 없으면 전부 켜짐이다.
+/// 끄면 그 종류의 **푸시만** 멈춘다 — 벨(Notification) 기록은 그대로 남아 놓치지 않는다.
+/// 종류 나눔은 lib/notify-rules.ts categoryOfType 이 정본이다.
+model NotificationPref {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 채팅 글 · 옴니스 답 · 확인 카드 · chat_mention
+  chatPush     Boolean  @default(true)
+  /// task_* (지정 · 완료 확인 · 재구성 · 상태 변경 · 수락)
+  taskPush     Boolean  @default(true)
+  /// calendar_event_added
+  calendarPush Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
 }
 
 // ─── 임베딩 (pgvector 벡터 검색) ─────────────────────────

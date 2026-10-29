@@ -2,12 +2,13 @@
 // 순수 규칙: lib/chat-people-rules.ts · 결정과 실측: mydocs/working/2026-10-29-omnis-agent.md 「5단계」
 //
 // 이 방들의 글은 참여자만 본다. 그래서 전사방 글쓰기(lib/chat-post.ts)를 타지 않는다 — 그 길은
-// 업무 연결 · AI 재구성 · 사내 지식 색인(임베딩) · 업무 알림을 붙인다. 여기서는 저장 · 방 시각 · 참여자 멘션 알림만 한다.
+// 업무 연결 · AI 재구성 · 사내 지식 색인(임베딩) · 업무 알림을 붙인다. 여기서는 저장 · 방 시각 · 참여자 채팅 푸시 · 멘션 알림만 한다.
 // 옴니스는 이 방들에 들어가지 않는다(@옴니스 호출도 이번 범위 밖, 작업지시자 결정 2026-10-29).
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { createNotification } from "@/lib/notifications"
+import { queueChatPush } from "@/lib/chat-push"
 import { roomKeyOf } from "@/lib/chat-list"
 import { defaultGroupName, dmKeyOf, mentionedMembers, peopleRoomTitle, planPeopleRoom } from "@/lib/chat-people-rules"
 
@@ -179,6 +180,13 @@ export async function postPeopleMessage(
   ])
 
   const targets = mentionedMembers(content, room.members, me.id)
+  // 참여자에게 채팅 푸시(벨 없이) — 멘션 받는 사람은 아래 chat_mention 으로 한 번만 울린다
+  queueChatPush({
+    room: { kind: room.kind, id: room.id, name: room.title, memberIds: room.members.map((m) => m.id) },
+    author: me,
+    content,
+    mentionedUserIds: targets,
+  })
   if (targets.length > 0) {
     const where = room.kind === "DM" ? "1:1 대화" : `「${room.title}」`
     const preview = content.length > NOTIFY_PREVIEW ? `${content.slice(0, NOTIFY_PREVIEW)}…` : content

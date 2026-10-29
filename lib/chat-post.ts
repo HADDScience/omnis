@@ -16,6 +16,7 @@ import { syncEmbeddings, syncEmbeddingsSafe } from "@/lib/embeddings"
 import { getSystemUserId } from "@/lib/system-user"
 import { writeActivity } from "@/lib/api"
 import { recordTaskEvents } from "@/lib/task-events"
+import { queueChatPush, type ChatPushRoom } from "@/lib/chat-push"
 
 export interface PostMessageInput {
   user: { id: string; name: string }
@@ -71,10 +72,11 @@ export function extractMentionSlug(content: string): { slug: string; restText: s
 export async function postChatMessage(input: PostMessageInput, options: PostMessageOptions = {}) {
   const { user, roomId, fileIds } = input
   const trimmedContent = input.content.trim()
-  await prisma.chatRoom.upsert({
+  const chatRoom = await prisma.chatRoom.upsert({
     where: { id: roomId },
     update: {},
     create: { id: roomId, name: roomId === "default-room" ? "하드사이언스 인턴방" : "새 채팅방" },
+    select: { name: true },
   })
 
   const mention = extractMentionSlug(trimmedContent)
@@ -118,6 +120,13 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
     // 채팅에서 완료된 업무를 #멘션한 것은 참조다 — 메시지·파일만 잇고 AI 재구성·상태 변경은 하지 않는다.
     // 예전에는 재구성이 '완료'를 '진행 중'으로 되돌렸다. 완료된 업무의 스레드에 직접 쓴 글은 예전처럼 처리한다.
     const referenceOnly = !!task && !threadTask && task.status === "DONE"
+
+    // 채팅 푸시 — 쓴 자리를 따른다. 업무 스레드에 쓴 글은 업무방(담당 · 지시 · 글쓴 사람 · 즐겨찾기),
+    // 전사방에서 #슬러그 로 이은 글은 전사방(구성원 전원) 글이다 — 전사방 사람들이 읽은 글이다(lib/notify-rules.ts).
+    const pushRoom: ChatPushRoom = threadTask
+      ? { kind: "TASK", id: threadTask.id, name: threadTask.name }
+      : { kind: "COMPANY", id: roomId, name: chatRoom.name }
+    queueChatPush({ room: pushRoom, author: user, content: trimmedContent })
 
     if (task && restText.trim().length > 0) {
       // 메시지를 업무에 연결
