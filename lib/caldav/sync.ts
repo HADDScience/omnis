@@ -25,6 +25,9 @@ import {
 } from "@/lib/caldav/client"
 import { parseICalendar, type ParsedEvent } from "@/lib/caldav/ical"
 import { recurrenceEnd } from "@/lib/calendar/recurrence"
+import { runAfterResponse } from "@/lib/after-response"
+import { notifyNewCalendarEvents, type CalendarCreates } from "@/lib/calendar-notify"
+import type { NewCalendarEvent } from "@/lib/notify-rules"
 
 export const PROVIDER = "naver-works"
 
@@ -89,6 +92,8 @@ async function run({ force = false }: { force?: boolean }): Promise<SyncReport> 
   const missing = names.filter((n) => !wanted.some((c) => c.displayName === n))
 
   const calendars: CalendarSyncOutcome[] = []
+  /** 새로 들여온 일정 — 끝나고 응답 뒤에 알린다(lib/calendar-notify.ts) */
+  const creates: CalendarCreates[] = []
   for (const rc of wanted) {
     const row = await prisma.externalCalendar.upsert({
       where: { provider_externalId: { provider: PROVIDER, externalId: rc.externalId } },
@@ -104,7 +109,12 @@ async function run({ force = false }: { force?: boolean }): Promise<SyncReport> 
     }
 
     try {
+      // 한 번도 성공한 적 없는 캘린더 — 지금 들어오는 일정은 「새 일정」 이 아니라 원래 있던 일정이다
+      const firstSync = row.syncedAt === null
       const outcome = await syncOne(cfg, counted, row.id, rc.href, force ? null : row.syncToken)
+      if (outcome.created.length > 0) {
+        creates.push({ calendar: { id: row.id, displayName: rc.displayName, audience: row.audience }, created: outcome.created, firstSync })
+      }
       await prisma.externalCalendar.update({
         where: { id: row.id },
         data: {
@@ -128,6 +138,9 @@ async function run({ force = false }: { force?: boolean }): Promise<SyncReport> 
     }
   }
 
+  // 알림은 응답 뒤에 — 동기화(캘린더 화면 · 크론)를 늦추지 않고, 실패해도 동기화 결과는 그대로다
+  if (creates.length > 0) runAfterResponse("calendar-notify", () => notifyNewCalendarEvents(creates))
+
   return { configured: true, skipped: false, requests, calendars, missing }
 }
 
@@ -137,7 +150,7 @@ async function syncOne(
   calendarId: string,
   calendarHref: string,
   token: string | null
-): Promise<{ token: string | null; counts: Omit<CalendarSyncOutcome, "displayName" | "status"> }> {
+): Promise<{ token: string | null; counts: Omit<CalendarSyncOutcome, "displayName" | "status">; created: NewCalendarEvent[] }> {
   const delta = await syncCollection(cfg, calendarHref, token, fetcher)
   const now = new Date()
 
@@ -169,11 +182,12 @@ async function syncOne(
   }
 
   const fetched = toFetch.length > 0 ? await multiget(cfg, calendarHref, toFetch, fetcher) : []
-  await upsertResources(calendarId, fetched)
+  const created = await upsertResources(calendarId, fetched)
 
   return {
     token: delta.token,
     counts: { changed: delta.changed.length, deleted: delta.deleted.length, fetched: fetched.length },
+    created,
   }
 }
 
@@ -216,10 +230,11 @@ function toRow(calendarId: string, res: FetchedResource, ev: ParsedEvent) {
 
 /**
  * 받은 리소스를 반영한다. 처음 동기화는 수백 건이라 한 건씩 upsert 하면 DB 왕복이 그만큼 든다 —
- * 새 것은 createMany 한 번, 있던 것만 하나씩 고친다.
+ * 새 것은 createMany 한 번, 있던 것만 하나씩 고친다. 새로 만든 행을 돌려준다(새 일정 알림이 쓴다).
+ * 지운(묘비) 행도 키가 같으면 되살리는 것이라 「새로 만든 행」 이 아니다.
  */
-async function upsertResources(calendarId: string, resources: FetchedResource[]) {
-  if (resources.length === 0) return
+export async function upsertResources(calendarId: string, resources: FetchedResource[]): Promise<NewCalendarEvent[]> {
+  if (resources.length === 0) return []
   const rows = resources.flatMap((res) => parseICalendar(res.data).map((ev) => toRow(calendarId, res, ev)))
 
   const existing = await prisma.externalCalendarEvent.findMany({
@@ -229,9 +244,17 @@ async function upsertResources(calendarId: string, resources: FetchedResource[])
   const idByKey = new Map(existing.map((e) => [keyOf(e.uid, e.recurrenceId), e.id]))
 
   const creates = rows.filter((r) => !idByKey.has(keyOf(r.uid, r.recurrenceId)))
-  if (creates.length > 0) {
-    await prisma.externalCalendarEvent.createMany({ data: creates, skipDuplicates: true })
-  }
+  const created =
+    creates.length > 0
+      ? await prisma.externalCalendarEvent.createManyAndReturn({
+          data: creates,
+          skipDuplicates: true,
+          select: {
+            id: true, recurrenceId: true, summary: true, startAt: true, endAt: true, isAllDay: true,
+            rrule: true, recurUntil: true, status: true, organizer: true,
+          },
+        })
+      : []
   for (const r of rows) {
     const id = idByKey.get(keyOf(r.uid, r.recurrenceId))
     if (id) await prisma.externalCalendarEvent.update({ where: { id }, data: r })
@@ -247,4 +270,5 @@ async function upsertResources(calendarId: string, resources: FetchedResource[])
   if (goneIds.length > 0) {
     await prisma.externalCalendarEvent.updateMany({ where: { id: { in: goneIds } }, data: { deletedAt: new Date() } })
   }
+  return created
 }
