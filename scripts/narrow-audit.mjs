@@ -22,6 +22,7 @@
  * | `WIDTHS`     | `320,280,240,200`       | 쉼표로 구분한 뷰포트 폭 |
  * | `AUDIT_USER` | (없음)                   | 로그인 이름. 없으면 로그인을 건너뛴다 |
  * | `AUDIT_PASS` | (없음)                   | 비밀번호. 코드에 기본값을 두지 않는다 |
+ * | `AUDIT_TOKEN`| (없음)                   | 비밀번호 대신 세션 쿠키 값(authjs.session-token). 로컬은 `pnpm exec tsx --env-file=.env scripts/agent-cookie.ts 이름` |
  * | `ROUTES`     | (없음)                   | 쉼표로 경로를 직접 지정. 주면 기본 목록 대신 이것만 |
  * | `OUT_DIR`    | `$TMPDIR/narrow-audit`  | 결과 JSON 과 스크린샷 |
  *
@@ -45,6 +46,7 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000"
 const WIDTHS = (process.env.WIDTHS ?? "320,280,240,200").split(",").map(Number)
 const USER = process.env.AUDIT_USER ?? null
 const PASS = process.env.AUDIT_PASS ?? null
+const TOKEN = process.env.AUDIT_TOKEN ?? null
 const OUT = process.env.OUT_DIR ?? path.join(os.tmpdir(), "narrow-audit")
 
 /** 로그인 없이 열리는 것 / 로그인이 필요한 것 */
@@ -55,6 +57,7 @@ const PRIVATE_ROUTES = [
   ["/chat", "채팅 — 방 목록"],
   ["/chat/new", "채팅 — 새 대화"],
   ["/chat/default-room", "채팅 — 전사방"],
+  ["/chat/new/people", "채팅 — 사람과 대화"],
   ["/omnis", "옴니스"],
   ["/omnis/ask", "옴니스 질문"],
   ["/reports", "주간보고"],
@@ -224,7 +227,11 @@ const page = await context.newPage()
 
 // 로그인은 ROUTES 를 직접 준 경우에도 한다 — 안 그러면 로그인 화면을 재고
 // 「깨끗하다」고 보고하게 된다
-if (USER && PASS) {
+if (TOKEN) {
+  // 비밀번호 없이 — 로컬 NEXTAUTH_SECRET 으로 만든 세션 쿠키(scripts/agent-cookie.ts)
+  await context.addCookies([{ name: "authjs.session-token", value: TOKEN, url: BASE }])
+  console.log("로그인: 세션 쿠키(AUDIT_TOKEN)")
+} else if (USER && PASS) {
   await login(page)
   console.log(`로그인: ${USER}`)
 } else {
@@ -234,7 +241,7 @@ if (USER && PASS) {
 let routes
 if (process.env.ROUTES) {
   routes = process.env.ROUTES.split(",").map((r) => [r.trim(), r.trim()])
-} else if (USER && PASS) {
+} else if (TOKEN || (USER && PASS)) {
   routes = [...PUBLIC_ROUTES, ...PRIVATE_ROUTES, ...(await discoverDetailRoutes(page))]
 } else {
   routes = PUBLIC_ROUTES
