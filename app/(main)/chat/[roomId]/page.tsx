@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
-import { loadOmnisRoom } from "@/lib/omnis-room"
+import { loadAgentRoom } from "@/lib/agent/service"
 import { OmnisRoom } from "@/components/messenger/omnis-room"
 import { CompanyRoom } from "@/components/messenger/company-room"
 
@@ -22,10 +22,20 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
   if (!room) notFound()
 
   if (room.kind === "OMNIS_DM") {
-    const loaded = await loadOmnisRoom(roomId, userId)
+    // 글 · 확인 카드 · 돌고 있는 실행 — 새로고침해도 카드가 남고, 돌던 답에는 다시 붙는다(3단계 에이전트)
+    const loaded = await loadAgentRoom(roomId, userId)
     if (!loaded) notFound()
     // key: 방을 옮기면 입력 중이던 글 · 상태를 새로 시작한다
-    return <OmnisRoom key={roomId} roomId={roomId} roomName={loaded.room.name} initialMessages={loaded.messages} />
+    return (
+      <OmnisRoom
+        key={roomId}
+        roomId={roomId}
+        roomName={loaded.room.name}
+        initialMessages={loaded.messages}
+        initialCards={loaded.cards}
+        activeRun={loaded.activeRun}
+      />
+    )
   }
 
   if (room.kind === "COMPANY") {
