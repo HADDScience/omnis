@@ -8,6 +8,8 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   BubbleChatSparkIcon,
   Building03Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   Cancel01Icon,
   FolderLibraryIcon,
   MoreHorizontalIcon,
@@ -342,6 +344,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
       </nav>
 
       <FolderManager
+        onCreated={(id) => selectChip(`folder:${id}`)}
         open={manager.open}
         pickFolderId={manager.pickFolderId}
         onOpenChange={(open) =>
@@ -419,10 +422,51 @@ function ChipBar({
   onManage: () => void
 }) {
   const barRef = useRef<HTMLDivElement>(null)
-  // 고른 칩이 줄 밖에 있으면(저장해 둔 폴더 칩 · 폴더가 많을 때) 보이게 민다
+  // 줄 밖으로 넘친 칩이 있는 쪽. 스크롤바를 숨겨 두어 이것이 없으면 넘친 칩이 있는지 보이지 않는다 —
+  // 1440px 목록 칸에서 고정 칩 넷이 줄을 다 채워 새 폴더 칩이 줄 밖(282~340px, 줄 끝 281px)에 그려졌는데
+  // PC 마우스 휠은 세로로만 굴러 영영 볼 수 없었다(2026-10-29 작업지시자 제보)
+  const [edge, setEdge] = useState({ left: false, right: false })
+  const measure = useCallback(() => {
+    const el = barRef.current
+    if (!el) return
+    const left = el.scrollLeft > 1
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+    setEdge((e) => (e.left === left && e.right === right ? e : { left, right }))
+  }, [])
+
+  // 고른 칩이 줄 밖에 있으면(저장해 둔 폴더 칩 · 방금 만든 폴더) 보이게 민다. 줄만 밀고 페이지는 움직이지 않는다
   useEffect(() => {
-    barRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" })
-  }, [chip, folders.length])
+    const el = barRef.current
+    const on = el?.querySelector<HTMLElement>('[aria-pressed="true"]')
+    if (el && on) {
+      const l = on.offsetLeft - el.offsetLeft
+      if (l < el.scrollLeft) el.scrollLeft = l - 12
+      else if (l + on.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = l + on.offsetWidth - el.clientWidth + 12
+    }
+    measure()
+  }, [chip, folders, measure])
+
+  // 세로 휠을 가로 스크롤로 — 마우스만 있는 PC 에서도 넘친 칩까지 간다. React 의 onWheel 은 passive 라 막을 수 없어 직접 단다
+  useEffect(() => {
+    const el = barRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return
+      e.preventDefault()
+      el.scrollLeft += e.deltaY
+    }
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    el.addEventListener("wheel", onWheel, { passive: false })
+    el.addEventListener("scroll", measure, { passive: true })
+    return () => {
+      ro.disconnect()
+      el.removeEventListener("wheel", onWheel)
+      el.removeEventListener("scroll", measure)
+    }
+  }, [measure])
+
+  const scrollBy = (dir: -1 | 1) => barRef.current?.scrollBy({ left: dir * 160, behavior: "smooth" })
 
   const chips: { id: ChipId; label: string; badge?: number }[] = [
     ...FIXED_CHIPS.map((c) => ({
@@ -436,41 +480,71 @@ function ChipBar({
   // 폴더 관리는 칩 줄 끝에 붙여 두되 스크롤 밖에 둔다 — 칩이 넘쳐도 늘 보인다
   return (
     <div className="flex min-w-0 items-center gap-1.5 pr-3">
-      <div
-        ref={barRef}
-        role="group"
-        aria-label="방 거르기"
-        className={cn(
-          "flex min-w-0 flex-1 [scrollbar-width:none] items-center gap-1.5 overflow-x-auto overscroll-x-contain pl-3 [&::-webkit-scrollbar]:hidden",
-          dimmed && "opacity-60",
-        )}
-      >
-        {chips.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            aria-pressed={chip === c.id}
-            onClick={() => onSelect(c.id)}
-            title={dimmed ? "검색 중에는 전체에서 찾아요" : undefined}
-            className={cn(CHIP, chip === c.id ? CHIP_ON : CHIP_OFF)}
-          >
-            <span className="max-w-[9rem] truncate">{c.label}</span>
-            {c.badge ? (
-              <span
-                aria-label={`안 읽은 방 ${c.badge}개`}
-                className="rounded-full bg-primary px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground tabular-nums"
-              >
-                {unreadLabel(c.badge)}
-              </span>
-            ) : null}
-          </button>
-        ))}
+      <div className="relative flex min-w-0 flex-1">
+        <div
+          ref={barRef}
+          role="group"
+          aria-label="방 거르기"
+          data-overflow-left={edge.left || undefined}
+          data-overflow-right={edge.right || undefined}
+          style={{ maskImage: fadeMask(edge), WebkitMaskImage: fadeMask(edge) }}
+          className={cn(
+            "flex min-w-0 flex-1 [scrollbar-width:none] items-center gap-1.5 overflow-x-auto overscroll-x-contain pl-3 [&::-webkit-scrollbar]:hidden",
+            dimmed && "opacity-60",
+          )}
+        >
+          {chips.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              aria-pressed={chip === c.id}
+              onClick={() => onSelect(c.id)}
+              title={dimmed ? "검색 중에는 전체에서 찾아요" : undefined}
+              className={cn(CHIP, chip === c.id ? CHIP_ON : CHIP_OFF)}
+            >
+              <span className="max-w-[9rem] truncate">{c.label}</span>
+              {c.badge ? (
+                <span
+                  aria-label={`안 읽은 방 ${c.badge}개`}
+                  className="rounded-full bg-primary px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground tabular-nums"
+                >
+                  {unreadLabel(c.badge)}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+        {/* PC 에서 넘친 쪽을 알리고 누르면 민다. 터치 기기는 손가락으로 밀어 두지 않는다(44px 칸을 줄 위에 겹치지 않게) */}
+        {edge.left && <ScrollNudge side="left" onClick={() => scrollBy(-1)} />}
+        {edge.right && <ScrollNudge side="right" onClick={() => scrollBy(1)} />}
       </div>
       <button type="button" onClick={onManage} aria-label="폴더 관리" title="폴더 관리" className={cn(CHIP, CHIP_OFF, "px-2")}>
         <HugeiconsIcon icon={FolderLibraryIcon} size={14} aria-hidden />
         <span className="sr-only">폴더 관리</span>
       </button>
     </div>
+  )
+}
+
+/** 넘친 쪽 끝을 흐리게 — 칩이 더 있다는 표시 */
+function fadeMask(edge: { left: boolean; right: boolean }): string | undefined {
+  if (!edge.left && !edge.right) return undefined
+  return `linear-gradient(to right, ${edge.left ? "transparent, #000 28px" : "#000"}, ${edge.right ? "#000 calc(100% - 28px), transparent" : "#000"})`
+}
+
+function ScrollNudge({ side, onClick }: { side: "left" | "right"; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={side === "left" ? "앞 칩 보기" : "뒤 칩 더 보기"}
+      className={cn(
+        "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none pointer-coarse:hidden",
+        side === "left" ? "left-1" : "right-0",
+      )}
+    >
+      <HugeiconsIcon icon={side === "left" ? ArrowLeft01Icon : ArrowRight01Icon} size={12} aria-hidden />
+    </button>
   )
 }
 

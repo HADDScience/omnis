@@ -49,6 +49,7 @@ export function FolderManager({
   folders,
   rooms,
   onChanged,
+  onCreated,
   pickFolderId,
 }: {
   open: boolean
@@ -56,6 +57,8 @@ export function FolderManager({
   folders: ChatFolderView[]
   rooms: RoomListItem[]
   onChanged: () => Promise<void>
+  /** 폴더를 새로 만든 뒤 — 목록이 그 칩을 골라 칩 줄에서 보이게 민다 */
+  onCreated: (folderId: string) => void
   /** 열자마자 이 폴더의 「방 고르기」 로 */
   pickFolderId?: string
 }) {
@@ -72,7 +75,7 @@ export function FolderManager({
         {pickFolder ? (
           <RoomPicker folder={pickFolder} rooms={rooms} onBack={() => setPicking(null)} onChanged={onChanged} />
         ) : (
-          <FolderList folders={folders} onChanged={onChanged} onPick={(id) => setPicking(id)} />
+          <FolderList folders={folders} onChanged={onChanged} onCreated={onCreated} onPick={(id) => setPicking(id)} />
         )}
       </DialogContent>
     </Dialog>
@@ -84,10 +87,12 @@ export function FolderManager({
 function FolderList({
   folders,
   onChanged,
+  onCreated,
   onPick,
 }: {
   folders: ChatFolderView[]
   onChanged: () => Promise<void>
+  onCreated: (folderId: string) => void
   onPick: (id: string) => void
 }) {
   // 순서를 바꾸면 서버 응답 전에 먼저 그린다
@@ -99,24 +104,29 @@ function FolderList({
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   // 성공은 알리지 않는다 — 바뀐 것이 그 자리에 보이고, 폰에서는 토스트가 칩 줄을 가린다
-  const run = async (work: () => Promise<unknown>, fail: string) => {
+  // 목록을 다시 받은 뒤에 돌려준다 — 새 폴더 칩을 고를 때 목록에 그 폴더가 이미 있어야 「전체」 로 튕기지 않는다
+  const run = async <T,>(work: () => Promise<T>, fail: string): Promise<T | null> => {
     setBusy(true)
+    let out: T | null = null
     try {
-      await work()
+      out = await work()
     } catch (err) {
       toast.error(errText(err, fail))
     } finally {
       await onChanged()
       setBusy(false)
     }
+    return out
   }
 
-  const create = () => {
+  const create = async () => {
     const name = newName.trim()
     if (!name) return
-    void run(() => chatPrefs.createFolder({ name }), "폴더를 만들지 못했습니다").then(() =>
-      setNewName(""),
-    )
+    const f = await run(() => chatPrefs.createFolder({ name }), "폴더를 만들지 못했습니다")
+    if (f) {
+      setNewName("")
+      onCreated(f.id)
+    }
   }
 
   const move = (index: number, delta: -1 | 1) => {
@@ -141,9 +151,7 @@ function FolderList({
     <>
       <DialogHeader className="border-b p-4 pr-12">
         <DialogTitle>채팅방 폴더</DialogTitle>
-        <DialogDescription className="text-[12px]">
-          내 목록에서만 보이는 폴더예요. 폴더마다 목록 위에 칩이 하나씩 생겨요.
-        </DialogDescription>
+        <DialogDescription className="text-[12px]">내 목록에서만 보이는 폴더예요. 폴더마다 목록 위에 칩이 하나씩 생겨요.</DialogDescription>
       </DialogHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
@@ -171,9 +179,7 @@ function FolderList({
                         className="touch-target"
                         disabled={busy}
                         onClick={() =>
-                          void run(() => chatPrefs.deleteFolder(f.id), "폴더를 지우지 못했습니다").then(
-                            () => setConfirmDelete(null),
-                          )
+                          void run(() => chatPrefs.deleteFolder(f.id), "폴더를 지우지 못했습니다").then(() => setConfirmDelete(null))
                         }
                       >
                         지우기
@@ -234,7 +240,7 @@ function FolderList({
                             <button
                               type="button"
                               aria-label={`${f.name} 폴더 메뉴`}
-                              className="touch-target flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                              className="touch-target flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                             />
                           }
                         >
@@ -243,8 +249,7 @@ function FolderList({
                         <DropdownMenuContent align="end" className="w-40">
                           {!f.rule && (
                             <DropdownMenuItem className="touch-target" onClick={() => onPick(f.id)}>
-                              <HugeiconsIcon icon={Add01Icon} size={14} aria-hidden />
-                              방 넣고 빼기
+                              <HugeiconsIcon icon={Add01Icon} size={14} aria-hidden />방 넣고 빼기
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem className="touch-target" onClick={() => setRenaming({ id: f.id, name: f.name })}>
@@ -269,7 +274,7 @@ function FolderList({
           className="mt-3 flex items-center gap-1.5"
           onSubmit={(e) => {
             e.preventDefault()
-            create()
+            void create()
           }}
         >
           <Input
@@ -286,7 +291,7 @@ function FolderList({
           </Button>
         </form>
 
-        <h3 className="mb-1.5 mt-5 text-[11px] font-semibold text-muted-foreground">추천 폴더</h3>
+        <h3 className="mt-5 mb-1.5 text-[11px] font-semibold text-muted-foreground">추천 폴더</h3>
         <ul className="flex flex-col divide-y rounded-lg border">
           {FOLDER_RULES.map((rule) => {
             const added = existingRules.has(rule)
@@ -303,12 +308,10 @@ function FolderList({
                   className="touch-target shrink-0 gap-1"
                   disabled={busy || added}
                   aria-label={added ? `${RULE_FOLDER_INFO[rule].name} 추가됨` : `${RULE_FOLDER_INFO[rule].name} 추가`}
-                  onClick={() =>
-                    void run(
-                      () => chatPrefs.createFolder({ rule }),
-                      "추천 폴더를 추가하지 못했습니다"
-                    )
-                  }
+                  onClick={async () => {
+                    const f = await run(() => chatPrefs.createFolder({ rule }), "추천 폴더를 추가하지 못했습니다")
+                    if (f) onCreated(f.id)
+                  }}
                 >
                   {added && <HugeiconsIcon icon={Tick02Icon} size={13} aria-hidden />}
                   {added ? "추가됨" : "추가"}
@@ -340,7 +343,7 @@ function IconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="touch-target flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30"
+      className="touch-target flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30"
     >
       {children}
     </button>
@@ -395,7 +398,7 @@ function RoomPicker({
             type="button"
             onClick={onBack}
             aria-label="폴더 목록으로"
-            className="touch-target -ml-1.5 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="touch-target -ml-1.5 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <HugeiconsIcon icon={ArrowLeft01Icon} size={16} aria-hidden />
           </button>
@@ -424,7 +427,7 @@ function RoomPicker({
                 role="checkbox"
                 aria-checked={on}
                 onClick={() => void toggle(r)}
-                className="touch-target flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="touch-target flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
               >
                 <span
                   aria-hidden
