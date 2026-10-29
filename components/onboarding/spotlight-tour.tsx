@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { useSidebar } from "@/components/ui/sidebar"
 import { useRightPanel } from "@/components/layout/right-panel-context"
 import { useOnboarding } from "./onboarding-provider"
 import { TourSurface } from "./tour-surface"
@@ -12,50 +11,32 @@ const stops = [
   {
     target: "tasks",
     title: "내 업무를 한눈에",
-    copy: "업무 메뉴에서 담당 업무와 진행 상태를 확인하세요. 오늘 마감·내가 담당 필터로 필요한 업무를 찾을 수 있어요.",
-    sidebar: true,
+    copy: "업무 탭에서 담당 업무와 진행 상태를 확인하세요. 위쪽 현황 띠의 칩을 누르면 멈춘 업무·사람별 업무만 골라 볼 수 있어요.",
   },
   {
     target: "chat-trigger",
     title: "업무 지시는 대화에서",
-    copy: "이 버튼으로 대화 패널을 열 수 있어요. 채팅에서 / 명령으로 업무를 만들거나, 새 업무 버튼을 사용하세요.",
-    sidebar: false,
+    copy: "오른쪽 아래 둥근 버튼으로 대화 패널을 열어요. 보고 있는 업무의 스레드 · 전체 채팅 · 옴니스가 화면 옆에 열립니다. 채팅에서 / 명령으로 업무를 만들 수도 있어요.",
   },
   {
     target: "conversation",
     title: "대화와 업무를 함께",
     copy: "전체 대화에서 #으로 업무를 언급하거나 업무 스레드에 답장하세요. 파일 첨부·완료 보고·추가 지시가 업무에 이어집니다.",
-    sidebar: false,
   },
   {
     target: "ai",
-    title: "Omnis AI에게 물어보세요",
-    copy: "업무와 회사 지식에 궁금한 점을 질문하세요. 관련 자료를 찾아 답변을 도와드려요.",
-    sidebar: true,
+    title: "Omnis 에게 물어보세요",
+    copy: "채팅 탭에서 업무와 회사 지식에 궁금한 점을 질문하세요. 관련 자료를 찾아 답변을 도와드려요.",
   },
   {
     target: "resources",
-    title: "회사의 자원을 활용하세요",
-    copy: "고객·견적, 지식재산권, HADD DB와 보고서까지. 필요한 도구로 바로 이동할 수 있어요.",
-    sidebar: true,
+    title: "회사의 자료는 아카이브에",
+    copy: "지식 카드, 시놀로지 NAS, 지식재산권, 고객·견적이 아카이브 탭 한 곳에 모여 있어요.",
   },
   {
     target: "profile",
-    title: "나의 설정은 여기에서",
-    copy: "프로필 메뉴에서 계정 설정, AI 연결과 온보딩 튜토리얼을 찾을 수 있어요.",
-    sidebar: true,
-  },
-  {
-    target: "mcp",
-    title: "나의 AI에 Omnis 연결",
-    copy: "Omnis MCP 등록을 열고 쓰는 AI 도구 탭을 고르세요. 커맨드나 주소를 복사해 붙이고, Omnis 계정으로 승인하면 연결돼요.",
-    sidebar: true,
-  },
-  {
-    target: "replay",
-    title: "언제든 다시 볼 수 있어요",
-    copy: "온보딩 튜토리얼에서 영상과 화면 안내를 다시 볼 수 있어요. 이제 Omnis에서 첫 업무를 시작해 보세요.",
-    sidebar: true,
+    title: "나의 설정은 마이에서",
+    copy: "내 이름 동그라미를 누르면 계정, 나의 AI 에 Omnis 연결(MCP 등록), 온보딩 튜토리얼 다시 보기가 있어요. 이제 첫 업무를 시작해 보세요.",
   },
 ]
 type Box = {
@@ -83,21 +64,18 @@ function Stop({
 }) {
   const stop = stops[index]
   const panel = useRightPanel()
-  const sidebar = useSidebar()
   const { setSpotlightTarget } = useOnboarding()
-  const latest = useRef({ panel, sidebar })
+  const latest = useRef({ panel })
   useEffect(() => {
-    latest.current = { panel, sidebar }
-  }, [panel, sidebar])
+    latest.current = { panel }
+  }, [panel])
   const card = useRef<HTMLElement>(null)
   const [box, setBox] = useState<Box | null>(null)
   const [settled, setSettled] = useState(false)
   const clock = useTourClock(7000, onAdvance, settled)
   useEffect(() => {
-    const { panel: p, sidebar: s } = latest.current
+    const { panel: p } = latest.current
     setSpotlightTarget(stop.target)
-    if (s.isMobile) s.setOpenMobile(stop.sidebar)
-    else if (stop.sidebar) s.setOpen(true)
     // Do not switch the current panel tab: that would discard an unsent message.
     if (stop.target === "conversation" && !p.open) p.setOpen(true)
     const timeout = window.setTimeout(() => setSettled(true), 1000)
@@ -227,7 +205,7 @@ function Stop({
       clearTimeout(timeout)
       cancelAnimationFrame(frame)
     }
-  }, [stop, sidebar.isMobile, setSpotlightTarget])
+  }, [stop, setSpotlightTarget])
   const cardStyle = box
     ? {
         left: box.cardX,
@@ -353,15 +331,12 @@ function Stop({
 
 export default function SpotlightTour({ onFinish }: { onFinish: () => void }) {
   const [index, setIndex] = useState(0)
-  const sidebar = useSidebar()
   const panel = useRightPanel()
   const { setSpotlightTarget } = useOnboarding()
-  const original = useRef({ sidebar, panel })
+  const original = useRef({ panel })
   useEffect(() => {
     const snapshot = original.current
     return () => {
-      snapshot.sidebar.setOpen(snapshot.sidebar.open)
-      snapshot.sidebar.setOpenMobile(snapshot.sidebar.openMobile)
       snapshot.panel.setOpen(snapshot.panel.open)
       setSpotlightTarget(null)
     }

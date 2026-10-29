@@ -59,7 +59,6 @@ export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
 // ─── 네비게이션 ──────────────────────────────────────────
 
 export const NAV_ITEMS = [
-  { href: "/dashboard", label: "대시보드", icon: "Dashboard02Icon" },
   { href: "/chat", label: "채팅", icon: "MessageMultiple01Icon" },
   { href: "/tasks", label: "업무", icon: "Task01Icon" },
   { href: "/reports", label: "주간보고", icon: "FileTextIcon" },

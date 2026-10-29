@@ -30,7 +30,8 @@ export function DemoAccountsCard() {
       redirect: false,
     })
     if (!result?.error) {
-      router.push("/dashboard")
+      // 일반 로그인(app/(auth)/login/page.tsx)과 같은 첫 화면 — 옴니스 메신저
+      router.push("/chat")
       router.refresh()
     } else {
       setPendingName(null)

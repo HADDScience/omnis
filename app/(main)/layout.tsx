@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/db"
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/layout/app-sidebar"
+import { FloatingNav } from "@/components/layout/floating-nav"
+import { CurrentUserProvider } from "@/components/layout/current-user"
 import { MainWithChat } from "@/components/layout/main-with-chat"
 import { CommandPaletteProvider } from "@/components/layout/command-palette-context"
 import { RightPanelProvider } from "@/components/layout/right-panel-context"
@@ -45,30 +45,29 @@ export default async function MainLayout({
   }))
 
   return (
-    <SidebarProvider>
+    // 사이드바 대신 떠 있는 nav(mydocs/plans/2026-10-28-floating-nav.md). 셸은 화면 높이 그대로 한 칸이다
+    <div className="flex min-h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] w-full">
       <PwaRegister />
+      <CurrentUserProvider name={session.user.name ?? null}>
       <CommandPaletteProvider>
         <RightPanelProvider>
         <OnboardingProvider key={session.user.id} initialState={{
           onboardingVideoSeenAt: onboarding.onboardingVideoSeenAt?.toISOString() ?? null,
           onboardingCompletedAt: onboarding.onboardingCompletedAt?.toISOString() ?? null,
         }}>
-        <AppSidebar
-          userName={session.user.name}
-          userEmail={session.user.email}
-          userRole={(session.user as { role?: string }).role ?? "MEMBER"}
-        />
-        <SidebarInset>
+        <main className="relative flex w-full flex-1 flex-col bg-background">
           <MainWithChat
             currentUserId={session.user.id as string}
             initialMessages={serializedMessages}
           >
             {children}
           </MainWithChat>
-        </SidebarInset>
+        </main>
+        <FloatingNav />
         </OnboardingProvider>
         </RightPanelProvider>
       </CommandPaletteProvider>
-    </SidebarProvider>
+      </CurrentUserProvider>
+    </div>
   )
 }

@@ -6,11 +6,7 @@ test.describe("주간보고", () => {
     await login(page, "팀장")
   })
 
-  test("보고서 메뉴 클릭 → /reports 진입", async ({ page }) => {
-    await page.getByRole("link", { name: "보고서", exact: true }).click()
-    await expect(page).toHaveURL(/\/reports/)
-  })
-
+  // 보고서는 nav 에서 뺐다(2026-10-28, 탭 다섯 개로 줄임). 주소와 MCP 주간보고는 그대로다
   test("보고서 페이지가 정상 응답한다 (404 아님)", async ({ page }) => {
     await page.goto("/reports")
     await expect(page.locator("body")).not.toContainText(

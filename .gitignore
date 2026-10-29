@@ -76,3 +76,7 @@ bench/results/
 
 # E2E 시나리오 리포트 — 답변에 사내 대화가 들어간다
 tests/scenario/reports/
+
+# Workflow Local World (옴니스 에이전트 로컬 실행 기록) — 대화 · 도구 결과가 그대로 들어 있다
+.workflow-data/
+/.swc

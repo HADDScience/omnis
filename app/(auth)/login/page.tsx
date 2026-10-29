@@ -23,11 +23,11 @@ import { SocialSignInButton, type SocialProvider } from "@/components/auth/socia
 import { apiUrl } from "@/lib/base-path"
 
 /**
- * 로그인 뒤 돌아갈 곳. 기본은 대시보드다.
+ * 로그인 뒤 돌아갈 곳. 기본은 업무 화면이다.
  *
  * SSO(`/sso/authorize`)가 미로그인 사용자를 여기로 보낼 때 원래 요청을
  * `callbackUrl` 에 실어 둔다. 그 값을 무시하면 사내 도구에서 넘어온 사람이
- * 로그인만 하고 옴니스 대시보드에 남겨져 왕복이 끊긴다.
+ * 로그인만 하고 옴니스 업무 화면에 남겨져 왕복이 끊긴다.
  *
  * 같은 오리진의 절대 경로만 받는다 — `//evil.com` 과 `/\evil.com` 은 브라우저가
  * 다른 오리진으로 읽으므로, 그대로 넘기면 로그인 화면이 오픈 리다이렉트가 된다.
@@ -115,7 +115,8 @@ export default function LoginPage() {
       return
     }
 
-    router.push("/dashboard")
+    // 첫 화면은 옴니스 메신저다(mydocs/plans/2026-10-28-omnis-messenger-agent.md)
+    router.push("/chat")
     router.refresh()
   }
 
@@ -305,7 +306,7 @@ export default function LoginPage() {
                 onClick={() => {
                   setSocial(provider)
                   signIn(provider, {
-                    callbackUrl: safeCallbackUrl() ?? apiUrl("/dashboard"),
+                    callbackUrl: safeCallbackUrl() ?? apiUrl("/chat"),
                   })
                 }}
               />

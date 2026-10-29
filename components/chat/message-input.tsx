@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { SentIcon, Attachment01Icon, Cancel01Icon, PlusSignIcon, Task01Icon, AtIcon, Folder01Icon } from "@hugeicons/core-free-icons"
@@ -43,6 +44,8 @@ interface MessageInputProps {
   users?: { id: string; name: string }[]
   /** `/업무` 명령과 「업무 지시」 메뉴. 업무 스레드처럼 명령을 받을 곳이 없으면 끈다. */
   commands?: boolean
+  /** 파일 업로드 · NAS 연결 · 붙여넣기 · 끌어 놓기. 사람끼리 방은 끈다(파일 목록이 방을 가리지 않는다) */
+  attachments?: boolean
   placeholder?: string
   ariaLabel?: string
 }
@@ -65,11 +68,14 @@ export function MessageInput({
   files = [],
   users = [],
   commands = true,
+  attachments = true,
   placeholder = "메시지 입력...  / 명령 · @ 사람 · # 업무",
   ariaLabel = "메시지 입력",
 }: MessageInputProps) {
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
+  /** 보내기 잠금 — sending 상태는 다음 그리기에야 보여, 같은 순간 버튼을 두 번 누르면 둘 다 지나갔다 */
+  const sendingRef = useRef(false)
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [nasFiles, setNasFiles] = useState<{ path: string; name: string }[]>([])
   const [nasPickerOpen, setNasPickerOpen] = useState(false)
@@ -85,6 +91,8 @@ export function MessageInput({
   const [mentionStart, setMentionStart] = useState(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
+  // 데모에는 NAS 가 없고, 사람끼리 방은 attachments=false — 둘 다 파일을 받지 않는다
+  const noFiles = IS_DEMO || !attachments
 
   // 자동완성 후보 계산
   useEffect(() => {
@@ -217,7 +225,7 @@ export function MessageInput({
   // 파일 추가 + 이미지 프리뷰 생성 + 로딩 표시
   function addFiles(picked: File[]) {
     // 데모에는 NAS가 없어 파일을 받지 않는다 — 붙여넣기·드래그로 들어와도 조용히 무시한다.
-    if (IS_DEMO) return
+    if (noFiles) return
     // 상한을 넘는 파일은 보낼 때 Vercel 이 이유 없이 끊는다 — 고르는 순간 이유와 함께 거른다(2026-09-17)
     const tooLarge = picked.filter((f) => f.size > MAX_UPLOAD_BYTES)
     if (tooLarge.length > 0) {
@@ -299,7 +307,7 @@ export function MessageInput({
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault()
     e.stopPropagation()
-    if (IS_DEMO) return
+    if (noFiles) return
     setDragging(true)
   }
 
@@ -321,7 +329,8 @@ export function MessageInput({
     const trimmed = content.trim()
     const attachedCount = attachedFiles.length + nasFiles.length
     if (!trimmed && attachedCount === 0) return
-    if (sending) return
+    if (sending || sendingRef.current) return
+    sendingRef.current = true
     setSending(true)
     try {
       await onSend(
@@ -338,11 +347,14 @@ export function MessageInput({
     } catch {
       // 보내지 못했다 — 쓴 글과 첨부를 그대로 둔다. 알림은 onSend 쪽이 띄운다.
     } finally {
+      sendingRef.current = false
       setSending(false)
     }
   }, [content, sending, onSend, attachedFiles, nasFiles])
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 한글 조합 중의 Enter · 방향키는 글자를 확정하는 키다 — 후보 고르기 · 보내기로 가로채지 않는다
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     // 멘션 팝오버가 열려있을 때
     if (mentionType && mentionItems.length > 0) {
       if (e.key === "ArrowDown") {
@@ -367,7 +379,8 @@ export function MessageInput({
       }
     }
 
-    if (e.key === "Enter" && !e.shiftKey) {
+    // PC 는 Enter 보내기 · Shift+Enter 줄바꿈, 폰은 Enter 가 줄바꿈이고 보내기는 버튼으로만(lib/enter-to-send.ts)
+    if (enterSends(e, isTouchTyping())) {
       e.preventDefault()
       handleSend()
     }
@@ -495,7 +508,7 @@ export function MessageInput({
       )}
 
       <div className="flex items-end gap-2">
-        {!IS_DEMO && (
+        {!noFiles && (
           <input
             ref={fileInputRef}
             type="file"
@@ -516,7 +529,7 @@ export function MessageInput({
                 variant="ghost"
                 size="icon"
                 aria-label="추가"
-                className="size-10 shrink-0 md:size-9"
+                className="size-[40px] shrink-0 md:size-[30px]"
                 disabled={disabled || sending}
               />
             }
@@ -524,14 +537,14 @@ export function MessageInput({
             <HugeiconsIcon icon={PlusSignIcon} size={18} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" className="w-52">
-            {!IS_DEMO && (
+            {!noFiles && (
               <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                 <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
                 파일 업로드
                 <span className="ml-auto text-[10px] text-muted-foreground">4MB 이하</span>
               </DropdownMenuItem>
             )}
-            {!IS_DEMO && (
+            {!noFiles && (
               <DropdownMenuItem onClick={() => setNasPickerOpen(true)}>
                 <HugeiconsIcon icon={Folder01Icon} size={14} aria-hidden />
                 NAS 파일 연결
@@ -549,15 +562,20 @@ export function MessageInput({
               사람 언급
               <span className="ml-auto font-mono text-[10px] text-muted-foreground">@</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => startMention("task")}>
-              <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
-              업무 언급
-              <span className="ml-auto font-mono text-[10px] text-muted-foreground">#</span>
-            </DropdownMenuItem>
+            {/* 사람끼리 방은 업무 목록을 받지 않는다(commands · attachments 와 함께 끈다) */}
+            {attachments && (
+              <DropdownMenuItem onClick={() => startMention("task")}>
+                <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
+                업무 언급
+                <span className="ml-auto font-mono text-[10px] text-muted-foreground">#</span>
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         {/* md 미만은 text-base(16px) — iOS 가 그보다 작은 입력에 포커스하면 화면을 확대한다 */}
-        <div className="max-h-[40px] flex-1 md:max-h-[30px]">
+        {/* 한 줄일 때 버튼과 세로 가운데가 맞게 입력칸 최소 높이 = 버튼 높이(폰 40px · PC 30px, px 로 — rem 은 배율을 탄다).
+            여러 줄로 늘면 버튼은 아래(items-end)에 붙는다 */}
+        <div className="min-w-0 flex-1">
           <Textarea
             ref={textareaRef}
             value={content}
@@ -566,7 +584,8 @@ export function MessageInput({
             onPaste={handlePaste}
             placeholder={placeholder}
             aria-label={ariaLabel}
-            className="min-h-[40px] resize-none text-base md:min-h-[30px] md:text-sm"
+            enterKeyHint="enter"
+            className="max-h-40 min-h-[40px] resize-none py-[7px] text-base leading-6 md:min-h-[30px] md:py-[5px] md:text-sm md:leading-[18px]"
             rows={1}
             disabled={disabled || sending}
           />
@@ -574,14 +593,14 @@ export function MessageInput({
         <Button
           size="icon"
           aria-label="메시지 전송"
-          className="size-10 shrink-0 md:size-9"
+          className="size-[40px] shrink-0 md:size-[30px]"
           onClick={handleSend}
           disabled={(!content.trim() && attachedFiles.length === 0 && nasFiles.length === 0) || sending}
         >
           <HugeiconsIcon icon={SentIcon} size={18} />
         </Button>
       </div>
-      {!IS_DEMO && (
+      {!noFiles && (
         <NasFilePicker
           open={nasPickerOpen}
           onOpenChange={setNasPickerOpen}

@@ -9,6 +9,7 @@ import { stockBalance, quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { answerWithOmnis, runGeminiToolLoop, type GeminiFunctionDeclaration, type ToolLoopUsage } from "@/lib/ai"
 import { writeActivity } from "@/lib/api"
 import { listCases, listOpenTurns } from "@/lib/ip-data"
+import type { OmnisTurn } from "@/lib/omnis-history"
 
 export const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   OMNIS_CARD: "옴니스 카드",
@@ -259,6 +260,13 @@ export interface RouteOptions {
   thinking?: { budget?: number; level?: "minimal" | "low" | "medium" | "high" }
   /** 기록(OmnisQuery·활동) 없이 답만 — 벤치용 */
   dryRun?: boolean
+  /**
+   * 이번 질문 앞의 대화 — 메신저 옴니스 1:1 방이 넘긴다(lib/omnis-room.ts, 상한은 lib/omnis-history.ts).
+   * MCP ask_omnis 와 오른쪽 패널 질문은 넘기지 않아 예전처럼 한 번 묻고 끝난다
+   */
+  history?: OmnisTurn[]
+  /** 사용량(GeminiUsage) 기록 이름. 메신저 방은 "omnisAsk.room" 으로 따로 센다 */
+  endpoint?: string
 }
 
 /** 질문 한 번 — 검색·생성·기록까지. 실패는 그대로 던진다(호출자가 응답 형식을 정한다). */
@@ -267,12 +275,28 @@ export async function askOmnis(question: string, userId: string): Promise<AskRes
   return askOmnisBaseline(question, userId)
 }
 
-const ROUTE_TOOL_EXCLUDE = new Set(["ask_omnis", "post_message", "create_task", "search_knowledge"])
+/** 1:1 방에서 앞선 대화가 함께 올 때만 덧붙인다 — 한 번 묻는 길(MCP · 패널)의 프롬프트는 그대로 둔다 */
+const HISTORY_RULE = `
+이 대화는 앞선 질문과 답에 이어집니다. 「그거」 「아까 그 업무」 「두 번째 것」 처럼 앞을 가리키는 말은 앞선 대화에서 대상을 찾아 답하세요.
+앞선 답에 있던 건수 · 상태 · 금액은 그 사이 바뀌었을 수 있으니, 다시 답할 때는 도구로 확인하세요.
+`
 
-function routeSystemPrompt(today: string, userName: string): string {
+/**
+ * 질문 경로에 여는 MCP 도구 — 읽기만. 이 경로에는 쓰기 전 확인 단계가 없어서,
+ * 빼는 목록으로 두면 MCP 에 새 쓰기 도구가 생길 때마다 확인 없이 열린다(update_task · delete_company_record 가 그랬다).
+ * search_knowledge · ip_overview 는 아래에서 이 경로 전용으로 따로 정의한다.
+ */
+export const ROUTE_READ_TOOLS = new Set([
+  "list_tasks", "get_task", "read_file", "list_notifications", "list_projects", "list_members",
+  "crm_overview", "find_org", "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat",
+  "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
+  "list_market_companies", "get_context",
+])
+
+function routeSystemPrompt(today: string, userName: string, withHistory = false): string {
   return `당신은 HADD Science 의 사내 지식 비서 "옴니스" 입니다. 오늘은 ${today} 이고, 질문한 사람은 ${userName} 입니다.
 직원의 질문에 답하려면 도구를 골라 부르세요. 한 번에 여러 도구를 불러도 됩니다. 최대 5번까지 부를 수 있습니다.
-
+${withHistory ? HISTORY_RULE : ""}
 도구 고르는 법:
 - 대화 내용·진행 상황·"누가 뭐라고 했나" 는 search_knowledge 로 찾으세요. 사람 이름·기관명·제품명처럼 고유명사가 있으면 그것을 query 에 넣으세요.
 - 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true), 한 업무의 체크리스트·최근 대화는 get_task.
@@ -321,7 +345,7 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
         required: ["query"],
       },
     },
-    ...OMNIS_TOOLS.filter((t) => !ROUTE_TOOL_EXCLUDE.has(t.name)).map((t) => {
+    ...OMNIS_TOOLS.filter((t) => ROUTE_READ_TOOLS.has(t.name)).map((t) => {
       const schema = t.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[] }
       const hasProps = schema.properties && Object.keys(schema.properties).length > 0
       return { name: t.name, description: t.description, ...(hasProps ? { parameters: schema } : {}) }
@@ -348,13 +372,16 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
         .join("\n\n")
     }
     if (call.name === "ip_overview") return (await buildIpOverview()) || "지식재산권 자료가 없습니다."
+    // 내놓지 않은 이름을 모델이 지어 불러도 실행하지 않는다
+    if (!ROUTE_READ_TOOLS.has(call.name)) return `오류: ${call.name} 은(는) 이 질문 경로에서 쓸 수 없는 도구입니다.`
     const r = await runTool(call.name, call.args, caller)
     return "error" in r ? `오류: ${r.error}` : r.text
   }
 
   const today = new Date().toISOString().slice(0, 10)
-  const loop = await runGeminiToolLoop(routeSystemPrompt(today, user.name), question, tools, runOne, {
-    model, thinking, maxSteps: 6, endpoint: "omnisAsk.route", userId,
+  const history = opts.history ?? []
+  const loop = await runGeminiToolLoop(routeSystemPrompt(today, user.name, history.length > 0), question, tools, runOne, {
+    model, thinking, maxSteps: 6, endpoint: opts.endpoint ?? "omnisAsk.route", userId, history,
   })
   const answer = loop.text || (loop.error ? `답을 정리하지 못했습니다 (${loop.error}). 질문을 더 구체적으로 바꿔 주세요.` : "관련 내용을 찾지 못했습니다.")
 

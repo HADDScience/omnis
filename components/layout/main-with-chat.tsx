@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { RightPanel } from "./right-panel"
 import { useRightPanel } from "./right-panel-context"
 import { CommandPalette } from "./command-palette"
+import { PanelDock } from "./panel-dock"
 
 interface Message {
   id: string
@@ -53,7 +54,9 @@ export function MainWithChat({
       {/* px-safe: 가로 모드 노치·펀치홀 영역을 피한다 (viewportFit: cover) */}
       <div className="px-safe flex h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] min-h-0 flex-col overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 overflow-auto">{children}</div>
+          {/* 떠 있는 nav 밑에 내용이 깔리지 않게 그 높이만큼 비운다. 업무 보드처럼 화면 높이에 묶인 화면도
+              이 칸 안에서 높이를 재므로, 여백은 각 화면이 아니라 여기 한 곳에서 준다 */}
+          <div data-main-scroll className="flex-1 overflow-auto pt-[var(--nav-offset-top)] pb-[var(--nav-offset-bottom)]">{children}</div>
         </div>
         <RightPanel
           currentUserId={currentUserId}
@@ -61,6 +64,7 @@ export function MainWithChat({
           onTaskUpdated={() => router.refresh()}
         />
       </div>
+      <PanelDock />
       <CommandPalette />
     </>
   )

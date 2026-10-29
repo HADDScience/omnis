@@ -34,7 +34,7 @@ function fail(status: number, title: string, detail: string): NextResponse {
   a{color:#a5b4fc}
 </style>
 <main><h1>${title}</h1><p>${detail}</p>
-<p style="margin-top:16px"><a href="/dashboard">Omnis 로 이동</a></p></main>`
+<p style="margin-top:16px"><a href="/tasks">Omnis 로 이동</a></p></main>`
   return new NextResponse(html, {
     status,
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },

@@ -9,6 +9,7 @@ import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { reportIncident } from "@/lib/report-client-error"
 import { ChatSearch } from "@/components/chat/chat-search"
+import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
 
 interface Message {
   id: string
@@ -43,7 +44,17 @@ interface ChatPanelProps {
   onSearchOpenChange?: (open: boolean) => void
   /** 단축키(⌘⇧F)를 누를 때마다 오른다 — 검색칸을 다시 고른다 */
   searchFocus?: number
+  /**
+   * 사람끼리 방(1:1 · 단톡) — @ 후보는 그 방 참여자만, `/` 명령 · # 업무 · 첨부는 끈다.
+   * 이 방 글은 업무에 붙지 않고(서버가 업무 연결을 하지 않는다) 파일 목록은 방을 가리지 않아서다
+   */
+  people?: { members: User[] }
 }
+
+// 사람끼리 방은 업무 · 파일 후보가 없다. MessageInput 의 기본값([])은 그릴 때마다 새 배열이라
+// 후보 계산 effect 가 setState 를 되풀이해 무한 갱신이 났다(대화상자를 열면 터졌다) — 같은 배열을 넘긴다
+const NO_TASKS: { id: string; name: string; slug: string; status?: string }[] = []
+const NO_FILES: { id: string; name: string; path: string; mimeType: string }[] = []
 
 export function ChatPanel({
   roomId,
@@ -55,6 +66,7 @@ export function ChatPanel({
   searchOpen = false,
   onSearchOpenChange,
   searchFocus = 0,
+  people,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
@@ -74,6 +86,23 @@ export function ChatPanel({
   const [hasMoreNewer, setHasMoreNewer] = useState(false)
   const [loadingNewer, setLoadingNewer] = useState(false)
   const [highlight, setHighlight] = useState<{ id: string; n: number } | null>(null)
+
+  // 기기에 저장 — 다음에 이 방을 열 때 서버를 기다리지 않고 바로 그린다(lib/chat-cache.ts). 최근 30개 · 본문만.
+  // 업무로 거른 목록 · 검색 점프 중의 목록은 「이 방의 최근 글」 이 아니라 저장하지 않는다
+  useEffect(() => {
+    if (filterTaskId || jumped || messages.length === 0) return
+    void writeCache(
+      currentUserId,
+      roomCacheKey(`room:${roomId}`),
+      recentForCache(messages.filter((m) => !m.deletedAt)).map((m) => ({
+        id: m.id,
+        author: m.author,
+        mine: m.author.id === currentUserId,
+        content: m.content.startsWith("__TASK_CREATED__") ? "업무가 생성되었습니다" : m.content,
+        createdAt: m.createdAt,
+      })),
+    )
+  }, [messages, roomId, currentUserId, filterTaskId, jumped])
 
   const lastFetchedAt = useRef(
     initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : ""
@@ -245,7 +274,12 @@ export function ChatPanel({
     }
   }, [loadingNewer, hasMoreNewer, roomId, filterTaskId, endJump])
 
+  const peopleMembers = people?.members
   useEffect(() => {
+    if (peopleMembers) {
+      setUsers(peopleMembers)
+      return
+    }
     fetch(apiUrl("/api/users"))
       .then((r) => r.json())
       .then(setUsers)
@@ -255,7 +289,7 @@ export function ChatPanel({
       .then((r) => r.json())
       .then(setUploadedFiles)
       .catch(() => {})
-  }, [])
+  }, [peopleMembers])
 
   function fetchTasks() {
     fetch(apiUrl("/api/tasks"))
@@ -527,7 +561,19 @@ export function ChatPanel({
             </button>
           </div>
         )}
-        <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
+        {people ? (
+          <MessageInput
+            onSend={handleSend}
+            users={users}
+            tasks={NO_TASKS}
+            files={NO_FILES}
+            commands={false}
+            attachments={false}
+            placeholder="메시지 입력...  @ 사람"
+          />
+        ) : (
+          <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
+        )}
       </div>
 
     </div>

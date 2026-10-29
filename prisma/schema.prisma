@@ -29,7 +29,11 @@ model User {
   assignedTasks    TaskAssignee[]
   instructedTasks  Task[]             @relation("TaskInstructor")
   chatMessages     ChatMessage[]
-  weeklyReports    WeeklyReport[]
+  chatRoomsCreated ChatRoom[]         @relation("ChatRoomCreator")
+  chatRoomMembers  ChatRoomMember[]
+  chatRoomPrefs    ChatRoomPref[]
+  chatFolders      ChatFolder[]
+  weeklyReports   WeeklyReport[]
   omnisUpdates     OmnisCard[]
   omnisVersions    OmnisCardVersion[]
   cardDecisions    CardProposal[]
@@ -81,11 +85,120 @@ model UserIdentity {
   @@index([userId])
 }
 
+/// 채팅방. 메신저 왼쪽 목록의 한 줄이다(mydocs/plans/2026-10-28-omnis-messenger-agent.md).
+///
+/// 업무방(TASK)은 표로 만들지 않는다 — 업무 스레드는 `ChatMessage.taskId` 로 묶인 글이고, 목록은 그 글을 방처럼 보여 준다.
+/// enum 에 TASK 가 있는 것은 목록 · 주소가 방 종류를 한 가지 이름으로 부르게 하려는 자리다.
 model ChatRoom {
-  id        String        @id @default(uuid())
+  id            String           @id @default(uuid())
+  name          String
+  createdAt     DateTime         @default(now())
+  /// 기존 방(「전체」 = default-room)은 기본값으로 COMPANY 가 된다. 옛 코드가 kind 없이 upsert 해도 COMPANY 다.
+  kind          ChatRoomKind     @default(COMPANY)
+  /// 방을 만든 사람. 기존 방 · 카톡 이식 방은 null
+  createdById   String?
+  createdBy     User?            @relation("ChatRoomCreator", fields: [createdById], references: [id])
+  /// 목록 정렬용 — 이 방에 마지막 글이 붙은 시각. 메신저 경로(lib/chat-rooms.ts)가 쓴다.
+  /// 전사방은 여러 경로(업무 생성 · MCP · 채팅 패널)가 글을 써서 이 칸을 믿지 않고 최신 글을 직접 읽는다.
+  lastMessageAt DateTime?
+  /// 사람끼리 1:1(DM) 방만 — 두 사람 id 를 정렬해 이은 값(lib/chat-people-rules.ts dmKeyOf).
+  /// 같은 두 사람의 1:1 방이 하나뿐이게 DB 가 막는다(동시에 두 번 눌러도 하나만 생긴다)
+  dmKey         String?          @unique
+  messages      ChatMessage[]
+  members       ChatRoomMember[]
+
+  @@index([kind, lastMessageAt])
+}
+
+enum ChatRoomKind {
+  /// 전사방 — 구성원 모두가 읽고 쓴다. 참여자 행이 없어도 된다
+  COMPANY
+  /// 업무방 — 표로 만들지 않는다(위 주석)
+  TASK
+  /// 옴니스와의 1:1 방. ChatGPT 의 세션 하나. 참여자는 만든 사람 한 명이다
+  OMNIS_DM
+  /// 사람끼리 단톡방 — 구성원 누구나 만든다. 초대 · 나가기가 있다. 옴니스는 들어가지 않는다
+  GROUP
+  /// 사람끼리 1:1 — 두 사람만. 초대 · 나가기가 없고 dmKey 로 같은 두 사람의 방이 하나뿐이다
+  DM
+}
+
+/// 방 참여자. COMPANY 는 모두가 참여자라 행을 만들지 않는다 — OMNIS_DM · GROUP · DM 은 이 표로 읽기 권한을 정한다.
+model ChatRoomMember {
+  roomId     String
+  room       ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime  @default(now())
+  /// 마지막으로 이 방을 연 시각. 안 읽은 글 표시가 쓴다
+  lastReadAt DateTime?
+
+  @@id([roomId, userId])
+  @@index([userId])
+}
+
+/// 방 하나에 대한 내 설정 — 즐겨찾기 · 마지막으로 읽은 시각. 메신저 목록(lib/chat-prefs.ts)이 쓴다.
+/// 방을 id 가 아니라 방 키로 가리킨다: `room:<ChatRoom.id>` · `task:<Task.id>`.
+/// 전사방은 참여자 행이 없고 업무방은 표 자체가 없어(taskId 로 묶인 가상 방) ChatRoomMember 에 달 수 없다.
+/// 키 `*` 한 줄은 「안 읽음을 세기 시작한 시각」이다 — 한 번도 열지 않은 방은 그 뒤 글만 센다.
+model ChatRoomPref {
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roomKey    String
+  favorite   Boolean   @default(false)
+  lastReadAt DateTime?
+  /// 내 목록에서 지운 · 숨긴 시각(2026-10-29). 옴니스 1:1 = 대화 삭제(나에게서 숨김 · AgentRun · AiUsage 는 남는다),
+  /// 사람 1:1 = 숨기기(이 시각 뒤에 새 글이 오면 다시 보인다). 단톡방은 나가기(참여자 행 삭제)라 쓰지 않는다
+  hiddenAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@id([userId, roomKey])
+}
+
+/// 추천(규칙) 폴더의 규칙 — 규칙으로만 채우고 방을 손으로 넣지 않는다.
+/// MY_TASKS 내가 담당이거나 지시한 업무의 업무방(업무 탭 i-own · i-assigned 와 같은 기준)
+/// PROJECT  한 프로젝트의 업무방(ChatFolder.projectId)
+/// COMPANY · TASK · GROUP 은 처음 둔 추천 폴더(방 종류로 채웠다). 개념을 바꾸며 쓰지 않는다 —
+/// 하나뿐인 방(전사방)은 폴더가 될 수 없다(2026-10-29 작업지시자). 값과 행은 남기고 화면 · API 가 숨긴다
+enum ChatFolderRule {
+  COMPANY
+  TASK
+  GROUP
+  MY_TASKS
+  PROJECT
+}
+
+/// 내 채팅방 폴더. 남에게 보이지 않는다. rule 이 있으면 규칙 폴더(방을 직접 담지 않는다), 없으면 수동 폴더
+model ChatFolder {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
-  createdAt DateTime      @default(now())
-  messages  ChatMessage[]
+  rule      ChatFolderRule?
+  /// rule = PROJECT 일 때 그 프로젝트. 프로젝트 행이 지워지면 null 이 되고 폴더는 남는다(빈 폴더 — 사용자가 지운다)
+  projectId String?
+  project   Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  /// 칩 순서. 작은 것이 앞
+  order     Int              @default(0)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  rooms     ChatFolderRoom[]
+
+  /// 프로젝트 폴더는 사람마다 프로젝트별로 하나. NULL 은 서로 겹치지 않아 수동 폴더 · MY_TASKS 는 걸리지 않는다 —
+  /// MY_TASKS 하나는 lib/chat-prefs.ts 가 지킨다. 처음의 (userId, rule) 유일 제약은 프로젝트 폴더를 둘 이상 못 만들어 바꿨다
+  @@unique([userId, rule, projectId])
+  @@index([userId, order])
+}
+
+/// 수동 폴더에 넣은 방. 방 키는 ChatRoomPref 와 같다
+model ChatFolderRoom {
+  folderId String
+  folder   ChatFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  roomKey  String
+  addedAt  DateTime   @default(now())
+
+  @@id([folderId, roomKey])
 }
 
 model ChatMessage {
@@ -112,6 +225,10 @@ model ChatMessage {
   replyToId         String?
   replyTo           ChatMessage?  @relation("MessageReply", fields: [replyToId], references: [id])
   replies           ChatMessage[] @relation("MessageReply")
+  /// 옴니스 답이면 그 답을 만든 질문 기록. 출처(sources)는 OmnisQuery 에 있어 여기 다시 싣지 않는다.
+  /// 옴니스 글의 작성자는 시스템 계정(lib/system-user.ts, id "system")이다
+  omnisQueryId      String?       @unique
+  omnisQuery        OmnisQuery?   @relation(fields: [omnisQueryId], references: [id])
 
   files    File[]
   mentions ChatMention[]
@@ -284,6 +401,8 @@ model Project {
 
   tasks     Task[]
   records   CompanyRecord[]
+  /// 이 프로젝트의 업무방을 모은 채팅방 폴더(사람마다)
+  chatFolders ChatFolder[]
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 
@@ -435,6 +554,8 @@ model OmnisQuery {
   /// 답변 근거 출처 배열 [{ id, source, sourceId, title, sourceLabel, similarity }]
   sources   Json
   createdAt DateTime @default(now())
+  /// 메신저 옴니스 방에서 나온 질문이면 그 답 글
+  message   ChatMessage?
 
   @@index([userId, createdAt])
 }
@@ -1661,4 +1782,116 @@ model ExternalCalendarEvent {
   @@unique([calendarId, uid, recurrenceId])
   @@index([calendarId, startAt])
   @@index([href])
+}
+
+// ─── 옴니스 에이전트 (메신저 3단계) ─────────────────────────────
+// 계획: mydocs/plans/2026-10-28-omnis-messenger-agent.md 3단계 · 구현: lib/agent/
+//
+// userId · roomId 는 관계(@relation)를 두지 않은 문자열이다. User · ChatRoom 모델을 고치지 않으려는 것 —
+// 같은 때 다른 브랜치(feat/omnis-messenger)가 두 모델에 칸을 더하고 있고, 사용 기록은 방 · 사람이 바뀌어도 남아야 한다.
+
+/// 옴니스 1:1 방에서 질문 하나에 대한 에이전트 실행. 쓰기 확인을 기다리는 동안 멈췄다가 같은 실행으로 이어 간다
+model AgentRun {
+  id                String         @id @default(uuid())
+  roomId            String
+  userId            String
+  /// 이 실행을 연 내 글(ChatMessage.id)
+  questionMessageId String
+  status            AgentRunStatus @default(RUNNING)
+  /// "openai:gpt-6.1-sol" — lib/ai-models.ts
+  model             String
+  /// 지금까지의 대화(AI SDK ModelMessage[]). 확인 뒤 이어 갈 때 여기에 승인 응답을 붙여 다시 넣는다
+  messages          Json
+  /// 지금까지 부른 모델 호출 수 — 실행당 상한(lib/ai-models.ts AGENT_LIMITS)
+  turns             Int            @default(0)
+  costKrw           Decimal        @default(0) @db.Decimal(12, 4)
+  /// 지금 돌고 있는(또는 마지막) Workflow 실행 id — 새로고침 뒤 스트림을 다시 붙는 데 쓴다
+  workflowRunId     String?
+  /// 찾은 사내 지식 조각 [{ id, source, sourceId, title, sourceLabel, similarity }] — 답의 각주 [n] 이 이 순서를 가리킨다
+  sources           Json           @default("[]")
+  error             String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  steps             AgentStep[]
+
+  @@index([roomId, createdAt])
+  @@index([userId, createdAt])
+}
+
+enum AgentRunStatus {
+  RUNNING
+  /// 쓰기 제안 카드에 사람의 확인을 기다린다
+  AWAITING_APPROVAL
+  DONE
+  FAILED
+  /// 턴 · 원 상한에 닿아 멈췄다
+  LIMIT
+  /// 확인을 기다리는 동안 새 글이 와서 버렸다
+  CANCELLED
+}
+
+/// 쓰기 제안 하나 = 확인 카드 하나. 승인은 화면에 보인 제안(planHash)에 묶이고 한 번만 쓴다
+model AgentStep {
+  id            String          @id @default(uuid())
+  runId         String
+  run           AgentRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  toolCallId    String
+  /// AI SDK 의 tool-approval-request id
+  approvalId    String
+  toolName      String
+  input         Json
+  /// 확인 카드 — 제목 · 대상 · 전 → 후 · 위험 이유 (lib/agent/preview.ts)
+  preview       Json
+  /// sha256(run · 도구 · 입력 · 카드). 화면이 보낸 값과 같아야 승인된다
+  planHash      String
+  status        AgentStepStatus @default(PENDING)
+  /// 비밀번호 · 인증 정보 · 개인 식별번호가 보여 막은 이유 (lib/agent/secrets.ts)
+  blockedReason String?
+  /// 실행 결과(도구가 돌려준 글) 또는 실패 이유
+  result        String?
+  decidedById   String?
+  decidedAt     DateTime?
+  executedAt    DateTime?
+  createdAt     DateTime        @default(now())
+
+  @@unique([runId, toolCallId])
+  @@index([runId])
+}
+
+enum AgentStepStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  BLOCKED
+  EXECUTED
+  FAILED
+  /// 확인 전에 실행이 버려졌다(새 글)
+  EXPIRED
+}
+
+/// 벤더 중립 AI 사용 기록 — 모델 호출 한 번에 한 줄. GeminiUsage 는 그대로 두고 새 기능부터 여기에 남긴다
+model AiUsage {
+  id                String   @id @default(uuid())
+  /// openai · anthropic · google
+  vendor            String
+  model             String
+  /// 기능 이름 — "agent" …
+  feature           String
+  /// 입력 토큰 전체(캐시 읽기 포함)
+  inputTokens       Int
+  cachedInputTokens Int      @default(0)
+  /// 출력 토큰 전체(추론 포함)
+  outputTokens      Int
+  reasoningTokens   Int      @default(0)
+  /// 요금표(lib/ai-pricing.ts)로 환산한 값. 요금표에 없는 모델이면 0
+  costUsd           Decimal  @default(0) @db.Decimal(12, 6)
+  costKrw           Decimal  @default(0) @db.Decimal(12, 4)
+  userId            String?
+  roomId            String?
+  runId             String?
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([feature, createdAt])
+  @@index([userId, createdAt])
 }

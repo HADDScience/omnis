@@ -40,13 +40,14 @@ test.describe("시연용 데모 배너 + 테스트 계정 카드", () => {
     ).toBeVisible()
   })
 
-  test("배너가 헤더(Sidebar)와 겹치지 않는다 (회귀 방지)", async ({ page }) => {
+  test("배너가 떠 있는 nav 와 겹치지 않는다 (회귀 방지)", async ({ page }) => {
     await login(page, "팀장")
     const banner = page
       .getByRole("status", { name: "시연용 데모 사이트" })
       .first()
     const sidebarLogo = page
-      .getByRole("link", { name: /Omnis.*HADDScience/ })
+      .getByRole("navigation", { name: "주 메뉴" })
+      .filter({ visible: true })
       .first()
 
     const [bannerBox, sidebarBox] = await Promise.all([

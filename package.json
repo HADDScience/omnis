@@ -36,6 +36,11 @@
     "test:scenario:headed": "playwright test --project=scenario --headed"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.79",
+    "@ai-sdk/google": "4.0.95",
+    "@ai-sdk/openai": "4.0.93",
+    "@ai-sdk/react": "4.0.143",
+    "@ai-sdk/workflow": "2.0.72",
     "@auth/prisma-adapter": "^2.11.1",
     "@base-ui/react": "^1.3.0",
     "@dnd-kit/core": "^6.3.1",
@@ -47,7 +52,9 @@
     "@prisma/client": "^6.19.2",
     "@tanstack/react-table": "^8.21.3",
     "@upstash/redis": "^1.39.0",
+    "@workflow/serde": "5.0.0",
     "@xyflow/react": "^12.10.2",
+    "ai": "7.0.140",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -78,10 +85,12 @@
     "unpdf": "^1.8.1",
     "vaul": "^1.1.2",
     "web-push": "^3.6.7",
+    "workflow": "5.2.2",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
     "@eslint/eslintrc": "^3",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.2.1",
@@ -92,6 +101,7 @@
     "@types/web-push": "^3.6.4",
     "eslint": "^9.39.4",
     "eslint-config-next": "16.1.7",
+    "openai": "^7.45.0",
     "playwright": "^1.63.0",
     "postcss": "^8",
     "prettier": "^3.8.1",

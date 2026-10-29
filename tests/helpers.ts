@@ -62,7 +62,7 @@ export async function login(page: Page, name: string, password = process.env.E2E
   await page.getByRole("textbox", { name: "이름" }).fill(name)
   await page.getByRole("textbox", { name: "비밀번호" }).fill(password)
   await page.getByRole("button", { name: "로그인" }).click()
-  await page.waitForURL("**/dashboard", { timeout: 15_000 })
+  await page.waitForURL("**/chat", { timeout: 15_000 })
 }
 
 // ─── 채팅 패널 ──────────────────────────────────────────

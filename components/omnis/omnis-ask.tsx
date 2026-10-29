@@ -84,7 +84,7 @@ function sourceHref(s: Source): string | null {
     case "WEEKLY_REPORT":
       return `/reports/${s.sourceId}`
     case "CHAT_MESSAGE":
-      return "/chat"
+      return "/chat/default-room"
     case "IP_CASE":
       // 지식재산권은 아직 옴니스 안에 상세 화면이 없다. 외부 플랫폼으로 보낸다.
       return IP_PLATFORM_URL
@@ -158,6 +158,9 @@ function Citation({ num, source }: { num: string; source?: Source }) {
           href ? "omnis-citation omnis-citation--link" : "omnis-citation"
         }
         onClick={href ? () => router.push(href) : undefined}
+        // 출처를 가리키면 그 화면을 미리 받아 둔다 — router.push 는 링크처럼 저절로 미리 받지 않는다
+        onPointerEnter={href ? () => router.prefetch(href) : undefined}
+        onFocus={href ? () => router.prefetch(href) : undefined}
       >
         {num}
       </TooltipTrigger>
@@ -490,10 +493,6 @@ function SkeletonAnswer({ caption }: { caption?: string }) {
 
 function AnswerBlock({ qa }: { qa: QA }) {
   const time = relativeTime(qa.createdAt)
-  const components = useMemo(
-    () => buildMarkdownComponents(qa.sources),
-    [qa.sources]
-  )
   return (
     <div>
       {/* 질문 */}
@@ -515,34 +514,48 @@ function AnswerBlock({ qa }: { qa: QA }) {
 
       {/* 답변 + 출처 */}
       <div className="rounded-xl border bg-card p-4">
-        <TooltipProvider delay={150}>
-          <div className="omnis-md">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-              {keepLineBreaks(qa.answer)}
-            </ReactMarkdown>
-          </div>
-        </TooltipProvider>
-
-        {/* 참고 자료 — 하단에 접힌 상태로 제공 */}
-        {qa.sources.length > 0 && (
-          <details className="group mt-3 border-t pt-2.5">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
-              <HugeiconsIcon
-                icon={ArrowDown01Icon}
-                size={12}
-                className="-rotate-90 transition-transform group-open:rotate-0"
-              />
-              참고한 자료 {qa.sources.length}건
-            </summary>
-            <div className="mt-2 flex flex-col gap-1.5">
-              {qa.sources.map((s, i) => (
-                <SourceRow key={s.id} index={i} source={s} />
-              ))}
-            </div>
-          </details>
-        )}
+        <OmnisAnswerBody answer={qa.answer} sources={qa.sources} />
       </div>
     </div>
+  )
+}
+
+/**
+ * 답 본문(마크다운 · 각주) + 접힌 참고 자료. 이 화면과 메신저 옴니스 방(components/messenger/omnis-room.tsx)이 같이 쓴다 —
+ * 따로 그리면 각주 · 표 · 출처 링크가 두 화면에서 어긋난다.
+ */
+export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: Source[] }) {
+  const components = useMemo(() => buildMarkdownComponents(sources), [sources])
+  const qa = { answer, sources }
+  return (
+    <>
+      <TooltipProvider delay={150}>
+        <div className="omnis-md">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+            {keepLineBreaks(qa.answer)}
+          </ReactMarkdown>
+        </div>
+      </TooltipProvider>
+
+      {/* 참고 자료 — 하단에 접힌 상태로 제공 */}
+      {qa.sources.length > 0 && (
+        <details className="group mt-3 border-t pt-2.5">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <HugeiconsIcon
+              icon={ArrowDown01Icon}
+              size={12}
+              className="-rotate-90 transition-transform group-open:rotate-0"
+            />
+            참고한 자료 {qa.sources.length}건
+          </summary>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {qa.sources.map((s, i) => (
+              <SourceRow key={s.id} index={i} source={s} />
+            ))}
+          </div>
+        </details>
+      )}
+    </>
   )
 }
 

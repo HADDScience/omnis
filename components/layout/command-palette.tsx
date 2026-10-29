@@ -96,6 +96,16 @@ export function CommandPalette() {
 
   const total = results.cards.length + results.tasks.length + results.reports.length
 
+  // 검색 결과 위쪽이 갈 화면을 미리 받아 둔다 — router.push 는 링크처럼 저절로 미리 받지 않는다
+  useEffect(() => {
+    const hrefs = [
+      ...results.tasks.slice(0, 3).map((t) => `/tasks/${t.id}`),
+      ...results.cards.slice(0, 3).map((c) => `/omnis/${c.id}`),
+      ...results.reports.slice(0, 2).map((r) => `/reports/${r.id}`),
+    ]
+    for (const href of hrefs) router.prefetch(href)
+  }, [results, router])
+
   function go(href: string) {
     close()
     router.push(href)

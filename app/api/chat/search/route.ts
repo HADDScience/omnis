@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
+import { roomAccess } from "@/lib/chat-rooms"
 
 /** 한 번에 내려보내는 결과 수. 더 있으면 마지막 결과 시각을 before 로 다시 부른다 */
 const PAGE = 20
@@ -28,6 +29,9 @@ export async function GET(req: NextRequest) {
   // 보낸 사람으로 찾기 — 검색어 없이도 된다. 함께 주면 둘 다 맞는 글
   const authorId = searchParams.get("authorId")
   if (!roomId) return NextResponse.json({ error: "roomId 필수" }, { status: 400 })
+  if ((await roomAccess(roomId, session.user.id)) === "forbidden") {
+    return NextResponse.json({ error: "이 방을 볼 수 없습니다" }, { status: 403 })
+  }
   if (!q && !authorId) return NextResponse.json({ results: [], hasMore: false, total: 0 })
   const text = q || null
 

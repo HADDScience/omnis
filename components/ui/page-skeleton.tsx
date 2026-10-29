@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton"
+import { HeaderSubnavSlot } from "@/components/layout/header-subnav"
 
 /**
  * 화면이 오는 동안 그 화면의 **모양**을 미리 그린다.
@@ -10,12 +11,15 @@ import { Skeleton } from "@/components/ui/skeleton"
  * 순간 레이아웃이 튀어서, 없느니만 못하다.
  */
 
+/** 제목줄. 섹션 하위 탭 띠(아카이브 등)는 로딩 중에도 그대로 둔다 — 탭을 옮겨도 띠가 깜빡이지 않게 */
 export function HeaderSkeleton() {
   return (
-    <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-background px-4">
-      <Skeleton className="h-4 w-4 rounded" />
-      <Skeleton className="h-3.5 w-40" />
-    </div>
+    <>
+      <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-background px-4 [@media(pointer:coarse)]:h-[52px]">
+        <Skeleton className="h-3.5 w-40" />
+      </div>
+      <HeaderSubnavSlot />
+    </>
   )
 }
 

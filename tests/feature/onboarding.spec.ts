@@ -39,7 +39,7 @@ test.describe("onboarding", () => {
       .getByRole("textbox", { name: "비밀번호", exact: true })
       .fill(password)
     await page.getByRole("button", { name: "로그인", exact: true }).click()
-    await page.waitForURL("**/dashboard")
+    await page.waitForURL("**/chat")
   }
   async function skipVideo(page: Page) {
     await page.getByRole("button", { name: "건너뛰기", exact: true }).click()
@@ -259,8 +259,6 @@ test.describe("onboarding", () => {
       "ai",
       "resources",
       "profile",
-      "mcp",
-      "replay",
     ]
     for (const target of targets) {
       await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
@@ -319,14 +317,14 @@ test.describe("onboarding", () => {
           "chat-trigger"
         )
       }
-      if (target === "mcp")
+      if (target === "profile")
         await page.screenshot({
           animations: "disabled",
           path: "/tmp/omnis-onboarding-precise-spotlight.png",
         })
       await page
         .getByRole("button", {
-          name: target === "replay" ? "안내 마치기" : "다음 →",
+          name: target === "profile" ? "안내 마치기" : "다음 →",
           exact: true,
         })
         .click()
@@ -372,8 +370,6 @@ test.describe("onboarding", () => {
       "ai",
       "resources",
       "profile",
-      "mcp",
-      "replay",
     ]
     for (const stop of stops) {
       await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
@@ -382,7 +378,7 @@ test.describe("onboarding", () => {
       )
       await page.clock.fastForward(1300)
       await expect(page.locator(".spotlight-shade mask rect")).toHaveCount(2)
-      if (stop === "mcp") {
+      if (stop === "profile") {
         await page.waitForTimeout(1200)
         await page.screenshot({
           animations: "disabled",
@@ -453,7 +449,7 @@ test.describe("onboarding", () => {
     await finish(page)
     await page.reload()
     await expect(
-      page.getByRole("button", { name: "프로필 메뉴" })
+      page.getByRole("link", { name: "마이" }).first()
     ).toBeVisible()
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
     const other = await browser.newContext()
@@ -461,8 +457,8 @@ test.describe("onboarding", () => {
     await login(otherPage)
     await expect(otherPage.locator(".omnis-tour-surface")).toHaveCount(0)
     await other.close()
-    await page.getByRole("button", { name: "프로필 메뉴" }).click()
-    await page.getByRole("menuitem", { name: "Omnis MCP 등록" }).click()
+    await page.goto("/settings")
+    await page.getByRole("button", { name: /Omnis MCP 등록/ }).click()
     const input = page.getByRole("textbox", { name: "MCP 서버 주소" })
     await expect(input).toHaveValue(/\/api\/ip-mcp$/)
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
@@ -471,8 +467,8 @@ test.describe("onboarding", () => {
       await input.inputValue()
     )
     await page.getByRole("button", { name: "닫기", exact: true }).click()
-    await page.getByRole("button", { name: "프로필 메뉴" }).click()
-    await page.getByRole("menuitem", { name: "온보딩 튜토리얼" }).click()
+    await page.goto("/settings")
+    await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
     await expect(page.locator(".intro-stage")).toHaveAttribute("data-step", "1")
     const second = await prisma.user.create({
       data: { name: `${name}-other`, passwordHash: hashSync(password, 4) },
@@ -580,7 +576,7 @@ test.describe("onboarding", () => {
       .toBe(true)
   })
 
-  test("비활성 탭에서 재생 정지, 키보드 종료, 작성 중인 AI 질문 보존", async ({
+  test("비활성 탭에서 재생 정지, 키보드 종료, 작성 중인 패널 메시지 보존", async ({
     page,
   }) => {
     await page.clock.install()
@@ -609,14 +605,22 @@ test.describe("onboarding", () => {
     ).toBeVisible()
     await page.keyboard.press("Escape")
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
-    await page
-      .getByRole("button", { name: "Omnis AI 에게 질문", exact: true })
-      .click()
-    const input = page.getByRole("textbox", { name: "옴니스에게 보낼 질문" })
+    // 패널의 「Omnis AI」 탭은 메신저의 옴니스 1:1 방으로 옮겨 없어졌다(d7a76ed). 투어가 지켜야 하는 것 —
+    // 「대화」 장면이 패널을 열 때 탭을 바꿔 쓰던 글을 버리지 않는다 — 은 패널에 남은 「전체」 대화 입력으로 본다.
+    // nav 채팅 탭은 이제 /chat 으로 가는 링크라 패널은 따로 연다. 제목줄의 「채팅 열기」 는 지웠고(2026-10-29)
+    // 오른쪽 아래 둥근 단추(PanelDock)가 그 자리를 맡는다 — 지키는 것(쓰던 글 보존)은 그대로다
+    await page.getByRole("button", { name: "대화 패널 열기", exact: true }).click()
+    const panel = page.locator('aside[data-onboarding="conversation"]')
+    await expect(
+      panel.getByRole("button", { name: "전체", exact: true })
+    ).toHaveAttribute("aria-pressed", "true")
+    const input = panel.getByRole("textbox", { name: "메시지 입력" })
     await input.fill("아직 전송하지 않은 질문입니다")
-    const url = page.url()
-    await page.getByRole("button", { name: "프로필 메뉴" }).click()
-    await page.getByRole("menuitem", { name: "온보딩 튜토리얼" }).click()
+    // 튜토리얼 다시 보기는 프로필 메뉴에서 마이 화면으로 옮겼다. page.goto 로 가면 문서를 새로 읽어
+    // 작성 중인 질문이 사라지니, 사람처럼 마이 동그라미를 눌러 화면 안에서 옮겨 간다
+    await page.getByRole("link", { name: /^마이/ }).first().click()
+    await page.waitForURL("**/settings")
+    await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
     await skipVideo(page)
     for (let index = 0; index < 2; index++) {
       await page.clock.fastForward(1300)
@@ -628,7 +632,6 @@ test.describe("onboarding", () => {
     )
     await page.getByRole("button", { name: "안내 건너뛰기" }).click()
     await expect(input).toHaveValue("아직 전송하지 않은 질문입니다")
-    expect(page.url()).toBe(url)
     await expect(input).toBeVisible()
   })
 
@@ -659,14 +662,14 @@ test.describe("onboarding", () => {
         .locator(".spotlight-card")
         .evaluate((node) => node.getBoundingClientRect().height)
     ).toBeLessThan(350)
-    for (let index = 0; index < 6; index++) {
+    for (let index = 0; index < 5; index++) {
       await page.clock.fastForward(1300)
       await page.clock.fastForward(7100)
     }
     await page.clock.fastForward(1300)
     await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
       "data-tour-stop",
-      "mcp"
+      "profile"
     )
     await expect(page.locator(".spotlight-shade mask rect")).toHaveCount(2)
     await page.waitForTimeout(1200)
