@@ -24,12 +24,22 @@ export default defineConfig({
     {
       name: "feature",
       testDir: "./tests/feature",
+      grepInvert: /@mobile/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      // 폰 화면 게이트 — @mobile 태그만 돈다. PC 용 테스트를 폰 크기로 돌려 봐야 대부분 의미가 없다.
+      // CI 는 Chromium 만 깔므로 iPhone(WebKit) 대신 Chromium 에 390px 터치 화면을 준다 (2026-10-29)
       name: "mobile",
       testDir: "./tests/feature",
-      use: { ...devices["iPhone 13"] },
+      grep: /@mobile/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
+      },
     },
     {
       // 실제 도입 흐름 — 사람 여럿이 동시에 움직이는 긴 시나리오. 목킹 없음, Gemini 실호출.

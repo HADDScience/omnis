@@ -50,7 +50,9 @@ try {
   probe.listen(port)
   await once(probe, "listening")
   await new Promise((resolve) => probe.close(resolve))
-  for (const file of execFileSync("git", ["ls-files", "-z"], {
+  // 커밋하지 않은 새 파일도 함께 옮긴다 — push 전 게이트(test:e2e:affected)는 작업 중인 트리를 돌려야 한다.
+  // 추적된 파일만 옮기면 새로 만든 테스트 도우미가 빠져 "Cannot find module" 로 깨졌다(2026-10-29)
+  for (const file of execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
     encoding: "utf8",
   })
     .split("\0")
@@ -138,7 +140,8 @@ try {
   } finally {
     await client.dispose()
   }
-  run("npm", ["run", "test:e2e", "--", "--retries=0", ...process.argv.slice(2)])
+  // pnpm run test:e2e:local -- <파일> 은 "--" 를 그대로 넘긴다. 그대로 두면 playwright 가 그 뒤 파일 지정을 무시하고 전체를 돌렸다
+  run("npm", ["run", "test:e2e", "--", "--retries=0", ...process.argv.slice(2).filter((a) => a !== "--")])
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1
