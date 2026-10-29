@@ -12,6 +12,8 @@ import {
   saveTourResume,
 } from "./tour-stops"
 import { TourSocial } from "./tour-social"
+import { DEMO_END, DEMO_LENGTH, TourDemo } from "./tour-demo"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import "./onboarding.css"
 
 /** 장면 하나를 읽는 시간. 탭 장면은 이 시간이 지나면 다음으로 넘어간다 */
@@ -23,6 +25,8 @@ type Box = {
   hole: Rect | null
   /** 탭 장면의 화면 본문 — 옅게 비춘다 */
   body: Rect | null
+  /** 시연 장면 — 옴니스 방 대화 칸 자리. 대본을 여기에 그린다 */
+  demo: Rect | null
   viewportWidth: number
   viewportHeight: number
   cardX: number
@@ -93,9 +97,21 @@ function Stop({
   const card = useRef<HTMLElement>(null)
   const [box, setBox] = useState<Box | null>(null)
   const [settled, setSettled] = useState(false)
-  // 간편 로그인은 고르는 장면이라 저절로 넘기지 않는다(시계 0 = 멈춤)
-  const duration = stop.social ? 0 : READ_MS
-  const clock = useTourClock(duration, onAdvance, settled)
+  // 4초 안에 그 화면에 못 가면(느린 망 · 화면 오류) 기다리지 않는다 — 시연은 화면 가운데에서라도 대본을 돌린다
+  const [late, setLate] = useState(false)
+  const lateRef = useRef(false)
+  const reduced = useMediaQuery("(prefers-reduced-motion: reduce)")
+  // 간편 로그인은 고르는 장면이라 저절로 넘기지 않는다(시계 0 = 멈춤). 시연은 대본 길이만큼
+  const duration = stop.social
+    ? 0
+    : stop.demo
+      ? DEMO_LENGTH[stop.demo]
+      : READ_MS
+  // 시계는 그 화면에 도착한 뒤부터 — 옮겨 가는 동안(첫 접속은 화면을 받는 데 몇 초 걸린다) 읽을 시간이 깎이지 않게.
+  // 시연은 자리를 잰 뒤부터 — 대본이 앞서 흘러가지 않게
+  const arrived = !stop.route || pathname === stop.route || late
+  const ready = arrived && (!stop.demo || !!box?.demo)
+  const clock = useTourClock(duration, onAdvance, settled && ready)
   // 장면의 화면으로 옮겨 간다. 이미 그 화면이면 그대로 둔다(다시 읽으면 쓰던 글 · 스크롤이 사라진다)
   useEffect(() => {
     if (stop.route && pathname !== stop.route) router.push(stop.route)
@@ -105,6 +121,10 @@ function Stop({
   useEffect(() => {
     setSpotlightTarget(stop.target ?? null)
     const timeout = window.setTimeout(() => setSettled(true), 1000)
+    const lateTimeout = window.setTimeout(() => {
+      lateRef.current = true
+      setLate(true)
+    }, 4000)
     const measure = () => {
       const surface = document.querySelector<HTMLElement>(".spotlight-surface")
       if (!surface) return
@@ -124,7 +144,8 @@ function Stop({
       }
       const node = stop.target ? visibleNode(`[data-onboarding="${stop.target}"]`) : undefined
       const clip = node ? clippedRect(node) : null
-      const hole = clip ? local(clip, 5) : null
+      // 시연은 대화 칸을 테두리 여백 없이 꼭 맞게 덮는다 — 진짜 입력칸이 틈으로 보이지 않게
+      let hole = clip ? local(clip, stop.demo ? 0 : 5) : null
       // 화면 본문 — 떠 있는 nav 밑으로 비워 둔 여백(padding)은 빼고 잰다
       let body: Rect | null = null
       const main = stop.body ? visibleNode("[data-main-scroll]") : undefined
@@ -138,22 +159,54 @@ function Stop({
         })
         if (body.width <= 0 || body.height <= 0) body = null
       }
-      const cw = Math.min(330, vw - 32)
+      let cw = Math.min(330, vw - 32)
       const ch = Math.min(card.current?.offsetHeight ?? 300, vh - 32)
       const clampX = (value: number) =>
         Math.max(16, Math.min(value, vw - cw - 16))
       const clampY = (value: number) =>
         Math.max(16, Math.min(value, vh - ch - 16))
       const gap = 20
-      let cardX: number
-      let cardY: number
+      let cardX = 16
+      let cardY = 16
       let connector = ""
-      if (stop.target && !hole) {
+      let demo: Rect | null = null
+      if (stop.demo) {
+        const room =
+          hole ??
+          (lateRef.current
+            ? { x: 16, y: 16, width: vw - 32, height: vh - 32 }
+            : null)
+        if (!room) {
+          setBox((previous) =>
+            previous ? { ...previous, hole: null, demo: null } : null
+          )
+          return
+        }
+        if (room.x - 32 >= 260) {
+          // PC — 대화 목록 자리에 설명창, 대화 칸 전체가 시연
+          cw = Math.min(330, room.x - 32)
+          cardX = (room.x - cw) / 2
+          cardY = clampY(room.y + room.height / 2 - ch / 2)
+          demo = room
+        } else {
+          // 폰 · 좁은 창 — 설명창을 아래에 붙이고 그 위까지가 시연. 진짜 입력칸은 설명창과 그늘 밑에 깔린다
+          cw = Math.min(420, vw - 32)
+          cardX = clampX(room.x + room.width / 2 - cw / 2)
+          cardY = Math.max(16, vh - ch - 16)
+          demo = {
+            ...room,
+            height: Math.max(120, Math.min(room.height, cardY - 12 - room.y)),
+          }
+        }
+        hole = demo
+      } else if (stop.target && !hole) {
         // 대상을 아직 못 찾았다(화면을 옮겨 가는 중이거나 접혀 있다) — 지난 자리에 둔다
         setBox((previous) => (previous ? { ...previous, hole: null, body } : null))
         return
       }
-      if (!hole) {
+      if (demo) {
+        // 위에서 자리를 정했다
+      } else if (!hole) {
         cardX = (vw - cw) / 2
         cardY = clampY((vh - ch) / 2)
       } else {
@@ -189,6 +242,7 @@ function Stop({
       const next: Box = {
         hole,
         body,
+        demo,
         viewportWidth: vw,
         viewportHeight: vh,
         cardX,
@@ -211,6 +265,7 @@ function Stop({
     frame = requestAnimationFrame(track)
     return () => {
       clearTimeout(timeout)
+      clearTimeout(lateTimeout)
       cancelAnimationFrame(frame)
     }
   }, [stop, setSpotlightTarget])
@@ -284,6 +339,14 @@ function Stop({
           />
         )}
       </svg>
+      {stop.demo && box?.demo && (
+        <TourDemo
+          script={stop.demo}
+          // 모션 감소 — 타이핑 · 스트리밍 없이 끝 장면을 바로
+          elapsed={reduced ? DEMO_END[stop.demo] : clock.elapsed}
+          rect={box.demo}
+        />
+      )}
       <section
         ref={card}
         className="spotlight-card"

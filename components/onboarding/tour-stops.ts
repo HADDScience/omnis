@@ -4,6 +4,8 @@
  * 장면에 들어가면 `route` 로 옮겨 가고, 화면이 그려지면 `target`(data-onboarding 표식)을 잰다.
  * 탭 장면은 nav 의 탭과 그 화면 본문을 함께 비춘다 — 탭만 비추면 그 탭에 무엇이 있는지 안 보인다.
  */
+import type { DemoScript } from "./tour-demo"
+
 export interface TourStop {
   id: string
   /** 이 장면에 들어갈 때 옮겨 갈 화면 */
@@ -14,6 +16,8 @@ export interface TourStop {
   body?: boolean
   /** 간편 로그인 장면 — 소셜 연결 버튼. 저절로 넘어가지 않는다(고르는 장면이다) */
   social?: true
+  /** 옴니스 방(/chat/new) 대화 칸 자리에서 재생할 대본(components/onboarding/tour-demo.tsx) */
+  demo?: DemoScript
   title: string
   copy: string
 }
@@ -27,6 +31,14 @@ export const TOUR_STOPS: readonly TourStop[] = [
     // (lib/auth-identity.ts). 사람은 provider + providerAccountId 로 알아보고, 화면의 이름은 언제나 옴니스 계정 이름이다(jwt 콜백).
     // 메일은 마이의 연결 목록에 「어느 계정을 연결했는지」 보여 주는 데만 쓴다
     copy: "구글 · 카카오 계정을 연결해 두면 다음부터 이름 · 비밀번호 없이 한 번에 들어와요. 소셜 계정은 누구인지 알아보는 데만 쓰고, 이름 · 사진 같은 계정 정보는 가져다 쓰지 않아요. 메일 주소는 어느 계정을 연결했는지 보여 드리는 데만 남겨요.",
+  },
+  {
+    id: "create-task",
+    route: "/chat/new",
+    target: "omnis-room",
+    demo: "create-task",
+    title: "옴니스와 함께 업무를 시작해보세요",
+    copy: "채팅에 한 줄로 지시하면 옴니스가 담당자를 찾아 업무 카드를 제안해요. 확인을 눌러야 만들어져요. 지금 보이는 대화는 예시라 실제로 보내지 않아요.",
   },
   {
     id: "tasks",

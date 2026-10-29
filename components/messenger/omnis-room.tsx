@@ -410,7 +410,8 @@ export function OmnisRoom({
   const text = live ? liveText(live) : ""
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    // 온보딩 시연이 이 칸 위에 대본을 그린다(패널 안의 방은 비추지 않는다)
+    <div className="flex min-h-0 flex-1 flex-col" data-onboarding={embedded ? undefined : "omnis-room"}>
       {!embedded && (
         <RoomHeader
           title={isNew ? "새 대화" : (roomName ?? (messages[0] ? messages[0].content.replace(/\s+/g, " ").slice(0, 30) : "옴니스"))}
@@ -550,8 +551,12 @@ export function OmnisRoom({
   )
 }
 
-/** 스트림으로 받는 중인 답 — 도는 도구 한 줄 + 지금까지 쓴 글. 글이 오기 전에는 스켈레톤 */
-function LiveOmnis({ text, tools, resuming = false }: { text: string; tools: LiveTool[]; resuming?: boolean }) {
+/**
+ * 스트림으로 받는 중인 답 — 도는 도구 한 줄 + 지금까지 쓴 글. 글이 오기 전에는 스켈레톤.
+ * 아래 MyMessage · OmnisMessage · Composer 와 함께 온보딩 시연(components/onboarding/tour-demo.tsx)도 그린다 —
+ * 시연이 실제 화면과 어긋나지 않게 같은 컴포넌트를 쓴다
+ */
+export function LiveOmnis({ text, tools, resuming = false }: { text: string; tools: LiveTool[]; resuming?: boolean }) {
   const running = tools.filter((t) => t.state === "running").at(-1)
   const status = resuming
     ? "옴니스가 답하는 중… 이어 받는 중"
@@ -587,7 +592,7 @@ function LiveOmnis({ text, tools, resuming = false }: { text: string; tools: Liv
   )
 }
 
-function MyMessage({ content, iso, sending = false, fresh = false }: { content: string; iso?: string; sending?: boolean; fresh?: boolean }) {
+export function MyMessage({ content, iso, sending = false, fresh = false }: { content: string; iso?: string; sending?: boolean; fresh?: boolean }) {
   return (
     <div className={cn("mt-3 flex flex-col items-end gap-0.5", fresh && MESSAGE_ENTER)}>
       <div
@@ -615,7 +620,7 @@ function OmnisAvatar() {
   )
 }
 
-function OmnisMessage({ message, fresh, tools }: { message: OmnisRoomMessage; fresh: boolean; tools: ToolUse[] }) {
+export function OmnisMessage({ message, fresh, tools }: { message: OmnisRoomMessage; fresh: boolean; tools: ToolUse[] }) {
   return (
     <div className={cn("mt-4 flex gap-2.5", fresh && MESSAGE_ENTER)}>
       <OmnisAvatar />
@@ -633,7 +638,7 @@ function OmnisMessage({ message, fresh, tools }: { message: OmnisRoomMessage; fr
   )
 }
 
-function Composer({
+export function Composer({
   textareaRef,
   value,
   onChange,
