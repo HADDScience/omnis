@@ -270,6 +270,7 @@ export const OMNIS_TOOLS = [
       "업무 카드를 고친다 — 화면의 업무 상세에서 고치는 것과 같은 길. 준 필드만 바뀐다.",
       "상태를 DONE 으로 바꾸면 떠 있는 완료 확인 알림이 거둬진다. 담당자 확인을 거치려면 post_message 로 보고하는 편이 낫다.",
       "마감은 사용자가 말한 날짜만. 빈 문자열이면 마감을 지운다. project 는 기존 프로젝트 이름(list_projects), 빈 문자열이면 프로젝트에서 뺀다.",
+      "assignees 를 주면 담당자를 그 목록으로 통째로 바꾼다(정식 이름 — list_members).",
     ].join(" "),
     inputSchema: {
       type: "object",
@@ -282,6 +283,7 @@ export const OMNIS_TOOLS = [
         background: { type: "string" },
         expected_result: { type: "string" },
         project: { type: "string", description: "기존 프로젝트 이름 (일부도 됨). 빈 문자열이면 뺀다" },
+        assignees: { type: "array", items: { type: "string" }, description: "담당자 정식 이름들 — 주면 담당자 전체를 이 목록으로 바꾼다" },
         archived: { type: "boolean", description: "true 면 보관(목록에서 사라진다)" },
       },
       required: ["task"],
@@ -577,7 +579,7 @@ function taskLine(t: TaskRow): string {
  * 업무 찾기 — ID → 슬러그 → 이름 일부(최근 것 우선).
  * 이름으로 여럿이 걸리고 정확히 같은 이름이 없으면 고르지 않고 후보를 돌려준다.
  */
-async function findTask(ref: string): Promise<{ id: string } | { error: string }> {
+export async function findTask(ref: string): Promise<{ id: string } | { error: string }> {
   const key = ref.replace(/^#/, "").trim()
   if (!key) return { error: "task 가 비어 있습니다." }
   const direct = await prisma.task.findFirst({
@@ -603,7 +605,7 @@ async function findTask(ref: string): Promise<{ id: string } | { error: string }
 }
 
 /** 이름 → 사용자. 정확히 같은 이름 우선, 없으면 「우창님」「혜린씨」 같은 호칭을 벗긴 부분 일치. */
-async function findUsers(names: string[]): Promise<{ ids: string[]; missing: string[] }> {
+export async function findUsers(names: string[]): Promise<{ ids: string[]; missing: string[] }> {
   const users = await prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true } })
   const ids: string[] = []
   const missing: string[] = []
@@ -1064,6 +1066,13 @@ export async function runTool(
           if (ps.length > 1 && !exact) return { error: `프로젝트가 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}` }
           input.projectId = (exact ?? ps[0]).id
         }
+      }
+      if (args.assignees !== undefined) {
+        const names = Array.isArray(args.assignees) ? args.assignees.map(String).map((n) => n.trim()).filter(Boolean) : []
+        if (names.length === 0) return { error: "assignees 는 담당자 이름 1명 이상입니다." }
+        const { ids, missing } = await findUsers(names)
+        if (missing.length) return { error: `모르는 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
+        input.assigneeIds = ids
       }
       if (Object.keys(input).length === 0) return { error: "바꿀 필드를 하나 이상 주세요." }
 

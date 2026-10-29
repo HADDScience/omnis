@@ -1,5 +1,6 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { withWorkflow } from "workflow/next"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -114,4 +115,8 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+/*
+ * Workflow — "use workflow" · "use step" 지시어를 컴파일하고 /.well-known/workflow/* 경로를 붙인다(옴니스 에이전트, lib/agent/).
+ * 로컬은 Local World(.workflow-data/), Vercel 배포는 Vercel World 가 자동으로 붙는다.
+ */
+export default withWorkflow(nextConfig)
