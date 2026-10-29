@@ -50,7 +50,7 @@ export function costUsd(u: Usage, p: Price): number {
 
 const lastCallAt = new Map<string, number>()
 
-async function throttle(m: ModelSpec) {
+export async function throttle(m: ModelSpec) {
   if (!m.minIntervalMs) return
   const last = lastCallAt.get(m.key) ?? 0
   const wait = last + m.minIntervalMs - now()
@@ -58,7 +58,7 @@ async function throttle(m: ModelSpec) {
   lastCallAt.set(m.key, now())
 }
 
-async function fetchWithRetry(url: string, init: RequestInit, label: string, maxAttempts = 6): Promise<Response> {
+export async function fetchWithRetry(url: string, init: RequestInit, label: string, maxAttempts = 6): Promise<Response> {
   let lastErr = ""
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let res: Response
@@ -234,6 +234,9 @@ export async function chat(m: ModelSpec, system: string | undefined, messages: C
       return chatAnthropic(m, system, messages, opts)
     case "openai-compat":
       return chatOpenAiCompat(m, system, messages, opts)
+    case "openai":
+      // 공식 OpenAI(Responses API)는 에이전트 벤치(bench/agent/drivers.ts)에만 있다. 1차 벤치 축이 아니다.
+      throw new Error(`[${m.key}] openai 모델은 bench/agent 에서만 쓴다`)
   }
 }
 
