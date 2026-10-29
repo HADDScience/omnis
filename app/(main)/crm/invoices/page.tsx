@@ -3,6 +3,7 @@ import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { CrmNav } from "@/components/crm/crm-nav"
 import { NewRecordButton } from "@/components/crm/new-record-button"
+import { InvoiceDeleteButton } from "@/components/crm/invoice-delete-button"
 import { Badge } from "@/components/ui/badge"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { prisma } from "@/lib/db"
@@ -26,6 +27,7 @@ export default async function CrmInvoicesPage() {
       items: { orderBy: { lineNo: "asc" }, select: { id: true, name: true, supplyKrw: true, category: true } },
       org: { select: { id: true, name: true } },
       quote: { select: { id: true, code: true } },
+      payments: { select: { amountKrw: true } },
     },
   })
 
@@ -34,6 +36,11 @@ export default async function CrmInvoicesPage() {
   const owing = chains.filter((c) => c.remaining > 0)
   const overdue = owing.filter((c) => c.overdue)
   const chainByInvoice = new Map(chains.map((c) => [c.invoiceId, c]))
+
+  // 수정 묶음의 장 수 — 묶여 있다는 걸 화면에 보여야 「재발급받았으니 지우자」 로 가지 않는다
+  const rootOf = (i: { approvalNo: string; originalApprovalNo: string | null }) => i.originalApprovalNo ?? i.approvalNo
+  const sheetsByRoot = new Map<string, number>()
+  for (const inv of invoices) sheetsByRoot.set(rootOf(inv), (sheetsByRoot.get(rootOf(inv)) ?? 0) + 1)
 
   const years = new Map<string, typeof invoices>()
   for (const inv of invoices) {
@@ -98,6 +105,7 @@ export default async function CrmInvoicesPage() {
                 <ul className="flex flex-col gap-1.5">
                   {list.map((inv) => {
                     const counter = inv.direction === "SALE" ? inv.buyerName : inv.supplierName
+                    const chainSheets = sheetsByRoot.get(rootOf(inv)) ?? 1
                     return (
                       <li key={inv.id} className="rounded-lg border bg-card px-3.5 py-2.5">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -142,6 +150,21 @@ export default async function CrmInvoicesPage() {
                               원본
                             </a>
                           )}
+                          {chainSheets > 1 && (
+                            <span>
+                              {inv.originalApprovalNo ? `당초 ${inv.originalApprovalNo} 와` : "수정세금계산서와"} 한 묶음 · {chainSheets}장
+                            </span>
+                          )}
+                          <span className="ml-auto">
+                            <InvoiceDeleteButton
+                              invoiceId={inv.id}
+                              label={`${ymd(inv.issuedOn)} · ${counter} · ${won(Number(inv.totalKrw))}`}
+                              approvalNo={inv.approvalNo}
+                              payments={{ count: inv.payments.length, totalKrw: inv.payments.reduce((a, p) => a + Number(p.amountKrw), 0) }}
+                              quoteCode={inv.quote?.code ?? null}
+                              chainSheets={chainSheets}
+                            />
+                          </span>
                         </div>
                       </li>
                     )
