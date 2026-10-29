@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { DEMO_END, DEMO_LENGTH, TourDemo, type DemoScript } from "@/components/onboarding/tour-demo"
+import { DEMO_ASK, DEMO_END, DEMO_LENGTH, TourDemo, type DemoScript } from "@/components/onboarding/tour-demo"
 import { useTourClock } from "@/components/onboarding/use-tour-clock"
 import { useMediaQuery } from "@/hooks/use-media-query"
 
@@ -50,7 +50,7 @@ export function DemoStage({ script, title, summary }: { script: DemoScript; titl
         <span className="lv2-demo-tag">예시</span>
       </div>
       <div ref={box} className="lv2-demo-room">
-        {size && (
+        {size ? (
           <Playback
             key={round}
             script={script}
@@ -59,6 +59,13 @@ export function DemoStage({ script, title, summary }: { script: DemoScript; titl
             reduced={reduced}
             onReplay={() => setRound((n) => n + 1)}
           />
+        ) : (
+          // 서버가 그리는 자리 — 스크립트를 받기 전(느린 망)에도 상자가 비어 보이지 않게 첫 지시를 둔다
+          <div className="lv2-demo-poster" aria-hidden="true">
+            <p className="lv2-demo-poster-ask">{DEMO_ASK[script]}</p>
+            <p className="lv2-demo-poster-wait">옴니스가 읽는 중…</p>
+            <div className="lv2-demo-poster-input">옴니스에게 물어보세요</div>
+          </div>
         )}
       </div>
       {/* 시연 층은 inert 라 읽히지 않는다 — 무엇이 지나가는지 글로 남긴다 */}

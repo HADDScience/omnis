@@ -95,6 +95,11 @@
 .lv2-demo-room { position: relative; height: clamp(460px, 62vh, 600px); }
 /* 시연 층 — 온보딩에서는 onboarding.css 의 .tour-demo 가 맡던 모양(그 파일은 온보딩 전용) */
 .lv2-demo-room .tour-demo { position: absolute; display: flex; flex-direction: column; overflow: hidden; background: var(--background); font-size: 14px; }
+/* 시연이 그려지기 전의 자리 — 실제 방처럼 내 지시 말풍선 · 기다림 · 입력칸 */
+.lv2-demo-poster { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px; padding: 20px 14px 12px; font-size: 14px; }
+.lv2-demo-poster-ask { align-self: flex-end; max-width: 80%; margin: 0; padding: 10px 14px; border-radius: 18px; line-height: 1.6; background: color-mix(in srgb, var(--primary) 10%, var(--background)); }
+.lv2-demo-poster-wait { margin: 0; padding-left: 4px; color: var(--muted-foreground); }
+.lv2-demo-poster-input { margin-top: auto; padding: 14px 16px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted-foreground); }
 .lv2-demo-replay { position: absolute; right: 14px; top: 12px; z-index: 1; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--primary-foreground); background: var(--primary); box-shadow: 0 10px 30px color-mix(in srgb, var(--primary) 30%, transparent); animation: lv2-arrive .5s both; }
 
 /* 옅은 빛을 깐 장면 — 앞뒤 장면과 구분 */
