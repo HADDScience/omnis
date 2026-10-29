@@ -58,7 +58,7 @@ N 라운드는 1..N-1 이 만든 프로젝트·업무를 맥락으로 받는다.
 |---|---|
 | 메시지 | `ChatMessage.sourceId = kakao:<sha1(방|시각|작성자|본문)>` 유니크 |
 | 분류 | `KAKAO_DATA_DIR/final.json` 에 세션 id 가 있는가 |
-| 구조화 | `Task.sourceId = kakao-task:<세션id>` 유니크. 한 세션의 두 번째 업무부터 `#1`, `#2` … |
+| 구조화 | `Task.sourceId = kakao-task:<세션id>` 유니크. 한 세션의 두 번째 업무부터 `#1`, `#2` … 구조화한 뒤 세션에 메시지가 늘면 늘어난 부분만 `<세션id>@<시작 번호>` 로 다시 구조화한다 |
 | 첨부 | 그 메시지에 같은 이름의 `File` 이 있는가 |
 | 임베딩 | `EmbeddingChunk` 에 있고 contentHash 가 같은가 |
 

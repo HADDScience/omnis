@@ -119,23 +119,55 @@ function nextRoundNumber(): number {
 const sessionMessageIds = (s: RawSession) => s.msgs.map((m) => messageSourceId(s.room, m))
 
 /**
- * 아직 업무 카드가 없는 업무·실행가능 세션. 시간순.
- * 자기 카드가 있거나, 메시지가 이미 다른 업무에 붙어 있으면(기존 업무의 연속) 끝난 세션이다.
+ * 세션별로 구조화 결과까지 받은 메시지 수.
+ *
+ * 라운드 입력(`in/roundNN.json`)에 들어갔고 캐시에 결과가 있는 것만 센다 — 입력만 쓰고
+ * Claude 가 실패한 라운드는 받은 게 아니다. 세션 id 의 `@N` 은 N 번째 메시지부터 보낸 뒷부분이다.
  */
-export async function pendingForStructure(sessions: RawSession[]): Promise<RawSession[]> {
+function structuredCounts(cache: Map<string, Draft[]>): Map<string, number> {
+  const seen = new Map<string, number>()
+  if (!existsSync(`${DIR}/in`)) return seen
+  for (const f of readdirSync(`${DIR}/in`).filter((x) => /^round\d+\.json$/.test(x))) {
+    let sessions: { id: string; messages?: unknown[] }[]
+    try { sessions = (JSON.parse(readFileSync(`${DIR}/in/${f}`, "utf8")) as { sessions: typeof sessions }).sessions ?? [] } catch { continue }
+    for (const s of sessions) {
+      if (!cache.has(s.id)) continue
+      const [base, from] = s.id.split("@")
+      seen.set(base, Math.max(seen.get(base) ?? 0, Number(from ?? 0) + (s.messages?.length ?? 0)))
+    }
+  }
+  return seen
+}
+
+/**
+ * 구조화할 업무·실행가능 세션. 시간순.
+ *
+ * - 처음 보는 세션은 통째로. 자기 카드가 있거나 메시지가 이미 다른 업무에 붙어 있으면(기존 업무의 연속,
+ *   또는 라운드 입력이 남지 않은 처음 이식분) 끝난 세션이다.
+ * - 구조화한 뒤 메시지가 늘어난 세션은 **늘어난 뒷부분만** `<세션id>@<시작 번호>` 로. 같은 날 대화가
+ *   이어지면 세션 id(방|첫 시각)는 그대로라, 이걸 따로 보지 않으면 뒤에 붙은 업무 대화가 카드 없이 남는다.
+ */
+export async function pendingForStructure(sessions: RawSession[], cache = loadDraftCache()): Promise<RawSession[]> {
   const classified = loadClassified()
+  const seen = structuredCounts(cache)
   const done = new Set(
     (await prisma.task.findMany({ where: { sourceId: { startsWith: "kakao-task:" } }, select: { sourceId: true } }))
       .map((t) => t.sourceId!.slice("kakao-task:".length).replace(/#\d+$/, "")),
   )
-  const candidates = sessions
-    .filter((s) => ROOMS[s.room] && classified.get(s.id)?.label === "업무" && classified.get(s.id)?.actionable === true && !done.has(s.id))
+  const work = sessions.filter((s) => ROOMS[s.room] && classified.get(s.id)?.label === "업무" && classified.get(s.id)?.actionable === true)
+  const tails = work
+    .filter((s) => (seen.get(s.id) ?? 0) > 0 && s.msgs.length > seen.get(s.id)!)
+    .map((s) => {
+      const from = seen.get(s.id)!
+      const msgs = s.msgs.slice(from)
+      return { ...s, id: `${s.id}@${from}`, start: msgs[0].t, n: msgs.length, msgs }
+    })
+  const candidates = work.filter((s) => !seen.has(s.id) && !done.has(s.id))
   const linked = new Set(
     (await prisma.chatMessage.findMany({ where: { sourceId: { in: candidates.flatMap(sessionMessageIds) }, taskId: { not: null } }, select: { sourceId: true } }))
       .map((m) => m.sourceId),
   )
-  return candidates
-    .filter((s) => !sessionMessageIds(s).some((id) => linked.has(id)))
+  return [...candidates.filter((s) => !sessionMessageIds(s).some((id) => linked.has(id))), ...tails]
     .sort((a, b) => a.start.localeCompare(b.start))
 }
 
@@ -207,7 +239,12 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
     if (!s) { stats.skipped++; continue }
     const sourceId = taskSourceIdOf(d)
     if (await prisma.task.findUnique({ where: { sourceId }, select: { id: true } })) { stats.skipped++; continue }
-    const picked = pickMessages(d, s)
+    // 이미 다른 업무에 붙은 메시지(사람이 옮긴 것 포함)는 빼고 고른다 — 빈 카드나 중복 카드가 생기지 않게.
+    const linked = new Set((await prisma.chatMessage.findMany({
+      where: { sourceId: { in: pickMessages(d, s).map((m) => messageSourceId(s.room, m)) }, taskId: { not: null } },
+      select: { sourceId: true },
+    })).map((m) => m.sourceId))
+    const picked = pickMessages(d, s).filter((m) => !linked.has(messageSourceId(s.room, m)))
     if (picked.length === 0) { stats.skipped++; continue }
     const pickedIds = picked.map((m) => messageSourceId(s.room, m))
 
@@ -301,14 +338,15 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
 }
 
 export async function structure(sessions: RawSession[], opts: { model: string; dry: boolean }): Promise<{ created: number }> {
-  const targets = await pendingForStructure(sessions)
+  const cache = loadDraftCache()
+  const targets = await pendingForStructure(sessions, cache)
   const totalRounds = Math.ceil(targets.length / SIZE)
-  console.log(`  카드 없는 업무 세션 ${targets.length}개 → ${totalRounds}라운드 × ≤${SIZE} · ${opts.model}`)
+  const tailN = targets.filter((s) => s.id.includes("@")).length
+  console.log(`  카드 없는 업무 세션 ${targets.length}개${tailN ? ` (그중 늘어난 뒷부분 ${tailN})` : ""} → ${totalRounds}라운드 × ≤${SIZE} · ${opts.model}`)
   if (targets.length === 0 || opts.dry) return { created: 0 }
 
   const template = readFileSync(`${import.meta.dirname}/../prompts/structure.md`, "utf8")
   mkdirSync(`${DIR}/in`, { recursive: true }); mkdirSync(`${DIR}/out`, { recursive: true })
-  const cache = loadDraftCache()
   let created = 0
   let round = nextRoundNumber()
 
