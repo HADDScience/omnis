@@ -1,0 +1,96 @@
+/*
+ * 새 랜딩(mydocs/plans/2026-10-29-landing-v2.md). 루트 글꼴이 81.25% 라 rem 유틸리티는 작게 나온다 —
+ * 크기는 여기서 px 로 준다. 색은 테마 토큰을 쓰고, 히어로 · 마무리만 예전 히어로의 다크 그라디언트를 늘 쓴다.
+ * 장면 연출(로고 타일 · 궤도 · 떠다니는 빛)은 온보딩 영상(components/onboarding/onboarding.css)에서 옮겨 왔다 —
+ * 그 파일은 온보딩 전용이라 고치지 않고, 여기서 lv2- 이름으로 따로 둔다.
+ */
+.lv2 { --lv2-gutter: clamp(20px, 5vw, 48px); --lv2-ink: #0b1020; background: var(--background); color: var(--foreground); overflow-x: clip; }
+.lv2 :where(h1, h2, h3, p, li, span, strong, a, button) { word-break: keep-all; overflow-wrap: anywhere; }
+.lv2 :where(a, button):focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 10px; }
+.lv2-dark :where(a, button):focus-visible { outline-color: #fff; }
+.lv2-wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 var(--lv2-gutter); }
+
+/* ── 머리줄 — 어두운 유리. 밝은 섹션 위에서도 글자가 보이게 늘 어둡다 ─────────── */
+.lv2-nav { position: fixed; inset-inline: 0; top: var(--demo-banner-height, 0px); z-index: var(--z-dock); color: #fff; background: color-mix(in oklch, var(--lv2-ink) 62%, transparent); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); border-bottom: 1px solid #ffffff14; }
+.lv2-nav-inner { display: flex; align-items: center; gap: 24px; height: 60px; }
+.lv2-brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; letter-spacing: -.03em; min-height: 44px; }
+.lv2-brand small { font-size: 10px; font-weight: 450; letter-spacing: .18em; color: #ffffffa6; padding-left: 10px; border-left: 1px solid #ffffff2e; }
+.lv2-nav-links { display: none; gap: 4px; margin-left: 8px; }
+.lv2-nav-links a { font-size: 13px; color: #ffffffb8; padding: 0 10px; min-height: 44px; display: inline-flex; align-items: center; border-radius: 10px; }
+.lv2-nav-links a:hover { color: #fff; background: #ffffff12; }
+@media (min-width: 900px) { .lv2-nav-links { display: flex; } }
+.lv2-nav-enter { margin-left: auto; }
+@media (max-width: 380px) { .lv2-brand small { display: none; } }
+
+/* ── 버튼 ─────────────────────────────────────────────────────────── */
+.lv2-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; padding: 0 22px; border-radius: 14px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; transition: transform .2s, background-color .2s, box-shadow .2s; }
+.lv2-btn:hover { transform: translateY(-1px); }
+.lv2-btn-small { min-height: 44px; padding: 0 16px; font-size: 14px; border-radius: 12px; }
+.lv2-btn-light { background: #fff; color: var(--lv2-ink); box-shadow: 0 12px 40px #0000004d; }
+.lv2-btn-light:hover { background: #eef1ff; }
+.lv2-btn-glass { color: #fff; background: #ffffff14; border: 1px solid #ffffff33; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.lv2-btn-glass:hover { background: #ffffff24; }
+.lv2-btn-primary { background: var(--primary); color: var(--primary-foreground); box-shadow: 0 12px 36px color-mix(in oklch, var(--primary) 28%, transparent); }
+
+/* ── 어두운 장면(히어로 · 마무리) ───────────────────────────────────── */
+.lv2-dark { position: relative; isolation: isolate; overflow: hidden; color: #fff; background: linear-gradient(135deg, #0b1020 0%, #172554 48%, #4f46e5 100%); }
+.lv2-dark::before { content: ""; position: absolute; inset: 0; z-index: -1; opacity: .22; background-image: linear-gradient(#ffffff1f 1px, transparent 1px), linear-gradient(90deg, #ffffff1f 1px, transparent 1px); background-size: 44px 44px; mask-image: radial-gradient(ellipse at 50% 45%, #000 20%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse at 50% 45%, #000 20%, transparent 75%); }
+.lv2-wash { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.lv2-wash i { position: absolute; width: 34vw; height: 34vw; min-width: 220px; min-height: 220px; border-radius: 38%; background: radial-gradient(circle at 30% 24%, #ffffff40, #6366f166 45%, #1e3a8a00 72%); filter: blur(18px); opacity: .55; animation: lv2-drift 16s ease-in-out infinite; }
+.lv2-wash i:nth-child(1) { left: -12%; top: 10%; }
+.lv2-wash i:nth-child(2) { right: -14%; bottom: -8%; border-radius: 50%; animation-delay: -7s; }
+.lv2-wash i:nth-child(3) { right: 18%; top: -24%; width: 20vw; height: 20vw; opacity: .3; animation-delay: -11s; }
+
+.lv2-hero { min-height: 100svh; display: flex; align-items: center; padding: calc(96px + var(--demo-banner-height, 0px)) 0 72px; }
+.lv2-hero-inner { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.lv2-eyebrow { display: block; font-size: 11px; font-weight: 550; letter-spacing: .24em; text-transform: uppercase; color: var(--primary); margin-bottom: 18px; }
+.lv2-dark .lv2-eyebrow { color: #c7d2fe; }
+.lv2-display { font-size: clamp(36px, 7.2vw, 84px); font-weight: 500; line-height: 1.16; letter-spacing: -.055em; }
+.lv2-display em, .lv2-title em { font-style: normal; font-weight: 680; }
+.lv2-dark .lv2-display em, .lv2-dark .lv2-title em { background: linear-gradient(100deg, #fff 0%, #c7d2fe 55%, #a5b4fc 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lv2-lede { margin-top: 24px; max-width: 620px; font-size: clamp(15px, 1.9vw, 19px); line-height: 1.75; color: #ffffffcc; }
+.lv2-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 36px; }
+.lv2-hero-note { margin-top: 22px; font-size: 12px; color: #ffffffa6; }
+.lv2-arrive { animation: lv2-arrive 1.1s both; }
+.lv2-arrive-2 { animation-delay: .18s; }
+.lv2-arrive-3 { animation-delay: .36s; }
+.lv2-arrive-4 { animation-delay: .54s; }
+
+/* 로고 타일 — 온보딩 영상 1장 · 마지막 장의 그것 */
+.lv2-mark { position: relative; width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: var(--brand-gradient); box-shadow: 0 24px 70px #4f46e566, inset 0 1px 1px #ffffff70; margin-bottom: 40px; animation: lv2-drift 9s ease-in-out infinite; }
+.lv2-mark img { width: 72%; height: 72%; object-fit: contain; }
+.lv2-mark::after { content: ""; position: absolute; inset: -20px; border: 1px solid #ffffff2e; border-radius: 46px; transform: rotate(12deg); }
+.lv2-mark::before { content: ""; position: absolute; inset: -44px; border: 1px solid #ffffff14; border-radius: 64px; transform: rotate(-8deg); }
+
+/* ── 밝은 장면 공통 ──────────────────────────────────────────────── */
+.lv2-scene { padding: clamp(88px, 13vw, 160px) 0; position: relative; }
+.lv2-scene + .lv2-scene { border-top: 1px solid var(--border); }
+.lv2-title { font-size: clamp(30px, 5.2vw, 60px); font-weight: 500; line-height: 1.22; letter-spacing: -.05em; }
+.lv2-title em { color: var(--primary); }
+.lv2-copy { margin-top: 20px; max-width: 560px; font-size: clamp(15px, 1.7vw, 18px); line-height: 1.8; color: var(--muted-foreground); }
+.lv2-head-center { text-align: center; display: flex; flex-direction: column; align-items: center; }
+.lv2-head-center .lv2-copy { margin-inline: auto; }
+
+/* 스크롤로 들어오면 떠오른다 — 지원하는 브라우저만(나머지는 처음부터 보인다) */
+@supports (animation-timeline: view()) {
+  .lv2-rise { animation: lv2-arrive linear both; animation-timeline: view(); animation-range: entry 0% entry 55%; }
+}
+
+/* ── 마무리 ───────────────────────────────────────────────────── */
+.lv2-closing { padding: clamp(110px, 16vw, 180px) 0 0; }
+.lv2-closing .lv2-hero-inner { padding-bottom: clamp(90px, 13vw, 150px); }
+.lv2-audiences { display: grid; grid-template-columns: repeat(2, minmax(0, 260px)); gap: 14px; margin-top: 40px; }
+.lv2-audience { display: flex; flex-direction: column; gap: 12px; align-items: stretch; padding: 18px; border-radius: 20px; background: #ffffff0f; border: 1px solid #ffffff24; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); text-align: left; }
+.lv2-audience > span { font-size: 12px; color: #ffffffb3; }
+.lv2-audience > span b { display: block; margin-bottom: 4px; font-size: 15px; font-weight: 600; color: #fff; }
+@media (max-width: 600px) { .lv2-audiences { grid-template-columns: minmax(0, 1fr); width: 100%; max-width: 360px; } }
+.lv2-footer { border-top: 1px solid #ffffff1f; padding: 22px 0 calc(22px + env(safe-area-inset-bottom)); font-size: 12px; color: #ffffffa6; }
+.lv2-footer .lv2-wrap { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: space-between; }
+.lv2-footer-brand { display: flex; align-items: center; gap: 8px; }
+
+@keyframes lv2-arrive { from { opacity: 0; filter: blur(6px); transform: translateY(18px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }
+@keyframes lv2-drift { 0%, 100% { translate: 0 0; rotate: -4deg; } 50% { translate: 0 -14px; rotate: 4deg; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lv2 *, .lv2 *::before, .lv2 *::after { animation: none !important; transition: none !important; }
+}
