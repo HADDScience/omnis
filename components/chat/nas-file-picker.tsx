@@ -44,9 +44,9 @@ export function NasFilePicker({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[min(640px,85dvh)] w-[calc(var(--app-vw)-2rem)] max-w-lg flex-col">
         <DialogHeader>
-          <DialogTitle>NAS 파일 연결</DialogTitle>
+          <DialogTitle>시놀로지 파일 연결</DialogTitle>
           <DialogDescription>
-            공용 NAS 에 있는 파일은 올리지 않고 연결합니다. 크기 제한이 없습니다.
+            공용 시놀로지에 있는 파일은 올리지 않고 연결합니다. 크기 제한이 없습니다.
           </DialogDescription>
         </DialogHeader>
 
@@ -61,7 +61,7 @@ export function NasFilePicker({
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             placeholder="경로 붙여넣기 — Z:\HADD Science\… 또는 /Volumes/HADD Science/…"
-            aria-label="NAS 경로"
+            aria-label="시놀로지 경로"
             className="min-w-0 flex-1"
           />
           <Button type="submit" variant="outline" disabled={!typed.trim()}>

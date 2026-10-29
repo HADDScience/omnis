@@ -66,7 +66,7 @@ export function NasBrowser({ initialPath, onPick }: { initialPath: string; onPic
       setEntries(body.entries ?? [])
       setPath(body.path ?? p)
     } catch {
-      setError("NAS 에 연결하지 못했습니다")
+      setError("시놀로지에 연결하지 못했습니다")
     }
   }, [pickMode])
 

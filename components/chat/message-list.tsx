@@ -671,7 +671,7 @@ export function MessageContent({ content, tasks, isMe = false }: { content: stri
           key={match.index}
           href={`/omnis/nas?path=${encodeURIComponent(raw)}`}
           className={mentionClass}
-          title="사내 NAS 에서 열기"
+          title="사내 시놀로지에서 열기"
           onClick={(e) => e.stopPropagation()}
         >
           {raw}

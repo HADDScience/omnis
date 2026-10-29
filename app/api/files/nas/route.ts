@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   const entry = await statNasFile(path)
   if (!entry) {
-    return NextResponse.json({ error: `NAS 에서 파일을 찾지 못했습니다 — ${path}` }, { status: 404 })
+    return NextResponse.json({ error: `시놀로지에서 파일을 찾지 못했습니다 — ${path}` }, { status: 404 })
   }
 
   const record = await prisma.file.create({
