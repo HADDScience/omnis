@@ -7,6 +7,7 @@ import { AiUsage } from "@/components/settings/ai-usage"
 import { LinkedAccounts } from "@/components/settings/linked-accounts"
 import { MyShortcuts } from "@/components/settings/my-shortcuts"
 import { PushNotifications } from "@/components/settings/push-notifications"
+import { NotificationKinds } from "@/components/settings/notification-kinds"
 import { auth } from "@/lib/auth"
 
 export const dynamic = "force-dynamic"
@@ -51,8 +52,9 @@ export default async function SettingsPage() {
             <TabsTrigger value="ai">AI 사용량</TabsTrigger>
             <TabsTrigger value="system">시스템</TabsTrigger>
           </TabsList>
-          <TabsContent value="push" className="mt-3">
+          <TabsContent value="push" className="mt-3 flex flex-col gap-4">
             <PushNotifications />
+            <NotificationKinds />
           </TabsContent>
           <TabsContent value="accounts" className="mt-3">
             <LinkedAccounts />
