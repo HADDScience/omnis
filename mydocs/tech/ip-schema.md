@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/tech/ip-schema.md
-last_verified: 2026-10-28
+last_verified: 2026-10-29
 ---
 
 # 지식재산권 스키마 (`ip`)
@@ -20,6 +20,24 @@ last_verified: 2026-10-28
 접근은 전부 raw SQL 이고, 그 SQL 은 `lib/ip-data.ts` 한 파일에 모은다.
 다른 곳에서 `ip.` 로 시작하는 쿼리를 쓰지 않는다.
 
+## 상태와 사건 (2026-10-29)
+
+옛 「단계」 12개를 둘로 나눴다. 계획 `mydocs/plans/2026-10-29-ip-status-and-event.md` ·
+마이그레이션 `20261029100000_ip_status_and_event`.
+
+| 것 | 어디 | 값 |
+|---|---|---|
+| **상태** — 도달한 지점 | `status_options` · 대장의 `status` · `progress_entries.status` · `opening_state.status` | 출원전 · 출원 · 등록 · 거절 · 포기 |
+| **사건** — 그 사이에 일어난 일 | `event_options` · `progress_entries.stage` (칸 이름은 옛것, 뜻은 사건) | 옛 단계 전부 + 우선심사신청·심사청구·PCT출원·특허결정·거절결정·등록료납부·포기·값 정정 |
+
+- 특허결정·출원공고·등록료 납부 대기·거절결정에 다투는 중은 아직 **출원**. 등록번호가 나와야 **등록**.
+- 상태를 옮기는 사건은 `event_options.moves_to` 가 있는 것뿐 — 출원·등록·거절확정·포기(옛 포기·중단).
+- `progress_entries.status` 는 그 기록이 **명시한** 상태. NULL 이면 `ip.entry_status()` 가 사건과 번호로 정한다.
+- 등록번호를 처음 넣으면 등록, 출원번호를 처음 넣으면 출원(형식 검사 통과 시). **이 전환은 날짜를 채우지 않는다.**
+- 옛 단계 값으로 오는 호출은 `lib/ip-data.ts` 의 `resolveStatusEvent` 가 `event_options.legacy_status` 표대로
+  번역한다. 옛 값이 지금보다 앞 상태를 가리키면(출원한 건의 「검토의견」) 상태는 그대로 두고 사건만 남긴다.
+- 옛 기록의 stage 값은 지우지 않았다. `opening_state.stage` 도 넘겨받을 때 값 그대로다.
+
 ## 도메인 규칙 — 여기가 핵심이다
 
 `ip.apply_progress_entry()` 는 진행 기록 한 줄이 대장을 어떻게 고쳐 쓰는지 정한다.
@@ -27,11 +45,11 @@ last_verified: 2026-10-28
 
 | 규칙 | 뜻 |
 |---|---|
-| `newer` | 대장의 `ref_date` 가 기록의 `occurred_on` 이하일 때만 단계가 바뀐다 |
-| `moves` | `source='edit'`(값 정정)이면 단계는 반영하되 **날짜는 움직이지 않는다** |
+| `newer` | 대장의 `ref_date` 가 기록의 `occurred_on` 이하일 때만 상태가 바뀐다 |
+| `moves` | `source='edit'`(값 정정)이면 상태는 반영하되 **날짜는 움직이지 않는다** |
 | 빈 문자열 vs NULL | `''` 는 "지우기", `NULL` 은 "그대로 두기". **이 둘이 다르다** |
-| latch | `filed_on`·`registered_on` 은 '출원'·'등록' 단계에 **들어간** 기록의 날짜로 한 번만 채워지고 이후 유지 |
-| 들어간 기록 | 단계가 바뀌는 기록, 또는 같은 단계라도 기준일(`ref_date`) 이하인 기록. 기준일보다 늦은 같은 단계 기록은 후속 기록이라 날짜를 건드리지 않는다 (2026-10-28) |
+| latch | `filed_on`·`registered_on` 은 「출원」·「등록」 **사건** 기록 중 그 상태에 **들어간** 것의 날짜로 한 번만 채워지고 이후 유지 |
+| 들어간 기록 | 상태가 바뀌는 기록, 또는 같은 상태라도 기준일(`ref_date`) 이하인 기록. 기준일보다 늦은 기록은 후속 기록이라 날짜를 건드리지 않는다 (2026-10-28) |
 | 명시값 | 기록의 `filed_on`·`registered_on`(text). `NULL`=규칙대로, `''`=비움, `YYYY-MM-DD`=그 값. `newer`·`moves` 와 무관하게 언제나 반영 — 값 정정이 쓴다 |
 
 > **2026-10-28 고친 것** — 예전 latch 는 단계 이름만 봤다. 개시 스냅샷이 「출원 · 출원일 없음」인
@@ -84,7 +102,8 @@ RLS 는 없다. Prisma 는 DB 소유자로 접속하므로 켜 둔들 통과한�
 | `trademarks` · `patents` | 대장. 진행 기록이 트리거로 갱신한다 | 16 · 11 |
 | `progress_entries` | 진행 이력. 화면의 타임라인 | 95 |
 | `opening_state` | 넘겨받은 시점의 상태. 재계산의 출발선. **갱신하지 않는다** | 27 |
-| `status_options` | 단계 목록과 각 단계가 요구하는 칸 | 24 |
+| `status_options` | 상태 5개 × 2 (2026-10-29 전에는 단계 12개 × 2) | 10 |
+| `event_options` | 사건 목록 — 상태를 옮기는지(`moves_to`), 옛 단계였던 상태(`legacy_status`), 요구하는 칸 | 37 |
 | `communications` · `communication_links` | 연락 기록과 그것이 걸리는 건 | 0 · 0 |
 | `actions` | 미결 액션 | 0 |
 | `integrity_flags` | 자료 불일치 경고 | 2 |
@@ -156,7 +175,7 @@ GEMINI_API_KEY=… npx tsx scripts/backfill-ip-embeddings.ts
 TARGET_DB="…" npx tsx scripts/verify-ip-import.ts   # 이사 20가지
 npx tsx scripts/verify-ip-api.ts                     # API 권한 16가지
 npx tsx scripts/verify-ip-mcp.ts                     # MCP·OAuth 40가지
-npx tsx scripts/verify-ip-dates.ts                   # 출원일·등록일 규칙 18가지 (되돌림)
+npx tsx scripts/verify-ip-dates.ts                   # 출원일·등록일·상태·옛 단계 번역 53가지 (되돌림)
 ```
 
 행 수, 사용자 연결, 참조 무결성, **`rebuild_ledger` 동일성**, 트리거 복구를 본다.

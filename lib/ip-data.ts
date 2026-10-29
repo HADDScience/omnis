@@ -16,7 +16,7 @@
 // auth.uid() 가 하던 일을 트랜잭션 지역 설정으로 대신한다.
 
 import { prisma } from "@/lib/db"
-import type { Prisma } from "@/generated/prisma"
+import { Prisma } from "@/generated/prisma"
 
 export type EntityKind = "trademark" | "patent"
 export type IpRole = "owner" | "editor" | "viewer"
@@ -107,7 +107,12 @@ export interface ProgressEntry {
   date: string
   entityKind: EntityKind
   entityId: string
+  /** 사건. event 와 같은 값이다 — 옛 화면이 이 이름으로 읽어서 남겨 둔다. */
   stage: string
+  /** 사건(무슨 일이 있었나). 상태만 옮긴 기록이면 null */
+  event: string | null
+  /** 이 기록이 명시한 상태. null 이면 사건·번호 규칙에 맡긴 기록이다 */
+  status: string | null
   direction: string | null
   counterpart: string
   nextTurn: NextTurn
@@ -186,6 +191,140 @@ export interface Stage extends StatusOption {
   selectable: boolean
 }
 
+/**
+ * ip.event_options 한 행 — 사건(그 사이에 일어난 일).
+ * movesTo 가 있으면 이 사건이 상태를 그리로 옮긴다. legacyStatus 는 옛 단계였던 값이
+ * 어느 상태에 해당했는지다.
+ */
+export interface EventOption extends Stage {
+  movesTo: string | null
+  legacyStatus: string | null
+  note: string
+}
+
+// ─── 상태 · 사건 ────────────────────────────────────────────────────
+//
+// 상태는 「도달한 지점」 다섯 개다. 옛 단계 12개는 사건으로 내려갔다.
+// 마이그레이션 20261029100000_ip_status_and_event · 계획 mydocs/plans/2026-10-29-ip-status-and-event.md
+
+export const IP_STATUSES = ["출원전", "출원", "등록", "거절", "포기"] as const
+export type IpStatus = (typeof IP_STATUSES)[number]
+
+export function isIpStatus(value: unknown): value is IpStatus {
+  return (IP_STATUSES as readonly unknown[]).includes(value)
+}
+
+/** 출원전 → 출원 → 닫힘(등록·거절·포기). 옛 단계 번역이 뒤로 가지 않게 견준다. */
+const STATUS_RANK: Record<IpStatus, number> = { 출원전: 0, 출원: 1, 등록: 2, 거절: 2, 포기: 2 }
+
+/** 상태로 쓰인 값 중 사건으로 바로 옮기는 것. 출원·등록은 이름이 같은 사건이 있다. */
+const STATUS_AS_EVENT: Partial<Record<IpStatus, string>> = {
+  출원: "출원",
+  등록: "등록",
+  거절: "거절확정",
+  포기: "포기",
+}
+
+/** 옛 「포기·중단」은 새 기록에서 「포기」로 적는다. 옛 기록의 값은 그대로 둔다. */
+const LEGACY_EVENT_RENAME: Record<string, string> = { "포기·중단": "포기" }
+
+export async function listEventOptions(kind?: EntityKind): Promise<EventOption[]> {
+  const rows = kind
+    ? await prisma.$queryRaw<Row[]>`
+        SELECT * FROM ip.event_options WHERE kind = ${kind} ORDER BY kind, sort_order`
+    : await prisma.$queryRaw<Row[]>`SELECT * FROM ip.event_options ORDER BY kind, sort_order`
+  return rows.map(toEventOption)
+}
+
+export interface StatusEventInput {
+  /** 새 상태 5개 중 하나 */
+  status?: string | null
+  /** 사건 */
+  event?: string | null
+  /** 옛 호출의 단계 값. 상태+사건으로 번역한다 */
+  stage?: string | null
+}
+
+export type StatusEvent = { status: IpStatus | null; event: string | null }
+
+/**
+ * 진행 기록에 들어온 상태·사건(또는 옛 단계)을 저장할 값으로 정한다.
+ *
+ * 옛 단계 값으로 부르는 세션·화면이 아직 있다. 그 값은 마이그레이션 표대로 상태+사건으로
+ * 옮기되, 옛 값이 지금보다 뒤의 상태를 가리키면 상태는 건드리지 않는다 — 출원한 건에
+ * 「검토의견」이 오면 사건은 남기고 상태는 출원 그대로다. 옛 체계에서는 이런 기록이
+ * 단계를 되돌렸고, 그것이 이번에 상태를 나눈 이유다.
+ *
+ * currentStatus 는 지금 대장의 상태. 실패하면 사람이 읽을 이유를 담은 error 를 돌려준다.
+ */
+export async function resolveStatusEvent(
+  kind: EntityKind,
+  input: StatusEventInput,
+  currentStatus: string | null
+): Promise<StatusEvent | { error: string }> {
+  const events = await listEventOptions(kind)
+  const byValue = new Map(events.map((e) => [e.value, e]))
+  const clean = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null)
+
+  let status = clean(input.status)
+  let event = clean(input.event)
+  const stage = clean(input.stage)
+
+  if (status && !isIpStatus(status)) {
+    // 상태 칸에 옛 단계를 넣은 경우(correct_ip stage='출원준비' 같은)도 표대로 받는다.
+    const legacy = byValue.get(status)?.legacyStatus ?? null
+    if (!legacy) {
+      return { error: `'${status}' 는 상태가 아닙니다. 상태는 ${IP_STATUSES.join("·")} 중 하나입니다.` }
+    }
+    event = event ?? (LEGACY_EVENT_RENAME[status] ?? status)
+    status = legacy
+  }
+
+  if (event) {
+    event = LEGACY_EVENT_RENAME[event] ?? event
+    if (!byValue.has(event)) {
+      return { error: `'${event}' 는 쓸 수 없는 사건입니다. list_stages 로 사건 목록을 확인하세요.` }
+    }
+  }
+
+  if (stage && !event && !status) {
+    if (isIpStatus(stage)) {
+      // 상태 이름이 stage 로 왔다. 같은 이름의 사건이 있으면 사건으로, 없으면 상태로.
+      event = STATUS_AS_EVENT[stage] ?? null
+      if (!event) status = stage
+    } else {
+      const opt = byValue.get(stage)
+      if (!opt) {
+        return { error: `'${stage}' 는 쓸 수 없는 단계·사건입니다. list_stages 를 먼저 부르세요.` }
+      }
+      event = LEGACY_EVENT_RENAME[stage] ?? stage
+      const legacy = opt.legacyStatus as IpStatus | null
+      const moved = byValue.get(event)?.movesTo
+      if (legacy && !moved) {
+        const cur = isIpStatus(currentStatus) ? STATUS_RANK[currentStatus] : -1
+        if (STATUS_RANK[legacy] >= cur && legacy !== currentStatus) status = legacy
+      }
+    }
+  } else if (stage && !event && byValue.has(stage) && !isIpStatus(stage)) {
+    // 상태를 따로 주면서 stage 에 사건을 적은 호출.
+    event = LEGACY_EVENT_RENAME[stage] ?? stage
+  }
+
+  if (!status && !event) {
+    return { error: "상태(status) 나 사건(event) 중 하나는 있어야 합니다. list_stages 로 값을 확인하세요." }
+  }
+  return { status: (status as IpStatus | null) ?? null, event }
+}
+
+/** 대장의 지금 상태. 진행 기록을 번역할 때 견준다. */
+export async function currentStatusOf(kind: EntityKind, id: string): Promise<string | null> {
+  const rows =
+    kind === "trademark"
+      ? await prisma.$queryRaw<{ status: string }[]>`SELECT status FROM ip.trademarks WHERE id = ${id}`
+      : await prisma.$queryRaw<{ status: string }[]>`SELECT status FROM ip.patents WHERE id = ${id}`
+  return rows[0]?.status ?? null
+}
+
 export interface OrgMeta {
   org: string
   owner: string
@@ -201,7 +340,10 @@ export interface OrgMeta {
 }
 
 export interface OpeningState {
+  /** 넘겨받을 때 적혀 있던 옛 단계. 그대로 둔다 */
   stage: string
+  /** 출발선의 상태 */
+  status: string
   refDate: string | null
   name: string
   holder: string | null
@@ -218,8 +360,12 @@ export interface Snapshot {
   communications: Communication[]
   actions: ActionItem[]
   flags: IntegrityFlagRow[]
+  /** 상태 5개. 배지 색·필터·정렬 */
   statusOptions: StatusOption[]
+  /** 사건 목록. 옛 화면의 진행 양식이 「단계」로 읽는 자리라 이름을 남겨 둔다 */
   stages: Stage[]
+  /** 사건 목록(상태를 옮기는지·옛 단계였던 상태까지) */
+  events: EventOption[]
   meta: OrgMeta
   /** `kind:id` → 넘겨받은 시점의 값 */
   openingState: Record<string, OpeningState>
@@ -303,6 +449,8 @@ const toProgress = (r: Row): ProgressEntry => ({
   entityKind: r.entity_kind as EntityKind,
   entityId: str(r.entity_id),
   stage: str(r.stage),
+  event: nullableStr(r.stage),
+  status: nullableStr(r.status),
   direction: nullableStr(r.direction),
   counterpart: str(r.counterpart),
   nextTurn: r.next_turn as NextTurn,
@@ -316,6 +464,24 @@ const toProgress = (r: Row): ProgressEntry => ({
   source: str(r.source),
   raw: nullableStr(r.raw),
   createdAt: iso(r.created_at) ?? "",
+})
+
+const toEventOption = (r: Row): EventOption => ({
+  kind: r.kind as EntityKind,
+  value: str(r.value),
+  sortOrder: Number(r.sort_order),
+  tone: str(r.tone),
+  // 사건은 열림·닫힘이 없다. 상태를 닫는 사건(등록·거절확정·포기)만 닫힘으로 둔다 —
+  // 옛 화면이 이 칸으로 「끝난 건」을 가렸다.
+  isOpen: !["등록", "거절", "포기"].includes(str(r.moves_to)),
+  wantsAppNo: Boolean(r.wants_app_no),
+  wantsRegNo: Boolean(r.wants_reg_no),
+  wantsProbability: Boolean(r.wants_probability),
+  wantsDue: Boolean(r.wants_due),
+  selectable: Boolean(r.selectable),
+  movesTo: nullableStr(r.moves_to),
+  legacyStatus: nullableStr(r.legacy_status),
+  note: str(r.note),
 })
 
 const toCommunication = (r: Row): Communication => ({
@@ -372,7 +538,7 @@ const toFlag = (r: Row): IntegrityFlagRow => ({
  * 날짜만으로는 순서가 정해지지 않아 새로고침할 때마다 줄이 뒤바뀐다.
  */
 export async function fetchSnapshot(): Promise<Snapshot> {
-  const [trademarks, patents, progress, communications, actions, flags, options, meta, opening] =
+  const [trademarks, patents, progress, communications, actions, flags, options, meta, opening, events] =
     await Promise.all([
       prisma.$queryRaw<Row[]>`SELECT * FROM ip.trademarks ORDER BY id`,
       prisma.$queryRaw<Row[]>`SELECT * FROM ip.patents ORDER BY id`,
@@ -394,6 +560,7 @@ export async function fetchSnapshot(): Promise<Snapshot> {
       prisma.$queryRaw<Row[]>`SELECT * FROM ip.status_options ORDER BY kind, sort_order`,
       prisma.$queryRaw<Row[]>`SELECT * FROM ip.org_meta WHERE id = 1`,
       prisma.$queryRaw<Row[]>`SELECT * FROM ip.opening_state`,
+      listEventOptions(),
     ])
 
   const metaRow = meta[0]
@@ -401,6 +568,7 @@ export async function fetchSnapshot(): Promise<Snapshot> {
   for (const r of opening) {
     openingState[`${str(r.entity_kind)}:${str(r.entity_id)}`] = {
       stage: str(r.stage),
+      status: str(r.status),
       refDate: ymd(r.ref_date),
       name: str(r.name),
       holder: nullableStr(r.holder),
@@ -418,7 +586,9 @@ export async function fetchSnapshot(): Promise<Snapshot> {
     communications: communications.map(toCommunication),
     actions: actions.map(toAction),
     flags: flags.map(toFlag),
-    // status_options 는 배지 색(statusOptions)과 양식의 단계 정의(stages)를 겸한다.
+    // 배지·필터는 상태(statusOptions), 진행 양식은 사건(events). stages 는 옛 화면이
+    // 양식의 선택지로 읽는 자리라 사건을 그대로 싣는다 — 옛 화면이 사건을 고르면
+    // 서버가 상태로 번역한다(resolveStatusEvent).
     statusOptions: options.map((r) => ({
       kind: r.kind as EntityKind,
       value: str(r.value),
@@ -426,18 +596,19 @@ export async function fetchSnapshot(): Promise<Snapshot> {
       tone: str(r.tone),
       isOpen: Boolean(r.is_open),
     })),
-    stages: options.map((r) => ({
-      kind: r.kind as EntityKind,
-      value: str(r.value),
-      sortOrder: Number(r.sort_order),
-      tone: str(r.tone),
-      isOpen: Boolean(r.is_open),
-      wantsAppNo: Boolean(r.wants_app_no),
-      wantsRegNo: Boolean(r.wants_reg_no),
-      wantsProbability: Boolean(r.wants_probability),
-      wantsDue: Boolean(r.wants_due),
-      selectable: Boolean(r.selectable),
+    stages: events.map((e) => ({
+      kind: e.kind,
+      value: e.value,
+      sortOrder: e.sortOrder,
+      tone: e.tone,
+      isOpen: e.isOpen,
+      wantsAppNo: e.wantsAppNo,
+      wantsRegNo: e.wantsRegNo,
+      wantsProbability: e.wantsProbability,
+      wantsDue: e.wantsDue,
+      selectable: e.selectable,
     })),
+    events,
     meta: {
       org: str(metaRow?.org, "HADD SCIENCE"),
       owner: str(metaRow?.owner_name),
@@ -576,7 +747,12 @@ export interface ProgressInput {
   date: string
   entityKind: EntityKind
   entityId: string
-  stage: string
+  /** 옛 단계 값. 새 화면은 status·event 를 쓴다 — 셋 다 오면 status·event 가 앞선다 */
+  stage?: string | null
+  /** 상태 5개 중 하나. 없으면 상태는 사건·번호 규칙에 맡긴다 */
+  status?: string | null
+  /** 사건 */
+  event?: string | null
   direction: string | null
   counterpart: string
   nextTurn: NextTurn
@@ -591,7 +767,7 @@ export interface ProgressInput {
   raw: string | null
   /**
    * 출원일·등록일 명시. 값 정정에서만 쓴다 — 'YYYY-MM-DD' 는 그 값, '' 는 비움,
-   * 없으면 트리거가 단계 규칙대로 정한다. 기록을 고칠 때(UPDATE)는 손대지 않는다.
+   * 없으면 트리거가 사건 규칙대로 정한다. 기록을 고칠 때(UPDATE)는 손대지 않는다.
    */
   filedOn?: string | null
   registeredOn?: string | null
@@ -609,15 +785,23 @@ export async function saveProgress(
   e: ProgressInput,
   isNew: boolean
 ): Promise<void> {
+  const resolved = await resolveStatusEvent(
+    e.entityKind,
+    { status: e.status, event: e.event, stage: e.stage },
+    await currentStatusOf(e.entityKind, e.entityId)
+  )
+  if ("error" in resolved) throw new IpInputError(resolved.error)
+  const { status, event } = resolved
+
   await withActor(userId, async (tx) => {
     if (isNew) {
       await tx.$executeRaw`
         INSERT INTO ip.progress_entries
-          (occurred_on, entity_kind, entity_id, stage, direction, counterpart,
+          (occurred_on, entity_kind, entity_id, stage, status, direction, counterpart,
            next_turn, due_on, app_no, reg_no, probability, name, holder, note, source, raw,
            filed_on, registered_on)
         VALUES
-          (${e.date}::date, ${e.entityKind}, ${e.entityId}, ${e.stage}, ${e.direction},
+          (${e.date}::date, ${e.entityKind}, ${e.entityId}, ${event}, ${status}, ${e.direction},
            ${e.counterpart}, ${e.nextTurn}, ${e.dueOn}::date, ${e.appNo}, ${e.regNo},
            ${e.probability}, ${e.name}, ${e.holder}, ${e.note}, ${e.source}, ${e.raw},
            ${e.filedOn ?? null}, ${e.registeredOn ?? null})`
@@ -626,13 +810,16 @@ export async function saveProgress(
     await tx.$executeRaw`
       UPDATE ip.progress_entries SET
         occurred_on = ${e.date}::date, entity_kind = ${e.entityKind}, entity_id = ${e.entityId},
-        stage = ${e.stage}, direction = ${e.direction}, counterpart = ${e.counterpart},
+        stage = ${event}, status = ${status}, direction = ${e.direction}, counterpart = ${e.counterpart},
         next_turn = ${e.nextTurn}, due_on = ${e.dueOn}::date, app_no = ${e.appNo},
         reg_no = ${e.regNo}, probability = ${e.probability}, name = ${e.name},
         holder = ${e.holder}, note = ${e.note}, source = ${e.source}, raw = ${e.raw}
       WHERE id = ${e.id}::uuid`
   })
 }
+
+/** 입력이 틀렸다(없는 상태·사건). API 는 이것을 400 으로 돌려준다. */
+export class IpInputError extends Error {}
 
 /**
  * 대장에 없는 건을 기록하면서 새로 만든다.
@@ -643,6 +830,7 @@ export async function createCase(
   userId: string,
   kind: EntityKind,
   name: string,
+  /** 상태(출원전…). 옛 단계 값이 와도 ip.create_case 가 표대로 옮긴다 */
   stage: string,
   note = ""
 ): Promise<string> {
@@ -690,6 +878,16 @@ export async function setTurnAndDue(
   })
 }
 
+/**
+ * 대장 칸을 직접 고칠 때 옛 단계 값이 오면 표대로 상태로 옮긴다(옛 화면).
+ * SQL 조각이라 값은 바인딩으로만 들어간다.
+ */
+const LEGACY_TO_STATUS = (kind: EntityKind, value: string) =>
+  Prisma.sql`coalesce(
+    (SELECT legacy_status FROM ip.event_options WHERE kind = ${kind} AND value = ${value}
+       AND NOT EXISTS (SELECT 1 FROM ip.status_options WHERE kind = ${kind} AND value = ${value})),
+    ${value})`
+
 export async function saveTrademark(
   userId: string,
   t: Trademark,
@@ -704,7 +902,7 @@ export async function saveTrademark(
         VALUES
           (${t.id}, ${t.name}, ${t.nameKo}, ${t.classes}, ${t.goods}, ${t.appNo},
            ${t.regNo}, ${t.date}::date, ${t.filedOn}::date, ${t.registeredOn}::date,
-           ${t.holder}, ${t.status}, ${t.probability}, ${t.note})`
+           ${t.holder}, ${LEGACY_TO_STATUS("trademark", t.status)}, ${t.probability}, ${t.note})`
       return
     }
     await tx.$executeRaw`
@@ -712,7 +910,8 @@ export async function saveTrademark(
         name = ${t.name}, name_ko = ${t.nameKo}, classes = ${t.classes}, goods = ${t.goods},
         app_no = ${t.appNo}, reg_no = ${t.regNo}, ref_date = ${t.date}::date,
         filed_on = ${t.filedOn}::date, registered_on = ${t.registeredOn}::date,
-        holder = ${t.holder}, status = ${t.status}, probability = ${t.probability},
+        holder = ${t.holder}, status = ${LEGACY_TO_STATUS("trademark", t.status)},
+        probability = ${t.probability},
         note = ${t.note}
       WHERE id = ${t.id}`
   })
@@ -730,7 +929,8 @@ export async function savePatent(
           (id, title, app_no, reg_no, ref_date, filed_on, registered_on, applicant, status, note)
         VALUES
           (${p.id}, ${p.title}, ${p.appNo}, ${p.regNo}, ${p.date}::date,
-           ${p.filedOn}::date, ${p.registeredOn}::date, ${p.applicant}, ${p.status}, ${p.note})`
+           ${p.filedOn}::date, ${p.registeredOn}::date, ${p.applicant},
+           ${LEGACY_TO_STATUS("patent", p.status)}, ${p.note})`
       return
     }
     await tx.$executeRaw`
@@ -738,7 +938,7 @@ export async function savePatent(
         title = ${p.title}, app_no = ${p.appNo}, reg_no = ${p.regNo},
         ref_date = ${p.date}::date, filed_on = ${p.filedOn}::date,
         registered_on = ${p.registeredOn}::date, applicant = ${p.applicant},
-        status = ${p.status}, note = ${p.note}
+        status = ${LEGACY_TO_STATUS("patent", p.status)}, note = ${p.note}
       WHERE id = ${p.id}`
   })
 }
@@ -928,6 +1128,9 @@ export interface Correction {
   /** 'YYYY-MM-DD'. 단계 규칙과 무관하게 이 값이 된다 — 근거 문서의 날짜를 적는다. */
   filedOn?: string
   registeredOn?: string
+  /** 상태(출원전·출원·등록·거절·포기). 옛 단계 값이 오면 표대로 옮긴다 */
+  status?: string
+  /** 옛 이름. status 와 같다 */
   stage?: string
 }
 
@@ -935,7 +1138,8 @@ export async function correctRecord(
   userId: string,
   entityKind: EntityKind,
   entityId: string,
-  stage: string,
+  /** 옛 화면이 넘기던 지금 단계. 쓰지 않는다 — 상태를 안 바꾸는 정정은 상태를 비워 둔다 */
+  _stage: string,
   today: string,
   patch: Correction,
   reason: string
@@ -949,8 +1153,9 @@ export async function correctRecord(
     userId,
     {
       date: today,
-      // 단계를 안 바꾸면 지금 단계를 그대로 다시 적는다. 무해하다.
-      stage: patch.stage ?? stage,
+      // 사건은 「값 정정」. 상태를 고치지 않는 정정은 상태를 비워 두어 대장의 상태를 건드리지 않는다.
+      event: "값 정정",
+      status: patch.status ?? patch.stage ?? null,
       entityKind,
       entityId,
       direction: null,

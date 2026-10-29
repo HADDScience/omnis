@@ -216,7 +216,7 @@ export async function buildIpOverview(): Promise<string> {
   const turns = (await listOpenTurns()).filter((t) => t.nextTurn === "us")
   if (turns.length > 0) {
     const lines = turns.map((t) => {
-      const bits = [`${t.entityId} ${t.caseName}`, t.stage]
+      const bits = [`${t.entityId} ${t.caseName}`, t.event ?? t.status ?? ""]
       if (t.dueOn) bits.push(`기한 ${t.dueOn}`)
       return `- ${bits.join(" · ")}`
     })

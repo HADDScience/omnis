@@ -307,7 +307,7 @@ async function main() {
   )
   check("지침 없이 쓰면 거절된다", isToolError(noGuide))
   check("거절하면서 지침 전문을 준다", toolText(noGuide).includes("HADD IP 사용 지침"))
-  check("확인 코드가 지침에 들어 있다", toolText(noGuide).includes("guide-2026-10-28-r1"))
+  check("확인 코드가 지침에 들어 있다", toolText(noGuide).includes("guide-2026-10-29-r1"))
 
   const mailNoRaw = await rpc(
     "tools/call",
@@ -321,7 +321,7 @@ async function main() {
         nextTurn: "none",
         source: "mail",
         note: "__mcp 검증__",
-        guide: "guide-2026-10-28-r1",
+        guide: "guide-2026-10-29-r1",
       },
     },
     accessToken
@@ -338,12 +338,58 @@ async function main() {
         entityId: "TM-04",
         stage: "없는단계",
         nextTurn: "none",
-        guide: "guide-2026-10-28-r1",
+        guide: "guide-2026-10-29-r1",
       },
     },
     accessToken
   )
   check("정의되지 않은 단계는 거절된다", isToolError(badStage))
+
+  const stages = await rpc("tools/call", { name: "list_stages", arguments: { kind: "patent" } }, accessToken)
+  const stagesText = toolText(stages)
+  check(
+    "list_stages 가 상태 5개와 사건을 함께 준다",
+    ["출원전", "출원", "등록", "거절", "포기"].every((s) => stagesText.includes(`"${s}"`)) &&
+      stagesText.includes("사건") &&
+      stagesText.includes("우선심사신청") &&
+      !stagesText.includes('"value": "심사중"'),
+    stagesText.slice(0, 200)
+  )
+
+  const badStatus = await rpc(
+    "tools/call",
+    {
+      name: "add_progress",
+      arguments: {
+        date: "1999-02-02",
+        entityKind: "trademark",
+        entityId: "TM-04",
+        status: "없는상태",
+        nextTurn: "none",
+        guide: "guide-2026-10-29-r1",
+      },
+    },
+    accessToken
+  )
+  check("정의되지 않은 상태는 거절된다", isToolError(badStatus))
+
+  const newStyle = await rpc(
+    "tools/call",
+    {
+      name: "add_progress",
+      arguments: {
+        date: "1999-02-02",
+        entityKind: "trademark",
+        entityId: "TM-04",
+        event: "의견제출통지",
+        nextTurn: "none",
+        note: "__mcp 검증용 기록__",
+        guide: "guide-2026-10-29-r1",
+      },
+    },
+    accessToken
+  )
+  check("사건(event)으로 저장된다", !isToolError(newStyle) && toolText(newStyle).includes('"event": "의견제출통지"'), toolText(newStyle).slice(0, 200))
 
   const written = await rpc(
     "tools/call",
@@ -356,15 +402,16 @@ async function main() {
         stage: "검토의견",
         nextTurn: "none",
         note: "__mcp 검증용 기록__",
-        guide: "guide-2026-10-28-r1",
+        guide: "guide-2026-10-29-r1",
       },
     },
     accessToken
   )
   const writtenText = toolText(written)
   check("확인 코드가 있으면 저장된다", !isToolError(written) && writtenText.includes("기록_id"))
+  check("옛 stage 호출은 상태+사건으로 번역했다고 알려준다", writtenText.includes("옛_단계_번역"), writtenText.slice(0, 200))
   check(
-    "지난 날짜는 단계를 되돌리지 않는다고 알려준다",
+    "지난 날짜는 상태를 되돌리지 않는다고 알려준다",
     writtenText.includes("지난 일로 되돌리지 않습니다"),
     writtenText.slice(0, 200)
   )
@@ -387,7 +434,7 @@ async function main() {
     "tools/call",
     {
       name: "correct_ip",
-      arguments: { entityId: "TM-04", filedOn: "2025.10.17", reason: "__mcp 검증용 기록__", guide: "guide-2026-10-28-r1" },
+      arguments: { entityId: "TM-04", filedOn: "2025.10.17", reason: "__mcp 검증용 기록__", guide: "guide-2026-10-29-r1" },
     },
     accessToken
   )
@@ -396,7 +443,7 @@ async function main() {
     "tools/call",
     {
       name: "correct_ip",
-      arguments: { entityId: "TM-04", filedOn: "1999-03-03", reason: "__mcp 검증용 기록__", guide: "guide-2026-10-28-r1" },
+      arguments: { entityId: "TM-04", filedOn: "1999-03-03", reason: "__mcp 검증용 기록__", guide: "guide-2026-10-29-r1" },
     },
     accessToken
   )
@@ -415,7 +462,7 @@ async function main() {
         entityId: "TM-04",
         stage: "검토의견",
         nextTurn: "none",
-        guide: "guide-2026-10-28-r1",
+        guide: "guide-2026-10-29-r1",
       },
     },
     accessToken
