@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server"
 
-import { correctRecord, isYmd, type Correction, type EntityKind } from "@/lib/ip-data"
+import {
+  correctRecord,
+  IpInputError,
+  isYmd,
+  type Correction,
+  type EntityKind,
+} from "@/lib/ip-data"
 import { authorize, bad, body, isDenied, ok, preflight } from "@/lib/ip-api"
 
 /**
@@ -39,14 +45,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await correctRecord(
-    auth.caller.userId,
-    input.entityKind,
-    input.entityId,
-    input.stage,
-    input.today,
-    input.patch ?? {},
-    input.reason ?? ""
-  )
+  try {
+    await correctRecord(
+      auth.caller.userId,
+      input.entityKind,
+      input.entityId,
+      input.stage,
+      input.today,
+      input.patch ?? {},
+      input.reason ?? ""
+    )
+  } catch (err) {
+    if (err instanceof IpInputError) return bad(err.message, auth.cors, 422)
+    throw err
+  }
   return ok({ ok: true }, auth.cors)
 }

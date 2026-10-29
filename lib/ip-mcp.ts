@@ -16,7 +16,13 @@
 import { createHash, randomBytes } from "crypto"
 
 import { prisma } from "@/lib/db"
-import { isYmd } from "@/lib/ip-data"
+import {
+  IP_STATUSES,
+  isYmd,
+  listEventOptions,
+  resolveStatusEvent,
+  type EntityKind,
+} from "@/lib/ip-data"
 
 export const PROTOCOL_VERSION = "2025-06-18"
 export const SERVER_INFO = { name: "hadd-ip", version: "1.0.0" }
@@ -146,52 +152,59 @@ export async function currentMcpToken(userId: string): Promise<McpTokenInfo | nu
 //  모르고 옛 코드를 계속 쓰게 되고, 날짜로 만들면 대화 도중에 코드가 바뀐다.
 // ---------------------------------------------------------------------------
 
-const GUIDE_ACK = "guide-2026-10-28-r1"
+const GUIDE_ACK = "guide-2026-10-29-r1"
 
 const GUIDE_TEMPLATE = [
   "HADD IP 사용 지침 — 쓰기 전에 반드시 한 번 읽는다",
   "",
   "■ 1. 기록이 원본이다",
-  "상표·특허의 단계·번호·날짜를 직접 고치는 도구는 없다. 무슨 일이 있었는지를 기록하면 지식재산권 목록이 그 결과로 바뀐다. 그래서 목록은 언제든 기록에서 다시 계산된다 — 기록이 틀리면 목록도 틀린다.",
+  "상표·특허의 상태·번호·날짜를 직접 고치는 도구는 없다. 무슨 일이 있었는지를 기록하면 지식재산권 목록이 그 결과로 바뀐다. 그래서 목록은 언제든 기록에서 다시 계산된다 — 기록이 틀리면 목록도 틀린다.",
   "",
-  "■ 2. 인용된 원본은 근거가 아니다 (가장 자주 틀리는 곳)",
+  "■ 2. 상태와 사건을 나눠 적는다",
+  "상태는 「도달한 지점」 다섯 개다. 출원전(아직 특허청에 내지 않았다) · 출원(냈고 결과가 확정되지 않았다) · 등록(등록번호가 생겼다) · 거절(거절결정에 불복하지 않아 확정됐다) · 포기(우리가 멈췄다 — 출원 전 중단·취하·등록료 미납 소멸·다른 건으로 대체).",
+  "사건은 그 사이에 일어난 일이다 — 검토의견·출원·우선심사신청·의견제출통지·보정서제출·특허결정·거절결정·등록 …. list_stages 가 전부 알려준다.",
+  "add_progress 에는 사건(event)을 적는다. 상태는 사건이 정한다 — 출원·등록·거절확정·포기 사건만 상태를 옮기고 나머지는 상태를 바꾸지 않는다. 등록번호를 처음 적으면 등록, 출원번호를 처음 적으면 출원으로 저절로 옮겨 간다.",
+  "헷갈리기 쉬운 것: 특허결정·출원공고·등록료 납부 대기는 아직 출원이다(등록번호가 나와야 등록). 거절결정·의견제출통지를 받고 다투는 중이면 아직 출원이다(거절은 불복하지 않아 확정됐을 때만). 우선심사신청·심사청구·PCT 출원은 상태를 바꾸지 않는다 — 「심사중」 같은 상태는 없다.",
+  "status 는 사건이 상태를 정해 주지 못할 때만 직접 적는다.",
+  "",
+  "■ 3. 인용된 원본은 근거가 아니다 (가장 자주 틀리는 곳)",
   "회신 메일에는 우리가 보낸 원본이 「--------- 원본 메일 ---------」·「보낸사람:」 아래에 함께 실려 온다.",
   "그 아래는 이미 지난 일이거나 **우리가 쓴 글**이다. 구분선 위, 새로 온 몇 줄만 이 기록의 근거다.",
   "아래에서 등록가능성·지정상품·권고사항을 끌어올려 상대가 말한 것처럼 적으면 없던 사실이 만들어진다.",
   "새로 온 부분이 인사와 「검토하고 답변드리겠습니다」뿐이라면, 기록할 사실도 그것뿐이다.",
   "",
-  "■ 3. 지어내지 않는다",
+  "■ 4. 지어내지 않는다",
   "상대가 말하지 않은 것은 비운다. 모르는 칸은 비운다 — 그럴듯한 값을 채우는 것보다 비어 있는 것이 낫다.",
   "숫자(등록가능성·번호)는 이 메일에서 새로 말한 것만 넣는다. 지난 검토의견의 숫자를 옮기면 그 메일이 그 말을 한 것처럼 남는다.",
   "",
-  "■ 4. 근거 원문을 남긴다",
+  "■ 5. 근거 원문을 남긴다",
   "메일이 근거라면 raw 에 새로 온 부분을 그대로 붙인다. **없으면 저장되지 않는다** — 권고가 아니라 조건이다.",
   "요약만 남으면 「정말 그렇게 적혀 있었나」를 사람이 확인할 길이 없고, 잘못 옮긴 요약이 그대로 사실이 된다.",
   "메일 본문을 갖고 있지 않다면(사람이 말로 전해 준 경우) source 를 manual 로 두고 note 에 누가 어떻게 전했는지 적는다.",
   "",
-  "■ 5. 차례(nextTurn)는 방향과 다르다",
+  "■ 6. 차례(nextTurn)는 방향과 다르다",
   "상대가 답을 예고했으면(「답변드리겠습니다」·「검토 후 연락드리겠습니다」) firm.",
   "상대가 우리에게 물었으면(「진행하시겠습니까」·「회신 부탁드립니다」) us.",
   "받은 메일이라는 이유로 us 를 고르지 않는다. 이 값이 「밀린 IP 업무」를 만든다 — 틀리면 사람이 엉뚱한 일을 한다.",
   "",
-  "■ 6. 진행과 정정을 구분한다",
-  "일이 진행된 것(출원했다·회신이 왔다)은 add_progress. 여태 잘못 적혀 있던 값(오타·엉뚱한 번호·틀린 단계·틀린 출원일·등록일)은 correct_ip.",
+  "■ 7. 진행과 정정을 구분한다",
+  "일이 진행된 것(출원했다·회신이 왔다)은 add_progress. 여태 잘못 적혀 있던 값(오타·엉뚱한 번호·틀린 상태·틀린 출원일·등록일)은 correct_ip.",
   "정정은 「원래부터 이랬다」는 뜻이라 마지막 진행일을 움직이지 않는다.",
-  "출원일·등록일은 단계가 '출원'·'등록'으로 들어간 기록의 날짜로 한 번 채워진다. 이미 그 단계인 건에 남긴 후속 기록(회신·보고 메일)은 날짜를 건드리지 않는다. 비어 있거나 틀렸으면 correct_ip 의 filedOn·registeredOn 에 근거 문서(출원번호통지서·등록증)의 날짜를 넣는다 — 진행 기록으로 채우려 하지 않는다.",
+  "출원일·등록일은 「출원」·「등록」 사건 기록의 날짜로 한 번 채워진다. 이미 그 상태인 건에 남긴 후속 기록(회신·보고 메일)은 날짜를 건드리지 않는다. 번호만 적어 상태가 저절로 옮겨 간 경우에도 날짜는 채우지 않는다 — 메일 날짜는 출원일이 아니다. 비어 있거나 틀렸으면 correct_ip 의 filedOn·registeredOn 에 근거 문서(출원번호통지서·등록증)의 날짜를 넣는다 — 진행 기록으로 채우려 하지 않는다.",
   "",
-  "■ 7. 쓰기 전에 본다",
-  "list_stages 로 쓸 수 있는 단계를 확인하고, get_ip 로 같은 일이 이미 적혀 있지 않은지 본다. 날짜는 KST 이며 일이 일어난 날을 적는다(오늘이 아니다).",
-  "**ID·단계를 사용자에게 되묻지 않는다.** 사용자는 「VIVOFRAME」처럼 이름만 안다 — list_ip 로 찾는 것이 도구의 일이다. 물어보면 사람이 우리 내부 번호를 찾아 적어야 하고, 그러면 이 도구를 쓸 이유가 없어진다.",
+  "■ 8. 쓰기 전에 본다",
+  "list_stages 로 쓸 수 있는 상태·사건을 확인하고, get_ip 로 같은 일이 이미 적혀 있지 않은지 본다. 날짜는 KST 이며 일이 일어난 날을 적는다(오늘이 아니다).",
+  "**ID·상태·사건을 사용자에게 되묻지 않는다.** 사용자는 「VIVOFRAME」처럼 이름만 안다 — list_ip 로 찾는 것이 도구의 일이다. 물어보면 사람이 우리 내부 번호를 찾아 적어야 하고, 그러면 이 도구를 쓸 이유가 없어진다.",
   "새 건을 만들기 전에는 list_ip 로 같은 건을 찾아본다 — 이름만 다르게 적힌 같은 건을 둘로 만들면 합치기 어렵다.",
   "",
-  "■ 8. 권리를 이전받았을 때 (양수·승계)",
-  "「뇌연구원에서 이전받았다」처럼 **주인이 바뀐 것**은 진행이 아니다. 출원→심사→등록이라는 진도가 움직인 것이 아니므로 stage 는 **지금 단계를 그대로** 적는다(get_ip 의 현재.status). 「이전」이라는 단계는 없다 — 찾지 말고 사용자에게 묻지도 않는다.",
-  "add_progress: date=이전등록일 · stage=지금 단계 · counterpart=넘겨준 쪽 · nextTurn='none' · note 에 누구에게서 이전받았는지.",
+  "■ 9. 권리를 이전받았을 때 (양수·승계)",
+  "「뇌연구원에서 이전받았다」처럼 **주인이 바뀐 것**은 진행이 아니다. 출원→등록이라는 진도가 움직인 것이 아니므로 event 는 비우고 status 에 **지금 상태를 그대로** 적는다(get_ip 의 현재.status). 「이전」이라는 사건은 없다 — 찾지 말고 사용자에게 묻지도 않는다.",
+  "add_progress: date=이전등록일 · status=지금 상태 · counterpart=넘겨준 쪽 · nextTurn='none' · note 에 누구에게서 이전받았는지.",
   "이어서 correct_ip 로 holder(출원인·보유자)를 「{ORG}」 로 바꾼다. 이것을 빠뜨리면 목록에는 계속 남의 이름이 남는다. 우리 이름은 여기 적혀 있으니 사용자에게 묻지 않는다.",
-  "**이전일을 등록일로 만들지 않는다.** 이미 등록 단계인 건에서 마지막 진행일보다 늦은 기록은 등록일을 채우지 않지만, 그 전에 get_ip 의 현재.registered_on 을 먼저 본다 — 비어 있으면 correct_ip 의 registeredOn 에 **원 등록일(특허청 원부의 등록일)**을 넣는다. 원 등록일을 모르면 그것만 사용자에게 묻는다.",
+  "**이전일을 등록일로 만들지 않는다.** 이미 등록 상태인 건에서 마지막 진행일보다 늦은 기록은 등록일을 채우지 않지만, 그 전에 get_ip 의 현재.registered_on 을 먼저 본다 — 비어 있으면 correct_ip 의 registeredOn 에 **원 등록일(특허청 원부의 등록일)**을 넣는다. 원 등록일을 모르면 그것만 사용자에게 묻는다.",
   "",
-  "■ 9. 쓴 뒤에 확인한다",
-  "응답의 목록_반영을 읽는다. 지난 날짜로 기록하면 단계가 그대로인 것이 정상이다 — 지난 일로 현재를 되돌리지 않기 때문이다. 실패로 보고 다시 쓰면 중복 기록만 쌓인다.",
+  "■ 10. 쓴 뒤에 확인한다",
+  "응답의 목록_반영을 읽는다. 지난 날짜로 기록하면 상태가 그대로인 것이 정상이다 — 지난 일로 현재를 되돌리지 않기 때문이다. 실패로 보고 다시 쓰면 중복 기록만 쌓인다.",
   "기록_id 가 돌아왔으면 저장된 것이다.",
   "",
   `■ 확인 코드: ${GUIDE_ACK}`,
@@ -243,7 +256,7 @@ export const TOOLS = [
   {
     name: "list_stages",
     description:
-      "진행 단계 목록. 기록을 남기기 전에 먼저 불러 어떤 단계 값을 쓸 수 있는지 확인한다. 단계마다 추가로 채워야 하는 칸(출원번호·등록번호·기한 등)도 함께 알려준다.",
+      "상태 5개(출원전·출원·등록·거절·포기)와 사건 목록. 기록을 남기기 전에 먼저 불러 어떤 값을 쓸 수 있는지 확인한다. 사건마다 상태를 옮기는지(옮기는_상태), 추가로 채워야 하는 칸(출원번호·등록번호·기한 등)도 함께 알려준다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -298,7 +311,8 @@ export const TOOLS = [
   {
     name: "add_progress",
     description: [
-      "진행 기록을 남긴다. 이 도구 하나로 지식재산권 목록(단계·번호·날짜)까지 함께 갱신된다 — 지식재산권 목록을 따로 고치지 않는다.",
+      "진행 기록을 남긴다. 이 도구 하나로 지식재산권 목록(상태·번호·날짜)까지 함께 갱신된다 — 지식재산권 목록을 따로 고치지 않는다.",
+      "무슨 일이 있었는지는 event(사건)에 적는다. 상태는 사건이 정한다 — 출원·등록·거절확정·포기 사건만 상태를 옮기고, 등록번호·출원번호를 처음 적으면 등록·출원으로 저절로 옮겨 간다. 의견제출통지·우선심사신청·특허결정 같은 사건은 상태를 바꾸지 않는다.",
       "메일이 근거라면 받은 메일이든 보낸 메일이든 그 내용을 note 에 옮기고 direction 을 채운 뒤 source 를 'mail' 로 두고, raw 에 근거가 된 원문을 그대로 붙인다.",
       "",
       "【인용된 원본은 근거가 아니다 — 가장 자주 틀리는 곳】",
@@ -322,10 +336,21 @@ export const TOOLS = [
           description:
             "대상 ID. 예: TM-13, PT-07. **모르면 list_ip 에 이름을 넣어 찾는다 — 사용자에게 되묻지 않는다.** ID 를 찾는 것은 도구가 할 일이고, 사용자는 대개 이름만 알고 있다.",
         },
+        event: {
+          type: "string",
+          description:
+            "사건 — 무슨 일이 있었나(검토의견·출원·의견제출통지·보정서제출·특허결정·등록 …). **모르면 list_stages 를 먼저 부른다** — 목록에 없는 값은 거절된다. 사용자에게 사건 이름을 묻지 않는다.",
+        },
+        status: {
+          type: "string",
+          enum: [...IP_STATUSES],
+          description:
+            "상태 — 도달한 지점. 보통 비운다(사건이 정한다). 사건이 상태를 정해 주지 못할 때만 적는다. 권리 이전·양수처럼 진도가 움직이지 않은 일은 event 를 비우고 get_ip 로 본 **지금 상태를 그대로** 적는다.",
+        },
         stage: {
           type: "string",
           description:
-            "단계. **모르면 list_stages 를 먼저 부른다** — 여기에 없는 값은 거절된다. 사용자에게 단계 이름을 묻지 않는다. 단계가 움직이지 않는 사건(권리 이전·양수처럼 주인만 바뀐 것)이면 get_ip 로 본 **지금 단계를 그대로** 적는다.",
+            "옛 이름. 예전의 단계 값(아이디어·의견제출통지·심사중 …)을 받으면 상태와 사건으로 나눠 저장한다. 새로 쓸 때는 event·status 를 쓴다.",
         },
         direction: {
           type: "string",
@@ -366,13 +391,14 @@ export const TOOLS = [
         },
         ...GUIDE_ARG,
       },
-      required: ["date", "entityKind", "entityId", "stage", "nextTurn", "guide"],
+      // event·status·stage 중 하나는 있어야 한다. 옛 커넥터가 stage 만 보내도 받으려고 셋 다 선택으로 둔다.
+      required: ["date", "entityKind", "entityId", "nextTurn", "guide"],
     },
   },
   {
     name: "correct_ip",
     description:
-      "이름·보유자·출원번호·등록번호·출원일·등록일·단계를 고친다. 지식재산권 목록을 직접 찌르지 않고 「값 정정」 기록 한 줄로 남기므로 무엇이 언제 왜 바뀌었는지 이력에 남는다. 일이 진행된 것(출원했다·등록됐다)은 이 도구가 아니라 add_progress 로 남긴다 — 정정은 「원래부터 이랬다」는 뜻이라 마지막 진행일을 움직이지 않는다. 값을 비우려면 빈 문자열을 넘긴다.",
+      "이름·보유자·출원번호·등록번호·출원일·등록일·상태를 고친다. 지식재산권 목록을 직접 찌르지 않고 「값 정정」 기록 한 줄로 남기므로 무엇이 언제 왜 바뀌었는지 이력에 남는다. 일이 진행된 것(출원했다·등록됐다)은 이 도구가 아니라 add_progress 로 남긴다 — 정정은 「원래부터 이랬다」는 뜻이라 마지막 진행일을 움직이지 않는다. 값을 비우려면 빈 문자열을 넘긴다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -396,10 +422,15 @@ export const TOOLS = [
           description:
             "등록일 YYYY-MM-DD. 등록증·등록원부의 등록일을 적는다. 비우려면 빈 문자열.",
         },
+        status: {
+          type: "string",
+          enum: [...IP_STATUSES],
+          description:
+            "상태(출원전·출원·등록·거절·포기). 「엑셀 인수 당시 상태가 실제와 달랐다」처럼 지금까지 잘못 적혀 있던 경우에만 쓴다.",
+        },
         stage: {
           type: "string",
-          description:
-            "단계. 「엑셀 인수 당시 단계가 실제와 달랐다」처럼 지금까지 잘못 적혀 있던 경우에만 쓴다.",
+          description: "옛 이름. status 와 같다. 옛 단계 값이 오면 상태로 옮긴다.",
         },
         reason: {
           type: "string",
@@ -419,15 +450,19 @@ export const TOOLS = [
       properties: {
         entityKind: { type: "string", enum: ["trademark", "patent"] },
         name: { type: "string", description: "상표 이름 · 특허 명칭" },
+        status: {
+          type: "string",
+          enum: [...IP_STATUSES],
+          description: "시작 상태. 생략하면 '출원전'. 이미 출원한 건을 뒤늦게 올리는 것이면 '출원'.",
+        },
         stage: {
           type: "string",
-          description:
-            "시작 단계. list_stages 가 알려준 값 중 하나여야 한다. 보통 '아이디어'.",
+          description: "옛 이름. 옛 단계 값(아이디어 …)이 오면 상태로 옮긴다.",
         },
         note: { type: "string", description: "비고. 없으면 비운다." },
         ...GUIDE_ARG,
       },
-      required: ["entityKind", "name", "stage", "guide"],
+      required: ["entityKind", "name", "guide"],
     },
   },
 ] as const
@@ -505,10 +540,13 @@ async function ledgerOf(kind: string, id: string): Promise<Row | null> {
   return rows[0] ?? null
 }
 
-async function stageExists(kind: string, value: unknown): Promise<boolean> {
-  const rows = await prisma.$queryRaw<{ value: string }[]>`
-    SELECT value FROM ip.status_options WHERE kind = ${kind} AND value = ${String(value)}`
-  return rows.length > 0
+/** list_stages 가 상태마다 붙이는 뜻. 사용자가 확정한 정의(2026-10-29) 그대로다. */
+const STATUS_MEANING: Record<string, string> = {
+  출원전: "아직 특허청에 내지 않았다",
+  출원: "특허청에 냈고 결과가 확정되지 않았다. 특허결정·출원공고·등록료 납부 대기·거절결정에 다투는 중도 여기다",
+  등록: "등록번호가 생겼다(설정등록)",
+  거절: "거절결정에 불복하지 않아 확정됐다",
+  포기: "우리가 멈췄다 — 출원 전 중단·취하·등록료 미납 소멸·다른 건으로 대체",
 }
 
 /** ID 접두사가 곧 부류다. 굳이 물어보지 않아도 되게 한다. */
@@ -535,13 +573,35 @@ export async function runTool(
   }
 
   if (name === "list_stages") {
-    const rows = await prisma.$queryRaw<Row[]>`
-      SELECT value, sort_order, is_open, wants_app_no, wants_reg_no,
-             wants_probability, wants_due
-        FROM ip.status_options
-       WHERE kind = ${String(args.kind)} AND selectable = true
-       ORDER BY sort_order`
-    return { text: JSON.stringify(rows, null, 2) }
+    const kind = (args.kind === "patent" ? "patent" : "trademark") as EntityKind
+    const statuses = await prisma.$queryRaw<Row[]>`
+      SELECT value, sort_order, is_open
+        FROM ip.status_options WHERE kind = ${kind} ORDER BY sort_order`
+    const events = (await listEventOptions(kind)).filter((e) => e.selectable)
+    return {
+      text: JSON.stringify(
+        {
+          상태: statuses.map((r) => ({
+            value: r.value,
+            뜻: STATUS_MEANING[String(r.value)] ?? "",
+            열림: r.is_open,
+          })),
+          사건: events.map((e) => ({
+            value: e.value,
+            옮기는_상태: e.movesTo,
+            ...(e.note ? { 설명: e.note } : {}),
+            wants_app_no: e.wantsAppNo,
+            wants_reg_no: e.wantsRegNo,
+            wants_probability: e.wantsProbability,
+            wants_due: e.wantsDue,
+          })),
+          쓰는_법:
+            "add_progress 에는 event(사건)를 적는다. 상태는 옮기는_상태가 있는 사건과 번호(등록번호·출원번호를 처음 적을 때)가 정한다. 옮기는_상태가 null 인 사건은 상태를 바꾸지 않는다.",
+        },
+        null,
+        2
+      ),
+    }
   }
 
   if (name === "list_ip") {
@@ -604,7 +664,7 @@ export async function runTool(
 
     const opening = (
       await prisma.$queryRaw<Row[]>`
-        SELECT stage, ref_date, taken_over_on, source_note
+        SELECT status, stage AS 넘겨받을_때_단계, ref_date, taken_over_on, source_note
           FROM ip.opening_state
          WHERE entity_kind = ${kind} AND entity_id = ${id}`
     )[0]
@@ -612,7 +672,7 @@ export async function runTool(
     // raw(근거 원문)를 함께 준다. 요약만 돌려주면 「그렇게 적혀 있었나」를
     // 되짚을 수 없고, 지어낸 요약이 그대로 사실로 굳는다.
     const history = await prisma.$queryRaw<Row[]>`
-      SELECT occurred_on, stage, direction, counterpart, next_turn, due_on,
+      SELECT occurred_on, stage AS event, status, direction, counterpart, next_turn, due_on,
              app_no, reg_no, name, holder, probability, note, source, raw
         FROM ip.progress_entries
        WHERE entity_kind = ${kind} AND entity_id = ${id}
@@ -622,6 +682,7 @@ export async function runTool(
       text: JSON.stringify(
         {
           현재: row,
+          // event 는 사건, status 는 그 기록이 명시한 상태(비어 있으면 사건·번호 규칙에 맡긴 기록).
           진행_이력: history,
           // 기록이 없으면 왜 없는지가 답의 일부다. 지어낸 일이 아니라 인수분이다.
           출발선: opening
@@ -642,7 +703,7 @@ export async function runTool(
     // 값 정정(source='edit')은 누구 차례인지에 대해 아무 말도 하지 않으므로 건너뛴다.
     const rows = await prisma.$queryRaw<Row[]>`
       SELECT DISTINCT ON (entity_kind, entity_id)
-             id, occurred_on, entity_kind, entity_id, stage, next_turn,
+             id, occurred_on, entity_kind, entity_id, stage AS event, next_turn,
              due_on, counterpart, note, source
         FROM ip.progress_entries
        WHERE source <> 'edit'
@@ -679,11 +740,17 @@ export async function runTool(
       }
     }
 
-    if (!(await stageExists(kind, args.stage))) {
-      return {
-        error: `'${args.stage}' 는 쓸 수 없는 단계입니다. list_stages 를 먼저 부르세요.`,
-      }
-    }
+    // 새 호출은 status·event, 옛 호출은 stage 에 옛 단계를 보낸다. 옛 값은 표대로 상태+사건으로 나눈다.
+    const resolved = await resolveStatusEvent(
+      kind as EntityKind,
+      {
+        status: args.status as string | undefined,
+        event: args.event as string | undefined,
+        stage: args.stage as string | undefined,
+      },
+      String(before.status)
+    )
+    if ("error" in resolved) return { error: resolved.error }
 
     // 방향이 채워졌는데 'manual' 이라 말한 경우는 DB 트리거가 'mail' 로 바로잡는다
     // — 같은 판단이 웹 양식에도 걸려야 해서 한 곳에 둔다.
@@ -715,16 +782,16 @@ export async function runTool(
       await tx.$executeRaw`SELECT set_config('app.user_id', ${caller.userId}, true)`
       const rows = await tx.$queryRaw<Row[]>`
         INSERT INTO ip.progress_entries
-          (occurred_on, entity_kind, entity_id, stage, direction, counterpart,
+          (occurred_on, entity_kind, entity_id, stage, status, direction, counterpart,
            next_turn, due_on, app_no, reg_no, probability, note, source, raw)
         VALUES
-          (${String(args.date)}::date, ${kind}, ${id}, ${String(args.stage)},
+          (${String(args.date)}::date, ${kind}, ${id}, ${resolved.event}, ${resolved.status},
            ${(args.direction as string) ?? null}, ${(args.counterpart as string) ?? ""},
            ${String(args.nextTurn)}, ${(args.dueOn as string) ?? null}::date,
            ${(args.appNo as string) ?? null}, ${(args.regNo as string) ?? null},
            ${(args.probability as number) ?? null}, ${(args.note as string) ?? ""},
            ${source}, ${(args.raw as string) ?? null})
-        RETURNING id, occurred_on, stage, direction, next_turn, source`
+        RETURNING id, occurred_on, stage AS event, status, direction, next_turn, source`
       return rows[0]
     })
 
@@ -737,7 +804,7 @@ export async function runTool(
     // 대장이 안 움직이는 정상적인 경우가 하나 있다: 더 최근 기록이 이미 있을 때.
     // 지난 일을 뒤늦게 채우는 것이라 단계를 되돌리면 안 된다. 이걸 말해주지
     // 않으면 부르는 쪽은 "실패했다"고 보고 같은 걸 계속 다시 쓴다.
-    const stageMoved = now.status === args.stage
+    const statusMoved = now.status !== before.status
     const beforeRef =
       before.ref_date instanceof Date
         ? before.ref_date.toISOString().slice(0, 10)
@@ -745,6 +812,12 @@ export async function runTool(
           ? before.ref_date.slice(0, 10)
           : null
     const olderThanLedger = beforeRef !== null && String(args.date) < beforeRef
+    // 번호만으로 상태가 옮겨 갔으면 날짜는 비어 있다. 그 사실을 알려야 근거 문서 날짜를 채운다.
+    const dateHint =
+      (now.status === "출원" && before.status !== "출원" && !now.filed_on) ||
+      (now.status === "등록" && before.status !== "등록" && !now.registered_on)
+        ? " 출원일·등록일은 비어 있습니다 — 근거 문서(출원번호통지서·등록증)의 날짜를 correct_ip 의 filedOn·registeredOn 에 넣으세요."
+        : ""
 
     return {
       text: JSON.stringify(
@@ -752,12 +825,15 @@ export async function runTool(
           기록됨: true,
           기록_id: written?.id ?? null,
           저장된_값: written,
+          ...(args.stage !== undefined && args.event === undefined && args.status === undefined
+            ? { 옛_단계_번역: `stage '${args.stage}' → 사건 ${resolved.event ?? "없음"} · 상태 ${resolved.status ?? "그대로(사건·번호 규칙)"}` }
+            : {}),
           지식재산권_목록: { 이전: before, 이후: now, 바뀐_칸: changed },
-          목록_반영: stageMoved
-            ? "단계가 이 기록대로 바뀌었습니다."
+          목록_반영: statusMoved
+            ? `상태가 ${before.status} → ${now.status} 로 바뀌었습니다.${dateHint}`
             : olderThanLedger
-              ? `단계는 그대로입니다. 더 최근 기록(${beforeRef})이 있어 지난 일로 되돌리지 않습니다 — 정상이며 다시 시도할 필요가 없습니다. 지금 상태를 바꾸려면 오늘 날짜로 기록하세요.`
-              : "단계가 바뀌지 않았습니다. 예상과 다르면 get_ip 로 확인하세요.",
+              ? `상태는 그대로입니다. 더 최근 기록(${beforeRef})이 있어 지난 일로 되돌리지 않습니다 — 정상이며 다시 시도할 필요가 없습니다. 지금 상태를 바꾸려면 오늘 날짜로 기록하세요.`
+              : `상태는 ${now.status} 그대로입니다. 상태를 바꾸지 않는 사건이면 정상입니다.`,
           확인_방법:
             "기록_id 가 있으면 저장된 것입니다. 같은 내용을 다시 쓰면 중복 기록이 생깁니다 — 실패로 보이더라도 먼저 get_ip 로 확인하세요.",
           기록자: caller.displayName ?? caller.email,
@@ -807,12 +883,13 @@ export async function runTool(
       "regNo",
       "filedOn",
       "registeredOn",
+      "status",
       "stage",
     ].filter((k) => args[k] !== undefined)
     if (touched.length === 0) {
       return {
         error:
-          "고칠 값이 하나도 없습니다. name·holder·appNo·regNo·filedOn·registeredOn·stage 중 하나 이상을 넘기세요.",
+          "고칠 값이 하나도 없습니다. name·holder·appNo·regNo·filedOn·registeredOn·status 중 하나 이상을 넘기세요.",
       }
     }
 
@@ -824,31 +901,33 @@ export async function runTool(
       }
     }
 
-    // 단계는 정정으로만 바꾼다. 정의에 없는 단계면 대장이 유령 값을 갖는다.
-    if (args.stage !== undefined && !(await stageExists(kind, args.stage))) {
-      return {
-        error: `'${args.stage}' 는 쓸 수 없는 단계입니다. list_stages 를 먼저 부르세요.`,
-      }
-    }
+    // 상태는 정정으로만 바꾼다. 정의에 없는 상태면 대장이 유령 값을 갖는다.
+    // 옛 단계 값(출원준비 …)이 와도 표대로 상태로 옮긴다. 사건은 언제나 「값 정정」.
+    const wantStatus = (args.status ?? args.stage) as string | undefined
+    const resolved = await resolveStatusEvent(
+      kind as EntityKind,
+      { status: wantStatus ?? null, event: "값 정정" },
+      String(before.status)
+    )
+    if ("error" in resolved) return { error: resolved.error }
 
     const reason = String(args.reason ?? "").trim()
     const written = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.user_id', ${caller.userId}, true)`
       const rows = await tx.$queryRaw<Row[]>`
         INSERT INTO ip.progress_entries
-          (occurred_on, entity_kind, entity_id, stage, direction, counterpart,
+          (occurred_on, entity_kind, entity_id, stage, status, direction, counterpart,
            next_turn, due_on, app_no, reg_no, probability, name, holder, note, source, raw,
            filed_on, registered_on)
         VALUES
-          (${todayKst()}::date, ${kind}, ${id},
-           ${(args.stage as string) ?? String(before.status)},
+          (${todayKst()}::date, ${kind}, ${id}, ${resolved.event}, ${resolved.status},
            NULL, '', 'none', NULL,
            ${patch("appNo")}, ${patch("regNo")}, NULL,
            ${patch("name")}, ${patch("holder")},
            ${reason || `값 정정 (${touched.join(", ")})`},
            'edit', NULL,
            ${patch("filedOn")}, ${patch("registeredOn")})
-        RETURNING id, occurred_on, stage, source`
+        RETURNING id, occurred_on, stage AS event, status, source`
       return rows[0]
     })
 
@@ -905,7 +984,8 @@ export async function runTool(
       newId = await prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.user_id', ${caller.userId}, true)`
         const rows = await tx.$queryRaw<{ create_case: string }[]>`
-          SELECT ip.create_case(${kind}, ${name_}, ${String(args.stage)},
+          SELECT ip.create_case(${kind}, ${name_},
+                                ${String(args.status ?? args.stage ?? "출원전")},
                                 ${(args.note as string) ?? ""}) AS create_case`
         return rows[0].create_case
       })
@@ -919,7 +999,7 @@ export async function runTool(
           만들었음: true,
           id: newId,
           이름: name_,
-          단계: args.stage,
+          상태: args.status ?? args.stage ?? "출원전",
           설명:
             "지식재산권 목록에 자리를 잡았고, 되짚을 수 있도록 출발선도 함께 적었습니다. 이 건에 진행이 있으면 add_progress 로 이어 적으세요.",
           만든이: caller.displayName ?? caller.email,

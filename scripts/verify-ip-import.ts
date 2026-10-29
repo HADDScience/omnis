@@ -16,7 +16,8 @@ const prisma = new PrismaClient({
 
 /** Supabase 원본에서 센 행 수 (2026-09-02 기준) */
 const EXPECTED: Record<string, number> = {
-  status_options: 24,
+  // 이사 때는 단계 12개 × 2 = 24. 2026-10-29 상태 5개 × 2 로 바뀌었다(옛 단계는 event_options).
+  status_options: 10,
   members: 2,
   trademarks: 16,
   patents: 11,
@@ -112,10 +113,11 @@ async function main() {
   console.log("\n[3] 참조 무결성")
   const badStage = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
     `SELECT count(*)::bigint AS n FROM ip.progress_entries pe
-      LEFT JOIN ip.status_options s ON s.kind = pe.entity_kind AND s.value = pe.stage
-      WHERE s.value IS NULL`
+      LEFT JOIN ip.event_options e ON e.kind = pe.entity_kind AND e.value = pe.stage
+      LEFT JOIN ip.status_options s ON s.kind = pe.entity_kind AND s.value = pe.status
+      WHERE (pe.stage IS NOT NULL AND e.value IS NULL) OR (pe.status IS NOT NULL AND s.value IS NULL)`
   )
-  check("모든 진행 기록의 단계가 정의된 단계다", Number(badStage[0].n) === 0)
+  check("모든 진행 기록의 사건·상태가 정의된 값이다", Number(badStage[0].n) === 0)
 
   const orphanEntry = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
     `SELECT count(*)::bigint AS n FROM ip.progress_entries pe

@@ -216,7 +216,7 @@ async function buildIpCaseChunks(sourceId: string): Promise<RawChunk[] | null> {
   if (found.classes.length > 0) parts.push(`류: ${found.classes.join(", ")}`)
   if (found.goods) parts.push(`지정상품: ${found.goods}`)
   if (found.holder) parts.push(`${found.kind === "trademark" ? "권리자" : "출원인"}: ${found.holder}`)
-  parts.push(`현재 단계: ${found.status}`)
+  parts.push(`현재 상태: ${found.status}`)
   if (found.appNo) parts.push(`출원번호: ${found.appNo}`)
   if (found.regNo) parts.push(`등록번호: ${found.regNo}`)
   if (found.filedOn) parts.push(`출원일: ${found.filedOn}`)
@@ -227,7 +227,9 @@ async function buildIpCaseChunks(sourceId: string): Promise<RawChunk[] | null> {
   const history = await listProgressFor(found.kind, found.id)
   if (history.length > 0) {
     const lines = history.map((h) => {
-      const bits = [h.date, h.stage]
+      // 사건(무슨 일)과, 그 기록이 상태를 명시했으면 그 상태.
+      const bits = [h.date, h.event ?? ""]
+      if (h.status) bits.push(`→ ${h.status}`)
       if (h.counterpart) bits.push(h.counterpart)
       if (h.nextTurn !== "none") bits.push(TURN_LABEL[h.nextTurn] ?? h.nextTurn)
       if (h.dueOn) bits.push(`기한 ${h.dueOn}`)
