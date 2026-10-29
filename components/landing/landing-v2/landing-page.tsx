@@ -1,6 +1,17 @@
 import Link from "next/link"
 import { apiUrl } from "@/lib/base-path"
 import { OmnisMark } from "@/components/brand/omnis-mark"
+import type { LandingStats } from "@/lib/landing-stats"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  AiMagicIcon,
+  BookOpen01Icon,
+  BubbleChatIcon,
+  FileAttachmentIcon,
+  Task01Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons"
+import { CompanyTabs } from "./company-tabs"
 import { DemoStage } from "./demo-stage"
 import "./landing-v2.css"
 
@@ -14,7 +25,8 @@ import "./landing-v2.css"
 
 export const CONTACT_MAIL = "mailto:jwoochang@haddscience.com"
 
-export function LandingV2() {
+/** stats 가 null 이면(세다가 실패) 「쌓이는 것」 섹션을 통째로 숨긴다 — 대신 넣을 숫자를 만들지 않는다 */
+export function LandingV2({ stats }: { stats: LandingStats | null }) {
   return (
     <div className="lv2">
       <Nav />
@@ -22,6 +34,9 @@ export function LandingV2() {
         <Hero />
         <StartWork />
         <ProgressWork />
+        <Resources />
+        <MyAi />
+        {stats && <Stats stats={stats} />}
         <Closing />
       </main>
     </div>
@@ -163,6 +178,121 @@ function ProgressWork() {
             summary="예시: 「#가벽 블라인드 설치 견적 지금까지 진행 상황 지식 카드로 정리해줘」 라고 보내면 옴니스가 업무와 사내 자료를 찾아 읽고 개요 · 진행 상황 · 다음 할 일로 정리한 지식 카드 초안을 씁니다. 확인을 누르면 지식 카드가 저장됩니다."
           />
         </div>
+      </div>
+    </section>
+  )
+}
+
+function Resources() {
+  return (
+    <section id="resources" className="lv2-scene lv2-scene-tint" aria-labelledby="lv2-resources-title">
+      <div className="lv2-wrap">
+        <div className="lv2-head-center lv2-rise">
+          <span className="lv2-eyebrow">03 · 회사가 가진 것</span>
+          <h2 id="lv2-resources-title" className="lv2-title">
+            우리 회사의 자원,
+            <br />
+            <em>탭 넷에 모입니다.</em>
+          </h2>
+          <p className="lv2-copy">채팅 · 업무 · 캘린더 · 아카이브. 회사의 일과 기록이 필요한 순간 한곳에 있습니다.</p>
+        </div>
+        <div className="lv2-rise">
+          <CompanyTabs />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** 온보딩 영상 6장 「AI 연결」 의 도구 소개 — 사람이 하던 일과 그 일을 맡는 MCP 도구 이름(lib/omnis-mcp.ts 의 실제 이름) */
+const MCP_TOOLS = [
+  [Task01Icon, "업무 확인 · 수정", "list_tasks · update_task"],
+  [BubbleChatIcon, "채팅에 보고", "post_message"],
+  [FileAttachmentIcon, "첨부 올리기 · 읽기", "upload_file · read_file"],
+  [AiMagicIcon, "알림에 응답", "respond_notification"],
+  [BookOpen01Icon, "사내 지식 묻기", "ask_omnis"],
+  [UserGroupIcon, "고객 · 회사 정보", "find_org"],
+] as const
+
+/** 연결 안내(components/onboarding/mcp-clients.tsx)에 탭이 있는 AI 도구 */
+const MCP_CLIENTS = ["Claude Code", "claude.ai", "ChatGPT", "Codex", "Gemini CLI", "Cursor", "VS Code"]
+
+function MyAi() {
+  return (
+    <section id="my-ai" className="lv2-scene" aria-labelledby="lv2-ai-title">
+      <div className="lv2-wrap">
+        <div className="lv2-head-center lv2-rise">
+          <span className="lv2-eyebrow">04 · 나의 AI</span>
+          <h2 id="lv2-ai-title" className="lv2-title">
+            쓰는 AI 에
+            <br />
+            <em>회사의 지식을 연결합니다.</em>
+          </h2>
+          <p className="lv2-copy">
+            Omnis MCP 를 붙이면 구성원이 쓰는 AI 가 업무를 확인하고, 사내 지식을 묻고, 보고까지 대신합니다. 연결은 Omnis
+            계정으로 승인해야 열립니다.
+          </p>
+        </div>
+        <div className="lv2-mcp lv2-rise">
+          <div className="lv2-mcp-card">
+            <span className="lv2-mcp-label">나의 AI</span>
+            <ul className="lv2-mcp-clients">
+              {MCP_CLIENTS.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="lv2-mcp-link" aria-hidden="true">
+            <i />
+            <span>hadd-omnis</span>
+          </div>
+          <div className="lv2-mcp-card">
+            <span className="lv2-mcp-label">AI 가 대신하는 일</span>
+            <ul className="lv2-mcp-tools">
+              {MCP_TOOLS.map(([icon, title, tool]) => (
+                <li key={title}>
+                  <HugeiconsIcon icon={icon} size={18} aria-hidden="true" />
+                  <span>{title}</span>
+                  <code>{tool}</code>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * 「쌓이는 것」 — DB 가 센 개수만(lib/landing-stats.ts, 한 시간 캐시). 예전 랜딩의 80% · 10× 같은 값은 잰 적이 없어 넣지 않는다.
+ * 사람 수는 세지 않는다 — 운영 데이터의 타인 명의 글 대부분이 수기 사본이라 「N명이 씁니다」 는 사실과 다르게 읽힌다.
+ */
+function Stats({ stats }: { stats: LandingStats }) {
+  const items = [
+    ["업무", stats.tasks],
+    ["지식 카드", stats.knowledgeCards],
+    ["지식재산권", stats.ipCases],
+    ["옴니스가 답한 질문", stats.answeredQuestions],
+  ] as const
+  return (
+    <section id="numbers" className="lv2-scene lv2-scene-tint" aria-labelledby="lv2-stats-title">
+      <div className="lv2-wrap">
+        <div className="lv2-head-center lv2-rise">
+          <span className="lv2-eyebrow">05 · 쌓이는 것</span>
+          <h2 id="lv2-stats-title" className="lv2-title">
+            일한 만큼 <em>쌓입니다.</em>
+          </h2>
+        </div>
+        <dl className="lv2-stats lv2-rise">
+          {items.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value.toLocaleString("ko-KR")}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="lv2-stats-note">Omnis 데이터베이스에서 센 개수입니다. 한 시간마다 다시 셉니다.</p>
       </div>
     </section>
   )
