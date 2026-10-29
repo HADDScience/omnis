@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import type { OmnisRoomMessage } from "@/lib/omnis-room"
 import type { AgentCard as AgentCardData, AgentRoomState } from "@/lib/agent/service"
 import type { ToolUse } from "@/lib/agent/tool-trail"
+import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
 import { answeredAfter, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
@@ -45,6 +46,7 @@ export function OmnisRoom({
   initialCards = [],
   initialTools = {},
   activeRun = null,
+  embedded,
 }: {
   roomId: string | null
   roomName?: string
@@ -52,6 +54,11 @@ export function OmnisRoom({
   initialCards?: AgentCardData[]
   initialTools?: Record<string, ToolUse[]>
   activeRun?: { id: string; status: string } | null
+  /**
+   * 오른쪽 패널 안에 끼울 때. 머리줄을 그리지 않고(패널이 그린다), 새 방이 생겨도 주소를 바꾸지 않는다 —
+   * 패널은 어느 화면 위에나 열린다. 확인 카드 · 다시 붙기는 방 화면과 같은 코드다
+   */
+  embedded?: { onRoomCreated?: (roomId: string) => void }
 }) {
   const reloadList = useRoomListReload()
   const [roomId, setRoomId] = useState(initialRoomId)
@@ -210,8 +217,9 @@ export function OmnisRoom({
         if (created && !id) {
           id = created
           setRoomId(created)
-          // 화면을 다시 그리지 않고 주소만 — 스트림이 끊기지 않게
-          window.history.replaceState(null, "", apiUrl(`/chat/${created}`))
+          // 화면을 다시 그리지 않고 주소만 — 스트림이 끊기지 않게. 패널 안이면 주소는 그대로 둔다
+          if (embedded) embedded.onRoomCreated?.(created)
+          else window.history.replaceState(null, "", apiUrl(`/chat/${created}`))
           reloadList()
         }
       })
@@ -310,15 +318,17 @@ export function OmnisRoom({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <RoomHeader
-        title={isNew ? "새 대화" : (roomName ?? (messages[0] ? messages[0].content.replace(/\s+/g, " ").slice(0, 30) : "옴니스"))}
-        subtitle={isNew ? "옴니스와 1:1 · 첫 글을 보내면 대화방이 생깁니다" : "옴니스와 1:1 · 앞의 대화를 이어서 답합니다"}
-      />
+      {!embedded && (
+        <RoomHeader
+          title={isNew ? "새 대화" : (roomName ?? (messages[0] ? messages[0].content.replace(/\s+/g, " ").slice(0, 30) : "옴니스"))}
+          subtitle={isNew ? "옴니스와 1:1 · 첫 글을 보내면 대화방이 생깁니다" : "옴니스와 1:1 · 앞의 대화를 이어서 답합니다"}
+        />
+      )}
 
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="mx-auto flex w-full max-w-[760px] flex-col px-3 py-4 sm:px-6">
+        <div className={cn("mx-auto flex w-full max-w-[760px] flex-col py-4", embedded ? "px-3" : "px-3 sm:px-6")}>
           {isNew && !pending && (
-            <div className="flex flex-col items-center gap-4 py-8 text-center sm:py-14">
+            <div className={cn("flex flex-col items-center gap-4 text-center", embedded ? "py-4" : "py-8 sm:py-14")}>
               <span className="ai-rainbow-border flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <HugeiconsIcon icon={BubbleChatSparkIcon} size={24} aria-hidden />
               </span>
@@ -328,7 +338,7 @@ export function OmnisRoom({
                   업무 · 지식 카드 · 주간보고 · 채팅 · 지식재산권 · 회사 기록을 찾아 답합니다. 업무를 만들거나 고치는 일은 확인 카드를 띄우고, 확인하면 실행합니다.
                 </p>
               </div>
-              <div className="grid w-full max-w-[520px] gap-2 sm:grid-cols-2">
+              <div className={cn("grid w-full max-w-[520px] gap-2", !embedded && "sm:grid-cols-2")}>
                 {EXAMPLES.map((ex) => (
                   <button
                     key={ex}
@@ -405,6 +415,7 @@ export function OmnisRoom({
         busy={busy}
         autoFocus={isNew}
         waitingCard={waitingCard}
+        compact={!!embedded}
       />
     </div>
   )
@@ -501,6 +512,7 @@ function Composer({
   busy,
   autoFocus,
   waitingCard,
+  compact = false,
 }: {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   value: string
@@ -509,6 +521,8 @@ function Composer({
   busy: boolean
   autoFocus: boolean
   waitingCard: boolean
+  /** 오른쪽 패널 안 — 좁은 칸이라 여백을 줄인다 */
+  compact?: boolean
 }) {
   // 내용만큼 늘린다 — 6줄을 넘으면 안에서 민다
   useEffect(() => {
@@ -522,24 +536,28 @@ function Composer({
   const canSend = !busy && value.trim().length >= 2 && !tooLong
 
   return (
-    <div className="shrink-0 border-t bg-background px-3 pb-3 pt-2 sm:px-6">
+    <div className={cn("shrink-0 border-t bg-background pb-3 pt-2", compact ? "px-2.5" : "px-3 sm:px-6")}>
       <div className="mx-auto w-full max-w-[760px]">
-        <div className="flex items-end gap-2 rounded-2xl border bg-card px-3 py-2 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong">
+        {/* 한 줄일 때 글자와 보내기 버튼의 세로 가운데가 같게 — 입력칸 최소 높이 = 버튼 높이(PC 32px · 터치 44px),
+            남는 높이는 위아래 여백으로. 여러 줄로 늘면 버튼은 아래에 붙는다(items-end). 2026-10-29 폰에서 글자가 아래로 처졌다 */}
+        <div className="flex items-end gap-2 rounded-[22px] border bg-card py-1 pr-1 pl-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong">
           <textarea
             ref={textareaRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              // PC 는 Enter 보내기 · Shift+Enter 줄바꿈, 폰은 Enter 가 줄바꿈이고 보내기는 버튼으로만(lib/enter-to-send.ts)
+              if (enterSends(e, isTouchTyping())) {
                 e.preventDefault()
                 if (canSend) onSend()
               }
             }}
             rows={1}
+            enterKeyHint="enter"
             autoFocus={autoFocus}
             aria-label="옴니스에게 보낼 글"
             placeholder={busy ? "옴니스가 답하는 중…" : "옴니스에게 물어보세요"}
-            className="max-h-40 min-h-[1.6em] flex-1 resize-none bg-transparent py-1 text-[14px] leading-[1.6] outline-none placeholder:text-muted-foreground"
+            className="max-h-40 min-h-[32px] flex-1 resize-none bg-transparent py-[5px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:py-[11px] [@media(pointer:coarse)]:text-[16px]"
           />
           <Button
             size="icon"
@@ -547,13 +565,13 @@ function Composer({
             disabled={!canSend}
             aria-label="보내기"
             title="보내기 (Enter)"
-            className="touch-target ai-rainbow-border shrink-0 rounded-full"
+            className="touch-target ai-rainbow-border size-[32px] shrink-0 rounded-full"
           >
             {busy ? <Spinner /> : <HugeiconsIcon icon={ArrowUp01Icon} size={16} aria-hidden />}
           </Button>
         </div>
         <div className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground">
-          <span className="hidden sm:inline">
+          <span className={cn("hidden [@media(pointer:coarse)]:hidden!", !compact && "sm:inline")}>
             {waitingCard ? "위 확인 카드를 눌러 주세요 · 새 글을 보내면 그 제안은 버려집니다" : "Enter 보내기 · Shift+Enter 줄바꿈 · 쓰기는 확인 카드를 거칩니다"}
           </span>
           <span className={cn("ml-auto tabular-nums", tooLong && "font-medium text-destructive")}>
