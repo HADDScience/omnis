@@ -16,6 +16,7 @@ import { OMNIS_MESSAGE_MAX } from "@/lib/schemas/chat-room"
 import { cn } from "@/lib/utils"
 import type { OmnisRoomMessage } from "@/lib/omnis-room"
 import type { AgentCard as AgentCardData } from "@/lib/agent/service"
+import { answeredAfter, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
 import { RoomHeader } from "./room-header"
@@ -53,10 +54,15 @@ export function OmnisRoom({
   const [messages, setMessages] = useState(initialMessages)
   const [cards, setCards] = useState(initialCards)
   const [draft, setDraft] = useState("")
-  /** 보내는 중인 글 — 방 상태를 다시 읽을 때까지 옅게 보인다 */
-  const [pending, setPending] = useState<string | null>(null)
-  /** 스트림으로 받는 중인 답. null 이면 돌고 있지 않다 */
+  /** 보내는 중인 글 — 방 글에 그 질문(questionId)이 들어올 때까지 옅게 보인다 */
+  const [pending, setPending] = useState<{ content: string; questionId: string | null } | null>(null)
+  /** 스트림으로 받는 중인 답. null 이면 읽고 있지 않다 */
   const [live, setLive] = useState<LiveAnswer | null>(null)
+  /**
+   * 서버에서 돌고 있는 실행(id). 스트림을 읽지 않아도 서버는 답을 쓰는 중일 수 있다 — 새로고침 · 앱 전환 · 연결 끊김.
+   * 이 값이 있으면 「답을 못 받았다」 고 하지 않고 그 실행의 스트림에 다시 붙는다(lib/agent/room-view.ts)
+   */
+  const [running, setRunning] = useState<string | null>(activeRun?.status === "RUNNING" ? activeRun.id : null)
   const [deciding, setDeciding] = useState<{ id: string; decision: "approve" | "reject" } | null>(null)
   const [error, setError] = useState<string | null>(null)
   /** 하루 상한(429) 안내 — 데모 사이트. 입력창 위에 남겨 둔다(토스트만으로는 왜 안 되는지 금방 사라진다) */
@@ -64,20 +70,25 @@ export function OmnisRoom({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const [mountedAt] = useState(() => Date.now())
-  const busy = pending !== null || live !== null || deciding !== null
+  /** 지금 읽고 있는 스트림 수 — 다시 붙기가 겹치지 않게 */
+  const streams = useRef(0)
+  /** 보내기 잠금 — 상태(pending)는 다음 그리기에야 보여 같은 순간 두 번 누르면 둘 다 지나갔다 */
+  const sendingRef = useRef(false)
+  const busy = pending !== null || live !== null || deciding !== null || running !== null
 
   useEffect(() => {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [messages.length, cards.length, pending, live, error])
 
-  /** 방 상태를 DB 에서 다시 — 스트림이 끝날 때마다 */
+  /** 방 상태를 DB 에서 다시 — 스트림이 끝날 때마다. 돌고 있는 실행도 함께 안다 */
   const refresh = useCallback(async (id: string) => {
-    const res = await fetch(apiUrl(`/api/agent/rooms/${id}`), { cache: "no-store" })
-    if (!res.ok) return null
+    const res = await fetch(apiUrl(`/api/agent/rooms/${id}`), { cache: "no-store" }).catch(() => null)
+    if (!res?.ok) return null
     const state = (await res.json()) as { messages: OmnisRoomMessage[]; cards: AgentCardData[]; activeRun: { id: string; status: string } | null }
     setMessages(state.messages)
     setCards(state.cards)
+    setRunning(state.activeRun?.status === "RUNNING" ? state.activeRun.id : null)
     return state
   }, [])
 
@@ -88,40 +99,95 @@ export function OmnisRoom({
       throw Object.assign(new Error(data?.error ?? `답을 받지 못했습니다 (${res.status})`), { status: res.status })
     }
     onHeaders?.(res.headers)
-    setLive(EMPTY_LIVE)
-    let last = EMPTY_LIVE
-    await readAgentStream(res, (c) => {
-      last = foldChunk(last, c)
-      setLive(last)
-    })
-    if (last.error) throw new Error(last.error)
+    streams.current++
+    try {
+      setLive(EMPTY_LIVE)
+      let last = EMPTY_LIVE
+      await readAgentStream(res, (c) => {
+        last = foldChunk(last, c)
+        setLive(last)
+      })
+      if (last.error) throw new Error(last.error)
+    } finally {
+      streams.current--
+    }
   }, [])
+
+  /**
+   * 돌고 있는 실행에 다시 붙는다(처음부터 다시 받는다). 끝나면 방을 다시 읽고, 그래도 돌고 있으면(구간이 이어졌거나
+   * 스트림만 끊겼으면) 조금 쉬었다 또 붙는다. 다시 붙기가 겹치지 않게 하나만 돈다
+   */
+  const following = useRef(false)
+  const follow = useCallback(
+    async (id: string, runId: string) => {
+      if (following.current) return
+      following.current = true
+      try {
+        for (let attempt = 0; attempt < 6; attempt++) {
+          try {
+            await consume(await fetch(apiUrl(`/api/agent/runs/${runId}/stream`), { cache: "no-store" }))
+          } catch {
+            // 이미 끝났으면 409 · 연결이 끊겼으면 네트워크 오류 — 어느 쪽이든 방 상태가 답이다
+          }
+          setLive(null)
+          const state = await refresh(id)
+          if (!state) return // 연결이 없다 — 돌아오면(online · visibilitychange) 다시 붙는다
+          if (state.activeRun?.status !== "RUNNING") return
+          runId = state.activeRun.id
+          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)))
+        }
+        // 여섯 번을 붙어도 끝나지 않으면 기다림을 푼다 — 서버는 5분 넘게 갱신 없는 실행을 죽은 것으로 본다
+        setRunning(null)
+      } finally {
+        following.current = false
+        setLive(null)
+      }
+    },
+    [consume, refresh],
+  )
 
   // 새로고침 · 재접속 — 돌고 있는 실행이 있으면 그 스트림에 다시 붙는다
   const reattached = useRef(false)
   useEffect(() => {
     if (reattached.current || !initialRoomId || activeRun?.status !== "RUNNING") return
     reattached.current = true
-    void (async () => {
-      try {
-        await consume(await fetch(apiUrl(`/api/agent/runs/${activeRun.id}/stream`), { cache: "no-store" }))
-      } catch {
-        // 이미 끝났으면 409 — 상태만 다시 읽는다
-      } finally {
-        setLive(null)
-        await refresh(initialRoomId)
-      }
-    })()
-  }, [initialRoomId, activeRun, consume, refresh])
+    void follow(initialRoomId, activeRun.id)
+  }, [initialRoomId, activeRun, follow])
 
-  // 답을 못 받은 내 글 — 마지막이 내 질문이고 기다리는 카드도 없으면 「다시 묻기」(새로고침해도 남는다)
-  const last = messages.at(-1)
+  // 폰에서 앱을 바꿨다 돌아오거나 망이 돌아오면 — 그사이 끊긴 스트림 대신 방을 다시 읽고, 돌고 있으면 붙는다
+  useEffect(() => {
+    if (!roomId) return
+    const wake = () => {
+      if (document.visibilityState !== "visible" || streams.current > 0 || following.current) return
+      void refresh(roomId).then((s) => {
+        if (s?.activeRun?.status === "RUNNING") void follow(roomId, s.activeRun.id)
+      })
+    }
+    document.addEventListener("visibilitychange", wake)
+    window.addEventListener("online", wake)
+    return () => {
+      document.removeEventListener("visibilitychange", wake)
+      window.removeEventListener("online", wake)
+    }
+  }, [roomId, refresh, follow])
+
+  // 답을 못 받은 내 글 — 마지막이 내 질문이고, 읽는 스트림도 · 서버에 도는 실행도 · 기다리는 카드도 없을 때(새로고침해도 남는다)
+  const unanswered = unansweredQuestion({ messages, cards, busy, running: running !== null })
   const waitingCard = cards.some((c) => c.status === "PENDING")
-  const unanswered = last && !last.fromOmnis && !busy && !waitingCard && !cards.some((c) => c.createdAt > last.createdAt) ? last : null
+
+  /** 스트림이 끝난 뒤 — 방을 다시 읽고, 서버가 아직 돌고 있으면(스트림만 먼저 끝났으면) 다시 붙는다 */
+  async function settle(id: string) {
+    const state = await refresh(id)
+    if (state?.activeRun?.status === "RUNNING") void follow(id, state.activeRun.id)
+    return state
+  }
 
   async function ask(body: { content: string } | { retryOf: string }, shown: string) {
-    if (busy) return
-    setPending(shown)
+    // 보내는 중에는 다시 보내지 않는다 — 버튼 · Enter · 예시 칸이 모두 여기로 온다
+    if (busy || sendingRef.current) return
+    sendingRef.current = true
+    let questionId: string | null = "retryOf" in body ? body.retryOf : null
+    setPending({ content: shown, questionId })
     setError(null)
     let id = roomId
     try {
@@ -130,6 +196,11 @@ export function OmnisRoom({
         : await fetch(apiUrl("/api/agent/rooms"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       await consume(res, (h) => {
         const created = h.get("x-room-id")
+        const qid = h.get("x-question-id")
+        if (qid) {
+          questionId = qid
+          setPending({ content: shown, questionId: qid })
+        }
         if (created && !id) {
           id = created
           setRoomId(created)
@@ -141,22 +212,28 @@ export function OmnisRoom({
       reloadList()
     } catch (err) {
       const message = err instanceof Error ? err.message : "보내지 못했습니다"
-      // 질문 글이 남지 못했으면 입력창에 되돌린다(아래 refresh 가 남았는지 알려 준다)
-      setError(message)
-      if ((err as { status?: number }).status === 429) setQuotaNotice(message)
-      else toast.error(message)
-      if (id) {
-        const state = await refresh(id)
-        if ("content" in body && !state?.messages.some((m) => !m.fromOmnis && m.content === body.content)) setDraft(body.content)
-      } else if ("content" in body) setDraft(body.content)
-      id = id ?? null
+      const status = (err as { status?: number }).status
+      const state = id ? await refresh(id) : null
       setLive(null)
       setPending(null)
+      sendingRef.current = false
+      // 서버가 거절한 것(status)이 아니면 스트림만 끊겼을 수 있다 — 답이 남았거나 아직 돌고 있으면 오류가 아니다
+      if (!status && state && (answeredAfter(state.messages, questionId) || state.activeRun?.status === "RUNNING")) {
+        if (state.activeRun?.status === "RUNNING") void follow(id!, state.activeRun.id)
+        return
+      }
+      setError(message)
+      if (status === 429) setQuotaNotice(message)
+      else toast.error(message)
+      // 질문 글이 남지 못했으면 입력창에 되돌린다
+      const saved = questionId ? state?.messages.some((m) => m.id === questionId) : false
+      if ("content" in body && !saved) setDraft(body.content)
       return
     }
-    if (id) await refresh(id)
+    if (id) await settle(id)
     setLive(null)
     setPending(null)
+    sendingRef.current = false
     textareaRef.current?.focus()
   }
 
@@ -166,6 +243,7 @@ export function OmnisRoom({
       toast.error("2자 이상 입력해 주세요")
       return
     }
+    if (busy || sendingRef.current) return
     setDraft("")
     void ask({ content }, content)
   }
@@ -186,17 +264,20 @@ export function OmnisRoom({
         await consume(res)
       } else {
         const data = (await res.json().catch(() => null)) as { card?: AgentCardData; error?: string } | null
-        if (!res.ok || !data?.card) throw new Error(data?.error ?? `처리하지 못했습니다 (${res.status})`)
+        if (!res.ok || !data?.card) throw Object.assign(new Error(data?.error ?? `처리하지 못했습니다 (${res.status})`), { status: res.status })
         setCards((prev) => prev.map((c) => (c.id === card.id ? data.card! : c)))
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "처리하지 못했습니다"
-      setError(message)
-      toast.error(message)
+      // 스트림만 끊긴 것이면 아래 settle 이 다시 붙는다
+      if ((err as { status?: number }).status) {
+        setError(message)
+        toast.error(message)
+      }
     } finally {
       setDeciding(null)
       setLive(null)
-      await refresh(roomId)
+      await settle(roomId)
       reloadList()
     }
   }
@@ -279,10 +360,8 @@ export function OmnisRoom({
                 <MyMessage key={row.key} content={m.content} iso={m.createdAt} fresh={fresh} />
               )
             })}
-            {pending && !messages.some((m) => !m.fromOmnis && m.content === pending && new Date(m.createdAt).getTime() > mountedAt) && (
-              <MyMessage content={pending} sending />
-            )}
-            {(live || (pending && !live)) && <LiveOmnis text={text} tools={live?.tools ?? []} />}
+            {pending && showPendingBubble(messages, pending) && <MyMessage content={pending.content} sending />}
+            {(live || pending || running) && <LiveOmnis text={text} tools={live?.tools ?? []} resuming={!live && !pending} />}
             {unanswered && roomId && (
               <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground" role="status">
                 <span>{error ?? "이 질문에 아직 답을 받지 못했어요"}</span>
@@ -315,9 +394,11 @@ export function OmnisRoom({
 }
 
 /** 스트림으로 받는 중인 답 — 도는 도구 한 줄 + 지금까지 쓴 글. 글이 오기 전에는 스켈레톤 */
-function LiveOmnis({ text, tools }: { text: string; tools: LiveTool[] }) {
+function LiveOmnis({ text, tools, resuming = false }: { text: string; tools: LiveTool[]; resuming?: boolean }) {
   const running = tools.filter((t) => t.state === "running").at(-1)
-  const status = running
+  const status = resuming
+    ? "옴니스가 답하는 중… 이어 받는 중"
+    : running
     ? `${TOOL_LABEL[running.name] ?? running.name} 보는 중…`
     : tools.some((t) => t.state === "approval")
       ? "확인 카드를 만드는 중…"
