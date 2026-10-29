@@ -2,7 +2,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 
-import { findSecrets, findSecretsInText, secretBlockReason } from "./secrets"
+import { findSecrets, findSecretsInText, redactSecrets, secretBlockReason } from "./secrets"
 
 const kinds = (t: string) => findSecretsInText(t).map((h) => h.kind)
 
@@ -73,4 +73,12 @@ test("날짜 · 금액 · 전화 · 슬러그 · 과제번호는 걸지 않는�
   ]) {
     assert.deepEqual(findSecretsInText(t), [], t)
   }
+})
+
+test("막힌 카드에 보일 글은 값을 가린다", () => {
+  const out = redactSecrets("- 이름: HADD-Guest\n- 비번: haddguest5G\n주민번호 900101-1234567")
+  assert.ok(!out.includes("haddguest5G"), out)
+  assert.ok(!out.includes("900101-1234567"), out)
+  assert.ok(out.includes("HADD-Guest"), "비밀이 아닌 글은 그대로")
+  assert.equal(redactSecrets("비밀번호 재설정 안내"), "비밀번호 재설정 안내")
 })

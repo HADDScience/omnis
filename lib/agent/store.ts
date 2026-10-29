@@ -13,7 +13,7 @@ import type { AskSource } from "@/lib/omnis-ask"
 import { agentInstructions } from "./prompt"
 import { agentToolSpecs, buildPreview, callerFor, executeWrite, isWriteTool, runReadTool, type AgentToolSpec } from "./tools"
 import { checkExecution, planHash, type StepStatus } from "./approval"
-import { secretBlockReason } from "./secrets"
+import { redactSecrets, secretBlockReason } from "./secrets"
 import { limitMessage, limitReason, type Spent, type StepUsage } from "./limits"
 import { approvalResponses, pendingApprovals } from "./messages"
 
@@ -176,6 +176,11 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
       }))
       const secret = secretBlockReason(a.input)
       const blockedReason = secret ?? (preview.problem ? `${preview.problem} — 실행해도 실패합니다` : null)
+      // 막힌 카드에는 값을 가려 남긴다 — 비밀을 카드 표에 옮겨 적지 않는다
+      if (secret) {
+        preview.target = redactSecrets(preview.target)
+        preview.changes = preview.changes.map((c) => ({ ...c, before: c.before === null ? null : redactSecrets(c.before), after: redactSecrets(c.after) }))
+      }
       created.push(
         await prisma.agentStep.create({
           data: {

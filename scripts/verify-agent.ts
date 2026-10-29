@@ -5,7 +5,7 @@
 // 나머지는 도구 실행 함수(lib/agent/store.ts writeTool)와 확인 API 를 직접 친다.
 import { encode } from "next-auth/jwt"
 import { prisma } from "@/lib/db"
-import { writeTool } from "@/lib/agent/store"
+import { savePass, writeTool } from "@/lib/agent/store"
 import { planHash } from "@/lib/agent/approval"
 import type { Prisma } from "@/generated/prisma/client"
 
@@ -116,6 +116,40 @@ async function main() {
   check("APPROVED 로 바꿔 넣어도 비밀이 있으면 실행하지 않는다 (거부되어야 하는 경우)", r6.includes("실행하지 않습니다") || r6.includes("비밀번호"), r6)
   check("지식 카드가 생기지 않았다", (await prisma.omnisCard.count({ where: { title: secretInput.title } })) === 0)
   check("카드는 EXECUTED 가 아니다", (await prisma.agentStep.findUniqueOrThrow({ where: { id: s6.id } })).status === "APPROVED")
+
+  console.log("\n[7] 모델이 비밀을 넣어 제안해도 — 구간 저장(savePass)이 카드를 막는다")
+  const room7 = await prisma.chatRoom.create({
+    data: { name: `${TAG} 비밀 차단`, kind: "OMNIS_DM", createdById: a.id, members: { create: { userId: a.id } } },
+  })
+  const q7 = await prisma.chatMessage.create({ data: { roomId: room7.id, authorId: a.id, content: "손님 와이파이 안내 카드 만들어 줘. 비번 haddguest5G" } })
+  const run7 = await prisma.agentRun.create({
+    data: { roomId: room7.id, userId: a.id, questionMessageId: q7.id, model: "openai:gpt-6.1-sol", messages: [] as unknown as Prisma.InputJsonValue },
+  })
+  // 모델이 이렇게 제안했다고 친다(0단계 flash-lite 가 실제로 낸 모양)
+  const leaked = { title: "손님 와이파이 안내", category: "업무 절차", markdown: "- 이름: HADD-Guest\n- 비번: haddguest5G" }
+  const saved = await savePass(run7.id, {
+    messages: [
+      { role: "user", content: q7.content },
+      { role: "assistant", content: [
+        { type: "tool-call", toolCallId: "call_leak", toolName: "write_omnis_card", input: leaked },
+        { type: "tool-approval-request", approvalId: "approval-call_leak", toolCallId: "call_leak" },
+      ] },
+    ] as never,
+    steps: [{ inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0, finishReason: "tool-calls", text: "" }],
+  })
+  const s7 = await prisma.agentStep.findFirstOrThrow({ where: { runId: run7.id } })
+  check("카드는 BLOCKED 로 만들어진다 (거부되어야 하는 경우)", s7.status === "BLOCKED", s7.status)
+  check("막은 이유에 비밀번호가 있고 값은 가린다", !!s7.blockedReason?.includes("비밀번호") && !s7.blockedReason.includes("haddguest5G"), s7.blockedReason)
+  check("카드 표(preview)에는 값을 가려 남긴다", !JSON.stringify(s7.preview).includes("haddguest5G"), s7.preview)
+  check("사람이 누를 것이 없으니 거절 응답을 붙여 곧바로 이어 간다", saved.autoContinue === true)
+  const m7 = (await prisma.agentRun.findUniqueOrThrow({ where: { id: run7.id } })).messages as { role: string; content: { type: string; approved?: boolean }[] }[]
+  check("붙인 응답은 approved=false", m7.at(-1)?.content[0]?.approved === false)
+  const r7 = await decide(A, s7.id, { decision: "approve", planHash: s7.planHash })
+  check("BLOCKED 카드는 확인 API 로도 승인할 수 없다 (거부되어야 하는 경우)", r7.status === 409, r7.status)
+  check("지식 카드가 생기지 않았다", (await prisma.omnisCard.count({ where: { title: leaked.title } })) === 0)
+  // 화면 확인용으로 남긴다 — 이어 갈 Workflow 는 열지 않았으니 실행은 끝난 것으로 둔다
+  await prisma.agentRun.update({ where: { id: run7.id }, data: { status: "DONE" } })
+  console.log(`    방 /chat/${room7.id}`)
 
   console.log(failed ? `\n실패 ${failed}건` : "\n전부 통과")
 }

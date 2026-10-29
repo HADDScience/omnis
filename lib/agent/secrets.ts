@@ -79,13 +79,24 @@ function luhn(digits: string): boolean {
 
 /** 글 하나에서 찾는다 */
 export function findSecretsInText(text: string): SecretHit[] {
-  const hits: SecretHit[] = []
+  return scan(text).map(({ kind, reason, value }) => ({ kind, reason, masked: mask(value) }))
+}
+
+/** 찾은 값을 가린 글 — 막힌 카드에 보일 때. 값 자체를 새 표(AgentStep.preview)에 옮겨 적지 않으려는 것 */
+export function redactSecrets(text: string): string {
+  let out = text
+  for (const { value } of scan(text).sort((a, b) => b.value.length - a.value.length)) out = out.split(value).join(mask(value))
+  return out
+}
+
+function scan(text: string): { kind: SecretKind; reason: string; value: string }[] {
+  const hits: { kind: SecretKind; reason: string; value: string }[] = []
   const seen = new Set<string>()
   const push = (kind: SecretKind, reason: string, value: string) => {
     const key = `${kind}:${value}`
     if (seen.has(key)) return
     seen.add(key)
-    hits.push({ kind, reason, masked: mask(value) })
+    hits.push({ kind, reason, value })
   }
 
   for (const m of text.matchAll(PASSWORD_RE)) {
