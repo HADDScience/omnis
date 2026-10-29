@@ -304,7 +304,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
         />
       </div>
 
-      <nav aria-label="채팅방" className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
+      <nav aria-label="채팅방" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-2 pb-20">
         {error && !data && !searching && <ErrorBox message={error} onRetry={() => void load()} />}
         {searching && search?.error && <ErrorBox message={search.error} onRetry={() => setSearchTry((n) => n + 1)} />}
 
@@ -402,8 +402,10 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
   )
 }
 
+// justify-center: 터치 기기에서 .touch-target 이 칸을 44px 로 넓히면 아이콘만 든 칩(폴더 관리)의 아이콘이
+// 왼쪽에 붙어 원 가운데에서 벗어났다(2026-10-29 작업지시자 스크린샷)
 const CHIP =
-  "touch-target inline-flex h-7 shrink-0 items-center gap-1 rounded-full border px-3 text-[12px] font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+  "touch-target inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-full border px-3 text-[12px] font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 const CHIP_ON = "border-foreground bg-foreground text-background"
 const CHIP_OFF = "border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground"
 
