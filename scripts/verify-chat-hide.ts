@@ -7,7 +7,6 @@
  */
 import { encode } from "next-auth/jwt"
 import { prisma } from "../lib/db"
-import { dmKeyOf } from "../lib/chat-people-rules"
 import { SYSTEM_USER_ID } from "../lib/system-user"
 
 const BASE = process.env.BASE ?? "http://localhost:3103"

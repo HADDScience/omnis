@@ -80,7 +80,6 @@ async function mouseSwipe(page, el, dx) {
   await page.mouse.up()
   await page.waitForTimeout(350)
 }
-const row = (page, kind) => page.locator(`[aria-label="채팅방"] [data-swipe-surface]`).filter({ has: page.locator(kind) }).first()
 
 // ─── 목록: 밀기 · 꾹 누르기 · FAB ───
 if (want("list")) {
@@ -287,10 +286,10 @@ if (want("panel")) {
     check(`${w} — 제목줄에 「채팅 열기」 가 없다`, (await page.locator("header").getByRole("button", { name: /채팅 열기/ }).count()) === 0)
     await shot(page, `U-${w}-panel-dock`)
     await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
-    await page.getByRole("tab", { name: "전체" }).waitFor()
+    await page.getByRole("button", { name: "전체", exact: true }).waitFor()
     await page.waitForTimeout(1200)
     await shot(page, `U-${w}-panel-all`)
-    await page.getByRole("tab", { name: "옴니스" }).click()
+    await page.getByRole("button", { name: "옴니스", exact: true }).click()
     await page.getByLabel("옴니스에게 보낼 글").waitFor({ timeout: 30_000 })
     await page.waitForTimeout(800)
     await shot(page, `U-${w}-panel-omnis`)
@@ -298,6 +297,7 @@ if (want("panel")) {
   }
   // 업무 상세 — 「이 업무」 탭
   const page = await pageAt(1440)
+  await open(page, "/tasks")
   const taskId = await page.evaluate(async (base) => {
     const r = await fetch(`${base}/api/chat/threads/recent`)
     return (await r.json())[0]?.id ?? null
@@ -305,8 +305,9 @@ if (want("panel")) {
   if (taskId) {
     await open(page, `/tasks/${taskId}`)
     await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
-    await page.getByRole("tab", { name: "이 업무" }).waitFor()
-    check("업무 상세에서 열면 「이 업무」 가 먼저", (await page.getByRole("tab", { name: "이 업무" }).getAttribute("aria-selected")) === "true")
+    const taskTab = page.locator("aside").getByRole("button", { name: "이 업무", exact: true })
+    await taskTab.waitFor()
+    check("업무 상세에서 열면 「이 업무」 가 먼저", (await taskTab.getAttribute("aria-pressed")) === "true")
     await page.waitForTimeout(800)
     await shot(page, "U-1440-panel-task")
   }

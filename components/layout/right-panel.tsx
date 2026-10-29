@@ -174,13 +174,11 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
       >
         <div className="flex shrink-0 items-center gap-1.5 px-2.5 pt-2.5 pb-2">
           {/* 탭은 nav 처럼 캡슐 하나 + 현재 탭만 한 겹 더 진한 유리(.glass-pill) */}
-          <div role="tablist" aria-label="패널 보기" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto rounded-full bg-muted/60 p-1 [scrollbar-width:none]">
+          <div role="group" aria-label="패널 보기" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto rounded-full bg-muted/60 p-1 [scrollbar-width:none]">
             {tabs.map((t) => (
               <button
                 key={t.key}
                 type="button"
-                role="tab"
-                aria-selected={view === t.key}
                 onClick={() => {
                   setView(t.key)
                   if (t.key !== "all" && urlTaskId) setTaskFilter(null)
