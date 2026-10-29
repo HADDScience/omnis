@@ -43,6 +43,8 @@ interface MessageInputProps {
   users?: { id: string; name: string }[]
   /** `/업무` 명령과 「업무 지시」 메뉴. 업무 스레드처럼 명령을 받을 곳이 없으면 끈다. */
   commands?: boolean
+  /** 파일 업로드 · NAS 연결 · 붙여넣기 · 끌어 놓기. 사람끼리 방은 끈다(파일 목록이 방을 가리지 않는다) */
+  attachments?: boolean
   placeholder?: string
   ariaLabel?: string
 }
@@ -65,6 +67,7 @@ export function MessageInput({
   files = [],
   users = [],
   commands = true,
+  attachments = true,
   placeholder = "메시지 입력...  / 명령 · @ 사람 · # 업무",
   ariaLabel = "메시지 입력",
 }: MessageInputProps) {
@@ -85,6 +88,8 @@ export function MessageInput({
   const [mentionStart, setMentionStart] = useState(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
+  // 데모에는 NAS 가 없고, 사람끼리 방은 attachments=false — 둘 다 파일을 받지 않는다
+  const noFiles = IS_DEMO || !attachments
 
   // 자동완성 후보 계산
   useEffect(() => {
@@ -217,7 +222,7 @@ export function MessageInput({
   // 파일 추가 + 이미지 프리뷰 생성 + 로딩 표시
   function addFiles(picked: File[]) {
     // 데모에는 NAS가 없어 파일을 받지 않는다 — 붙여넣기·드래그로 들어와도 조용히 무시한다.
-    if (IS_DEMO) return
+    if (noFiles) return
     // 상한을 넘는 파일은 보낼 때 Vercel 이 이유 없이 끊는다 — 고르는 순간 이유와 함께 거른다(2026-09-17)
     const tooLarge = picked.filter((f) => f.size > MAX_UPLOAD_BYTES)
     if (tooLarge.length > 0) {
@@ -299,7 +304,7 @@ export function MessageInput({
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault()
     e.stopPropagation()
-    if (IS_DEMO) return
+    if (noFiles) return
     setDragging(true)
   }
 
@@ -495,7 +500,7 @@ export function MessageInput({
       )}
 
       <div className="flex items-end gap-2">
-        {!IS_DEMO && (
+        {!noFiles && (
           <input
             ref={fileInputRef}
             type="file"
@@ -524,14 +529,14 @@ export function MessageInput({
             <HugeiconsIcon icon={PlusSignIcon} size={18} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" className="w-52">
-            {!IS_DEMO && (
+            {!noFiles && (
               <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                 <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
                 파일 업로드
                 <span className="ml-auto text-[10px] text-muted-foreground">4MB 이하</span>
               </DropdownMenuItem>
             )}
-            {!IS_DEMO && (
+            {!noFiles && (
               <DropdownMenuItem onClick={() => setNasPickerOpen(true)}>
                 <HugeiconsIcon icon={Folder01Icon} size={14} aria-hidden />
                 NAS 파일 연결
@@ -549,11 +554,14 @@ export function MessageInput({
               사람 언급
               <span className="ml-auto font-mono text-[10px] text-muted-foreground">@</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => startMention("task")}>
-              <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
-              업무 언급
-              <span className="ml-auto font-mono text-[10px] text-muted-foreground">#</span>
-            </DropdownMenuItem>
+            {/* 사람끼리 방은 업무 목록을 받지 않는다(commands · attachments 와 함께 끈다) */}
+            {attachments && (
+              <DropdownMenuItem onClick={() => startMention("task")}>
+                <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
+                업무 언급
+                <span className="ml-auto font-mono text-[10px] text-muted-foreground">#</span>
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         {/* md 미만은 text-base(16px) — iOS 가 그보다 작은 입력에 포커스하면 화면을 확대한다 */}
@@ -581,7 +589,7 @@ export function MessageInput({
           <HugeiconsIcon icon={SentIcon} size={18} />
         </Button>
       </div>
-      {!IS_DEMO && (
+      {!noFiles && (
         <NasFilePicker
           open={nasPickerOpen}
           onOpenChange={setNasPickerOpen}

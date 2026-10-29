@@ -467,7 +467,7 @@ function RoomPicker({
                     {r.name}
                   </span>
                   <span className="block truncate text-[11px] text-muted-foreground">
-                    {r.kind === "OMNIS_DM" ? "옴니스" : r.kind === "COMPANY" ? "전사방" : r.kind === "TASK" ? "업무방" : "단톡방"}
+                    {r.kind === "OMNIS_DM" ? "옴니스" : r.kind === "COMPANY" ? "전사방" : r.kind === "TASK" ? "업무방" : r.kind === "DM" ? "1:1" : "단톡방"}
                     {r.preview ? ` · ${r.preview}` : ""}
                   </span>
                 </span>

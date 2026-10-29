@@ -1,12 +1,12 @@
 "use client"
 
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { PencilEdit02Icon } from "@hugeicons/core-free-icons"
+import { BubbleChatSparkIcon, PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import { Header } from "@/components/layout/header"
 import { buttonVariants } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { RoomList } from "./room-list"
 
@@ -33,16 +33,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
       <div className="flex h-full min-h-0 flex-col">
         <Header
           title="채팅"
-          actions={
-            <Link
-              href="/chat/new"
-              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "touch-target gap-1.5 text-[12.5px]")}
-              title="옴니스와 새 대화"
-            >
-              <HugeiconsIcon icon={PencilEdit02Icon} size={15} aria-hidden />
-              <span className="max-[359px]:sr-only">새 대화</span>
-            </Link>
-          }
+          actions={<NewChatMenu />}
         />
         <div className="flex min-h-0 flex-1">
           <aside
@@ -60,5 +51,40 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
         </div>
       </div>
     </RoomListReload.Provider>
+  )
+}
+
+/**
+ * 「새 대화」 — 두 갈래. 옴니스와 대화(/chat/new, 첫 글을 보내면 방이 생긴다) · 사람과 대화(/chat/new/people, 구성원을 고른다).
+ * 사람끼리 방에는 옴니스가 들어가지 않는다(5단계, 작업지시자 결정 2026-10-29)
+ */
+function NewChatMenu() {
+  const router = useRouter()
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "touch-target gap-1.5 text-[12.5px]")}
+        title="새 대화"
+      >
+        <HugeiconsIcon icon={PencilEdit02Icon} size={15} aria-hidden />
+        <span className="max-[359px]:sr-only">새 대화</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60">
+        <DropdownMenuItem className="touch-target gap-2.5 py-2" onClick={() => router.push("/chat/new")}>
+          <HugeiconsIcon icon={BubbleChatSparkIcon} size={16} aria-hidden className="text-primary" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-medium">옴니스와 대화</span>
+            <span className="block text-[11px] text-muted-foreground">회사 일을 묻고 업무를 맡겨요</span>
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem className="touch-target gap-2.5 py-2" onClick={() => router.push("/chat/new/people")}>
+          <HugeiconsIcon icon={UserGroupIcon} size={16} aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-medium">사람과 대화</span>
+            <span className="block text-[11px] text-muted-foreground">1:1 이나 단톡방 — 참여자만 봐요</span>
+          </span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

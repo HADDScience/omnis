@@ -10,6 +10,7 @@ import { extractMentionSlug, runTaskRebuild } from "@/lib/chat-post"
 import { replaceMentions } from "@/lib/mentions"
 import { syncEmbeddingsSafe, deleteEmbeddingsSafe } from "@/lib/embeddings"
 import { CHAT_DELETED_TEXT } from "@/lib/constants"
+import { roomAccess } from "@/lib/chat-rooms"
 
 export const maxDuration = 60
 
@@ -25,6 +26,16 @@ const TARGET = {
 type Target = {
   id: string; authorId: string; roomId: string; taskId: string | null
   kind: string; content: string; deletedAt: Date | null; createdAt: Date
+}
+
+/** 사람끼리 방(1:1 · 단톡)의 글인가 */
+async function peopleRoomOf(roomId: string): Promise<boolean> {
+  const room = await prisma.chatRoom.findUnique({ where: { id: roomId }, select: { kind: true } })
+  return room?.kind === "DM" || room?.kind === "GROUP"
+}
+
+async function roomAccessOk(roomId: string, userId: string): Promise<boolean> {
+  return (await roomAccess(roomId, userId)) === "ok"
 }
 
 /** 손댈 수 있는 글인지. 막을 이유가 있으면 그 문장을 돌려준다. */
@@ -95,6 +106,33 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   const refused = refusal(message, session.user.id)
   if (refused) return NextResponse.json({ error: refused }, { status: 403 })
 
+  // 사람끼리 방(1:1 · 단톡) — 지금 참여자일 때만 고친다. 업무 연결 · 재구성 · 색인 · 멘션 표를 건드리지 않는다(방 밖으로 새는 길)
+  const people = await peopleRoomOf(message.roomId)
+  if (people) {
+    if (!(await roomAccessOk(message.roomId, session.user.id))) return NextResponse.json({ error: "방을 찾을 수 없습니다" }, { status: 404 })
+    const edited = await prisma.chatMessage.update({
+      where: { id: messageId },
+      data: { content, editedAt: new Date() },
+      include: {
+        author: { select: { id: true, name: true } },
+        task: { select: { id: true, name: true, slug: true } },
+        files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
+        replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
+      },
+    })
+    return NextResponse.json({
+      ...edited,
+      replyTo: edited.replyTo
+        ? {
+            id: edited.replyTo.id,
+            authorName: edited.replyTo.author.name,
+            content: edited.replyTo.deletedAt ? CHAT_DELETED_TEXT : edited.replyTo.content.slice(0, 80),
+          }
+        : null,
+      _rebuild: null,
+    })
+  }
+
   const { taskId: nextTaskId, restText } = await resolveTask(content, message.taskId)
   const movedFrom = message.taskId && nextTaskId !== message.taskId ? message.taskId : null
 
@@ -143,6 +181,9 @@ export async function DELETE(_req: NextRequest, { params }: Props) {
 
   const refused = refusal(message, session.user.id)
   if (refused) return NextResponse.json({ error: refused }, { status: 403 })
+  if ((await peopleRoomOf(message.roomId)) && !(await roomAccessOk(message.roomId, session.user.id))) {
+    return NextResponse.json({ error: "방을 찾을 수 없습니다" }, { status: 404 })
+  }
 
   await prisma.chatMessage.update({
     where: { id: messageId },

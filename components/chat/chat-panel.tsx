@@ -43,7 +43,17 @@ interface ChatPanelProps {
   onSearchOpenChange?: (open: boolean) => void
   /** 단축키(⌘⇧F)를 누를 때마다 오른다 — 검색칸을 다시 고른다 */
   searchFocus?: number
+  /**
+   * 사람끼리 방(1:1 · 단톡) — @ 후보는 그 방 참여자만, `/` 명령 · # 업무 · 첨부는 끈다.
+   * 이 방 글은 업무에 붙지 않고(서버가 업무 연결을 하지 않는다) 파일 목록은 방을 가리지 않아서다
+   */
+  people?: { members: User[] }
 }
+
+// 사람끼리 방은 업무 · 파일 후보가 없다. MessageInput 의 기본값([])은 그릴 때마다 새 배열이라
+// 후보 계산 effect 가 setState 를 되풀이해 무한 갱신이 났다(대화상자를 열면 터졌다) — 같은 배열을 넘긴다
+const NO_TASKS: { id: string; name: string; slug: string; status?: string }[] = []
+const NO_FILES: { id: string; name: string; path: string; mimeType: string }[] = []
 
 export function ChatPanel({
   roomId,
@@ -55,6 +65,7 @@ export function ChatPanel({
   searchOpen = false,
   onSearchOpenChange,
   searchFocus = 0,
+  people,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
@@ -245,7 +256,12 @@ export function ChatPanel({
     }
   }, [loadingNewer, hasMoreNewer, roomId, filterTaskId, endJump])
 
+  const peopleMembers = people?.members
   useEffect(() => {
+    if (peopleMembers) {
+      setUsers(peopleMembers)
+      return
+    }
     fetch(apiUrl("/api/users"))
       .then((r) => r.json())
       .then(setUsers)
@@ -255,7 +271,7 @@ export function ChatPanel({
       .then((r) => r.json())
       .then(setUploadedFiles)
       .catch(() => {})
-  }, [])
+  }, [peopleMembers])
 
   function fetchTasks() {
     fetch(apiUrl("/api/tasks"))
@@ -527,7 +543,19 @@ export function ChatPanel({
             </button>
           </div>
         )}
-        <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
+        {people ? (
+          <MessageInput
+            onSend={handleSend}
+            users={users}
+            tasks={NO_TASKS}
+            files={NO_FILES}
+            commands={false}
+            attachments={false}
+            placeholder="메시지 입력...  @ 사람"
+          />
+        ) : (
+          <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
+        )}
       </div>
 
     </div>

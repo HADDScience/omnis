@@ -62,6 +62,7 @@ import {
 import type { RoomList as RoomListData, RoomListItem } from "@/lib/chat-rooms"
 import { chatPrefs } from "./chat-prefs-client"
 import { FolderManager } from "./folder-manager"
+import { AuthorAvatar } from "@/components/chat/message-parts"
 
 /** 전사방 · 업무방은 다른 사람이 글을 쓴다 — 목록을 열어 둔 동안 이 간격으로 다시 읽는다 */
 const POLL_MS = 30_000
@@ -606,6 +607,12 @@ function kindIcon(kind: RoomListItem["kind"]) {
   )
 }
 
+/** 목록 한 줄 머리 — 사람끼리 1:1 은 상대 아바타(이름 색 · 두 글자), 나머지는 방 종류 아이콘 */
+function roomIcon(room: RoomListItem) {
+  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={32} />
+  return kindIcon(room.kind)
+}
+
 interface RowActions {
   folders: ChatFolderView[]
   onFavorite: () => void
@@ -619,7 +626,7 @@ function RoomRow({ room, active, ...actions }: { room: RoomListItem; active: boo
     <ContextMenu>
       <ContextMenuTrigger className={cn(ROW_WRAP, active && ROW_ACTIVE)}>
         <Link href={roomHref(room)} aria-current={active ? "page" : undefined} className={ROW}>
-          {kindIcon(room.kind)}
+          {roomIcon(room)}
           <span className="min-w-0 flex-1">
             <span className="flex items-baseline gap-1.5">
               <span className={cn("min-w-0 flex-1 truncate text-[13px]", unread ? "font-semibold" : "font-medium")}>

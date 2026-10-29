@@ -4,7 +4,7 @@ import { z } from "zod"
 // 계획: mydocs/plans/2026-10-28-omnis-messenger-agent.md
 
 /** prisma 의 enum ChatRoomKind 와 같은 값. 늘리면 둘 다 고친다 */
-export const CHAT_ROOM_KINDS = ["COMPANY", "TASK", "OMNIS_DM", "GROUP"] as const
+export const CHAT_ROOM_KINDS = ["COMPANY", "TASK", "OMNIS_DM", "GROUP", "DM"] as const
 export const ChatRoomKindSchema = z.enum(CHAT_ROOM_KINDS)
 export type ChatRoomKind = z.infer<typeof ChatRoomKindSchema>
 
@@ -24,3 +24,16 @@ export const AskOmnisRoomSchema = z.union([
   z.object({ content: omnisContent }),
   z.object({ retryOf: z.string().min(1) }),
 ])
+
+// ─── 사람끼리 대화(5단계) ─────────────────────────────────
+// 규칙(1명 → 1:1, 2명 이상 → 단톡방)은 lib/chat-people-rules.ts planPeopleRoom
+
+const peopleRoomName = z.string().trim().min(1, "방 이름을 입력해 주세요").max(40, "40자 이내로 입력해 주세요")
+const userIds = z.array(z.string().min(1).max(64)).min(1, "한 명 이상 골라 주세요").max(30, "한 번에 30명까지 고를 수 있어요")
+
+/** 「사람과 대화」 — 고른 사람으로 방을 열거나(1:1 이 있으면 그 방) 만든다. name 은 단톡방만 */
+export const CreatePeopleRoomSchema = z.object({ userIds, name: peopleRoomName.optional() })
+/** 단톡방 이름 바꾸기 */
+export const RenamePeopleRoomSchema = z.object({ name: peopleRoomName })
+/** 단톡방에 초대 */
+export const InvitePeopleSchema = z.object({ userIds })

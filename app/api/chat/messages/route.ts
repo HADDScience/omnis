@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
+import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
 
 // 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
 export const maxDuration = 60
@@ -36,6 +37,23 @@ function shape(m: MessageRow) {
     ...m,
     content: m.deletedAt ? CHAT_DELETED_TEXT : m.content,
     files: m.deletedAt ? [] : m.files,
+    replyTo: m.replyTo
+      ? {
+          id: m.replyTo.id,
+          authorName: m.replyTo.author.name,
+          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
+        }
+      : null,
+  }
+}
+
+/** 사람끼리 방 글 한 줄 상한 — 전사방 글에는 상한이 없었다. 새 길이라 둔다 */
+const PEOPLE_MESSAGE_MAX = 4000
+
+/** 답장 인용을 화면 모양(작성자 · 앞 80자)으로 */
+function shapeReply<T extends { replyTo: { id: string; content: string; deletedAt: Date | null; author: { name: string } } | null }>(m: T) {
+  return {
+    ...m,
     replyTo: m.replyTo
       ? {
           id: m.replyTo.id,
@@ -155,11 +173,31 @@ export async function POST(req: NextRequest) {
   if (!roomId || !content?.trim()) {
     return NextResponse.json({ error: "roomId, content 필수" }, { status: 400 })
   }
-  // 이 길은 전사방(팀 채팅 · 업무 스레드) 전용이다. 옴니스 방은 /api/chat/rooms/[roomId]/ask 로 쓴다 —
-  // 여기로 들어오면 업무 재구성 · 색인 · 멘션 알림이 1:1 대화에 붙는다. 없는 방은 postChatMessage 가 만든다(전사방)
+  // 전사방(팀 채팅 · 업무 스레드)은 postChatMessage, 사람끼리 방(1:1 · 단톡)은 postPeopleMessage.
+  // 옴니스 방은 에이전트 API(/api/agent/rooms/…)로 쓴다 — 여기로 들어오면 업무 재구성 · 색인이 1:1 대화에 붙는다.
+  // 없는 방은 postChatMessage 가 만든다(전사방)
   const access = await prisma.chatRoom.findUnique({ where: { id: roomId }, select: { kind: true } })
+  if (access && (access.kind === "DM" || access.kind === "GROUP")) {
+    // 참여자가 아니면 없는 방과 같은 404 — 403 이면 그 id 의 방이 있다는 것이 샌다
+    const room = await loadPeopleRoom(roomId, session.user.id)
+    if (!room) return NextResponse.json({ error: "방을 찾을 수 없습니다" }, { status: 404 })
+    // 첨부는 아직 받지 않는다 — 파일 목록(GET /api/files) · 내려받기가 방을 가리지 않아 참여자 밖으로 이름이 샌다
+    if (Array.isArray(fileIds) && fileIds.length > 0) {
+      return NextResponse.json({ error: "이 방에는 아직 파일을 붙일 수 없어요" }, { status: 400 })
+    }
+    if (typeof content !== "string" || content.trim().length > PEOPLE_MESSAGE_MAX) {
+      return NextResponse.json({ error: `${PEOPLE_MESSAGE_MAX}자 이내로 입력해 주세요` }, { status: 400 })
+    }
+    const message = await postPeopleMessage({ id: session.user.id, name: session.user.name ?? "" }, room, { content, replyToId })
+    return NextResponse.json({ ...shapeReply(message), _taskUpdate: null, _rebuild: null }, { status: 201 })
+  }
   if (access && access.kind !== "COMPANY") {
     return NextResponse.json({ error: "이 방에는 여기로 글을 쓸 수 없습니다" }, { status: 403 })
+  }
+  // 답장 대상은 같은 방의 글만 — 다른 방(1:1 · 단톡) 글 id 를 넣으면 그 글 앞 80자가 전사방 인용으로 샌다
+  if (replyToId) {
+    const target = await prisma.chatMessage.findFirst({ where: { id: replyToId, roomId }, select: { id: true } })
+    if (!target) return NextResponse.json({ error: "답장할 글을 찾을 수 없습니다" }, { status: 400 })
   }
 
   const { message, taskUpdate, rebuild } = await postChatMessage(

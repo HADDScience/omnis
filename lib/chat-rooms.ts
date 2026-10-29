@@ -5,12 +5,14 @@
 //   COMPANY  전사방 — 구성원 모두. 참여자 행이 없다
 //   TASK     업무방 — 표가 없다. taskId 로 묶인 글을 목록이 방처럼 보여 준다(id 는 업무 id)
 //   OMNIS_DM 옴니스 1:1 — 만든 사람만
-//   GROUP    단톡방 — 5단계
+//   GROUP    단톡방 — 사람끼리. 참여자만(lib/chat-people.ts)
+//   DM       사람끼리 1:1 — 두 사람만. 같은 두 사람의 방은 하나(dmKey)
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { filterRooms, normalizeQuery, parseRoomKey, READ_BASELINE_KEY, roomKeyOf, type ChatFolderView } from "@/lib/chat-list"
 import { ensureReadBaseline, listFolders } from "@/lib/chat-prefs"
+import { peopleRoomTitle } from "@/lib/chat-people-rules"
 
 /** 「전체」 팀 채팅. 채팅 패널 · 업무 생성 · MCP 가 이 id 로 쓴다 */
 export const COMPANY_ROOM_ID = "default-room"
@@ -42,7 +44,8 @@ export interface RoomListItem {
   id: string
   /** 읽음 · 즐겨찾기 · 폴더가 쓰는 방 키 — room:<id> · task:<taskId> (lib/chat-list.ts) */
   key: string
-  kind: "COMPANY" | "TASK" | "OMNIS_DM" | "GROUP"
+  kind: "COMPANY" | "TASK" | "OMNIS_DM" | "GROUP" | "DM"
+  /** 1:1 은 상대 이름(보는 사람마다 다르다) */
   name: string
   /** 마지막 글 시각(ISO). 글이 없으면 방을 만든 시각 */
   lastAt: string
@@ -63,7 +66,7 @@ export interface RoomList {
   omnis: RoomListItem[]
   company: RoomListItem[]
   tasks: RoomListItem[]
-  /** 단톡방 — 5단계에서 채운다 */
+  /** 사람끼리 방 — 1:1(DM) · 단톡방(GROUP) */
   groups: RoomListItem[]
   /** 내 폴더(순서대로). 남의 폴더는 오지 않는다 */
   folders: ChatFolderView[]
@@ -227,13 +230,15 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
   ]
 
   const [mine, companyRooms, recentTasks, pinnedTasks] = await Promise.all([
-    // 내가 참여한 방(옴니스 1:1 · 단톡) — 최근 글 순
+    // 내가 참여한 방(옴니스 1:1 · 사람끼리 1:1 · 단톡) — 최근 글 순
     prisma.chatRoom.findMany({
-      where: { kind: { in: ["OMNIS_DM", "GROUP"] }, members: { some: { userId } } },
+      where: { kind: { in: ["OMNIS_DM", "GROUP", "DM"] }, members: { some: { userId } } },
       orderBy: [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
       take: 100,
       select: {
         id: true, kind: true, name: true, createdAt: true, lastMessageAt: true,
+        // 1:1 이름(상대 이름)을 정하려고 — 사람끼리 1:1 만 쓴다
+        members: { where: { room: { kind: "DM" } }, select: { user: { select: { id: true, name: true } } } },
         messages: {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
@@ -269,7 +274,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       id: r.id,
       key: roomKeyOf({ kind: r.kind, id: r.id }),
       kind: r.kind,
-      name: r.name,
+      name: peopleRoomTitle(r, r.members.map((m) => m.user), userId),
       lastAt: (r.lastMessageAt ?? r.createdAt).toISOString(),
       preview: last ? `${authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
       unread: 0,

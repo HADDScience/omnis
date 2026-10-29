@@ -9,7 +9,7 @@
 //   room:<ChatRoom.id>   전사방 · 옴니스 1:1 · 단톡방
 //   task:<Task.id>       업무방
 
-export type RoomKind = "COMPANY" | "TASK" | "OMNIS_DM" | "GROUP"
+export type RoomKind = "COMPANY" | "TASK" | "OMNIS_DM" | "GROUP" | "DM"
 
 /** 「안 읽음을 세기 시작한 시각」 한 줄의 키. API 로는 받지 않는다(parseRoomKey 가 거부한다) */
 export const READ_BASELINE_KEY = "*"

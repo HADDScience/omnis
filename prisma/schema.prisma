@@ -101,6 +101,9 @@ model ChatRoom {
   /// 목록 정렬용 — 이 방에 마지막 글이 붙은 시각. 메신저 경로(lib/chat-rooms.ts)가 쓴다.
   /// 전사방은 여러 경로(업무 생성 · MCP · 채팅 패널)가 글을 써서 이 칸을 믿지 않고 최신 글을 직접 읽는다.
   lastMessageAt DateTime?
+  /// 사람끼리 1:1(DM) 방만 — 두 사람 id 를 정렬해 이은 값(lib/chat-people-rules.ts dmKeyOf).
+  /// 같은 두 사람의 1:1 방이 하나뿐이게 DB 가 막는다(동시에 두 번 눌러도 하나만 생긴다)
+  dmKey         String?          @unique
   messages      ChatMessage[]
   members       ChatRoomMember[]
 
@@ -114,11 +117,13 @@ enum ChatRoomKind {
   TASK
   /// 옴니스와의 1:1 방. ChatGPT 의 세션 하나. 참여자는 만든 사람 한 명이다
   OMNIS_DM
-  /// 단톡방 — 5단계에서 만든다
+  /// 사람끼리 단톡방 — 구성원 누구나 만든다. 초대 · 나가기가 있다. 옴니스는 들어가지 않는다
   GROUP
+  /// 사람끼리 1:1 — 두 사람만. 초대 · 나가기가 없고 dmKey 로 같은 두 사람의 방이 하나뿐이다
+  DM
 }
 
-/// 방 참여자. COMPANY 는 모두가 참여자라 행을 만들지 않는다 — OMNIS_DM · GROUP 만 이 표로 읽기 권한을 정한다.
+/// 방 참여자. COMPANY 는 모두가 참여자라 행을 만들지 않는다 — OMNIS_DM · GROUP · DM 은 이 표로 읽기 권한을 정한다.
 model ChatRoomMember {
   roomId     String
   room       ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
