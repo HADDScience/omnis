@@ -1,7 +1,6 @@
 "use client"
 
 import { Fragment, type ReactNode } from "react"
-import { Separator } from "@/components/ui/separator"
 import { NotificationBell } from "./notification-bell"
 import { NAV_DESKTOP_QUERY } from "./floating-nav"
 import { useHeaderSubnav } from "./header-subnav"
@@ -58,10 +57,10 @@ export function Header({ title, crumbs, actions }: HeaderProps) {
         <div className="flex min-w-0 items-center gap-1 md:justify-self-end">
           {actions}
           {!isMdUp && (
-            <>
-              {actions && <Separator orientation="vertical" className="mx-1 h-4 self-center!" />}
+            // 폰의 알림 종 — PC nav 의 알림 원과 같은 유리 원(.glass). 아이콘은 원 한가운데(버튼이 원을 채운다)
+            <div className="glass ml-1 flex size-10 shrink-0 items-center justify-center rounded-full [@media(pointer:coarse)]:size-[44px] [&_button]:size-full! [&_button]:rounded-full">
               <NotificationBell />
-            </>
+            </div>
           )}
         </div>
       </header>
