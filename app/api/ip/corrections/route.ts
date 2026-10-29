@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 
-import { correctRecord, type Correction, type EntityKind } from "@/lib/ip-data"
+import { correctRecord, isYmd, type Correction, type EntityKind } from "@/lib/ip-data"
 import { authorize, bad, body, isDenied, ok, preflight } from "@/lib/ip-api"
 
 /**
@@ -29,6 +29,14 @@ export async function POST(req: NextRequest) {
   }>(req)
   if (!input?.entityKind || !input.entityId || !input.today) {
     return bad("entityKind·entityId·today 가 필요합니다", auth.cors)
+  }
+
+  // 형식이 틀리면 DB CHECK 가 막지만, 그러면 500 이 되어 무엇이 틀렸는지 알 수 없다.
+  for (const key of ["filedOn", "registeredOn"] as const) {
+    const v = input.patch?.[key]
+    if (v !== undefined && v !== "" && !isYmd(v)) {
+      return bad(`${key} 는 YYYY-MM-DD 여야 합니다 (받은 값: ${v})`, auth.cors)
+    }
   }
 
   await correctRecord(

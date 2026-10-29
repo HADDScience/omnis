@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/tech/ip-schema.md
-last_verified: 2026-09-02
+last_verified: 2026-10-28
 ---
 
 # 지식재산권 스키마 (`ip`)
@@ -30,7 +30,15 @@ last_verified: 2026-09-02
 | `newer` | 대장의 `ref_date` 가 기록의 `occurred_on` 이하일 때만 단계가 바뀐다 |
 | `moves` | `source='edit'`(값 정정)이면 단계는 반영하되 **날짜는 움직이지 않는다** |
 | 빈 문자열 vs NULL | `''` 는 "지우기", `NULL` 은 "그대로 두기". **이 둘이 다르다** |
-| latch | `filed_on`·`registered_on` 은 '출원'·'등록' 단계에서 한 번만 채워지고 이후 유지 |
+| latch | `filed_on`·`registered_on` 은 '출원'·'등록' 단계에 **들어간** 기록의 날짜로 한 번만 채워지고 이후 유지 |
+| 들어간 기록 | 단계가 바뀌는 기록, 또는 같은 단계라도 기준일(`ref_date`) 이하인 기록. 기준일보다 늦은 같은 단계 기록은 후속 기록이라 날짜를 건드리지 않는다 (2026-10-28) |
+| 명시값 | 기록의 `filed_on`·`registered_on`(text). `NULL`=규칙대로, `''`=비움, `YYYY-MM-DD`=그 값. `newer`·`moves` 와 무관하게 언제나 반영 — 값 정정이 쓴다 |
+
+> **2026-10-28 고친 것** — 예전 latch 는 단계 이름만 봤다. 개시 스냅샷이 「출원 · 출원일 없음」인
+> PT-05·06 에 10-26 메일 기록이 붙자 출원일이 10-26 이 됐다(실제 2025-10-17).
+> 「단계가 바뀔 때만」으로 좁히면 TM-07(개시 스냅샷이 이미 등록, 기준일 당일 등록 기록)의
+> 정당한 등록일이 재계산에서 사라져서 「기준일 이하」를 함께 둔다.
+> 마이그레이션 `20261028100000_ip_explicit_dates` · 계획 `mydocs/plans/2026-10-28-ip-explicit-dates.md`
 
 `ip.rebuild_ledger()` 는 같은 규칙을 출발선(`opening_state`)부터 순서대로 다시 밟아
 대장을 처음부터 계산한다. **이 함수가 곧 회귀 시험이다** — 돌렸을 때 대장이 그대로면
@@ -147,7 +155,8 @@ GEMINI_API_KEY=… npx tsx scripts/backfill-ip-embeddings.ts
 ```bash
 TARGET_DB="…" npx tsx scripts/verify-ip-import.ts   # 이사 20가지
 npx tsx scripts/verify-ip-api.ts                     # API 권한 16가지
-npx tsx scripts/verify-ip-mcp.ts                     # MCP·OAuth 37가지
+npx tsx scripts/verify-ip-mcp.ts                     # MCP·OAuth 40가지
+npx tsx scripts/verify-ip-dates.ts                   # 출원일·등록일 규칙 18가지 (되돌림)
 ```
 
 행 수, 사용자 연결, 참조 무결성, **`rebuild_ledger` 동일성**, 트리거 복구를 본다.

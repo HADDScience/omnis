@@ -288,7 +288,9 @@ Workflow 는 Vercel 배포에서 Vercel World 가 자동으로 붙는다(따로 
 ## 남은 문제
 
 1. **`pnpm run build` 를 돌리지 않았다.** `withWorkflow` 가 webpack 설정과 `/.well-known/workflow/*` 경로를 더한다. dev 에서는 「Compiled workflows (30 steps, 1 workflow)」 로 돈다. 머지 전에 운영 env 를 읽지 않는 곳에서 빌드를 돌려야 한다(이 워크트리에는 `.env.production.local` 이 없다 — 작업지시자 판단)
-2. **기존 Gemini 질문 경로(`/omnis/ask` · MCP `ask_omnis` · `askOmnisRoute`)는 쓰기 도구를 확인 없이 연다.** `ROUTE_TOOL_EXCLUDE` 가 4개(ask_omnis · post_message · create_task · search_knowledge)만 빼서 update_task · update_checklist · write_omnis_card · save_company_record · delete_company_record · respond_notification · write_weekly_report · decide_record_proposal · upload_file 이 Gemini 에 열려 있다. 지시대로 그 경로는 건드리지 않았다 — 막을지 정해야 한다
+2. ~~**기존 Gemini 질문 경로(`/omnis/ask` · MCP `ask_omnis` · `askOmnisRoute`)는 쓰기 도구를 확인 없이 연다.**~~
+   → `fix/ask-route-readonly`(c230377) merge 로 해결 — 빼는 목록 `ROUTE_TOOL_EXCLUDE` 대신 여는 목록 `ROUTE_READ_TOOLS`(읽기만). 아래 「A 합치기」.
+   원래 내용: `ROUTE_TOOL_EXCLUDE` 가 4개(ask_omnis · post_message · create_task · search_knowledge)만 빼서 update_task · update_checklist · write_omnis_card · save_company_record · delete_company_record · respond_notification · write_weekly_report · decide_record_proposal · upload_file 이 Gemini 에 열려 있다. 지시대로 그 경로는 건드리지 않았다 — 막을지 정해야 한다
 3. 쓰기의 변경 이력이 `via=mcp` 로 남는다 — `runTool` 이 updateTask · 체크리스트에 "mcp" 를 넘긴다. 에이전트가 한 것을 따로 세려면 runTool 에 출처 인자가 필요하다
 4. 비밀 값은 카드 표에서는 가렸지만 **실행의 대화(`AgentRun.messages`)와 카드 입력(`AgentStep.input`)에는 모델이 낸 그대로 남는다.** 이어 가기(SDK 서명 · 입력 대조)에 그대로 필요해서다. 막힌 실행이 끝난 뒤 지우거나 가리는 정리는 아직 없다. Workflow 이벤트 기록(로컬 `.next/workflow-data`, 운영은 Vercel)에도 도구 입력 · 결과가 남는다
 5. 로컬 `.env` 의 `GEMINI_API_KEY` 도 잔액이 0 이다(402 「prepayment credits are depleted」). 그래서 로컬에서 쓰기 뒤 임베딩 동기화가 실패하고, `search_knowledge` 의 질문 임베딩도 실패할 수 있다 — 이번 시나리오에서 모델이 search_knowledge 를 부르지 않아 그 경로는 확인하지 않았다

@@ -281,7 +281,17 @@ const HISTORY_RULE = `
 앞선 답에 있던 건수 · 상태 · 금액은 그 사이 바뀌었을 수 있으니, 다시 답할 때는 도구로 확인하세요.
 `
 
-const ROUTE_TOOL_EXCLUDE = new Set(["ask_omnis", "post_message", "create_task", "search_knowledge"])
+/**
+ * 질문 경로에 여는 MCP 도구 — 읽기만. 이 경로에는 쓰기 전 확인 단계가 없어서,
+ * 빼는 목록으로 두면 MCP 에 새 쓰기 도구가 생길 때마다 확인 없이 열린다(update_task · delete_company_record 가 그랬다).
+ * search_knowledge · ip_overview 는 아래에서 이 경로 전용으로 따로 정의한다.
+ */
+export const ROUTE_READ_TOOLS = new Set([
+  "list_tasks", "get_task", "read_file", "list_notifications", "list_projects", "list_members",
+  "crm_overview", "find_org", "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat",
+  "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
+  "list_market_companies", "get_context",
+])
 
 function routeSystemPrompt(today: string, userName: string, withHistory = false): string {
   return `당신은 HADD Science 의 사내 지식 비서 "옴니스" 입니다. 오늘은 ${today} 이고, 질문한 사람은 ${userName} 입니다.
@@ -335,7 +345,7 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
         required: ["query"],
       },
     },
-    ...OMNIS_TOOLS.filter((t) => !ROUTE_TOOL_EXCLUDE.has(t.name)).map((t) => {
+    ...OMNIS_TOOLS.filter((t) => ROUTE_READ_TOOLS.has(t.name)).map((t) => {
       const schema = t.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[] }
       const hasProps = schema.properties && Object.keys(schema.properties).length > 0
       return { name: t.name, description: t.description, ...(hasProps ? { parameters: schema } : {}) }
@@ -362,6 +372,8 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
         .join("\n\n")
     }
     if (call.name === "ip_overview") return (await buildIpOverview()) || "지식재산권 자료가 없습니다."
+    // 내놓지 않은 이름을 모델이 지어 불러도 실행하지 않는다
+    if (!ROUTE_READ_TOOLS.has(call.name)) return `오류: ${call.name} 은(는) 이 질문 경로에서 쓸 수 없는 도구입니다.`
     const r = await runTool(call.name, call.args, caller)
     return "error" in r ? `오류: ${r.error}` : r.text
   }

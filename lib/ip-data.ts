@@ -241,6 +241,13 @@ function ymd(value: unknown): string | null {
   return null
 }
 
+/** 'YYYY-MM-DD' 이면서 달력에 있는 날짜인가. 2025-02-30 은 거절한다. */
+export function isYmd(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const d = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value
+}
+
 /** timestamptz 는 시각이므로 ISO 문자열 그대로 넘긴다. */
 function iso(value: unknown): string | null {
   if (value === null || value === undefined) return null
@@ -582,6 +589,12 @@ export interface ProgressInput {
   note: string
   source: string
   raw: string | null
+  /**
+   * 출원일·등록일 명시. 값 정정에서만 쓴다 — 'YYYY-MM-DD' 는 그 값, '' 는 비움,
+   * 없으면 트리거가 단계 규칙대로 정한다. 기록을 고칠 때(UPDATE)는 손대지 않는다.
+   */
+  filedOn?: string | null
+  registeredOn?: string | null
 }
 
 /**
@@ -601,11 +614,13 @@ export async function saveProgress(
       await tx.$executeRaw`
         INSERT INTO ip.progress_entries
           (occurred_on, entity_kind, entity_id, stage, direction, counterpart,
-           next_turn, due_on, app_no, reg_no, probability, name, holder, note, source, raw)
+           next_turn, due_on, app_no, reg_no, probability, name, holder, note, source, raw,
+           filed_on, registered_on)
         VALUES
           (${e.date}::date, ${e.entityKind}, ${e.entityId}, ${e.stage}, ${e.direction},
            ${e.counterpart}, ${e.nextTurn}, ${e.dueOn}::date, ${e.appNo}, ${e.regNo},
-           ${e.probability}, ${e.name}, ${e.holder}, ${e.note}, ${e.source}, ${e.raw})`
+           ${e.probability}, ${e.name}, ${e.holder}, ${e.note}, ${e.source}, ${e.raw},
+           ${e.filedOn ?? null}, ${e.registeredOn ?? null})`
       return
     }
     await tx.$executeRaw`
@@ -899,7 +914,8 @@ export async function undoDelete(
  *
  * 대장을 직접 찌르지 않고 **진행 기록 한 줄로** 남긴다. 그러면 무엇이 언제 왜
  * 바뀌었는지가 이력에 남고, 대장은 여전히 기록의 결과로만 바뀐다.
- * source='edit' 이라 apply_progress_entry 가 단계는 반영하되 날짜는 움직이지 않는다.
+ * source='edit' 이라 apply_progress_entry 가 단계는 반영하되 마지막 진행일(ref_date)은
+ * 움직이지 않는다. 출원일·등록일은 명시한 것만 바뀐다.
  *
  * undefined 는 null 로(안 바꿈), 빈 문자열은 그대로(비움) 넘긴다 —
  * 이 둘의 구분이 트리거 규칙의 핵심이다.
@@ -909,6 +925,9 @@ export interface Correction {
   holder?: string
   appNo?: string
   regNo?: string
+  /** 'YYYY-MM-DD'. 단계 규칙과 무관하게 이 값이 된다 — 근거 문서의 날짜를 적는다. */
+  filedOn?: string
+  registeredOn?: string
   stage?: string
 }
 
@@ -946,6 +965,8 @@ export async function correctRecord(
       note: reason.trim() || `값 정정 (${changed.join(", ")})`,
       source: "edit",
       raw: null,
+      filedOn: patch.filedOn ?? null,
+      registeredOn: patch.registeredOn ?? null,
     },
     true
   )
