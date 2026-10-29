@@ -8,7 +8,7 @@ import { login } from "./_setup"
  * 연혁 후보 — AI 가 올린 후보를 사람이 채택 · 제외한다.
  * AI 를 부르지 않는다: 후보는 시험이 직접 넣는다(추출 품질은 scripts/verify-record-proposals.ts 와 실측 보고서가 맡는다).
  */
-test.describe("연혁 후보 (AI 제안 · 연혁 탭)", () => {
+test.describe("연혁 후보 (AI 제안 · 연혁 탭)", { tag: "@archive" }, () => {
   const tag = randomUUID().slice(0, 8)
   const secretTitle = `시험 인비트로큐 업무협약 ${tag}`
   const plainTitle = `시험 포럼 참석 ${tag}`
@@ -37,6 +37,7 @@ test.describe("연혁 후보 (AI 제안 · 연혁 탭)", () => {
     await prisma.$disconnect()
   })
 
+  // 지키는 것: AI 가 올린 연혁 후보를 사람이 채택 · 제외하고, 대외비는 대외비로 남는다
   test("대외비 후보를 채택하면 연혁에 [내부용·대외비] · INTERNAL 로 들어가고, 다른 후보는 제외된다", async ({ page }) => {
     await login(page, "팀장")
     await page.goto("/omnis/proposals?tab=records")

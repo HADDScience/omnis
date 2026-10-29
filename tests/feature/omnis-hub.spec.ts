@@ -1,13 +1,15 @@
 import { test, expect } from "@playwright/test"
 import { login } from "./_setup"
+import { gotoTab } from "./_actions"
 
-test.describe("HADD DB (Omnis 지식 허브)", () => {
+test.describe("HADD DB (Omnis 지식 허브)", { tag: "@archive" }, () => {
   test.beforeEach(async ({ page }) => {
     await login(page, "팀장")
   })
 
+  // 지키는 것: 주 메뉴의 아카이브 탭으로 회사 지식(HADD DB) 화면에 온다
   test("아카이브 탭 클릭 → /omnis 진입", async ({ page }) => {
-    await page.getByRole("link", { name: "아카이브" }).first().click()
+    await gotoTab(page, "아카이브")
     await expect(page).toHaveURL(/\/omnis$/)
     // 2026-09-16(PR #29) 에 h1 이 바뀌었다. 계획서의 결정 기록:
     // "회사의 모든 지식, 한 번의 검색으로." 는 검색이 카드만 훑는 지금 참이 아니다
@@ -17,6 +19,7 @@ test.describe("HADD DB (Omnis 지식 허브)", () => {
     ).toBeVisible()
   })
 
+  // 지키는 것: 카드가 있으면 기업정보 · 인력현황 · 지식재산권으로 나눠 본다
   test("3개 카테고리 칩(기업정보·인력현황·지식재산권)이 보인다", async ({
     page,
   }) => {
@@ -35,6 +38,7 @@ test.describe("HADD DB (Omnis 지식 허브)", () => {
     }
   })
 
+  // 지키는 것: 카테고리 API 가 기본 카테고리를 돌려준다
   test("API에서 카테고리 조회 시 200 + 3건 이상 반환", async ({ page }) => {
     const res = await page.evaluate(async () => {
       const r = await fetch("/api/omnis")
