@@ -170,7 +170,7 @@ export function ChatSearch({
   }
 
   const iconButton =
-    "touch-target inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+    "touch-target inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md in-data-[messenger]:size-11 in-data-[messenger]:[&_svg]:size-[20px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
 
   return (
     <div
@@ -185,10 +185,10 @@ export function ChatSearch({
       }}
     >
       {/* 입력칸 — 좁으면 아래 아이콘 묶음이 다음 줄로 접힌다 */}
-      <div className="flex h-9 min-w-0 flex-[1_1_170px] items-center gap-1.5 rounded-lg border border-primary/50 bg-background px-2 ring-2 ring-primary/15 focus-within:border-primary">
-        <HugeiconsIcon icon={Search01Icon} size={15} className="shrink-0 text-muted-foreground" aria-hidden />
+      <div className="flex h-9 min-w-0 flex-[1_1_170px] items-center gap-1.5 in-data-[messenger]:h-11 in-data-[messenger]:gap-2 rounded-lg border border-primary/50 bg-background px-2 ring-2 ring-primary/15 focus-within:border-primary">
+        <HugeiconsIcon icon={Search01Icon} size={15} className="shrink-0 text-muted-foreground in-data-[messenger]:size-[20px]" aria-hidden />
         {author && (
-          <span className="inline-flex max-w-[45%] shrink-0 items-center gap-0.5 rounded bg-primary/10 py-0.5 pl-1.5 pr-0.5 text-[11px] font-medium text-primary">
+          <span className="inline-flex max-w-[45%] shrink-0 items-center gap-0.5 rounded bg-primary/10 py-0.5 pl-1.5 pr-0.5 text-[11px] in-data-[messenger]:text-[13px] font-medium text-primary">
             <span className="truncate">{author.name}</span>
             <button
               type="button"
@@ -213,14 +213,14 @@ export function ChatSearch({
           }}
           placeholder={author ? "검색어 (비우면 이 사람 글 전체)" : taskId ? "이 업무 대화에서 찾기" : "대화 내용 검색"}
           aria-label="채팅 검색어"
-          className="h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
+          className="h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none in-data-[messenger]:text-[16px] placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
         />
         {loading ? (
           <Spinner className="h-4 w-4 shrink-0" />
         ) : (
           active &&
           searched && (
-            <span aria-live="polite" className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            <span aria-live="polite" className="shrink-0 text-[11px] tabular-nums text-muted-foreground in-data-[messenger]:text-[13px]">
               {total > 0 ? `${index + 1}/${total}` : "결과 없음"}
             </span>
           )

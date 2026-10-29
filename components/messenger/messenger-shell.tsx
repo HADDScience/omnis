@@ -24,6 +24,11 @@ export const useChatUserId = () => useContext(ChatUser)
  *
  * 높이는 MainWithChat 스크롤 칸 안에서 h-full 이다. 그 칸이 nav 높이(--nav-offset-*)를 이미 비워 두므로 여기서 다시 빼지 않는다.
  *
+ * 2026-10-30 작업지시자 「채팅방이 지금의 2배, 채팅 안에서도 스케일이 더 커져야」 — 폰 Gemini 앱 수준으로 목록 줄 · 본문 · 입력창을 키웠다.
+ * 키운 크기는 이 셸 안에서만 먹는다: 루트에 `data-messenger` 를 달고, 메신저 밖에서도 쓰는 부품(ChatPanel · MessageList · MessageInput ·
+ * TaskThread · OmnisAnswerBody · AuthorAvatar …)은 `in-data-[messenger]:…` 변형으로 크기를 더한다. 오른쪽 패널(MainWithChat 의 형제)·
+ * 업무 상세·온보딩 시연은 이 셸 밖이라 그대로다. CSS zoom 은 쓰지 않는다(스크롤 · 좌표 계산이 어긋난다).
+ *
  * 제목줄(「채팅」)은 두지 않는다(2026-10-29 작업지시자). 다만 PC 의 떠 있는 nav 는 화면 위 가운데에 겹쳐 뜨므로
  * (--nav-offset-top 이 PC 에서 0) 그 높이만큼은 위를 비운다 — 안 비우면 nav 가 목록 칩 줄과 대화 머리를 덮는다.
  */
@@ -36,12 +41,12 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
   return (
     <ChatUser.Provider value={userId}>
     <RoomListReload.Provider value={reload}>
-      <div className="flex h-full min-h-0 flex-col md:pt-12">
+      <div data-messenger className="flex h-full min-h-0 flex-col md:pt-12">
         <div className="flex min-h-0 flex-1">
           <aside
             aria-label="채팅방 목록"
             className={cn(
-              "relative min-h-0 w-full flex-col border-r md:flex md:w-[280px] md:shrink-0 lg:w-[300px]",
+              "relative min-h-0 w-full flex-col border-r md:flex md:w-[340px] md:shrink-0 lg:w-[360px]",
               atList ? "flex" : "hidden",
             )}
           >
@@ -85,24 +90,24 @@ function NewChatFab() {
         title="새 대화"
         data-new-chat-fab
         className={cn(
-          "glass absolute! right-4 bottom-4 z-[var(--z-dock)] flex size-14 items-center justify-center rounded-full text-foreground transition-transform duration-150 active:scale-[0.94] data-[popup-open]:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "glass absolute! right-4 bottom-4 z-[var(--z-dock)] flex size-[60px] items-center justify-center rounded-full text-foreground transition-transform duration-150 active:scale-[0.94] data-[popup-open]:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         )}
       >
-        <HugeiconsIcon icon={PencilEdit02Icon} size={22} aria-hidden />
+        <HugeiconsIcon icon={PencilEdit02Icon} size={26} aria-hidden />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="top" sideOffset={8} className="w-60 rounded-2xl p-1.5">
-        <DropdownMenuItem className="touch-target gap-2.5 rounded-xl py-2" onClick={() => router.push("/chat/new")}>
-          <HugeiconsIcon icon={BubbleChatSparkIcon} size={16} aria-hidden className="text-primary" />
+      <DropdownMenuContent align="end" side="top" sideOffset={8} className="w-72 rounded-2xl p-1.5">
+        <DropdownMenuItem className="touch-target gap-3 rounded-xl py-2.5" onClick={() => router.push("/chat/new")}>
+          <HugeiconsIcon icon={BubbleChatSparkIcon} size={22} aria-hidden className="text-primary" />
           <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-medium">옴니스와 대화</span>
-            <span className="block text-[11px] text-muted-foreground">회사 일을 묻고 업무를 맡겨요</span>
+            <span className="block text-[15.5px] font-medium">옴니스와 대화</span>
+            <span className="block text-[13px] text-muted-foreground">회사 일을 묻고 업무를 맡겨요</span>
           </span>
         </DropdownMenuItem>
-        <DropdownMenuItem className="touch-target gap-2.5 rounded-xl py-2" onClick={() => router.push("/chat/new/people")}>
-          <HugeiconsIcon icon={UserGroupIcon} size={16} aria-hidden />
+        <DropdownMenuItem className="touch-target gap-3 rounded-xl py-2.5" onClick={() => router.push("/chat/new/people")}>
+          <HugeiconsIcon icon={UserGroupIcon} size={22} aria-hidden />
           <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-medium">사람과 대화</span>
-            <span className="block text-[11px] text-muted-foreground">1:1 이나 단톡방 — 참여자만 봐요</span>
+            <span className="block text-[15.5px] font-medium">사람과 대화</span>
+            <span className="block text-[13px] text-muted-foreground">1:1 이나 단톡방 — 참여자만 봐요</span>
           </span>
         </DropdownMenuItem>
       </DropdownMenuContent>

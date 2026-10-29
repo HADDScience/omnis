@@ -548,14 +548,14 @@ export function ChatPanel({
       <div className="shrink-0 border-t">
         {/* 무엇에 답하는 중인지 입력창 바로 위에 둔다 — 보내고 나면 사라진다 */}
         {replyTo && (
-          <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground in-data-[messenger]:px-4 in-data-[messenger]:py-2.5 in-data-[messenger]:text-[14px]">
             <span className="shrink-0 font-medium">{replyTo.authorName}에게 답장</span>
             <span className="min-w-0 flex-1 truncate">{replyTo.content}</span>
             <button
               type="button"
               aria-label="답장 취소"
               onClick={() => setReplyTo(null)}
-              className="shrink-0 rounded px-1 hover:bg-muted"
+              className="shrink-0 rounded px-1 in-data-[messenger]:px-2.5 in-data-[messenger]:py-1 hover:bg-muted"
             >
               ✕
             </button>

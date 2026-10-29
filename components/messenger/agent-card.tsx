@@ -39,22 +39,22 @@ export function AgentCard({
     <section
       aria-label={`옴니스 제안: ${p.title}`}
       className={cn(
-        "mt-3 ml-[38px] rounded-xl border bg-card",
+        "mt-3 ml-[38px] rounded-xl border bg-card in-data-[messenger]:mt-4 in-data-[messenger]:ml-[50px] in-data-[messenger]:rounded-2xl",
         pending && "border-amber-500/40 shadow-[0_2px_10px_rgba(0,0,0,0.05)]",
         card.status === "BLOCKED" && "border-destructive/40",
       )}
       data-agent-card={card.status}
     >
-      <header className="flex flex-wrap items-center gap-2 border-b px-3.5 py-2.5">
-        <span className="text-[13px] font-semibold">{p.title}</span>
-        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", s.tone)}>{s.label}</span>
-        <span className="min-w-0 basis-full break-keep text-[12.5px] text-muted-foreground [overflow-wrap:anywhere]">{p.target}</span>
+      <header className="flex flex-wrap items-center gap-2 border-b px-3.5 py-2.5 in-data-[messenger]:gap-2.5 in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px]">
+        <span className="text-[13px] font-semibold in-data-[messenger]:text-[16.5px]">{p.title}</span>
+        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium in-data-[messenger]:px-2.5 in-data-[messenger]:text-[13px]", s.tone)}>{s.label}</span>
+        <span className="min-w-0 basis-full break-keep text-[12.5px] text-muted-foreground in-data-[messenger]:text-[15px] [overflow-wrap:anywhere]">{p.target}</span>
       </header>
 
       {p.changes.length > 0 && (
-        <dl className="divide-y text-[12.5px]">
+        <dl className="divide-y text-[12.5px] in-data-[messenger]:text-[15px] in-data-[messenger]:leading-[1.55]">
           {p.changes.map((c, i) => (
-            <div key={i} className="grid grid-cols-[5.5em_minmax(0,1fr)] gap-x-2 px-3.5 py-2 sm:grid-cols-[7em_minmax(0,1fr)]">
+            <div key={i} className="grid grid-cols-[5.5em_minmax(0,1fr)] gap-x-2 px-3.5 py-2 in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] sm:grid-cols-[7em_minmax(0,1fr)]">
               <dt className="text-muted-foreground">{c.label}</dt>
               <dd className="min-w-0 break-keep [overflow-wrap:anywhere]">
                 {c.before !== null && (
@@ -71,14 +71,14 @@ export function AgentCard({
       )}
 
       {card.status === "BLOCKED" && card.blockedReason ? (
-        <p className="flex gap-2 border-t bg-destructive/5 px-3.5 py-2.5 text-[12.5px] text-destructive" role="alert">
-          <HugeiconsIcon icon={SquareLock02Icon} size={15} className="mt-0.5 shrink-0" aria-hidden />
+        <p className="flex gap-2 border-t bg-destructive/5 px-3.5 py-2.5 text-[12.5px] text-destructive in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[15px]" role="alert">
+          <HugeiconsIcon icon={SquareLock02Icon} size={15} className="mt-0.5 shrink-0 in-data-[messenger]:size-[20px]" aria-hidden />
           <span className="break-keep">{card.blockedReason}</span>
         </p>
       ) : (
         p.risk && (
-          <p className="flex gap-2 border-t px-3.5 py-2.5 text-[12px] text-muted-foreground">
-            <HugeiconsIcon icon={Alert02Icon} size={14} className="mt-0.5 shrink-0" aria-hidden />
+          <p className="flex gap-2 border-t px-3.5 py-2.5 text-[12px] text-muted-foreground in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[14.5px]">
+            <HugeiconsIcon icon={Alert02Icon} size={14} className="mt-0.5 shrink-0 in-data-[messenger]:size-[18px]" aria-hidden />
             <span className="break-keep">확인하면 — {p.risk}</span>
           </p>
         )
@@ -87,28 +87,28 @@ export function AgentCard({
       {card.result && (card.status === "EXECUTED" || card.status === "FAILED") && (
         <p
           className={cn(
-            "flex gap-2 border-t px-3.5 py-2.5 text-[12.5px]",
+            "flex gap-2 border-t px-3.5 py-2.5 text-[12.5px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[15px]",
             card.status === "EXECUTED" ? "text-emerald-700 dark:text-emerald-300" : "text-destructive",
           )}
         >
-          {card.status === "EXECUTED" && <HugeiconsIcon icon={CheckmarkCircle02Icon} size={15} className="mt-0.5 shrink-0" aria-hidden />}
+          {card.status === "EXECUTED" && <HugeiconsIcon icon={CheckmarkCircle02Icon} size={15} className="mt-0.5 shrink-0 in-data-[messenger]:size-[20px]" aria-hidden />}
           <span className="whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">{card.result}</span>
         </p>
       )}
 
       {pending && (
-        <div className="flex justify-end gap-2 border-t px-3 py-2.5">
+        <div className="flex justify-end gap-2 border-t px-3 py-2.5 in-data-[messenger]:gap-3 in-data-[messenger]:px-[14px] in-data-[messenger]:py-[12px]">
           <Button
             variant="outline"
             size="sm"
-            className="touch-target"
+            className="touch-target in-data-[messenger]:h-11 in-data-[messenger]:min-w-[84px] in-data-[messenger]:rounded-xl in-data-[messenger]:text-[15px]"
             disabled={disabled || deciding !== null}
             onClick={() => onDecide("reject")}
           >
             {deciding === "reject" && <Spinner />}
             취소
           </Button>
-          <Button size="sm" className="touch-target" disabled={disabled || deciding !== null} onClick={() => onDecide("approve")}>
+          <Button size="sm" className="touch-target in-data-[messenger]:h-11 in-data-[messenger]:min-w-[84px] in-data-[messenger]:rounded-xl in-data-[messenger]:text-[15px]" disabled={disabled || deciding !== null} onClick={() => onDecide("approve")}>
             {deciding === "approve" && <Spinner />}
             확인
           </Button>

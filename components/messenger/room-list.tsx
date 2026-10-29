@@ -386,7 +386,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center border-b pt-2.5 pb-2">
+      <div className="flex shrink-0 items-center border-b pt-3 pb-2.5">
         <div className="min-w-0 flex-1">
           <ChipBar
             chip={chip}
@@ -399,7 +399,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
         </div>
         {!isMdUp && (
           // 다른 화면 제목줄의 알림 종과 같은 유리 원(.glass, header.tsx) — 아이콘은 원 한가운데
-          <div className="glass mr-3 flex size-10 shrink-0 items-center justify-center rounded-full [@media(pointer:coarse)]:size-[44px] [&_button]:size-full! [&_button]:rounded-full">
+          <div className="glass mr-3 flex size-12 shrink-0 items-center justify-center rounded-full [@media(pointer:coarse)]:size-[50px] [&_button]:size-full! [&_button]:rounded-full">
             <NotificationBell />
           </div>
         )}
@@ -409,7 +409,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
       <nav
         ref={listRef}
         aria-label="채팅방"
-        className="min-h-0 flex-1 overflow-y-auto max-md:snap-y max-md:snap-proximity overscroll-contain pb-20"
+        className="min-h-0 flex-1 overflow-y-auto max-md:snap-y max-md:snap-proximity overscroll-contain pb-28"
       >
         <div ref={searchRef} className="snap-start pt-2">
           <SearchBox value={query} onChange={setQuery} />
@@ -420,7 +420,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
           {searching && search?.error && <ErrorBox message={search.error} onRetry={() => setSearchTry((n) => n + 1)} />}
 
           {searching && (
-            <p className="px-4 pb-1.5 text-[11px] text-muted-foreground" aria-live="polite">
+            <p className="px-4 pb-2 text-[13px] text-muted-foreground" aria-live="polite">
               {search?.data ? `전체에서 찾은 방 ${visible.length}개` : "찾는 중…"}
             </p>
           )}
@@ -490,12 +490,12 @@ export function RoomList({ version, userId }: { version: number; userId: string 
 
 function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div role="search" className="relative mx-3 mb-2">
+    <div role="search" className="relative mx-3 mb-2.5">
       <HugeiconsIcon
         icon={Search01Icon}
-        size={14}
+        size={18}
         aria-hidden
-        className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground"
+        className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted-foreground"
       />
       <Input
         type="search"
@@ -509,16 +509,16 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
         }}
         placeholder="방 · 업무 · 마지막 글 검색"
         aria-label="채팅방 검색"
-        className="touch-target h-8 pr-8 pl-8 text-[12.5px] [&::-webkit-search-cancel-button]:hidden"
+        className="touch-target h-[50px] rounded-xl pr-12 pl-12 text-[16px] md:text-[16px] [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
         <button
           type="button"
           onClick={() => onChange("")}
           aria-label="검색어 지우기"
-          className="touch-target absolute top-1/2 right-0 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="touch-target absolute top-1/2 right-0 flex size-[50px] -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
-          <HugeiconsIcon icon={Cancel01Icon} size={13} aria-hidden />
+          <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden />
         </button>
       )}
     </div>
@@ -528,7 +528,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
 // justify-center: 터치 기기에서 .touch-target 이 칸을 44px 로 넓히면 아이콘만 든 칩(폴더 관리)의 아이콘이
 // 왼쪽에 붙어 원 가운데에서 벗어났다(2026-10-29 작업지시자 스크린샷)
 const CHIP =
-  "touch-target inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-full border px-3 text-[12px] font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+  "touch-target inline-flex h-[36px] [@media(pointer:coarse)]:h-[48px] shrink-0 items-center justify-center gap-1.5 rounded-full border px-4 text-[14.5px] font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 const CHIP_ON = "border-foreground bg-foreground text-background"
 const CHIP_OFF = "border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground"
 
@@ -632,7 +632,7 @@ function ChipBar({
               {c.badge ? (
                 <span
                   aria-label={`안 읽은 방 ${c.badge}개`}
-                  className="rounded-full bg-primary px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground tabular-nums"
+                  className="rounded-full bg-primary px-2 text-[12px] leading-5 font-semibold text-primary-foreground tabular-nums"
                 >
                   {unreadLabel(c.badge)}
                 </span>
@@ -644,8 +644,8 @@ function ChipBar({
         {edge.left && <ScrollNudge side="left" onClick={() => scrollBy(-1)} />}
         {edge.right && <ScrollNudge side="right" onClick={() => scrollBy(1)} />}
       </div>
-      <button type="button" onClick={onManage} aria-label="폴더 관리" title="폴더 관리" className={cn(CHIP, CHIP_OFF, "px-2")}>
-        <HugeiconsIcon icon={FolderLibraryIcon} size={14} aria-hidden />
+      <button type="button" onClick={onManage} aria-label="폴더 관리" title="폴더 관리" className={cn(CHIP, CHIP_OFF, "px-3")}>
+        <HugeiconsIcon icon={FolderLibraryIcon} size={18} aria-hidden />
         <span className="sr-only">폴더 관리</span>
       </button>
     </div>
@@ -665,11 +665,11 @@ function ScrollNudge({ side, onClick }: { side: "left" | "right"; onClick: () =>
       onClick={onClick}
       aria-label={side === "left" ? "앞 칩 보기" : "뒤 칩 더 보기"}
       className={cn(
-        "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none pointer-coarse:hidden",
+        "absolute top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none pointer-coarse:hidden",
         side === "left" ? "left-1" : "right-0",
       )}
     >
-      <HugeiconsIcon icon={side === "left" ? ArrowLeft01Icon : ArrowRight01Icon} size={12} aria-hidden />
+      <HugeiconsIcon icon={side === "left" ? ArrowLeft01Icon : ArrowRight01Icon} size={16} aria-hidden />
     </button>
   )
 }
@@ -677,9 +677,11 @@ function ScrollNudge({ side, onClick }: { side: "left" | "right"; onClick: () =>
 // ─── 줄 ────────────────────────────────────────────────
 
 // 터치 기기에서 44px — .touch-target 은 px 고정이라 rem 배율(81.25%)을 타지 않는다(ux-rules 30)
+// 줄 높이 88px = 아이콘 52px + 위아래 18px. 폰에서 Gemini · 카톡 목록처럼 한 줄이 손가락 크기가 되게 키웠다(2026-10-30 작업지시자).
+// 크기는 모두 px — size-8 같은 rem 유틸리티는 html 81.25% 를 타 의도한 크기가 안 나온다
 const ROW =
-  "touch-target flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-const ROW_WRAP = "group/row mx-2 flex items-center rounded-lg hover:bg-muted/60"
+  "touch-target flex min-w-0 flex-1 items-center gap-3.5 rounded-xl px-3 py-[18px] text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+const ROW_WRAP = "group/row mx-2 flex items-center rounded-xl hover:bg-muted/60"
 const ROW_ACTIVE = "bg-muted hover:bg-muted"
 
 function NewChatRow({ active }: { active: boolean }) {
@@ -687,11 +689,11 @@ function NewChatRow({ active }: { active: boolean }) {
     <div className={cn(ROW_WRAP, active && ROW_ACTIVE)}>
       <Link href="/chat/new" aria-current={active ? "page" : undefined} className={ROW}>
         <RoomIcon className="bg-primary/10 text-primary">
-          <HugeiconsIcon icon={PencilEdit02Icon} size={16} aria-hidden />
+          <HugeiconsIcon icon={PencilEdit02Icon} size={26} aria-hidden />
         </RoomIcon>
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-medium">새 대화</span>
-          <span className="block truncate text-[11.5px] text-muted-foreground">옴니스에게 회사 일을 물어보세요</span>
+          <span className="block text-[16.5px] font-medium">새 대화</span>
+          <span className="mt-0.5 block truncate text-[14.5px] text-muted-foreground">옴니스에게 회사 일을 물어보세요</span>
         </span>
       </Link>
     </div>
@@ -700,7 +702,7 @@ function NewChatRow({ active }: { active: boolean }) {
 
 function RoomIcon({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <span aria-hidden className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", className)}>
+    <span aria-hidden className={cn("flex size-[52px] shrink-0 items-center justify-center rounded-full", className)}>
       {children}
     </span>
   )
@@ -710,31 +712,31 @@ function kindIcon(kind: RoomListItem["kind"]) {
   if (kind === "OMNIS_DM")
     return (
       <RoomIcon className="ai-rainbow-border bg-primary/10 text-primary">
-        <HugeiconsIcon icon={BubbleChatSparkIcon} size={16} />
+        <HugeiconsIcon icon={BubbleChatSparkIcon} size={26} />
       </RoomIcon>
     )
   if (kind === "COMPANY")
     return (
       <RoomIcon className="bg-sky-500/10 text-sky-700 dark:text-sky-300">
-        <HugeiconsIcon icon={Building03Icon} size={16} />
+        <HugeiconsIcon icon={Building03Icon} size={26} />
       </RoomIcon>
     )
   if (kind === "TASK")
     return (
       <RoomIcon className="bg-amber-500/10 text-amber-700 dark:text-amber-300">
-        <HugeiconsIcon icon={Task01Icon} size={16} />
+        <HugeiconsIcon icon={Task01Icon} size={26} />
       </RoomIcon>
     )
   return (
     <RoomIcon className="bg-muted text-muted-foreground">
-      <HugeiconsIcon icon={UserGroupIcon} size={16} />
+      <HugeiconsIcon icon={UserGroupIcon} size={26} />
     </RoomIcon>
   )
 }
 
 /** 목록 한 줄 머리 — 사람끼리 1:1 은 상대 아바타(이름 색 · 두 글자), 나머지는 방 종류 아이콘 */
 function roomIcon(room: RoomListItem) {
-  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={32} />
+  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={52} />
   return kindIcon(room.kind)
 }
 
@@ -751,8 +753,8 @@ interface RowActions {
 
 const REMOVAL_LABEL: Record<RoomRemoval, string> = { delete: "삭제", hide: "숨기기", leave: "나가기" }
 /** 밀었을 때 드러나는 칸 폭(px) — 오른쪽 한 칸 · 왼쪽 세 칸(즐겨찾기 · 알림 · 폴더) */
-const RIGHT_W = 76
-const LEFT_W = 204
+const RIGHT_W = 100
+const LEFT_W = 276
 
 /**
  * 목록 한 줄. ⋯ 더보기 단추는 없다(2026-10-29 작업지시자) — 대신
@@ -771,11 +773,11 @@ function RoomRow({
   const manual = actions.folders.filter((f) => !f.rule)
   return (
     <ContextMenu>
-      <ContextMenuTrigger className="mx-2 rounded-lg">
+      <ContextMenuTrigger className="mx-2 rounded-xl">
         <SwipeRow
           open={swiped}
           onOpenChange={onSwipe}
-          className="rounded-lg"
+          className="rounded-xl"
           leftWidth={LEFT_W}
           rightWidth={removal ? RIGHT_W : 0}
           left={
@@ -787,9 +789,9 @@ function RoomRow({
                   actions.onFavorite()
                   onSwipe(null)
                 }}
-                className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-amber-500 text-[11px] font-medium text-white"
+                className="flex flex-1 flex-col items-center justify-center gap-1 bg-amber-500 text-[13.5px] font-medium text-white"
               >
-                <HugeiconsIcon icon={StarIcon} size={16} aria-hidden className={room.favorite ? "fill-white" : undefined} />
+                <HugeiconsIcon icon={StarIcon} size={24} aria-hidden className={room.favorite ? "fill-white" : undefined} />
                 {room.favorite ? "즐겨찾기 끄기" : "즐겨찾기"}
               </button>
               <button
@@ -800,17 +802,17 @@ function RoomRow({
                   actions.onMute()
                   onSwipe(null)
                 }}
-                className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-slate-600 text-[11px] font-medium text-white"
+                className="flex flex-1 flex-col items-center justify-center gap-1 bg-slate-600 text-[13.5px] font-medium text-white"
               >
-                <HugeiconsIcon icon={room.muted ? Notification03Icon : NotificationOff03Icon} size={16} aria-hidden />
+                <HugeiconsIcon icon={room.muted ? Notification03Icon : NotificationOff03Icon} size={24} aria-hidden />
                 {room.muted ? "알림 켜기" : "알림 끄기"}
               </button>
               <DropdownMenu>
                 <DropdownMenuTrigger
                   tabIndex={-1}
-                  className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-sky-600 text-[11px] font-medium text-white"
+                  className="flex flex-1 flex-col items-center justify-center gap-1 bg-sky-600 text-[13.5px] font-medium text-white"
                 >
-                  <HugeiconsIcon icon={FolderLibraryIcon} size={16} aria-hidden />
+                  <HugeiconsIcon icon={FolderLibraryIcon} size={24} aria-hidden />
                   폴더
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-52">
@@ -843,15 +845,15 @@ function RoomRow({
                 tabIndex={-1}
                 data-remove-room={removal}
                 onClick={() => actions.onRemove(removal)}
-                className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-destructive text-[11.5px] font-semibold text-white"
+                className="flex flex-1 flex-col items-center justify-center gap-1 bg-destructive text-[14px] font-semibold text-white"
               >
-                <HugeiconsIcon icon={removal === "leave" ? Logout03Icon : Delete02Icon} size={16} aria-hidden />
+                <HugeiconsIcon icon={removal === "leave" ? Logout03Icon : Delete02Icon} size={24} aria-hidden />
                 {REMOVAL_LABEL[removal]}
               </button>
             ) : undefined
           }
         >
-          <div className={cn("rounded-lg hover:bg-muted/60 has-data-[pending]:bg-muted", active && ROW_ACTIVE)}>
+          <div className={cn("rounded-xl hover:bg-muted/60 has-data-[pending]:bg-muted", active && ROW_ACTIVE)}>
             <Link
               href={roomHref(room)}
               aria-current={active ? "page" : undefined}
@@ -871,15 +873,15 @@ function RoomRow({
             >
               {roomIcon(room)}
               <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-1.5">
-                  <span className={cn("min-w-0 flex-1 truncate text-[13px]", unread ? "font-semibold" : "font-medium")}>
+                <span className="flex items-baseline gap-2">
+                  <span className={cn("min-w-0 flex-1 truncate text-[16.5px]", unread ? "font-semibold" : "font-medium")}>
                     {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
                     {room.name}
                   </span>
                   {room.favorite && (
                     <HugeiconsIcon
                       icon={StarIcon}
-                      size={11}
+                      size={15}
                       aria-label="즐겨찾기"
                       className="shrink-0 self-center fill-amber-400 text-amber-500"
                     />
@@ -887,26 +889,26 @@ function RoomRow({
                   {room.muted && (
                     <HugeiconsIcon
                       icon={NotificationOff03Icon}
-                      size={11}
+                      size={15}
                       aria-label="알림 꺼짐"
                       className="shrink-0 self-center text-muted-foreground"
                     />
                   )}
-                  <time dateTime={room.lastAt} className="shrink-0 text-[10.5px] text-muted-foreground tabular-nums">
+                  <time dateTime={room.lastAt} className="shrink-0 text-[12.5px] text-muted-foreground tabular-nums">
                     {listTime(room.lastAt)}
                   </time>
                 </span>
-                <span className="flex items-center gap-1.5">
+                <span className="mt-0.5 flex items-center gap-2">
                   {room.status && (
-                    <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                    <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-[12px] text-muted-foreground">
                       {TASK_STATUS_LABELS[room.status] ?? room.status}
                     </span>
                   )}
-                  <span className={cn("min-w-0 flex-1 truncate text-[11.5px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
+                  <span className={cn("min-w-0 flex-1 truncate text-[14.5px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
                     {room.preview ?? "아직 글이 없어요"}
                   </span>
                   {unread && (
-                    <Badge className="h-4 min-w-4 shrink-0 px-1 text-[10px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
+                    <Badge className="h-[22px] min-w-[22px] shrink-0 px-1.5 text-[12px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
                       {unreadLabel(room.unread)}
                     </Badge>
                   )}
@@ -1045,7 +1047,7 @@ function RemoveConfirm({
 
 function ErrorBox({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div role="alert" className="mx-3 mb-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-[12.5px]">
+    <div role="alert" className="mx-3 mb-2 rounded-md border border-destructive/30 bg-destructive/5 p-3.5 text-[14.5px]">
       <p className="text-destructive">{message}</p>
       <Button variant="outline" size="sm" className="touch-target mt-2" onClick={onRetry}>
         다시 불러오기
@@ -1079,7 +1081,7 @@ function EmptyState({
   else if (folder) text = "이 폴더에 방이 없어요. 방을 꾹 누르거나 오른쪽으로 밀어서, 또는 아래 버튼으로 넣을 수 있어요"
   else text = "아직 방이 없어요"
   return (
-    <div className="mx-4 mt-1 rounded-md border border-dashed px-3 py-3 text-[11.5px] text-muted-foreground">
+    <div className="mx-4 mt-1 rounded-md border border-dashed px-3.5 py-3.5 text-[14px] text-muted-foreground">
       <p>{text}</p>
       {onPickRooms && (
         <Button variant="outline" size="sm" className="touch-target mt-2" onClick={onPickRooms}>
@@ -1094,11 +1096,11 @@ function RowSkeletons({ count }: { count: number }) {
   return (
     <>
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="mx-2 flex items-center gap-2.5 px-2 py-1.5" aria-hidden>
-          <Skeleton className="size-8 shrink-0 rounded-full" />
-          <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <Skeleton className="h-3 w-2/3" />
-            <Skeleton className="h-2.5 w-full" />
+        <div key={i} className="mx-2 flex items-center gap-3.5 px-3 py-[18px]" aria-hidden>
+          <Skeleton className="size-[52px] shrink-0 rounded-full" />
+          <span className="flex min-w-0 flex-1 flex-col gap-2.5">
+            <Skeleton className="h-[17px] w-2/3" />
+            <Skeleton className="h-[14px] w-full" />
           </span>
         </div>
       ))}

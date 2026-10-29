@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/manual/ux-rules.md
-last_verified: 2026-10-29
+last_verified: 2026-10-30
 ---
 
 # UX·구조 규칙 — canonical
@@ -185,6 +185,21 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - 답을 못 받은 내 글(마지막 글이 내 질문)에는 「다시 묻기」 가 붙는다. 새로고침해도 남는다 — 상태가 아니라 방의 글에서 나온다
 - 높이는 `MainWithChat` 스크롤 칸 안에서 `h-full`. nav 높이를 화면 안에서 다시 빼지 않는다
 - 오른쪽 패널 탭은 「이 업무」 · 「전체」 · 「옴니스」. 옴니스 탭은 예전 Gemini 「Omnis AI」(`OmnisAsk`)가 아니라 에이전트의 옴니스 1:1 방(`PanelOmnis` → `OmnisRoom embedded`)이다 — 쓰기는 방 화면과 같은 확인 카드를 거친다. 아래 「오른쪽 패널」
+
+### 메신저 안의 크기 — 폰 Gemini 앱 수준 (2026-10-30, 작업지시자)
+
+기록: [`../working/2026-10-30-chat-scale.md`](../working/2026-10-30-chat-scale.md) (전 → 후 표 · 스크린샷). 목록 줄 약 2배, 대화 본문 17px · 행간 1.65, 입력창 17px.
+
+- **키운 크기는 `MessengerShell` 루트의 `data-messenger` 안에서만 먹는다.** 메신저 밖에서도 쓰는 부품(ChatPanel · MessageList · MessageInput · TaskThread · OmnisRoom 의 말풍선 · 도구 기록 · 확인 카드 · `OmnisAnswerBody` · `AuthorAvatar` · `MessageTime` …)은
+  기본 클래스는 그대로 두고 **`in-data-[messenger]:…` 변형으로 큰 크기를 더한다.** 오른쪽 패널 · 업무 상세 · 온보딩 시연은 이 셸 밖이라 그대로다(오른쪽 패널 · 업무 상세는 전후 스크린샷이 픽셀 단위로 같다). 메신저에만 있는 부품(`RoomList` · `RoomHeader` · 스켈레톤)은 변형 없이 바로 키웠다
+- 마크다운 본문은 `globals.css` 의 `[data-messenger] .omnis-md` 한 곳. 같은 `.omnis-md` 를 쓰는 주간보고 · 지식 카드는 그대로다
+- 인라인 style 은 변형으로 못 덮는다 — 아바타는 `size` · `lgSize` 를 CSS 변수(`--av` · `--av-lg`)로 넘기고 클래스가 고른다
+- **CSS `zoom` 은 쓰지 않는다**(스크롤 위치 · 좌표 계산이 어긋난다)
+- 크기는 px 로 쓴다 — `size-8` · `text-sm` 같은 rem 유틸리티는 html 81.25% 를 타서 의도한 크기가 안 나온다(`size-8` 은 26px)
+- 함정 1: **`Button` 안 아이콘은 `[&_svg:not([class*='size-'])]:size-4` 가 크기를 정한다.** 아이콘에 `size-…` 클래스를 달면 이 규칙이 빠져 속성(`size={18}`)대로 돌아간다 — 메신저 밖의 크기까지 바뀐다. `in-data-[messenger]:h-[Npx]! in-data-[messenger]:w-[Npx]!` 로 쓴다
+- 함정 2: 입력칸의 `@media(pointer:coarse)` · `md:` 크기는 변형 순서를 장담할 수 없다 — 겹치는 속성은 `!` 로 이긴다
+- 함정 3: `.touch-target`(unlayered)이 레이어 유틸리티의 min-height 를 이긴다. 44px 보다 큰 단추는 `h-` 로 키운다
+- 폰 목록 줄 높이 88px · 칩 48px · 검색칸 50px · 머리줄 64px · 입력칸 58px(글자 17px). PC 목록 칸은 340 / 360px
 
 ### 사람끼리 대화 — 1:1 · 단톡방 (2026-10-29, 5단계)
 
