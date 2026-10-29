@@ -14,9 +14,9 @@
 .lv2-nav { position: fixed; inset-inline: 0; top: var(--demo-banner-height, 0px); z-index: var(--z-dock); color: #fff; background: color-mix(in srgb, var(--lv2-ink) 84%, transparent); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); border-bottom: 1px solid #ffffff14; }
 .lv2-nav-inner { display: flex; align-items: center; gap: 24px; height: 60px; }
 .lv2-brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; letter-spacing: -.03em; min-height: 44px; }
-.lv2-brand small { font-size: 10px; font-weight: 450; letter-spacing: .18em; color: #ffffffa6; padding-left: 10px; border-left: 1px solid #ffffff2e; }
+.lv2-brand small { font-size: 10px; font-weight: 450; letter-spacing: .18em; color: #ffffffd9; padding-left: 10px; border-left: 1px solid #ffffff2e; }
 .lv2-nav-links { display: none; gap: 4px; margin-left: 8px; }
-.lv2-nav-links a { font-size: 13px; color: #ffffffb8; padding: 0 10px; min-height: 44px; display: inline-flex; align-items: center; border-radius: 10px; }
+.lv2-nav-links a { font-size: 13px; color: #ffffffd9; padding: 0 10px; min-height: 44px; display: inline-flex; align-items: center; border-radius: 10px; }
 .lv2-nav-links a:hover { color: #fff; background: #ffffff12; }
 @media (min-width: 900px) { .lv2-nav-links { display: flex; } }
 .lv2-nav-enter { margin-left: auto; }
@@ -35,7 +35,8 @@
 /* ── 어두운 장면(히어로 · 마무리) ───────────────────────────────────── */
 .lv2-dark { position: relative; isolation: isolate; overflow: hidden; color: #fff; background: linear-gradient(135deg, #0b1020 0%, #172554 48%, #4f46e5 100%); }
 .lv2-dark::before { content: ""; position: absolute; inset: 0; z-index: -1; opacity: .22; background-image: linear-gradient(#ffffff1f 1px, transparent 1px), linear-gradient(90deg, #ffffff1f 1px, transparent 1px); background-size: 44px 44px; mask-image: radial-gradient(ellipse at 50% 45%, #000 20%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse at 50% 45%, #000 20%, transparent 75%); }
-.lv2-wash { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+/* 빛은 자기 칸 안에서 잘린다 — 장면(section)이 넘친 내용을 자르는 것처럼 재지 않게 */
+.lv2-wash { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 .lv2-wash i { position: absolute; width: 34vw; height: 34vw; min-width: 220px; min-height: 220px; border-radius: 38%; background: radial-gradient(circle at 30% 24%, #ffffff40, #6366f166 45%, #1e3a8a00 72%); filter: blur(18px); opacity: .55; animation: lv2-drift 16s ease-in-out infinite; }
 .lv2-wash i:nth-child(1) { left: -12%; top: 10%; }
 .lv2-wash i:nth-child(2) { right: -14%; bottom: -8%; border-radius: 50%; animation-delay: -7s; }
@@ -50,7 +51,7 @@
 .lv2-dark .lv2-display em, .lv2-dark .lv2-title em { background: linear-gradient(100deg, #fff 0%, #c7d2fe 55%, #a5b4fc 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .lv2-lede { margin-top: 24px; max-width: 620px; font-size: clamp(15px, 1.9vw, 19px); line-height: 1.75; color: #ffffffcc; }
 .lv2-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 36px; }
-.lv2-hero-note { margin-top: 22px; font-size: 12px; color: #ffffffa6; }
+.lv2-hero-note { margin-top: 22px; font-size: 12px; color: #ffffffd9; }
 .lv2-arrive { animation: lv2-arrive 1.1s both; }
 .lv2-arrive-2 { animation-delay: .18s; }
 .lv2-arrive-3 { animation-delay: .36s; }
@@ -87,7 +88,6 @@
 .lv2-points li::before { content: ""; flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--primary); translate: 0 -2px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 14%, transparent); }
 .lv2-points code { font-family: inherit; font-weight: 600; color: var(--primary); }
 .lv2-demo { position: relative; margin: 0; border-radius: 24px; overflow: hidden; background: var(--background); border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border)); box-shadow: 0 40px 120px color-mix(in srgb, var(--primary) 16%, transparent), 0 2px 6px #0000000d; }
-.lv2-demo::before { content: ""; position: absolute; inset: -40% -20% auto; height: 70%; z-index: -1; background: radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 70%); }
 .lv2-demo-bar { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted-foreground); background: color-mix(in srgb, var(--muted) 55%, var(--background)); }
 .lv2-demo-dots { display: flex; gap: 6px; }
 .lv2-demo-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
@@ -107,6 +107,8 @@
 .lv2-tablist button:hover { color: var(--foreground); }
 .lv2-tablist button[aria-selected="true"] { background: var(--background); color: var(--primary); box-shadow: 0 4px 16px #0000000f; }
 @media (max-width: 520px) { .lv2-tablist button { flex-direction: column; gap: 2px; font-size: 12px; min-height: 56px; } }
+/* 화면 확대로 폭이 300px 밑으로 내려가면 네 칸이 44px 를 못 지킨다 — 두 줄로 */
+@media (max-width: 300px) { .lv2-tablist { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .lv2-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 28px 18px 18px; align-items: center; }
 .lv2-panel[hidden] { display: none; }
 @media (min-width: 860px) { .lv2-panel { grid-template-columns: minmax(0, 4fr) minmax(0, 6fr); gap: 48px; padding: 40px 32px 32px; } }
@@ -177,10 +179,10 @@
 .lv2-closing .lv2-hero-inner { padding-bottom: clamp(90px, 13vw, 150px); }
 .lv2-audiences { display: grid; grid-template-columns: repeat(2, minmax(0, 260px)); gap: 14px; margin-top: 40px; }
 .lv2-audience { display: flex; flex-direction: column; gap: 12px; align-items: stretch; padding: 18px; border-radius: 20px; background: #ffffff0f; border: 1px solid #ffffff24; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); text-align: left; }
-.lv2-audience > span { font-size: 12px; color: #ffffffb3; }
+.lv2-audience > span { font-size: 12px; color: #ffffffd9; }
 .lv2-audience > span b { display: block; margin-bottom: 4px; font-size: 15px; font-weight: 600; color: #fff; }
 @media (max-width: 600px) { .lv2-audiences { grid-template-columns: minmax(0, 1fr); width: 100%; max-width: 360px; } }
-.lv2-footer { border-top: 1px solid #ffffff1f; padding: 22px 0 calc(22px + env(safe-area-inset-bottom)); font-size: 12px; color: #ffffffa6; }
+.lv2-footer { border-top: 1px solid #ffffff1f; padding: 22px 0 calc(22px + env(safe-area-inset-bottom)); font-size: 12px; color: #ffffffd9; }
 .lv2-footer .lv2-wrap { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: space-between; }
 .lv2-footer-brand { display: flex; align-items: center; gap: 8px; }
 
@@ -189,4 +191,15 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lv2 *, .lv2 *::before, .lv2 *::after { animation: none !important; transition: none !important; }
+}
+
+/* 화면 확대로 폭이 300px 밑으로 내려갈 때(규칙 30 — 200px 까지 본다) 여백을 줄여 업무 카드의 칩이 잘리지 않게,
+   로고 바깥 궤도는 뺀다(궤도 지름 192px 이 칸을 넘는다) */
+@media (max-width: 300px) {
+  .lv2 { --lv2-gutter: 12px; }
+  .lv2-tabs { padding: 6px; border-radius: 20px; }
+  .lv2-panel { padding: 20px 4px 6px; }
+  .lv2-panel-screen { padding: 44px 8px 8px; }
+  .lv2-board-col { padding: 6px; }
+  .lv2-mark::before { display: none; }
 }

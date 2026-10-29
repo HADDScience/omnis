@@ -112,7 +112,9 @@ export function CompanyTabs() {
             <h3>{tab.title}</h3>
             <p>{tab.copy}</p>
           </div>
-          <div className="lv2-panel-screen">
+          {/* 화면 그림은 예시라 누를 것이 없다 — 업무 카드의 별점(비활성 버튼)까지 키보드 · 스크린리더에서 뺀다.
+              무엇을 보이는지는 옆의 글이 말한다 */}
+          <div className="lv2-panel-screen" inert>
             <span className="lv2-demo-tag lv2-panel-tag">예시</span>
             {tab.key === "chat" && <ChatScreen />}
             {tab.key === "tasks" && <TasksScreen />}
