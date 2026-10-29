@@ -10,8 +10,6 @@ import { countCases } from "@/lib/ip-data"
 export interface LandingStats {
   /** 업무 카드 — 보관한 것까지 */
   tasks: number
-  /** 사내 지식 카드 */
-  knowledgeCards: number
   /** 상표 + 특허 */
   ipCases: number
   /** 옴니스가 답한 질문 — OmnisQuery 는 답이 나온 질문마다 한 줄이다(lib/omnis-ask.ts · lib/agent/store.ts) */
@@ -19,20 +17,20 @@ export interface LandingStats {
 }
 
 async function countAll(): Promise<LandingStats> {
-  const [tasks, knowledgeCards, answeredQuestions, ipCases] = await Promise.all([
+  // 지식 카드 수는 세지 않는다 — 운영에 아직 1장이라 랜딩에서 뺐다(landing-page.tsx 의 Stats)
+  const [tasks, answeredQuestions, ipCases] = await Promise.all([
     prisma.task.count(),
-    prisma.omnisCard.count(),
     prisma.omnisQuery.count(),
     countCases(),
   ])
-  return { tasks, knowledgeCards, ipCases, answeredQuestions }
+  return { tasks, ipCases, answeredQuestions }
 }
 
 /**
  * 한 시간 캐시 — 랜딩을 열 때마다 DB 를 네 번 세지 않게. 값이 한 시간 늦는 것은 「쌓이는 것」 에 문제가 되지 않는다.
  * 저장소에 다른 캐시 방식(`"use cache"` 는 cacheComponents 가 꺼져 있어 쓸 수 없다)이 없어 unstable_cache 를 쓴다.
  */
-const cachedCount = unstable_cache(countAll, ["landing-stats-v1"], { revalidate: 3600 })
+const cachedCount = unstable_cache(countAll, ["landing-stats-v2"], { revalidate: 3600 })
 
 /** 세다가 실패하면 null — 랜딩은 섹션을 숨기고 나머지를 그대로 보인다(꾸민 숫자를 대신 넣지 않는다) */
 export async function getLandingStats(): Promise<LandingStats | null> {

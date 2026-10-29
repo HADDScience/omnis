@@ -267,11 +267,11 @@ function MyAi() {
 /**
  * 「쌓이는 것」 — DB 가 센 개수만(lib/landing-stats.ts, 한 시간 캐시). 예전 랜딩의 80% · 10× 같은 값은 잰 적이 없어 넣지 않는다.
  * 사람 수는 세지 않는다 — 운영 데이터의 타인 명의 글 대부분이 수기 사본이라 「N명이 씁니다」 는 사실과 다르게 읽힌다.
+ * 지식 카드 수도 뺐다 — 운영에 아직 1장이라(2026-10-29) 자랑하는 자리에서 거꾸로 읽힌다. 쌓이면 다시 넣는다.
  */
 function Stats({ stats }: { stats: LandingStats }) {
   const items = [
     ["업무", stats.tasks],
-    ["지식 카드", stats.knowledgeCards],
     ["지식재산권", stats.ipCases],
     ["옴니스가 답한 질문", stats.answeredQuestions],
   ] as const
