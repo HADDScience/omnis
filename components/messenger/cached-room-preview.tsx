@@ -47,7 +47,7 @@ export function CachedRoomPreview() {
               <div
                 className={cn(
                   "max-w-[85%] whitespace-pre-wrap break-keep rounded-2xl px-3.5 py-2 text-[13.5px] leading-[1.6] [overflow-wrap:anywhere]",
-                  m.mine ? "rounded-br-md bg-primary/10" : "rounded-bl-md border bg-card",
+                  m.mine ? "rounded-br-md bg-primary/10" : m.fromOmnis ? "px-0" : "rounded-bl-md border bg-card",
                   m.fromOmnis && "line-clamp-6",
                 )}
               >
