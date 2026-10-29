@@ -21,6 +21,15 @@ const nextConfig = {
    */
   env: { NEXTAUTH_URL: process.env.NEXTAUTH_URL },
   devIndicators: false, // 좌측하단 Next.js 개발 툴박스 숨김
+  /*
+   * 클라이언트 라우터 캐시 — 한 번 연 화면을 이 시간 동안 브라우저에 두어, 탭을 오갈 때
+   * 서버가 DB 를 다시 읽는 동안 화면이 멈추지 않게 한다(블로킹 내비게이션). 기본값 dynamic 0 은
+   * 매번 서버로 갔다. 30초 안에 돌아오면 그때의 화면을 그대로 보인다 — 쓰기 뒤에는
+   * router.refresh() 가 이 캐시를 버린다. 채팅 · 방 목록은 기기 저장(lib/chat-cache.ts)이 따로 맡는다.
+   */
+  experimental: {
+    staleTimes: { dynamic: 30, static: 180 },
+  },
   typescript: {
     ignoreBuildErrors: false,
   },
