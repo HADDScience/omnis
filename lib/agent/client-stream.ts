@@ -4,10 +4,15 @@
 // useChat 을 쓰지 않는 이유: 방의 글 · 확인 카드는 DB 가 원본이고(새로고침 · 재접속), 스트림은 그 사이를 채우는
 // 미리보기일 뿐이다. 스트림이 끝나면 화면은 방 상태(GET /api/agent/rooms/[id])를 다시 읽어 갈아 끼운다.
 
+import { summarizeInput, summarizeOutput } from "./tool-trail"
+
 export interface LiveTool {
   id: string
   name: string
-  state: "running" | "done" | "approval"
+  state: "running" | "done" | "approval" | "error"
+  /** 인자 · 결과 요약 — 끝난 뒤 DB 에서 다시 그리는 것(lib/agent/tool-trail.ts)과 같은 모양 */
+  input?: string
+  result?: string
 }
 
 export interface LiveAnswer {
@@ -35,11 +40,14 @@ export function foldChunk(live: LiveAnswer, c: Chunk): LiveAnswer {
     case "tool-input-start":
       if (live.tools.some((t) => t.id === c.toolCallId)) return live
       return { ...live, tools: [...live.tools, { id: String(c.toolCallId), name: String(c.toolName), state: "running" }] }
+    case "tool-input-available":
+      return { ...live, tools: live.tools.map((t) => (t.id === c.toolCallId ? { ...t, input: summarizeInput(c.input) } : t)) }
     case "tool-output-available":
+      return { ...live, tools: live.tools.map((t) => (t.id === c.toolCallId ? { ...t, state: "done", result: summarizeOutput(c.output).text } : t)) }
     case "tool-output-error":
-      return { ...live, tools: live.tools.map((t) => (t.id === c.toolCallId ? { ...t, state: "done" } : t)) }
+      return { ...live, tools: live.tools.map((t) => (t.id === c.toolCallId ? { ...t, state: "error", result: String(c.errorText ?? "") } : t)) }
     case "tool-approval-request":
-      return { ...live, tools: live.tools.map((t) => (t.id === c.toolCallId ? { ...t, state: "approval" } : t)) }
+      return { ...live, tools: live.tools.map((t) => (t.id === c.toolCallId ? { ...t, state: "approval", result: "확인 카드" } : t)) }
     case "error":
       return { ...live, error: String(c.errorText ?? "답을 만들지 못했습니다") }
     default:

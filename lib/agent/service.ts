@@ -15,6 +15,7 @@ import { omnisAgentWorkflow } from "./workflow"
 import { approvalResponses } from "./messages"
 import { checkDecision, type StepStatus } from "./approval"
 import type { WritePreview } from "./tools"
+import { toolTrail, type ToolUse } from "./tool-trail"
 
 export type Fail = { ok: false; status: number; error: string }
 
@@ -38,6 +39,8 @@ export interface AgentRoomState {
   cards: AgentCard[]
   /** 돌고 있는 실행 — 새로고침 뒤 스트림을 다시 붙는다 */
   activeRun: { id: string; status: string } | null
+  /** 질문 글 id → 그 질문에 답하며 옴니스가 쓴 도구(부른 순서). 답이 끝나도 · 새로고침해도 남는다 */
+  tools: Record<string, ToolUse[]>
 }
 
 /** 돌고 있다고 보는 시간. 이보다 오래 RUNNING 이면 죽은 실행으로 보고 새 글을 받는다 */
@@ -71,7 +74,7 @@ function shapeCard(s: {
 export async function loadAgentRoom(roomId: string, userId: string): Promise<AgentRoomState | null> {
   const room = await ownRoom(roomId, userId)
   if (!room) return null
-  const [rows, steps, active] = await Promise.all([
+  const [rows, steps, active, runs] = await Promise.all([
     prisma.chatMessage.findMany({
       where: { roomId, deletedAt: null },
       orderBy: { createdAt: "asc" },
@@ -83,14 +86,22 @@ export async function loadAgentRoom(roomId: string, userId: string): Promise<Age
       orderBy: { createdAt: "desc" },
       select: { id: true, status: true, updatedAt: true },
     }),
+    prisma.agentRun.findMany({ where: { roomId, userId }, orderBy: { createdAt: "asc" }, select: { questionMessageId: true, messages: true } }),
     prisma.chatRoomMember.update({ where: { roomId_userId: { roomId, userId } }, data: { lastReadAt: new Date() } }),
   ])
+  // 같은 질문을 다시 물으면(retryOf) 실행이 둘 — 이어 붙인다
+  const tools: Record<string, ToolUse[]> = {}
+  for (const r of runs) {
+    const t = toolTrail(r.messages as unknown as { role: string; content: unknown }[])
+    if (t.length) tools[r.questionMessageId] = [...(tools[r.questionMessageId] ?? []), ...t]
+  }
   const live = active && (active.status !== "RUNNING" || Date.now() - active.updatedAt.getTime() < RUNNING_STALE_MS) ? active : null
   return {
     room,
     messages: rows.map(shapeMessage),
     cards: steps.map(shapeCard),
     activeRun: live ? { id: live.id, status: live.status } : null,
+    tools,
   }
 }
 

@@ -15,10 +15,12 @@ import { apiUrl } from "@/lib/base-path"
 import { OMNIS_MESSAGE_MAX } from "@/lib/schemas/chat-room"
 import { cn } from "@/lib/utils"
 import type { OmnisRoomMessage } from "@/lib/omnis-room"
-import type { AgentCard as AgentCardData } from "@/lib/agent/service"
+import type { AgentCard as AgentCardData, AgentRoomState } from "@/lib/agent/service"
+import type { ToolUse } from "@/lib/agent/tool-trail"
 import { answeredAfter, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
+import { ToolTrail } from "./tool-trail"
 import { RoomHeader } from "./room-header"
 import { useRoomListReload } from "./messenger-shell"
 
@@ -41,18 +43,21 @@ export function OmnisRoom({
   roomName,
   initialMessages,
   initialCards = [],
+  initialTools = {},
   activeRun = null,
 }: {
   roomId: string | null
   roomName?: string
   initialMessages: OmnisRoomMessage[]
   initialCards?: AgentCardData[]
+  initialTools?: Record<string, ToolUse[]>
   activeRun?: { id: string; status: string } | null
 }) {
   const reloadList = useRoomListReload()
   const [roomId, setRoomId] = useState(initialRoomId)
   const [messages, setMessages] = useState(initialMessages)
   const [cards, setCards] = useState(initialCards)
+  const [tools, setTools] = useState(initialTools)
   const [draft, setDraft] = useState("")
   /** 보내는 중인 글 — 방 글에 그 질문(questionId)이 들어올 때까지 옅게 보인다 */
   const [pending, setPending] = useState<{ content: string; questionId: string | null } | null>(null)
@@ -85,9 +90,10 @@ export function OmnisRoom({
   const refresh = useCallback(async (id: string) => {
     const res = await fetch(apiUrl(`/api/agent/rooms/${id}`), { cache: "no-store" }).catch(() => null)
     if (!res?.ok) return null
-    const state = (await res.json()) as { messages: OmnisRoomMessage[]; cards: AgentCardData[]; activeRun: { id: string; status: string } | null }
+    const state = (await res.json()) as AgentRoomState
     setMessages(state.messages)
     setCards(state.cards)
+    setTools(state.tools ?? {})
     setRunning(state.activeRun?.status === "RUNNING" ? state.activeRun.id : null)
     return state
   }, [])
@@ -299,6 +305,7 @@ export function OmnisRoom({
     for (; ci < sortedCards.length; ci++) timeline.push({ kind: "card", card: sortedCards[ci], at: sortedCards[ci].createdAt })
   }
   const isNew = roomId === null && messages.length === 0
+  let trailFor: string | null = null
   const text = live ? liveText(live) : ""
 
   return (
@@ -338,6 +345,11 @@ export function OmnisRoom({
 
           <div role="log" aria-label="옴니스와의 대화" className="flex flex-col">
             {timeline.map((item) => {
+              // 도구 기록은 그 질문에 붙은 첫 옴니스 글 위에 — 흐름 순서(도구를 본 뒤 답했다)
+              if (item.kind === "row" && item.row.type !== "day") {
+                const m = item.row.message
+                if (!m.fromOmnis) trailFor = m.id
+              }
               if (item.kind === "card") {
                 const c = item.card
                 return (
@@ -354,8 +366,13 @@ export function OmnisRoom({
               if (row.type === "day") return <DayDivider key={row.key} label={row.label} />
               const m = row.message
               const fresh = new Date(m.createdAt).getTime() > mountedAt
+              let trail: ToolUse[] = []
+              if (m.fromOmnis && trailFor) {
+                trail = tools[trailFor] ?? []
+                trailFor = null
+              }
               return m.fromOmnis ? (
-                <OmnisMessage key={row.key} message={m} fresh={fresh} />
+                <OmnisMessage key={row.key} message={m} fresh={fresh} tools={trail} />
               ) : (
                 <MyMessage key={row.key} content={m.content} iso={m.createdAt} fresh={fresh} />
               )
@@ -413,16 +430,7 @@ function LiveOmnis({ text, tools, resuming = false }: { text: string; tools: Liv
           <Spinner />
           {status}
         </div>
-        {tools.length > 0 && (
-          <ul className="mb-1.5 flex flex-wrap gap-1" aria-label="옴니스가 본 자료">
-            {tools.map((t) => (
-              <li key={t.id} className="rounded-full border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground">
-                {TOOL_LABEL[t.name] ?? t.name}
-                {t.state === "done" ? " ✓" : t.state === "approval" ? " · 확인 필요" : " …"}
-              </li>
-            ))}
-          </ul>
-        )}
+        <ToolTrail items={tools} live />
         <div className="min-w-0 rounded-xl border bg-card px-3.5 py-3">
           {text ? (
             <OmnisAnswerBody answer={text} sources={[]} />
@@ -467,7 +475,7 @@ function OmnisAvatar() {
   )
 }
 
-function OmnisMessage({ message, fresh }: { message: OmnisRoomMessage; fresh: boolean }) {
+function OmnisMessage({ message, fresh, tools }: { message: OmnisRoomMessage; fresh: boolean; tools: ToolUse[] }) {
   return (
     <div className={cn("mt-4 flex gap-2.5", fresh && MESSAGE_ENTER)}>
       <OmnisAvatar />
@@ -476,6 +484,7 @@ function OmnisMessage({ message, fresh }: { message: OmnisRoomMessage; fresh: bo
           <span className="text-[13px] font-semibold">옴니스</span>
           <MessageTime iso={message.createdAt} />
         </div>
+        <ToolTrail items={tools} />
         <div className="min-w-0 rounded-xl border bg-card px-3.5 py-3">
           <OmnisAnswerBody answer={message.content} sources={message.sources} />
         </div>
