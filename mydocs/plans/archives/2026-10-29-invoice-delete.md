@@ -1,7 +1,7 @@
 ---
 kind: decision
 status: active
-canonical: mydocs/plans/2026-10-29-invoice-delete.md
+canonical: mydocs/plans/archives/2026-10-29-invoice-delete.md
 last_verified: 2026-10-29
 ---
 
