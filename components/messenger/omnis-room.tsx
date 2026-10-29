@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowUp01Icon, BubbleChatSparkIcon, Refresh01Icon } from "@hugeicons/core-free-icons"
@@ -18,12 +18,13 @@ import type { OmnisRoomMessage } from "@/lib/omnis-room"
 import type { AgentCard as AgentCardData, AgentRoomState } from "@/lib/agent/service"
 import type { ToolUse } from "@/lib/agent/tool-trail"
 import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
-import { answeredAfter, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
+import { answeredAfter, mergeLatest, prependOlder, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
+import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
 import { ToolTrail } from "./tool-trail"
 import { RoomHeader } from "./room-header"
-import { useRoomListReload } from "./messenger-shell"
+import { useChatUserId, useRoomListReload } from "./messenger-shell"
 
 const EXAMPLES = [
   "이번 주 마감인 업무 정리해 줘",
@@ -45,6 +46,7 @@ export function OmnisRoom({
   initialMessages,
   initialCards = [],
   initialTools = {},
+  initialHasMore = false,
   activeRun = null,
   embedded,
 }: {
@@ -53,6 +55,8 @@ export function OmnisRoom({
   initialMessages: OmnisRoomMessage[]
   initialCards?: AgentCardData[]
   initialTools?: Record<string, ToolUse[]>
+  /** 처음 받은 글 앞에 더 있는가 — 위로 올리면 30개씩 더 받는다 */
+  initialHasMore?: boolean
   activeRun?: { id: string; status: string } | null
   /**
    * 오른쪽 패널 안에 끼울 때. 머리줄을 그리지 않고(패널이 그린다), 새 방이 생겨도 주소를 바꾸지 않는다 —
@@ -87,20 +91,72 @@ export function OmnisRoom({
   /** 보내기 잠금 — 상태(pending)는 다음 그리기에야 보여 같은 순간 두 번 누르면 둘 다 지나갔다 */
   const sendingRef = useRef(false)
   const busy = pending !== null || live !== null || deciding !== null || running !== null
+  const userId = useChatUserId()
+  const [hasMore, setHasMore] = useState(initialHasMore)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  /** 앞 페이지를 붙이기 전의 스크롤 높이 — 붙인 뒤 보던 자리를 그대로 두려고 */
+  const anchor = useRef<number | null>(null)
 
+  // 아래로 붙이는 것은 새 글이 끝에 붙었을 때만 — 위로 올려 앞 글을 붙일 때(길이만 바뀜) 끝으로 튀지 않게
+  const lastId = messages.at(-1)?.id
   useEffect(() => {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages.length, cards.length, pending, live, error])
+  }, [lastId, cards.length, pending, live, error])
+
+  useLayoutEffect(() => {
+    const el = listRef.current
+    if (el && anchor.current !== null) {
+      el.scrollTop += el.scrollHeight - anchor.current
+      anchor.current = null
+    }
+  }, [messages])
+
+  /** 위로 올리면 — 지금 맨 앞 글보다 앞의 30개 */
+  const loadOlder = useCallback(async () => {
+    if (!roomId || !hasMore || loadingOlder || messages.length === 0) return
+    setLoadingOlder(true)
+    try {
+      const res = await fetch(apiUrl(`/api/agent/rooms/${roomId}?before=${encodeURIComponent(messages[0].createdAt)}`), { cache: "no-store" })
+      if (!res.ok) throw new Error()
+      const page = (await res.json()) as { messages: OmnisRoomMessage[]; tools: Record<string, ToolUse[]>; hasMore: boolean }
+      anchor.current = listRef.current?.scrollHeight ?? null
+      setMessages((prev) => prependOlder(prev, page.messages))
+      setTools((prev) => ({ ...page.tools, ...prev }))
+      setHasMore(page.hasMore)
+    } catch {
+      toast.error("앞의 대화를 불러오지 못했습니다")
+    } finally {
+      setLoadingOlder(false)
+    }
+  }, [roomId, hasMore, loadingOlder, messages])
+
+  // 기기에 저장 — 다음에 이 방을 열 때 서버를 기다리지 않고 바로 그린다(lib/chat-cache.ts). 최근 30개만
+  useEffect(() => {
+    if (!roomId || !userId || messages.length === 0) return
+    void writeCache(
+      userId,
+      roomCacheKey(`room:${roomId}`),
+      recentForCache(messages).map((m) => ({
+        id: m.id,
+        author: m.fromOmnis ? { id: "omnis", name: "옴니스" } : { id: userId, name: "나" },
+        mine: !m.fromOmnis,
+        fromOmnis: m.fromOmnis,
+        content: m.content,
+        createdAt: m.createdAt,
+      })),
+    )
+  }, [roomId, userId, messages])
 
   /** 방 상태를 DB 에서 다시 — 스트림이 끝날 때마다. 돌고 있는 실행도 함께 안다 */
   const refresh = useCallback(async (id: string) => {
     const res = await fetch(apiUrl(`/api/agent/rooms/${id}`), { cache: "no-store" }).catch(() => null)
     if (!res?.ok) return null
     const state = (await res.json()) as AgentRoomState
-    setMessages(state.messages)
+    // 위로 올려 받아 둔 앞 글은 남긴다(최근 페이지만 다시 받는다)
+    setMessages((prev) => mergeLatest(prev, state.messages))
     setCards(state.cards)
-    setTools(state.tools ?? {})
+    setTools((prev) => ({ ...prev, ...(state.tools ?? {}) }))
     setRunning(state.activeRun?.status === "RUNNING" ? state.activeRun.id : null)
     return state
   }, [])
@@ -263,7 +319,9 @@ export function OmnisRoom({
   }
 
   async function decide(card: AgentCardData, decision: "approve" | "reject") {
-    if (busy || !roomId) return
+    // [확인] 을 같은 순간 두 번 눌러도 한 번만(서버도 조건부 갱신으로 하나만 받는다)
+    if (busy || !roomId || sendingRef.current) return
+    sendingRef.current = true
     setDeciding({ id: card.id, decision })
     setError(null)
     try {
@@ -291,6 +349,7 @@ export function OmnisRoom({
     } finally {
       setDeciding(null)
       setLive(null)
+      sendingRef.current = false
       await settle(roomId)
       reloadList()
     }
@@ -301,7 +360,9 @@ export function OmnisRoom({
   const timeline: ({ kind: "row"; row: (typeof rows)[number]; at: string } | { kind: "card"; card: AgentCardData; at: string })[] = []
   {
     let ci = 0
-    const sortedCards = [...cards].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    // 앞 글을 다 받지 않았으면 받은 글보다 앞의 카드는 아직 그리지 않는다(맨 위에 몰려 보인다)
+    const from = hasMore ? messages[0]?.createdAt : undefined
+    const sortedCards = [...cards].filter((c) => !from || c.createdAt >= from).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     for (const row of rows) {
       const at = row.type === "day" ? null : row.message.createdAt
       while (at && ci < sortedCards.length && sortedCards[ci].createdAt < at) {
@@ -325,7 +386,13 @@ export function OmnisRoom({
         />
       )}
 
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div
+        ref={listRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        onScroll={(e) => {
+          if (e.currentTarget.scrollTop < 120) void loadOlder()
+        }}
+      >
         <div className={cn("mx-auto flex w-full max-w-[760px] flex-col py-4", embedded ? "px-3" : "px-3 sm:px-6")}>
           {isNew && !pending && (
             <div className={cn("flex flex-col items-center gap-4 text-center", embedded ? "py-4" : "py-8 sm:py-14")}>
@@ -353,6 +420,14 @@ export function OmnisRoom({
             </div>
           )}
 
+          {hasMore && (
+            <div className="flex justify-center pb-2">
+              <Button variant="ghost" size="sm" className="touch-target text-[12px] text-muted-foreground" onClick={() => void loadOlder()} disabled={loadingOlder}>
+                {loadingOlder ? <Spinner className="size-3.5" /> : null}
+                앞의 대화 더 보기
+              </Button>
+            </div>
+          )}
           <div role="log" aria-label="옴니스와의 대화" className="flex flex-col">
             {timeline.map((item) => {
               // 도구 기록은 그 질문에 붙은 첫 옴니스 글 위에 — 흐름 순서(도구를 본 뒤 답했다)

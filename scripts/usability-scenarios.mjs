@@ -336,6 +336,48 @@ if (want("chrome")) {
   await page.close()
 }
 
+// ─── 빠르게: 30개씩 · 위로 올려 더 받기 · 기기 저장으로 먼저 그리기 · 두 번 보내기 막기 ───
+if (want("speed")) {
+  console.log("[speed] 375 — 최근 30개 · 위로 더 · 저장본 먼저 · 누름 즉시")
+  const roomId = process.env.PAGED_ROOM
+  const page = await pageAt(375)
+  if (roomId) {
+    await open(page, `/chat/${roomId}`)
+    const count = () => page.locator('[role="log"] .omnis-md, [role="log"] .whitespace-pre-wrap').count()
+    const first = await count()
+    check("처음에는 최근 30개만 그린다", first === 30, first)
+    await page.locator("div.overflow-y-auto").filter({ has: page.locator('[role="log"]') }).first().evaluate((n) => (n.scrollTop = 0))
+    await page.waitForTimeout(2500)
+    const more = await count()
+    check("위로 올리면 앞의 글을 더 받는다(45개)", more === 45, more)
+    await shot(page, "U-375-paged-older")
+    // 목록 → 방: 서버 화면이 오기 전에 저장본이 먼저 보인다
+    await open(page, "/chat")
+    const link = page.locator(`[aria-label="채팅방"] a[href$="${roomId}"]`)
+    const t0 = Date.now()
+    await link.click()
+    const preview = await page.locator("[data-cached-preview]").waitFor({ timeout: 3000 }).then(() => Date.now() - t0).catch(() => null)
+    check("방을 누르면 저장본이 먼저 그려진다", preview !== null, { ms: preview })
+    if (preview !== null) {
+      console.log(`    저장본까지 ${preview}ms`)
+      await shot(page, "U-375-cached-preview")
+    }
+    await page.locator('[role="log"]').waitFor({ timeout: 30000 })
+  }
+  // 두 번 누르기 — 보내기 버튼을 같은 순간 두 번(모델을 부르지 않게 2자 미만 · 서버 거부 경로가 아니라 잠금을 본다)
+  await open(page, "/chat/default-room")
+  const before = await page.evaluate(async (base) => (await (await fetch(`${base}/api/chat/messages?roomId=default-room`)).json()).length, BASE)
+  const input = page.getByLabel("메시지 입력")
+  const text = `[화면 확인 ${Date.now().toString(36)}] 두 번 누르기`
+  await input.fill(text)
+  const posts = []
+  page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/api/chat/messages")) posts.push(r.url()) })
+  await page.getByRole("button", { name: "메시지 전송" }).evaluate((b) => { b.click(); b.click() })
+  await page.waitForTimeout(2500)
+  check("보내기를 같은 순간 두 번 눌러도 요청은 한 번", posts.length === 1, { posts: posts.length, before })
+  await page.close()
+}
+
 await browser.close()
 console.log(failed ? `✗ ${failed}건 실패` : "전부 통과")
 if (failed) process.exit(1)

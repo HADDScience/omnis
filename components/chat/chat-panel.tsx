@@ -9,6 +9,7 @@ import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { reportIncident } from "@/lib/report-client-error"
 import { ChatSearch } from "@/components/chat/chat-search"
+import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
 
 interface Message {
   id: string
@@ -85,6 +86,23 @@ export function ChatPanel({
   const [hasMoreNewer, setHasMoreNewer] = useState(false)
   const [loadingNewer, setLoadingNewer] = useState(false)
   const [highlight, setHighlight] = useState<{ id: string; n: number } | null>(null)
+
+  // 기기에 저장 — 다음에 이 방을 열 때 서버를 기다리지 않고 바로 그린다(lib/chat-cache.ts). 최근 30개 · 본문만.
+  // 업무로 거른 목록 · 검색 점프 중의 목록은 「이 방의 최근 글」 이 아니라 저장하지 않는다
+  useEffect(() => {
+    if (filterTaskId || jumped || messages.length === 0) return
+    void writeCache(
+      currentUserId,
+      roomCacheKey(`room:${roomId}`),
+      recentForCache(messages.filter((m) => !m.deletedAt)).map((m) => ({
+        id: m.id,
+        author: m.author,
+        mine: m.author.id === currentUserId,
+        content: m.content.startsWith("__TASK_CREATED__") ? "업무가 생성되었습니다" : m.content,
+        createdAt: m.createdAt,
+      })),
+    )
+  }, [messages, roomId, currentUserId, filterTaskId, jumped])
 
   const lastFetchedAt = useRef(
     initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : ""

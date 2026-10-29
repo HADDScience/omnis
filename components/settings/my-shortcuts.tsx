@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react"
 import { signOut } from "next-auth/react"
+import { clearChatCache } from "@/lib/chat-cache"
 import { useTheme } from "next-themes"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -123,7 +124,11 @@ export function MyShortcuts() {
             icon={<HugeiconsIcon icon={Logout01Icon} size={16} aria-hidden />}
             label="로그아웃"
             trailing={<span />}
-            onClick={() => signOut({ callbackUrl: "/", redirectTo: "/" })}
+            onClick={async () => {
+              // 이 기기에 저장해 둔 채팅(방 목록 · 방별 최근 글)을 먼저 지운다 — lib/chat-cache.ts
+              await clearChatCache().catch(() => {})
+              await signOut({ callbackUrl: "/", redirectTo: "/" })
+            }}
           />
         </ul>
       </CardContent>

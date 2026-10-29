@@ -74,6 +74,8 @@ export function MessageInput({
 }: MessageInputProps) {
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
+  /** 보내기 잠금 — sending 상태는 다음 그리기에야 보여, 같은 순간 버튼을 두 번 누르면 둘 다 지나갔다 */
+  const sendingRef = useRef(false)
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [nasFiles, setNasFiles] = useState<{ path: string; name: string }[]>([])
   const [nasPickerOpen, setNasPickerOpen] = useState(false)
@@ -327,7 +329,8 @@ export function MessageInput({
     const trimmed = content.trim()
     const attachedCount = attachedFiles.length + nasFiles.length
     if (!trimmed && attachedCount === 0) return
-    if (sending) return
+    if (sending || sendingRef.current) return
+    sendingRef.current = true
     setSending(true)
     try {
       await onSend(
@@ -344,6 +347,7 @@ export function MessageInput({
     } catch {
       // 보내지 못했다 — 쓴 글과 첨부를 그대로 둔다. 알림은 onSend 쪽이 띄운다.
     } finally {
+      sendingRef.current = false
       setSending(false)
     }
   }, [content, sending, onSend, attachedFiles, nasFiles])

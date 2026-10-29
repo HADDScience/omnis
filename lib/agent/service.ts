@@ -41,6 +41,8 @@ export interface AgentRoomState {
   activeRun: { id: string; status: string } | null
   /** 질문 글 id → 그 질문에 답하며 옴니스가 쓴 도구(부른 순서). 답이 끝나도 · 새로고침해도 남는다 */
   tools: Record<string, ToolUse[]>
+  /** 이 앞에 글이 더 있는가 — 위로 올리면 OMNIS_PAGE_SIZE 개씩 더 받는다 */
+  hasMore: boolean
 }
 
 /** 돌고 있다고 보는 시간. 이보다 오래 RUNNING 이면 죽은 실행으로 보고 새 글을 받는다 */
@@ -76,38 +78,63 @@ function shapeCard(s: {
   }
 }
 
+/** 방을 열 때 · 위로 올릴 때 한 번에 받는 글 수(2026-10-29 「매번 전부 불러오지 말고」) */
+export const OMNIS_PAGE_SIZE = 30
+
+const MESSAGE_SELECT = { id: true, content: true, createdAt: true, authorId: true, omnisQuery: { select: { sources: true } } } as const
+
+/** 글 한 페이지(최근부터 거꾸로 PAGE+1 개를 읽어 더 있는지 안다) + 그 글들의 질문에 붙은 도구 기록 */
+async function messagePage(roomId: string, userId: string, before?: Date) {
+  const rows = await prisma.chatMessage.findMany({
+    where: { roomId, deletedAt: null, ...(before ? { createdAt: { lt: before } } : {}) },
+    orderBy: { createdAt: "desc" },
+    take: OMNIS_PAGE_SIZE + 1,
+    select: MESSAGE_SELECT,
+  })
+  const hasMore = rows.length > OMNIS_PAGE_SIZE
+  const page = rows.slice(0, OMNIS_PAGE_SIZE).reverse()
+  // 같은 질문을 다시 물으면(retryOf) 실행이 둘 — 이어 붙인다. 이 페이지의 질문만 읽는다(실행 대화는 길다)
+  const runs = await prisma.agentRun.findMany({
+    where: { roomId, userId, questionMessageId: { in: page.map((m) => m.id) } },
+    orderBy: { createdAt: "asc" },
+    select: { questionMessageId: true, messages: true },
+  })
+  const tools: Record<string, ToolUse[]> = {}
+  for (const r of runs) {
+    const t = toolTrail(r.messages as unknown as { role: string; content: unknown }[])
+    if (t.length) tools[r.questionMessageId] = [...(tools[r.questionMessageId] ?? []), ...t]
+  }
+  return { messages: page.map(shapeMessage), tools, hasMore }
+}
+
 export async function loadAgentRoom(roomId: string, userId: string): Promise<AgentRoomState | null> {
   const room = await ownRoom(roomId, userId)
   if (!room) return null
-  const [rows, steps, active, runs] = await Promise.all([
-    prisma.chatMessage.findMany({
-      where: { roomId, deletedAt: null },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, content: true, createdAt: true, authorId: true, omnisQuery: { select: { sources: true } } },
-    }),
+  const [page, steps, active] = await Promise.all([
+    messagePage(roomId, userId),
     prisma.agentStep.findMany({ where: { run: { roomId, userId } }, orderBy: { createdAt: "asc" } }),
     prisma.agentRun.findFirst({
       where: { roomId, userId, status: { in: ["RUNNING", "AWAITING_APPROVAL"] } },
       orderBy: { createdAt: "desc" },
       select: { id: true, status: true, updatedAt: true },
     }),
-    prisma.agentRun.findMany({ where: { roomId, userId }, orderBy: { createdAt: "asc" }, select: { questionMessageId: true, messages: true } }),
     prisma.chatRoomMember.update({ where: { roomId_userId: { roomId, userId } }, data: { lastReadAt: new Date() } }),
   ])
-  // 같은 질문을 다시 물으면(retryOf) 실행이 둘 — 이어 붙인다
-  const tools: Record<string, ToolUse[]> = {}
-  for (const r of runs) {
-    const t = toolTrail(r.messages as unknown as { role: string; content: unknown }[])
-    if (t.length) tools[r.questionMessageId] = [...(tools[r.questionMessageId] ?? []), ...t]
-  }
   const live = active && (active.status !== "RUNNING" || Date.now() - active.updatedAt.getTime() < RUNNING_STALE_MS) ? active : null
   return {
     room,
-    messages: rows.map(shapeMessage),
+    messages: page.messages,
     cards: steps.map(shapeCard),
     activeRun: live ? { id: live.id, status: live.status } : null,
-    tools,
+    tools: page.tools,
+    hasMore: page.hasMore,
   }
+}
+
+/** 위로 올릴 때 — before 보다 앞의 글 한 페이지 */
+export async function loadAgentRoomOlder(roomId: string, userId: string, before: Date) {
+  if (!(await ownRoom(roomId, userId))) return null
+  return messagePage(roomId, userId, before)
 }
 
 function streamResponse(workflowRunId: string, readable: ReadableStream, headers: Record<string, string>) {

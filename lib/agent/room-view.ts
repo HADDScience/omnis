@@ -53,3 +53,20 @@ export function showPendingBubble(messages: RoomViewMessage[], pending: { questi
   if (!pending.questionId) return true
   return !messages.some((m) => m.id === pending.questionId)
 }
+
+/**
+ * 방을 다시 읽은 최근 페이지(latest)에, 위로 올려 이미 받아 둔 앞 글(prev 중 latest 보다 앞)을 붙인다.
+ * 다시 읽을 때마다 앞 글을 버리면 올려 보던 자리가 사라진다. 최근 페이지가 비면(방의 글을 다 지웠다) 그것을 따른다
+ */
+export function mergeLatest<M extends RoomViewMessage>(prev: M[], latest: M[]): M[] {
+  if (latest.length === 0) return latest
+  const first = latest[0].createdAt
+  const ids = new Set(latest.map((m) => m.id))
+  return [...prev.filter((m) => m.createdAt < first && !ids.has(m.id)), ...latest]
+}
+
+/** 위로 올려 받은 앞 페이지를 앞에 붙인다 — 겹치는 글은 한 번만 */
+export function prependOlder<M extends RoomViewMessage>(prev: M[], older: M[]): M[] {
+  const ids = new Set(prev.map((m) => m.id))
+  return [...older.filter((m) => !ids.has(m.id)), ...prev]
+}

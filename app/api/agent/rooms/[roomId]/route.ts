@@ -2,17 +2,25 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { apiError, parseJson } from "@/lib/api"
 import { AgentTurnSchema } from "@/lib/schemas/agent"
-import { loadAgentRoom, startAgentTurn } from "@/lib/agent/service"
+import { loadAgentRoom, loadAgentRoomOlder, startAgentTurn } from "@/lib/agent/service"
 import { agentDisabled, agentStream } from "@/lib/agent/http"
 
 export const runtime = "nodejs"
 export const maxDuration = 300
 
-/** 방 화면 상태 — 글 · 확인 카드 · 돌고 있는 실행 */
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ roomId: string }> }) {
+/** 방 화면 상태 — 최근 글 한 페이지 · 확인 카드 · 돌고 있는 실행. ?before=<ISO> 면 그 앞의 글 한 페이지만 */
+export async function GET(req: NextRequest, { params }: { params: Promise<{ roomId: string }> }) {
   const session = await auth()
   if (!session?.user?.id) return apiError(401, "인증 필요")
   const { roomId } = await params
+  const before = req.nextUrl.searchParams.get("before")
+  if (before) {
+    const at = new Date(before)
+    if (Number.isNaN(at.getTime())) return apiError(400, "잘못된 시각입니다")
+    const older = await loadAgentRoomOlder(roomId, session.user.id, at)
+    if (!older) return apiError(404, "대화를 찾을 수 없습니다")
+    return NextResponse.json(older, { headers: { "Cache-Control": "no-store" } })
+  }
   const state = await loadAgentRoom(roomId, session.user.id)
   if (!state) return apiError(404, "대화를 찾을 수 없습니다")
   return NextResponse.json(state, { headers: { "Cache-Control": "no-store" } })

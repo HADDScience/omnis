@@ -75,6 +75,7 @@ import {
 } from "@/lib/chat-list"
 import type { RoomList as RoomListData, RoomListItem } from "@/lib/chat-rooms"
 import { chatPrefs } from "./chat-prefs-client"
+import { LIST_CACHE_KEY, readCache, writeCache } from "@/lib/chat-cache"
 import { FolderManager } from "./folder-manager"
 import { SwipeRow, type SwipeSide } from "./swipe-row"
 import { AuthorAvatar } from "@/components/chat/message-parts"
@@ -144,12 +145,21 @@ export function RoomList({ version, userId }: { version: number; userId: string 
     try {
       const res = await fetch(apiUrl("/api/chat/rooms"))
       if (!res.ok) throw new Error(`목록을 불러오지 못했습니다 (${res.status})`)
-      setData((await res.json()) as RoomListData)
+      const next = (await res.json()) as RoomListData
+      setData(next)
       setError(null)
+      void writeCache(userId, LIST_CACHE_KEY, next)
     } catch (err) {
       setError(err instanceof Error ? err.message : "목록을 불러오지 못했습니다")
     }
-  }, [])
+  }, [userId])
+
+  // 기기에 저장해 둔 목록으로 먼저 그린다 — 서버 응답이 오면 갈아 끼운다(lib/chat-cache.ts)
+  useEffect(() => {
+    void readCache<RoomListData>(userId, LIST_CACHE_KEY).then((cached) => {
+      if (cached) setData((d) => d ?? cached)
+    })
+  }, [userId])
 
   useEffect(() => {
     void load()

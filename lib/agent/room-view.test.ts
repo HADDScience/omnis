@@ -2,7 +2,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 
-import { answeredAfter, showPendingBubble, unansweredQuestion } from "./room-view"
+import { answeredAfter, mergeLatest, prependOlder, showPendingBubble, unansweredQuestion } from "./room-view"
 
 const q = { id: "q1", fromOmnis: false, createdAt: "2026-10-29T05:01:03.829Z" }
 const a = { id: "a1", fromOmnis: true, createdAt: "2026-10-29T05:01:15.019Z" }
@@ -50,4 +50,16 @@ test("보내는 중인 글 — 질문 id 로 대조한다. 같은 내용의 앞 
   assert.equal(showPendingBubble([same, q], { questionId: "q1" }), false)
   assert.equal(showPendingBubble([], { questionId: null }), true)
   assert.equal(showPendingBubble([q], null), false)
+})
+
+const m = (id: string, at: string, fromOmnis = false) => ({ id, fromOmnis, createdAt: `2026-10-29T0${at}:00.000Z` })
+
+test("다시 읽어도 위로 올려 받아 둔 앞 글은 남는다", () => {
+  const prev = [m("o1", "1"), m("o2", "2"), m("p1", "3"), m("p2", "4")]
+  const latest = [m("p1", "3"), m("p2", "4"), m("p3", "5", true)]
+  assert.deepEqual(mergeLatest(prev, latest).map((x) => x.id), ["o1", "o2", "p1", "p2", "p3"])
+})
+
+test("앞 페이지를 붙일 때 겹치는 글은 한 번만", () => {
+  assert.deepEqual(prependOlder([m("b", "3"), m("c", "4")], [m("a", "2"), m("b", "3")]).map((x) => x.id), ["a", "b", "c"])
 })

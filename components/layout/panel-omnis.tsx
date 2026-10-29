@@ -153,6 +153,7 @@ export function PanelOmnis({ userId }: { userId: string }) {
           initialMessages={state?.messages ?? []}
           initialCards={state?.cards ?? []}
           initialTools={state?.tools ?? {}}
+          initialHasMore={state?.hasMore ?? false}
           activeRun={state?.activeRun ?? null}
           embedded={{
             onRoomCreated: (id) => {

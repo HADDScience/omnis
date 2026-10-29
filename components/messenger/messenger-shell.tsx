@@ -13,6 +13,10 @@ import { RoomList } from "./room-list"
 const RoomListReload = createContext<() => void>(() => {})
 export const useRoomListReload = () => useContext(RoomListReload)
 
+/** 메신저를 보는 사람 — 기기 저장(lib/chat-cache.ts)의 키. 메신저 밖(오른쪽 패널)에서는 빈 값이라 저장하지 않는다 */
+const ChatUser = createContext<string>("")
+export const useChatUserId = () => useContext(ChatUser)
+
 /**
  * 메신저 셸 — 왼쪽 방 목록 + 가운데 대화. 카톡 PC 처럼 목록은 사이드바가 아니라 이 화면 안의 왼쪽 칸이다.
  *
@@ -28,6 +32,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
   const reload = useCallback(() => setVersion((v) => v + 1), [])
 
   return (
+    <ChatUser.Provider value={userId}>
     <RoomListReload.Provider value={reload}>
       <div className="flex h-full min-h-0 flex-col">
         <Header title="채팅" />
@@ -48,6 +53,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
         </div>
       </div>
     </RoomListReload.Provider>
+    </ChatUser.Provider>
   )
 }
 
