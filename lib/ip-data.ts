@@ -527,6 +527,16 @@ export async function listCases(): Promise<IpCase[]> {
 }
 
 /**
+ * 상표 · 특허 건수만. 랜딩의 「쌓이는 것」 이 쓴다 — 이름 · 번호는 꺼내지 않는다
+ * (mydocs/plans/2026-10-29-landing-v2.md 「정한 것」 1).
+ */
+export async function countCases(): Promise<number> {
+  const [row] = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT (SELECT count(*) FROM ip.trademarks) + (SELECT count(*) FROM ip.patents) AS n`
+  return Number(row?.n ?? 0)
+}
+
+/**
  * 아직 차례가 남아 있는 일. "밀린 IP 업무" 질문이 이걸 본다.
  *
  * 건마다 **가장 최근 기록 하나**만 본다. 옛 기록의 「회신 필요」는 이미 지나간
