@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -26,6 +26,9 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { LinkPendingMark } from "@/components/ui/pending-link"
+import { NotificationBell } from "@/components/layout/notification-bell"
+import { NAV_DESKTOP_QUERY } from "@/components/layout/floating-nav"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -117,7 +120,9 @@ function patchRoom(d: RoomListData, key: string, patch: Partial<RoomListItem>): 
 const chipStorageKey = (userId: string) => `omnis.chat.chip.${userId}`
 
 /**
- * 메신저 왼쪽 목록 — 검색칸 · 칩 한 줄(전체 · 옴니스 · 안읽음 · 즐겨찾기 · 내 폴더 · 폴더 관리) · 방 목록.
+ * 메신저 왼쪽 목록 — 칩 한 줄(전체 · 옴니스 · 안읽음 · 즐겨찾기 · 내 폴더 · 폴더 관리) · 검색칸 · 방 목록.
+ * 검색칸은 목록 맨 위에 붙어 있다. 폰에서는 처음에 그 높이만큼 내려 둬 숨는다 — 끌어내리면 나온다(iOS 연락처).
+ * PC 는 화면이 넉넉해 처음부터 보인다(2026-10-29 작업지시자).
  * 칩은 방 종류로 칸을 나누지 않고 최근 글 순 한 목록을 거른다. 검색은 칩과 상관없이 전체에서 찾는다.
  * 지금 연 방은 열 때 · 떠날 때 · 새 글이 보일 때 읽음으로 올린다 — 대화 칸을 건드리지 않고 주소로 안다.
  * `version` 이 오르면 다시 읽는다 — 방 화면이 새 대화를 만들거나 답을 받았을 때 올린다.
@@ -136,6 +141,10 @@ export function RoomList({ version, userId }: { version: number; userId: string 
     error: string | null
   } | null>(null)
   const [searchTry, setSearchTry] = useState(0)
+  const listRef = useRef<HTMLElement>(null)
+  const searchRef = useRef<HTMLDivElement>(null)
+  // 폰의 알림 종 — 채팅 화면에는 제목줄이 없어 칩 줄 끝에 둔다. PC 는 떠 있는 nav 에 있다
+  const isMdUp = useMediaQuery(NAV_DESKTOP_QUERY)
   const [manager, setManager] = useState<{
     open: boolean
     pickFolderId?: string
@@ -348,60 +357,86 @@ export function RoomList({ version, userId }: { version: number; userId: string 
   const currentFolder = chip.startsWith("folder:") ? folders.find((f) => `folder:${f.id}` === chip) : undefined
   const showNewChat = !searching && (chip === "all" || chip === "omnis")
 
+  // 폰에서 처음 그릴 때 검색칸을 위로 밀어 둔다. 목록은 방을 옮겨 다녀도 그대로라(MessengerShell) 한 번이면 된다.
+  // isMdUp 은 첫 그림에서 아직 false 라 여기서는 매체 질의를 직접 본다
+  useLayoutEffect(() => {
+    const nav = listRef.current
+    const box = searchRef.current
+    if (nav && box && !window.matchMedia(NAV_DESKTOP_QUERY).matches) nav.scrollTop = box.offsetHeight
+  }, [])
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b pt-2.5 pb-2">
-        <SearchBox value={query} onChange={setQuery} />
-        <ChipBar
-          chip={chip}
-          onSelect={selectChip}
-          folders={folders}
-          unreadRooms={unreadRooms}
-          dimmed={searching}
-          onManage={() => setManager({ open: true })}
-        />
+      <div className="flex shrink-0 items-center border-b pt-2.5 pb-2">
+        <div className="min-w-0 flex-1">
+          <ChipBar
+            chip={chip}
+            onSelect={selectChip}
+            folders={folders}
+            unreadRooms={unreadRooms}
+            dimmed={searching}
+            onManage={() => setManager({ open: true })}
+          />
+        </div>
+        {!isMdUp && (
+          // 다른 화면 제목줄의 알림 종과 같은 유리 원(.glass, header.tsx) — 아이콘은 원 한가운데
+          <div className="glass mr-3 flex size-10 shrink-0 items-center justify-center rounded-full [@media(pointer:coarse)]:size-[44px] [&_button]:size-full! [&_button]:rounded-full">
+            <NotificationBell />
+          </div>
+        )}
       </div>
 
-      <nav aria-label="채팅방" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-2 pb-20">
-        {error && !data && !searching && <ErrorBox message={error} onRetry={() => void load()} />}
-        {searching && search?.error && <ErrorBox message={search.error} onRetry={() => setSearchTry((n) => n + 1)} />}
+      {/* 폰: 검색칸 · 목록 두 곳에 걸쇠(snap)를 걸어, 검색칸이 반쯤 걸쳐 멈추지 않고 다 나오거나 다 숨는다 */}
+      <nav
+        ref={listRef}
+        aria-label="채팅방"
+        className="min-h-0 flex-1 overflow-y-auto max-md:snap-y max-md:snap-proximity overscroll-contain pb-20"
+      >
+        <div ref={searchRef} className="snap-start pt-2">
+          <SearchBox value={query} onChange={setQuery} />
+        </div>
+        {/* 폰: 방이 몇 개 없어도 검색칸을 숨길 만큼은 스크롤되게 목록 칸을 화면 높이 이상으로 둔다 */}
+        <div className="snap-start max-md:min-h-full">
+          {error && !data && !searching && <ErrorBox message={error} onRetry={() => void load()} />}
+          {searching && search?.error && <ErrorBox message={search.error} onRetry={() => setSearchTry((n) => n + 1)} />}
 
-        {searching && (
-          <p className="px-4 pb-1.5 text-[11px] text-muted-foreground" aria-live="polite">
-            {search?.data ? `전체에서 찾은 방 ${visible.length}개` : "찾는 중…"}
-          </p>
-        )}
-
-        <div className="flex flex-col gap-0.5">
-          {showNewChat && <NewChatRow active={pathname === "/chat/new"} />}
-          {loading ? (
-            <RowSkeletons count={6} />
-          ) : visible.length === 0 ? (
-            <EmptyState
-              searching={searching}
-              query={trimmed}
-              chip={chip}
-              folder={currentFolder}
-              onPickRooms={
-                currentFolder && !currentFolder.rule ? () => setManager({ open: true, pickFolderId: currentFolder.id }) : undefined
-              }
-            />
-          ) : (
-            visible.map((r) => (
-              <RoomRow
-                key={r.key}
-                room={r}
-                active={r.key === activeKey}
-                folders={folders}
-                swiped={swiped?.key === r.key ? swiped.side : null}
-                onSwipe={(side) => setSwiped(side ? { key: r.key, side } : null)}
-                onFavorite={() => void toggleFavorite(r)}
-                onFolder={(f) => void toggleFolder(r, f)}
-                onNewFolder={() => setManager({ open: true })}
-                onRemove={(removal) => setConfirm({ room: r, removal })}
-              />
-            ))
+          {searching && (
+            <p className="px-4 pb-1.5 text-[11px] text-muted-foreground" aria-live="polite">
+              {search?.data ? `전체에서 찾은 방 ${visible.length}개` : "찾는 중…"}
+            </p>
           )}
+
+          <div className="flex flex-col gap-0.5">
+            {showNewChat && <NewChatRow active={pathname === "/chat/new"} />}
+            {loading ? (
+              <RowSkeletons count={6} />
+            ) : visible.length === 0 ? (
+              <EmptyState
+                searching={searching}
+                query={trimmed}
+                chip={chip}
+                folder={currentFolder}
+                onPickRooms={
+                  currentFolder && !currentFolder.rule ? () => setManager({ open: true, pickFolderId: currentFolder.id }) : undefined
+                }
+              />
+            ) : (
+              visible.map((r) => (
+                <RoomRow
+                  key={r.key}
+                  room={r}
+                  active={r.key === activeKey}
+                  folders={folders}
+                  swiped={swiped?.key === r.key ? swiped.side : null}
+                  onSwipe={(side) => setSwiped(side ? { key: r.key, side } : null)}
+                  onFavorite={() => void toggleFavorite(r)}
+                  onFolder={(f) => void toggleFolder(r, f)}
+                  onNewFolder={() => setManager({ open: true })}
+                  onRemove={(removal) => setConfirm({ room: r, removal })}
+                />
+              ))
+            )}
+          </div>
         </div>
       </nav>
 
