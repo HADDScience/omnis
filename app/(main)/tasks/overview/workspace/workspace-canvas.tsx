@@ -25,6 +25,11 @@ import { WorkspaceToolbar, type GroupMode } from "./workspace-toolbar"
 import { TASK_STATUS_LABELS } from "@/lib/constants"
 import { apiUrl } from "@/lib/base-path"
 
+// 위쪽 도구 막대(h-10, workspace-toolbar)가 캔버스 위에 떠 있다. 맞춤 여백을 사방 같게 두면 맨 위 노드가
+// 막대 밑에 깔려 누를 수 없었다(관계도가 업무 탭으로 들어와 캔버스가 낮아진 뒤, 2026-10-29 CI) — 위만 막대만큼 더 비운다
+const FIT_VIEW = { padding: { top: "64px", right: "8%", bottom: "8%", left: "8%" } } as const
+
+
 const nodeTypes = {
   productRoom: ProductRoomNode,
   projectCard: ProjectCardNode,
@@ -227,14 +232,14 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
           if (normalized?.viewport) {
             setViewport(normalized.viewport)
           } else {
-            fitView({ padding: 0.08 })
+            fitView(FIT_VIEW)
           }
         }, 150)
         loadedRef.current = true
       })
       .catch(() => {
         setNodes(applyLayout(initialNodes, null))
-        setTimeout(() => fitView({ padding: 0.08 }), 150)
+        setTimeout(() => fitView(FIT_VIEW), 150)
         loadedRef.current = true
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -286,7 +291,7 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
   const handleResetLayout = useCallback(() => {
     savedLayoutRef.current = null
     setNodes(applyLayout(initialNodes, null))
-    setTimeout(() => fitView({ padding: 0.08 }), 50)
+    setTimeout(() => fitView(FIT_VIEW), 50)
     fetch(apiUrl("/api/workspace-layout"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -352,7 +357,7 @@ export function WorkspaceCanvas({ initialNodes, initialEdges }: WorkspaceCanvasP
         onPaneClick={() => setSelectedId(null)}
         onMoveEnd={() => { if (userInteractedRef.current) saveLayout() }}
         nodeTypes={nodeTypes}
-        fitViewOptions={{ padding: 0.08 }}
+        fitViewOptions={FIT_VIEW}
         minZoom={0.2}
         maxZoom={1.5}
         proOptions={{ hideAttribution: true }}

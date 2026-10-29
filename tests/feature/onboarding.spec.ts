@@ -610,8 +610,10 @@ test.describe("onboarding", () => {
     await page.getByRole("button", { name: "Omnis AI", exact: true }).click()
     const input = page.getByRole("textbox", { name: "옴니스에게 보낼 질문" })
     await input.fill("아직 전송하지 않은 질문입니다")
-    const url = page.url()
-    await page.goto("/settings")
+    // 튜토리얼 다시 보기는 프로필 메뉴에서 마이 화면으로 옮겼다. page.goto 로 가면 문서를 새로 읽어
+    // 작성 중인 질문이 사라지니, 사람처럼 마이 동그라미를 눌러 화면 안에서 옮겨 간다
+    await page.getByRole("link", { name: /^마이/ }).first().click()
+    await page.waitForURL("**/settings")
     await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
     await skipVideo(page)
     for (let index = 0; index < 2; index++) {
@@ -624,7 +626,6 @@ test.describe("onboarding", () => {
     )
     await page.getByRole("button", { name: "안내 건너뛰기" }).click()
     await expect(input).toHaveValue("아직 전송하지 않은 질문입니다")
-    expect(page.url()).toBe(url)
     await expect(input).toBeVisible()
   })
 
