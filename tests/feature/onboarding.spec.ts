@@ -254,7 +254,6 @@ test.describe("onboarding", () => {
     await skipVideo(page)
     const targets = [
       "tasks",
-      "chat-trigger",
       "conversation",
       "ai",
       "resources",
@@ -305,7 +304,7 @@ test.describe("onboarding", () => {
           { message: `정확한 강조 영역과 설명 위치: ${target}` }
         )
         .toBe(true)
-      if (target === "chat-trigger") {
+      if (target === "conversation") {
         await page.getByRole("button", { name: "이전 안내" }).click()
         await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
           "data-tour-stop",
@@ -314,7 +313,7 @@ test.describe("onboarding", () => {
         await page.getByRole("button", { name: "다음 →", exact: true }).click()
         await expect(page.locator("[data-tour-stop]")).toHaveAttribute(
           "data-tour-stop",
-          "chat-trigger"
+          "conversation"
         )
       }
       if (target === "profile")
@@ -365,7 +364,6 @@ test.describe("onboarding", () => {
     await page.getByRole("button", { name: "업무 시작하기" }).click()
     const stops = [
       "tasks",
-      "chat-trigger",
       "conversation",
       "ai",
       "resources",
@@ -608,7 +606,14 @@ test.describe("onboarding", () => {
     // 패널의 「Omnis AI」 탭은 메신저의 옴니스 1:1 방으로 옮겨 없어졌다(d7a76ed). 투어가 지켜야 하는 것 —
     // 「대화」 장면이 패널을 열 때 탭을 바꿔 쓰던 글을 버리지 않는다 — 은 패널에 남은 「전체」 대화 입력으로 본다.
     // nav 채팅 탭은 이제 /chat 으로 가는 링크라 패널은 따로 연다. 제목줄의 「채팅 열기」 는 지웠고(2026-10-29)
-    // 오른쪽 아래 둥근 단추(PanelDock)가 그 자리를 맡는다 — 지키는 것(쓰던 글 보존)은 그대로다
+    // 오른쪽 아래 둥근 단추(PanelDock)가 그 자리를 맡는다 — 지키는 것(쓰던 글 보존)은 그대로다.
+    // 그 단추는 채팅 화면에서는 숨는다(2026-10-29) — nav 의 업무 탭으로 화면 안에서 옮겨 가서 연다
+    await page
+      .getByRole("navigation", { name: "주 메뉴" })
+      .filter({ visible: true })
+      .getByRole("link", { name: "업무", exact: true })
+      .click()
+    await page.waitForURL("**/tasks")
     await page.getByRole("button", { name: "대화 패널 열기", exact: true }).click()
     const panel = page.locator('aside[data-onboarding="conversation"]')
     await expect(
@@ -622,7 +627,7 @@ test.describe("onboarding", () => {
     await page.waitForURL("**/settings")
     await page.getByRole("button", { name: "온보딩 튜토리얼 다시 보기" }).click()
     await skipVideo(page)
-    for (let index = 0; index < 2; index++) {
+    for (let index = 0; index < 1; index++) {
       await page.clock.fastForward(1300)
       await page.clock.fastForward(7100)
     }

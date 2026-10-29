@@ -25,7 +25,6 @@ export function PanelDock() {
   return (
     <button
       type="button"
-      data-onboarding="chat-trigger"
       aria-label={label}
       title={`${label} (C)`}
       onClick={() => openWith(task ? "task" : "all")}
