@@ -86,7 +86,7 @@ export function ThreadComposer({
         if (!link.ok) {
           const err = await link.json().catch(() => ({}))
           reportIncident({ kind: "upload_failed", message: err?.error ?? "NAS 파일 연결 실패", status: link.status, fileName: path })
-          throw new Error(err?.error ?? "NAS 파일을 연결하지 못했습니다")
+          throw new Error(err?.error ?? "시놀로지 파일을 연결하지 못했습니다")
         }
         fileIds.push((await link.json()).id)
       }

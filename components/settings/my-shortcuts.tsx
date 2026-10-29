@@ -76,7 +76,9 @@ export function MyShortcuts() {
         <ul className="flex flex-col divide-y">
           <Row
             onboarding="mcp"
-            className="text-primary"
+            // 무지개 테두리(ShineBorder)는 이 단추의 모서리(rounded-[inherit])를 따른다. 카드의 첫 줄이라 위 두 모서리를
+            // 카드(rounded-xl)와 같게 굴린다 — 각진 채로 두면 카드가 모서리를 잘라 테두리가 끊겨 보였다(2026-10-29 작업지시자)
+            className="rounded-t-xl text-primary"
             icon={
               <>
                 <ShineBorder

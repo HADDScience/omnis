@@ -49,7 +49,7 @@ export async function GET(req: NextRequest, { params }: Props) {
     object = await getStaffAsset(asset.objectKey)
   } catch (err) {
     console.error("[staff-assets] NAS 읽기 실패", { assetId, err })
-    return NextResponse.json({ error: "NAS 에서 이미지를 읽지 못했습니다" }, { status: 502 })
+    return NextResponse.json({ error: "시놀로지에서 이미지를 읽지 못했습니다" }, { status: 502 })
   }
 
   const label = KIND_LABEL[asset.kind]

@@ -22,7 +22,7 @@ const ITEMS: readonly Item[] = [
     label: "지식 카드",
     isActive: (p) => (p === "/omnis" || p.startsWith("/omnis/")) && !p.startsWith("/omnis/nas"),
   },
-  { href: "/omnis/nas", label: "NAS", isActive: (p) => p.startsWith("/omnis/nas") },
+  { href: "/omnis/nas", label: "시놀로지", isActive: (p) => p.startsWith("/omnis/nas") },
   // 화면은 아직 밖에 있다. 데이터는 이미 Omnis DB(ip 스키마)라, 화면을 들이는 날 href 만 바꾸면 된다
   { href: IP_PLATFORM_URL, label: "지식재산권", external: true },
   { href: "/crm/quotes", label: "고객·견적", isActive: (p) => p.startsWith("/crm") },

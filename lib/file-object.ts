@@ -11,6 +11,6 @@ export async function openFileObject(file: { id: string; name: string; path: str
   // 행을 만들 때 걸렀지만 DB 값을 그대로 NAS 로 보내지 않는다 — 공유폴더 밖으로 나가는 경로는 여기서도 막는다
   const path = normalizeNasPath(linked)
   const res = path ? await readFile(path) : null
-  if (!res) throw new Error("NAS 에서 파일을 찾지 못했습니다 — 옮겨졌거나 지워졌을 수 있습니다")
+  if (!res) throw new Error("시놀로지에서 파일을 찾지 못했습니다 — 옮겨졌거나 지워졌을 수 있습니다")
   return res
 }

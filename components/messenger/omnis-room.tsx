@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowUp01Icon, BubbleChatSparkIcon, Refresh01Icon } from "@hugeicons/core-free-icons"
+import { ArrowDown01Icon, ArrowUp01Icon, BubbleChatSparkIcon, Refresh01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
@@ -19,6 +19,7 @@ import type { AgentCard as AgentCardData, AgentRoomState } from "@/lib/agent/ser
 import type { ToolUse } from "@/lib/agent/tool-trail"
 import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
 import { answeredAfter, mergeLatest, prependOlder, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
+import { isStuckToBottom, prependScrollDelta } from "@/lib/agent/scroll-follow"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
@@ -101,20 +102,43 @@ export function OmnisRoom({
   /** 앞 페이지를 붙이기 전의 스크롤 높이 — 붙인 뒤 보던 자리를 그대로 두려고 */
   const anchor = useRef<number | null>(null)
 
+  /**
+   * 맨 아래에 붙어 있는가 — 붙어 있을 때만 새 글 · 흘러 드는 답을 따라 내려간다(lib/agent/scroll-follow.ts).
+   * 사용자가 위로 올리면(터치 · 휠 · 키보드 모두 scroll 이벤트로 나타난다) 놓고, 직접 아래로 내려 가까워지면 다시 붙는다.
+   * 예전에는 답이 한 조각 올 때마다 무조건 끝으로 내려 읽던 자리를 빼앗았다(2026-10-29)
+   */
+  const stickRef = useRef(true)
+  /** 맨 아래에서 떨어져 있다 → 「맨 아래로」 단추 */
+  const [away, setAway] = useState(false)
+  /** 떨어져 있는 동안 새 글 · 답이 왔다 → 단추가 「새 답」 */
+  const [unseen, setUnseen] = useState(false)
+
   // 아래로 붙이는 것은 새 글이 끝에 붙었을 때만 — 위로 올려 앞 글을 붙일 때(길이만 바뀜) 끝으로 튀지 않게
+  // 그리기 전에 내려 한 프레임이라도 새 글이 아래에 잘려 보이지 않게(useLayoutEffect)
   const lastId = messages.at(-1)?.id
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = listRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    if (stickRef.current) el.scrollTop = el.scrollHeight
+    else setUnseen(true)
   }, [lastId, cards.length, pending, live, error])
 
   useLayoutEffect(() => {
     const el = listRef.current
     if (el && anchor.current !== null) {
-      el.scrollTop += el.scrollHeight - anchor.current
+      el.scrollTop += prependScrollDelta(anchor.current, el.scrollHeight)
       anchor.current = null
     }
   }, [messages])
+
+  function followBottom() {
+    const el = listRef.current
+    if (!el) return
+    stickRef.current = true
+    setAway(false)
+    setUnseen(false)
+    el.scrollTop = el.scrollHeight
+  }
 
   /** 위로 올리면 — 지금 맨 앞 글보다 앞의 30개 */
   const loadOlder = useCallback(async () => {
@@ -259,6 +283,8 @@ export function OmnisRoom({
     // 보내는 중에는 다시 보내지 않는다 — 버튼 · Enter · 예시 칸이 모두 여기로 온다
     if (busy || sendingRef.current) return
     sendingRef.current = true
+    stickRef.current = true // 내가 보낸 글은 바로 보인다
+    setAway(false)
     let questionId: string | null = "retryOf" in body ? body.retryOf : null
     setPending({ content: shown, questionId })
     setError(null)
@@ -326,6 +352,8 @@ export function OmnisRoom({
     // [확인] 을 같은 순간 두 번 눌러도 한 번만(서버도 조건부 갱신으로 하나만 받는다)
     if (busy || !roomId || sendingRef.current) return
     sendingRef.current = true
+    stickRef.current = true
+    setAway(false)
     setDeciding({ id: card.id, decision })
     setError(null)
     try {
@@ -391,11 +419,18 @@ export function OmnisRoom({
         />
       )}
 
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        // overflow-anchor: none — 앞 글을 붙일 때 보던 자리는 위 useLayoutEffect 가 지킨다. 브라우저의 자동 보정과 겹치면 두 번 밀린다
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain [overflow-anchor:none]"
         onScroll={(e) => {
-          if (e.currentTarget.scrollTop < 120) void loadOlder()
+          const el = e.currentTarget
+          const stuck = isStuckToBottom(el)
+          stickRef.current = stuck
+          setAway(!stuck)
+          if (stuck) setUnseen(false)
+          if (el.scrollTop < 120) void loadOlder()
         }}
       >
         <div className={cn("mx-auto flex w-full max-w-[760px] flex-col py-4", embedded ? "px-3" : "px-3 sm:px-6")}>
@@ -481,6 +516,20 @@ export function OmnisRoom({
           </div>
         </div>
       </div>
+      {away && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={followBottom}
+          data-scroll-bottom
+          className="touch-target absolute bottom-3 left-1/2 -translate-x-1/2 gap-1 rounded-full bg-background/95 text-[12px] shadow-md backdrop-blur"
+        >
+          <HugeiconsIcon icon={ArrowDown01Icon} size={14} aria-hidden />
+          {unseen ? "새 답" : "맨 아래로"}
+        </Button>
+      )}
+      </div>
 
       {quotaNotice && (
         <p role="status" data-agent-quota className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-1 text-center text-[12.5px] text-amber-700 dark:text-amber-300">
@@ -522,7 +571,7 @@ function LiveOmnis({ text, tools, resuming = false }: { text: string; tools: Liv
           {status}
         </div>
         <ToolTrail items={tools} live />
-        <div className="min-w-0 rounded-xl border bg-card px-3.5 py-3">
+        <div className="min-w-0 py-1">
           {text ? (
             <OmnisAnswerBody answer={text} sources={[]} />
           ) : (
@@ -576,7 +625,7 @@ function OmnisMessage({ message, fresh, tools }: { message: OmnisRoomMessage; fr
           <MessageTime iso={message.createdAt} />
         </div>
         <ToolTrail items={tools} />
-        <div className="min-w-0 rounded-xl border bg-card px-3.5 py-3">
+        <div className="min-w-0 py-1">
           <OmnisAnswerBody answer={message.content} sources={message.sources} />
         </div>
       </div>

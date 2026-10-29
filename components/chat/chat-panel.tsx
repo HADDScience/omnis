@@ -400,7 +400,7 @@ export function ChatPanel({
         if (!lRes.ok) {
           const err = await lRes.json().catch(() => ({}))
           reportIncident({ kind: "upload_failed", message: err?.error ?? "NAS 파일 연결 실패", status: lRes.status, fileName: path })
-          stopSending(tempId, err?.error ?? "NAS 파일을 연결하지 못했습니다")
+          stopSending(tempId, err?.error ?? "시놀로지 파일을 연결하지 못했습니다")
         }
         uploadedFiles.push(await lRes.json())
       }

@@ -29,7 +29,7 @@ export async function GET(_req: Request, { params }: Props) {
     object = await getObject(inv.objectKey)
   } catch (err) {
     console.error("[crm/invoices/file] NAS 읽기 실패", { invoiceId, err })
-    return NextResponse.json({ error: "NAS 에서 파일을 읽지 못했습니다" }, { status: 502 })
+    return NextResponse.json({ error: "시놀로지에서 파일을 읽지 못했습니다" }, { status: 502 })
   }
   const ext = inv.objectKey.split(".").pop() ?? ""
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
