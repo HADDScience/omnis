@@ -11,7 +11,7 @@
 .lv2-wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 var(--lv2-gutter); }
 
 /* ── 머리줄 — 어두운 유리. 밝은 섹션 위에서도 글자가 보이게 늘 어둡다 ─────────── */
-.lv2-nav { position: fixed; inset-inline: 0; top: var(--demo-banner-height, 0px); z-index: var(--z-dock); color: #fff; background: color-mix(in oklch, var(--lv2-ink) 62%, transparent); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); border-bottom: 1px solid #ffffff14; }
+.lv2-nav { position: fixed; inset-inline: 0; top: var(--demo-banner-height, 0px); z-index: var(--z-dock); color: #fff; background: color-mix(in oklch, var(--lv2-ink) 84%, transparent); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); border-bottom: 1px solid #ffffff14; }
 .lv2-nav-inner { display: flex; align-items: center; gap: 24px; height: 60px; }
 .lv2-brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; letter-spacing: -.03em; min-height: 44px; }
 .lv2-brand small { font-size: 10px; font-weight: 450; letter-spacing: .18em; color: #ffffffa6; padding-left: 10px; border-left: 1px solid #ffffff2e; }
@@ -43,7 +43,7 @@
 
 .lv2-hero { min-height: 100svh; display: flex; align-items: center; padding: calc(96px + var(--demo-banner-height, 0px)) 0 72px; }
 .lv2-hero-inner { display: flex; flex-direction: column; align-items: center; text-align: center; }
-.lv2-eyebrow { display: block; font-size: 11px; font-weight: 550; letter-spacing: .24em; text-transform: uppercase; color: var(--primary); margin-bottom: 18px; }
+.lv2-eyebrow { display: block; font-size: 11px; font-weight: 550; letter-spacing: .16em; text-transform: uppercase; color: var(--primary); margin-bottom: 18px; }
 .lv2-dark .lv2-eyebrow { color: #c7d2fe; }
 .lv2-display { font-size: clamp(36px, 7.2vw, 84px); font-weight: 500; line-height: 1.16; letter-spacing: -.055em; }
 .lv2-display em, .lv2-title em { font-style: normal; font-weight: 680; }
@@ -75,6 +75,27 @@
 @supports (animation-timeline: view()) {
   .lv2-rise { animation: lv2-arrive linear both; animation-timeline: view(); animation-range: entry 0% entry 55%; }
 }
+
+/* ── 시연 장면(옴니스와 업무 시작 · 진행) — 글 한쪽, 실제 화면 한쪽 ─────────────── */
+.lv2-story { display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; align-items: center; }
+@media (min-width: 960px) {
+  .lv2-story { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; }
+  .lv2-story-flip > :first-child { order: 2; }
+}
+.lv2-points { margin-top: 28px; display: grid; gap: 12px; padding: 0; list-style: none; }
+.lv2-points li { display: flex; gap: 12px; align-items: baseline; font-size: 15px; line-height: 1.7; }
+.lv2-points li::before { content: ""; flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--primary); translate: 0 -2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 14%, transparent); }
+.lv2-points code { font-family: inherit; font-weight: 600; color: var(--primary); }
+.lv2-demo { position: relative; margin: 0; border-radius: 24px; overflow: hidden; background: var(--background); border: 1px solid color-mix(in oklch, var(--primary) 18%, var(--border)); box-shadow: 0 40px 120px color-mix(in oklch, var(--primary) 16%, transparent), 0 2px 6px #0000000d; }
+.lv2-demo::before { content: ""; position: absolute; inset: -40% -20% auto; height: 70%; z-index: -1; background: radial-gradient(ellipse at 50% 100%, color-mix(in oklch, var(--primary) 18%, transparent), transparent 70%); }
+.lv2-demo-bar { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted-foreground); background: color-mix(in oklch, var(--muted) 55%, var(--background)); }
+.lv2-demo-dots { display: flex; gap: 6px; }
+.lv2-demo-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+.lv2-demo-tag { margin-left: auto; padding: 2px 8px; border-radius: 999px; font-size: 11px; color: var(--primary); background: color-mix(in oklch, var(--primary) 10%, transparent); }
+.lv2-demo-room { position: relative; height: clamp(460px, 62vh, 600px); }
+/* 시연 층 — 온보딩에서는 onboarding.css 의 .tour-demo 가 맡던 모양(그 파일은 온보딩 전용) */
+.lv2-demo-room .tour-demo { position: absolute; display: flex; flex-direction: column; overflow: hidden; background: var(--background); font-size: 14px; }
+.lv2-demo-replay { position: absolute; right: 14px; top: 12px; z-index: 1; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--primary-foreground); background: var(--primary); box-shadow: 0 10px 30px color-mix(in oklch, var(--primary) 30%, transparent); animation: lv2-arrive .5s both; }
 
 /* ── 마무리 ───────────────────────────────────────────────────── */
 .lv2-closing { padding: clamp(110px, 16vw, 180px) 0 0; }

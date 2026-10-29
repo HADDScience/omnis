@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { apiUrl } from "@/lib/base-path"
 import { OmnisMark } from "@/components/brand/omnis-mark"
+import { DemoStage } from "./demo-stage"
 import "./landing-v2.css"
 
 /**
@@ -19,6 +20,8 @@ export function LandingV2() {
       <Nav />
       <main>
         <Hero />
+        <StartWork />
+        <ProgressWork />
         <Closing />
       </main>
     </div>
@@ -91,6 +94,75 @@ function Hero() {
           </a>
         </div>
         <p className="lv2-hero-note lv2-arrive lv2-arrive-4">구성원은 들어가기 · 처음 오셨다면 아래로</p>
+      </div>
+    </section>
+  )
+}
+
+/*
+ * 시연 두 장면의 글은 온보딩 안내(components/onboarding/tour-stops.ts 「create-task」 · 「write-doc」)와 같은 사실을 말한다 —
+ * 확인 카드를 눌러야 만들어진다는 것까지. 대본 자체는 tour-demo.tsx 의 것을 그대로 돌린다.
+ */
+function StartWork() {
+  return (
+    <section id="start" className="lv2-scene" aria-labelledby="lv2-start-title">
+      <div className="lv2-wrap lv2-story">
+        <div className="lv2-rise">
+          <span className="lv2-eyebrow">01 · 업무의 시작</span>
+          <h2 id="lv2-start-title" className="lv2-title">
+            우리는 한 줄로
+            <br />
+            <em>업무를 시작합니다.</em>
+          </h2>
+          <p className="lv2-copy">
+            옴니스에게 말하면 담당자를 찾아 업무 카드를 제안합니다. 사람이 확인을 눌러야 만들어집니다.
+          </p>
+          <ul className="lv2-points">
+            <li>담당 · 마감 · 체크리스트가 붙은 업무 카드</li>
+            <li>만들어지면 담당자에게 수락 알림</li>
+            <li>지시 원문과 카드가 전사방에 함께 남습니다</li>
+          </ul>
+        </div>
+        <div className="lv2-rise">
+          <DemoStage
+            script="create-task"
+            title="옴니스와 업무 시작 — 예시 대화"
+            summary="예시: 「다음 주 금요일까지 가벽 블라인드 설치 견적 받아줘. 담당은 사원2」 라고 보내면 옴니스가 구성원을 확인하고 담당 · 마감 · 체크리스트가 담긴 새 업무 카드를 제안합니다. 확인을 누르면 업무가 만들어지고 담당자에게 수락 알림이 갑니다."
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ProgressWork() {
+  return (
+    <section id="progress" className="lv2-scene" aria-labelledby="lv2-progress-title">
+      <div className="lv2-wrap lv2-story lv2-story-flip">
+        <div className="lv2-rise">
+          <span className="lv2-eyebrow">02 · 업무의 진행</span>
+          <h2 id="lv2-progress-title" className="lv2-title">
+            진행한 만큼
+            <br />
+            <em>지식이 됩니다.</em>
+          </h2>
+          <p className="lv2-copy">
+            <code className="font-[inherit] font-semibold text-primary">#업무 이름</code>으로 부르면 옴니스가 그 업무의 진행과
+            사내 자료를 읽고 지식 카드 초안을 씁니다. 이것도 확인을 눌러야 저장됩니다.
+          </p>
+          <ul className="lv2-points">
+            <li>업무의 글 · 체크리스트 · 사내 자료를 함께 읽습니다</li>
+            <li>지식 카드는 구성원 모두가 읽습니다</li>
+            <li>옴니스는 다음 질문에 그 카드를 찾아 답합니다</li>
+          </ul>
+        </div>
+        <div className="lv2-rise">
+          <DemoStage
+            script="write-doc"
+            title="옴니스로 업무 진행 — 예시 대화"
+            summary="예시: 「#가벽 블라인드 설치 견적 지금까지 진행 상황 지식 카드로 정리해줘」 라고 보내면 옴니스가 업무와 사내 자료를 찾아 읽고 개요 · 진행 상황 · 다음 할 일로 정리한 지식 카드 초안을 씁니다. 확인을 누르면 지식 카드가 저장됩니다."
+          />
+        </div>
       </div>
     </section>
   )
