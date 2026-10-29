@@ -20,11 +20,12 @@ import type { ToolUse } from "@/lib/agent/tool-trail"
  * 이전/다음이 그대로 듣는다. **fetch 도 API 도 부르지 않고 DB 에 아무것도 쓰지 않는다** — 상태는 전부 이 파일 안의 값이다.
  * 층 전체가 inert 라 확인 카드의 버튼 · 입력칸을 눌러도(키보드로도) 아무 일이 없다.
  */
-export type DemoScript = "create-task"
+export type DemoScript = "create-task" | "write-doc"
 
 /** 대본 하나의 길이 — 끝 장면을 읽을 시간까지 */
 export const DEMO_LENGTH: Record<DemoScript, number> = {
   "create-task": 15000,
+  "write-doc": 18000,
 }
 
 interface Frame {
@@ -164,15 +165,109 @@ function createTask(t: number, at: string, deadline: string): Frame {
   }
 }
 
+// ── 대본 2: 업무 진행 — 지식 카드 초안 ─────────────────────────────────
+
+const DOC_ASK = `#${TASK_NAME} 지금까지 진행 상황 지식 카드로 정리해줘`
+const DOC_TITLE = `${TASK_NAME} — 진행 상황`
+const DOC_BODY = `## ${DOC_TITLE}
+
+**개요** 사무실 가벽에 블라인드를 설치한다. 담당 사원2 · 마감은 다음 주 금요일.
+
+**진행 상황**
+- 업체 3곳에 견적 요청 — 2곳 회신
+- 가벽 치수 실측 (가로 2.4m · 높이 2.1m)
+
+**다음 할 일**
+- 남은 1곳 견적 받기
+- 견적 비교 후 발주`
+
+function writeDoc(t: number, at: string): Frame {
+  const step = (
+    id: string,
+    name: string,
+    start: number,
+    end: number,
+    input: string,
+    result: string
+  ): LiveTool | null =>
+    t < start
+      ? null
+      : t < end
+        ? { id, name, state: "running", input }
+        : { id, name, state: "done", input, result }
+  const tools = [
+    step("task", "get_task", 4200, 5000, `task: ${TASK_NAME}`, "진행 중 · 체크리스트 1/3 · 글 4개"),
+    step("search", "search_knowledge", 5200, 6000, "query: 가벽 블라인드 견적", "견적서 2건 · 실측 메모 1건"),
+    t < 10300
+      ? null
+      : ({
+          id: "card",
+          name: "write_omnis_card",
+          state: "approval",
+          input: `title: ${DOC_TITLE} · category: 업무 기록`,
+          result: "확인 카드",
+        } satisfies LiveTool),
+  ].filter((tool): tool is LiveTool => tool !== null)
+  const proposal = {
+    id: "tour-write-doc",
+    toolName: "write_omnis_card",
+    preview: {
+      title: "새 지식 카드",
+      target: DOC_TITLE,
+      changes: [
+        { label: "제목", before: null, after: DOC_TITLE },
+        { label: "분류", before: null, after: "업무 기록" },
+        {
+          label: "본문",
+          before: null,
+          after: DOC_BODY.split("\n").slice(2).join("\n").replace(/\*\*/g, ""),
+        },
+        { label: "태그", before: null, after: "가벽, 블라인드, 견적" },
+      ],
+      // 실제 카드와 같은 문구(lib/agent/tools.ts buildPreview write_omnis_card)
+      risk: "사내 지식 카드는 구성원 모두가 읽고 옴니스가 검색해 답에 씁니다. 버전 기록이 남습니다.",
+    },
+  }
+  if (t < 3700) return { ...EMPTY, draft: typed(DOC_ASK, t, 500, 3300) }
+  const sent = { ...EMPTY, sent: DOC_ASK }
+  if (t < 10900)
+    return { ...sent, live: { text: typed(DOC_BODY, t, 6200, 10200), tools } }
+  const answer = {
+    text: `${DOC_BODY}\n\n이 내용으로 지식 카드를 만들까요? 아래 카드를 확인해 주세요.`,
+    tools: tools.map((tool) => ({
+      id: tool.id,
+      name: tool.name,
+      state: tool.state as ToolUse["state"],
+      input: tool.input ?? "",
+      result: tool.result ?? "",
+    })),
+  }
+  if (t < 13700)
+    return {
+      ...sent,
+      answer,
+      card: card(proposal, "PENDING", null, at),
+      deciding: t >= 13000,
+    }
+  return {
+    ...sent,
+    answer,
+    card: card(proposal, "EXECUTED", `지식 카드를 만들었습니다 — ${DOC_TITLE}`, at),
+  }
+}
+
 /** 대본이 다 끝난 시각 — 모션 감소 설정이면 여기를 바로 보인다 */
 export const DEMO_END: Record<DemoScript, number> = {
   "create-task": 11400,
+  "write-doc": 13700,
 }
 
 function frameAt(script: DemoScript, t: number, at: string, deadline: string) {
   switch (script) {
     case "create-task":
       return createTask(t, at, deadline)
+    case "write-doc":
+      return writeDoc(t, at)
   }
 }
 

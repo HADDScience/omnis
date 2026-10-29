@@ -41,6 +41,14 @@ export const TOUR_STOPS: readonly TourStop[] = [
     copy: "채팅에 한 줄로 지시하면 옴니스가 담당자를 찾아 업무 카드를 제안해요. 확인을 눌러야 만들어져요. 지금 보이는 대화는 예시라 실제로 보내지 않아요.",
   },
   {
+    id: "write-doc",
+    route: "/chat/new",
+    target: "omnis-room",
+    demo: "write-doc",
+    title: "옴니스로 업무를 진행해요",
+    copy: "#업무 이름으로 부르면 옴니스가 그 업무의 진행과 사내 자료를 읽고 지식 카드 초안을 써 줘요. 이것도 확인을 눌러야 저장돼요. 예시 대화예요.",
+  },
+  {
     id: "tasks",
     route: "/tasks",
     target: "tasks",
