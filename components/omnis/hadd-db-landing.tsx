@@ -262,7 +262,7 @@ export function HaddDbLanding({
             <HugeiconsIcon icon={FolderLibraryIcon} size={19} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-semibold">사내 자료 (NAS)</div>
+            <div className="text-[13.5px] font-semibold">사내 자료 (시놀로지)</div>
             <div className="text-[11.5px] leading-snug text-muted-foreground">
               아직 카드로 정리되지 않고 시놀로지에 파일로만 있는 것들
             </div>

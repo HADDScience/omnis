@@ -38,7 +38,7 @@ function connectVerified(): Promise<TLSSocket> {
         const actual = normalizeFingerprint(socket.getPeerCertificate().fingerprint256 ?? "")
         if (actual !== expected) {
           socket.destroy()
-          reject(new Error("NAS 인증서 지문이 일치하지 않습니다. 연결을 중단했습니다."))
+          reject(new Error("시놀로지 인증서 지문이 일치하지 않습니다. 연결을 중단했습니다."))
           return
         }
         // 핸드셰이크가 끝났으니 연결 한도를 푼다. 본문을 주고받는 한도는 dav() 가 다시 건다
@@ -48,7 +48,7 @@ function connectVerified(): Promise<TLSSocket> {
     )
     socket.setTimeout(CONNECT_TIMEOUT_MS, () => {
       socket.destroy()
-      reject(new Error(`NAS 연결이 ${CONNECT_TIMEOUT_MS / 1000}초 안에 열리지 않았습니다`))
+      reject(new Error(`시놀로지 연결이 ${CONNECT_TIMEOUT_MS / 1000}초 안에 열리지 않았습니다`))
     })
     socket.once("error", reject)
   })
@@ -101,7 +101,7 @@ export async function dav(
       },
     )
     req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy(new Error(`NAS 가 ${REQUEST_TIMEOUT_MS / 1000}초 안에 응답하지 않았습니다`))
+      req.destroy(new Error(`시놀로지가 ${REQUEST_TIMEOUT_MS / 1000}초 안에 응답하지 않았습니다`))
     })
     req.once("error", reject)
     if (body) req.write(body)
@@ -140,7 +140,7 @@ export async function putAt(absolutePath: string, body: Buffer, contentType: str
   }
   drain(res)
   if (res.status < 200 || res.status >= 300) {
-    throw new Error(`NAS 업로드 실패 (HTTP ${res.status})`)
+    throw new Error(`시놀로지 업로드 실패 (HTTP ${res.status})`)
   }
 }
 
@@ -148,7 +148,7 @@ export async function getAt(absolutePath: string): Promise<DavResponse> {
   const res = await dav("GET", davUrl(absolutePath))
   if (res.status !== 200) {
     drain(res)
-    throw new Error(`NAS 다운로드 실패 (HTTP ${res.status})`)
+    throw new Error(`시놀로지 다운로드 실패 (HTTP ${res.status})`)
   }
   return res
 }
@@ -159,7 +159,7 @@ export async function deleteAt(absolutePath: string): Promise<void> {
   drain(res)
   if (res.status === 404) return
   if (res.status < 200 || res.status >= 300) {
-    throw new Error(`NAS 삭제 실패 (HTTP ${res.status})`)
+    throw new Error(`시놀로지 삭제 실패 (HTTP ${res.status})`)
   }
 }
 
@@ -169,7 +169,7 @@ export async function existsAt(absolutePath: string): Promise<boolean> {
   drain(res)
   if (res.status === 404) return false
   if (res.status === 207 || res.status === 200) return true
-  throw new Error(`NAS 확인 실패 (HTTP ${res.status})`)
+  throw new Error(`시놀로지 확인 실패 (HTTP ${res.status})`)
 }
 
 // ─── 첨부파일 (베이스 경로 + 키) ────────────────────────────────────

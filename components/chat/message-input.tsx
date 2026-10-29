@@ -232,9 +232,9 @@ export function MessageInput({
       const limitMb = Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)
       // 이미 NAS 에 있으면 연결하면 되고, 아니면 NAS 에 올린 뒤 연결한다 — 어느 쪽이든 같은 버튼으로 간다
       toast.error(`${limitMb}MB 가 넘는 파일은 바로 올릴 수 없습니다`, {
-        description: `${tooLarge.map((f) => `「${f.name}」 ${(f.size / 1024 / 1024).toFixed(1)}MB`).join(" · ")} — NAS 에 올린 뒤 「NAS 파일 연결」 로 다시 첨부해 주세요`,
+        description: `${tooLarge.map((f) => `「${f.name}」 ${(f.size / 1024 / 1024).toFixed(1)}MB`).join(" · ")} — 시놀로지에 올린 뒤 「시놀로지 파일 연결」 로 다시 첨부해 주세요`,
         duration: 12_000,
-        action: { label: "NAS 파일 연결", onClick: () => setNasPickerOpen(true) },
+        action: { label: "시놀로지 파일 연결", onClick: () => setNasPickerOpen(true) },
       })
       for (const f of tooLarge) {
         reportIncident({
@@ -456,7 +456,7 @@ export function MessageInput({
           {nasFiles.map((f) => (
             <Badge key={f.path} variant="secondary" className="text-[10px] gap-1 pr-1" title={f.path}>
               <HugeiconsIcon icon={Folder01Icon} size={10} aria-hidden />
-              <span className="font-medium">NAS</span>
+              <span className="font-medium">시놀로지</span>
               {f.name.length > 20 ? f.name.slice(0, 20) + "..." : f.name}
               <button
                 type="button"
@@ -547,7 +547,7 @@ export function MessageInput({
             {!noFiles && (
               <DropdownMenuItem onClick={() => setNasPickerOpen(true)}>
                 <HugeiconsIcon icon={Folder01Icon} size={14} aria-hidden />
-                NAS 파일 연결
+                시놀로지 파일 연결
               </DropdownMenuItem>
             )}
             {commands && (

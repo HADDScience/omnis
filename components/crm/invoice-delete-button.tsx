@@ -76,7 +76,7 @@ export function InvoiceDeleteButton({
       : []),
     ...(payments.count > 0 ? [`이 장에 적은 입금 기록 ${payments.count}건(${payments.totalKrw.toLocaleString("ko-KR")}원)도 함께 사라져요.`] : []),
     ...(quoteCode ? [`견적 ${quoteCode} 와의 연결이 풀려요.`] : []),
-    "NAS 에 올린 원본 PDF 는 그대로 남아요.",
+    "시놀로지에 올린 원본 PDF 는 그대로 남아요.",
   ]
 
   return (
