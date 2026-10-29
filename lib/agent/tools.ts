@@ -65,7 +65,7 @@ export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
         type: "object",
         properties: {
           query: { type: "string", description: "검색어. 고유명사(사람·기관·제품)를 포함한다" },
-          sources: { type: "array", items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE"] }, description: "생략하면 전부" },
+          sources: { type: "array", items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO"] }, description: "생략하면 전부" },
           limit: { type: "integer", description: "기본 8, 최대 20" },
         },
         required: ["query"],

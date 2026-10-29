@@ -192,6 +192,8 @@ export async function DELETE(_req: NextRequest, { params }: Props) {
 
   // 색인에서도 뺀다 — 지운 글이 검색·RAG 에 남으면 지운 것이 아니다.
   void deleteEmbeddingsSafe("CHAT_MESSAGE", messageId)
+  // 그 메시지의 사진 설명도 — 사진을 지웠는데 설명으로 찾아지면 지운 것이 아니다
+  for (const f of await prisma.file.findMany({ where: { messageId }, select: { id: true } })) void deleteEmbeddingsSafe("PHOTO", f.id)
   // 남은 글만으로 카드를 다시 만든다. 지운 글은 재구성 입력에서 빠진다(lib/chat-post.ts).
   rebuildAfterChange(message, { id: session.user.id, name: session.user.name ?? "" }, "(메시지 삭제)")
 
