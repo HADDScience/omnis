@@ -252,9 +252,10 @@ test.describe("onboarding", () => {
     await expect(doc).toBeVisible()
     await page.clock.runFor(7500)
     await expect(doc.locator("[data-agent-live]")).toContainText("진행 상황")
-    await page.clock.runFor(4000)
+    // 확인 카드는 대본 10.9~13.7초에만 떠 있다 — 그 한가운데(약 11.5초)에서 본다. 끝자락에서 보면 시계가 조금만 앞서도 이미 실행됨이다
+    await page.clock.runFor(2500)
     await expect(doc.locator('[data-agent-card="PENDING"]')).toContainText("새 지식 카드")
-    await page.clock.runFor(3000)
+    await page.clock.runFor(4500)
     await expect(doc.locator('[data-agent-card="EXECUTED"]')).toBeVisible()
     await page.clock.runFor(5000)
     await atStop(page, "tasks")
@@ -339,8 +340,10 @@ test.describe("onboarding", () => {
     await next(page).click()
     await atStop(page, "create-task")
 
-    // 제공자 화면에서 돌아온 것처럼 — 나가기 전에 적어 두는 기록을 넣고 다시 연다
+    // 제공자 화면에서 돌아온 것처럼 — 나가기 전에 적어 두는 기록을 넣고 다시 연다.
+    // 안내가 뜬 뒤에 적는다 — 먼저 적으면 뒤늦게 뜬 안내가 그 기록으로 이어 가며 지워, 다시 열 때 남아 있지 않다
     await page.goto("/settings")
+    await atStop(page, "social")
     await page.evaluate(() =>
       sessionStorage.setItem(
         "omnis-tour-resume",
