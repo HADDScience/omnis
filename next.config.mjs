@@ -30,6 +30,15 @@ const nextConfig = {
   experimental: {
     staleTimes: { dynamic: 30, static: 180 },
   },
+  /*
+   * Workflow 경로(withWorkflow 가 만드는 /.well-known/workflow/*)의 함수에 Prisma 엔진을 싣는다.
+   * 이 경로는 단계 코드를 따로 묶어 Next 의 파일 추적이 generated/prisma 의 엔진을 따라가지 못했다 —
+   * 운영(2026-10-29)에서 옴니스 방 첫 단계가 「Query Engine for runtime "rhel-openssl-3.0.x"」 를 못 찾아
+   * 실행이 RUNNING 에 멈췄다. 로컬 dev · next start 는 디스크에서 엔진을 찾아 드러나지 않았다.
+   */
+  outputFileTracingIncludes: {
+    "/.well-known/workflow/**": ["./generated/prisma/**/*.node", "./generated/prisma/schema.prisma"],
+  },
   typescript: {
     ignoreBuildErrors: false,
   },
