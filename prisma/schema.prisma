@@ -31,7 +31,9 @@ model User {
   chatMessages     ChatMessage[]
   chatRoomsCreated ChatRoom[]         @relation("ChatRoomCreator")
   chatRoomMembers  ChatRoomMember[]
-  weeklyReports    WeeklyReport[]
+  chatRoomPrefs    ChatRoomPref[]
+  chatFolders      ChatFolder[]
+  weeklyReports   WeeklyReport[]
   omnisUpdates     OmnisCard[]
   omnisVersions    OmnisCardVersion[]
   cardDecisions    CardProposal[]
@@ -128,6 +130,67 @@ model ChatRoomMember {
 
   @@id([roomId, userId])
   @@index([userId])
+}
+
+/// 방 하나에 대한 내 설정 — 즐겨찾기 · 마지막으로 읽은 시각. 메신저 목록(lib/chat-prefs.ts)이 쓴다.
+/// 방을 id 가 아니라 방 키로 가리킨다: `room:<ChatRoom.id>` · `task:<Task.id>`.
+/// 전사방은 참여자 행이 없고 업무방은 표 자체가 없어(taskId 로 묶인 가상 방) ChatRoomMember 에 달 수 없다.
+/// 키 `*` 한 줄은 「안 읽음을 세기 시작한 시각」이다 — 한 번도 열지 않은 방은 그 뒤 글만 센다.
+model ChatRoomPref {
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roomKey    String
+  favorite   Boolean   @default(false)
+  lastReadAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@id([userId, roomKey])
+}
+
+/// 추천(규칙) 폴더의 규칙 — 규칙으로만 채우고 방을 손으로 넣지 않는다.
+/// MY_TASKS 내가 담당이거나 지시한 업무의 업무방(업무 탭 i-own · i-assigned 와 같은 기준)
+/// PROJECT  한 프로젝트의 업무방(ChatFolder.projectId)
+/// COMPANY · TASK · GROUP 은 처음 둔 추천 폴더(방 종류로 채웠다). 개념을 바꾸며 쓰지 않는다 —
+/// 하나뿐인 방(전사방)은 폴더가 될 수 없다(2026-10-29 작업지시자). 값과 행은 남기고 화면 · API 가 숨긴다
+enum ChatFolderRule {
+  COMPANY
+  TASK
+  GROUP
+  MY_TASKS
+  PROJECT
+}
+
+/// 내 채팅방 폴더. 남에게 보이지 않는다. rule 이 있으면 규칙 폴더(방을 직접 담지 않는다), 없으면 수동 폴더
+model ChatFolder {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  rule      ChatFolderRule?
+  /// rule = PROJECT 일 때 그 프로젝트. 프로젝트 행이 지워지면 null 이 되고 폴더는 남는다(빈 폴더 — 사용자가 지운다)
+  projectId String?
+  project   Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  /// 칩 순서. 작은 것이 앞
+  order     Int              @default(0)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  rooms     ChatFolderRoom[]
+
+  /// 프로젝트 폴더는 사람마다 프로젝트별로 하나. NULL 은 서로 겹치지 않아 수동 폴더 · MY_TASKS 는 걸리지 않는다 —
+  /// MY_TASKS 하나는 lib/chat-prefs.ts 가 지킨다. 처음의 (userId, rule) 유일 제약은 프로젝트 폴더를 둘 이상 못 만들어 바꿨다
+  @@unique([userId, rule, projectId])
+  @@index([userId, order])
+}
+
+/// 수동 폴더에 넣은 방. 방 키는 ChatRoomPref 와 같다
+model ChatFolderRoom {
+  folderId String
+  folder   ChatFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  roomKey  String
+  addedAt  DateTime   @default(now())
+
+  @@id([folderId, roomKey])
 }
 
 model ChatMessage {
@@ -330,6 +393,8 @@ model Project {
 
   tasks     Task[]
   records   CompanyRecord[]
+  /// 이 프로젝트의 업무방을 모은 채팅방 폴더(사람마다)
+  chatFolders ChatFolder[]
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 

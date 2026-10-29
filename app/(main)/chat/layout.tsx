@@ -7,5 +7,5 @@ import { MessengerShell } from "@/components/messenger/messenger-shell"
 export default async function ChatLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
-  return <MessengerShell>{children}</MessengerShell>
+  return <MessengerShell userId={session.user.id}>{children}</MessengerShell>
 }
