@@ -41,7 +41,11 @@ export async function openPeopleRoom(
   if (plan.kind === "DM") {
     const dmKey = dmKeyOf(me.id, plan.otherId)
     const found = await prisma.chatRoom.findUnique({ where: { dmKey }, select: { id: true } })
-    if (found) return { ok: true, value: { roomId: found.id, kind: "DM", existing: true } }
+    if (found) {
+      // 목록에서 숨겼던 1:1 을 다시 고르면 다시 보이게 — 숨김은 내 목록 정리일 뿐 방을 지운 것이 아니다
+      await prisma.chatRoomPref.updateMany({ where: { userId: me.id, roomKey: `room:${found.id}`, hiddenAt: { not: null } }, data: { hiddenAt: null } })
+      return { ok: true, value: { roomId: found.id, kind: "DM", existing: true } }
+    }
     try {
       const room = await prisma.chatRoom.create({
         data: {

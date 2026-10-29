@@ -10,7 +10,7 @@
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
-import { filterRooms, normalizeQuery, parseRoomKey, READ_BASELINE_KEY, roomKeyOf, type ChatFolderView } from "@/lib/chat-list"
+import { filterRooms, hiddenFromList, normalizeQuery, parseRoomKey, READ_BASELINE_KEY, roomKeyOf, type ChatFolderView } from "@/lib/chat-list"
 import { ensureReadBaseline, listFolders } from "@/lib/chat-prefs"
 import { peopleRoomTitle } from "@/lib/chat-people-rules"
 
@@ -211,10 +211,12 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
   const query = opts.q ? normalizeQuery(opts.q) : ""
   const [baseline, prefs, folders] = await Promise.all([
     ensureReadBaseline(userId),
-    prisma.chatRoomPref.findMany({ where: { userId, roomKey: { not: READ_BASELINE_KEY } }, select: { roomKey: true, favorite: true } }),
+    prisma.chatRoomPref.findMany({ where: { userId, roomKey: { not: READ_BASELINE_KEY } }, select: { roomKey: true, favorite: true, hiddenAt: true } }),
     listFolders(userId),
   ])
   const favorites = new Set(prefs.filter((p) => p.favorite).map((p) => p.roomKey))
+  // 지운 옴니스 대화 · 숨긴 사람 1:1 (숨긴 뒤 새 글이 오면 다시 보인다 — lib/chat-list.ts hiddenFromList)
+  const hidden = new Map(prefs.flatMap((p) => (p.hiddenAt ? [[p.roomKey, p.hiddenAt.toISOString()] as const] : [])))
 
   // 최근 30개 밖이라도 즐겨찾기 · 수동 폴더에 넣은 업무방, 규칙 폴더(내 업무 · 프로젝트)에 드는 업무방은
   // 목록에 와야 칩에서 보인다. 규칙 폴더 쪽은 업무 수가 많을 수 있어 RULE_TASK_LIMIT 개까지
@@ -280,6 +282,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       unread: 0,
       favorite: false,
     }
+    if (hiddenFromList(item, hidden.get(item.key) ?? null)) continue
     if (r.kind === "OMNIS_DM") omnis.push(item)
     else groups.push(item)
   }

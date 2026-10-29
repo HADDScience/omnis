@@ -18,6 +18,10 @@ const json = (method: string, body: unknown): RequestInit => ({ method, body: JS
 export const chatPrefs = {
   markRead: (roomKey: string) => call("/api/chat/prefs", json("PATCH", { roomKey, read: true })),
   setFavorite: (roomKey: string, favorite: boolean) => call("/api/chat/prefs", json("PATCH", { roomKey, favorite })),
+  /** 옴니스 1:1 = 대화 삭제 · 사람 1:1 = 목록에서 숨기기(서버가 방 종류를 본다) */
+  hide: (roomKey: string) => call("/api/chat/prefs", json("PATCH", { roomKey, hidden: true })),
+  /** 단톡방 나가기 */
+  leaveGroup: (roomId: string) => call(`/api/chat/people-rooms/${roomId}/members`, { method: "DELETE" }),
   createFolder: (input: CreateFolderInput) => call<ChatFolderView>("/api/chat/folders", json("POST", input)),
   reorderFolders: (order: string[]) => call("/api/chat/folders", json("PATCH", { order })),
   renameFolder: (id: string, name: string) => call(`/api/chat/folders/${id}`, json("PATCH", { name })),

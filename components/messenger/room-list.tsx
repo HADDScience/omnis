@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -11,8 +11,9 @@ import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
   Cancel01Icon,
+  Delete02Icon,
   FolderLibraryIcon,
-  MoreHorizontalIcon,
+  Logout03Icon,
   PencilEdit02Icon,
   Search01Icon,
   StarIcon,
@@ -23,6 +24,18 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
+import { LinkPendingMark } from "@/components/ui/pending-link"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -30,7 +43,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -52,16 +64,19 @@ import {
   folderHasRoom,
   resolveChip,
   roomKeyFromPath,
+  roomRemoval,
   roomsInChip,
   sortByRecent,
   unreadLabel,
   unreadRoomCount,
   type ChatFolderView,
   type ChipId,
+  type RoomRemoval,
 } from "@/lib/chat-list"
 import type { RoomList as RoomListData, RoomListItem } from "@/lib/chat-rooms"
 import { chatPrefs } from "./chat-prefs-client"
 import { FolderManager } from "./folder-manager"
+import { SwipeRow, type SwipeSide } from "./swipe-row"
 import { AuthorAvatar } from "@/components/chat/message-parts"
 
 /** 전사방 · 업무방은 다른 사람이 글을 쓴다 — 목록을 열어 둔 동안 이 간격으로 다시 읽는다 */
@@ -279,6 +294,39 @@ export function RoomList({ version, userId }: { version: number; userId: string 
     [load],
   )
 
+  // ─── 지우기 · 숨기기 · 나가기 ───
+  const router = useRouter()
+  /** 열린 줄(밀어 둔 줄) — 한 번에 하나 */
+  const [swiped, setSwiped] = useState<{ key: string; side: SwipeSide } | null>(null)
+  /** 확인 창(규칙 11) — 누른 줄과 그 동작 */
+  const [confirm, setConfirm] = useState<{ room: RoomListItem; removal: RoomRemoval } | null>(null)
+  const [removing, setRemoving] = useState(false)
+
+  const removeRoom = useCallback(
+    async (room: RoomListItem, removal: RoomRemoval) => {
+      setRemoving(true)
+      try {
+        if (removal === "leave") await chatPrefs.leaveGroup(room.id)
+        else await chatPrefs.hide(room.key)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "처리하지 못했습니다")
+        setRemoving(false)
+        return
+      }
+      // 목록에서 바로 뺀다 — 성공 토스트는 띄우지 않는다(바뀐 것이 그 자리에 보인다)
+      const drop = (d: RoomListData | null) =>
+        d ? { ...d, omnis: d.omnis.filter((r) => r.key !== room.key), groups: d.groups.filter((r) => r.key !== room.key) } : d
+      setData(drop)
+      setSearch((s) => (s ? { ...s, data: drop(s.data) } : s))
+      setSwiped(null)
+      setConfirm(null)
+      setRemoving(false)
+      if (room.key === activeKey) router.push("/chat")
+      void load()
+    },
+    [activeKey, load, router],
+  )
+
   // ─── 그릴 것 ───
   const searching = trimmed.length > 0
   const withActiveRead = (r: RoomListItem) => (r.key === activeKey && r.unread > 0 ? { ...r, unread: 0 } : r)
@@ -335,14 +383,24 @@ export function RoomList({ version, userId }: { version: number; userId: string 
                 room={r}
                 active={r.key === activeKey}
                 folders={folders}
+                swiped={swiped?.key === r.key ? swiped.side : null}
+                onSwipe={(side) => setSwiped(side ? { key: r.key, side } : null)}
                 onFavorite={() => void toggleFavorite(r)}
                 onFolder={(f) => void toggleFolder(r, f)}
                 onNewFolder={() => setManager({ open: true })}
+                onRemove={(removal) => setConfirm({ room: r, removal })}
               />
             ))
           )}
         </div>
       </nav>
+
+      <RemoveConfirm
+        target={confirm}
+        busy={removing}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => confirm && void removeRoom(confirm.room, confirm.removal)}
+      />
 
       <FolderManager
         onCreated={(id) => selectChip(`folder:${id}`)}
@@ -620,66 +678,157 @@ interface RowActions {
   onFavorite: () => void
   onFolder: (f: ChatFolderView) => void
   onNewFolder: () => void
+  /** 지우기 · 숨기기 · 나가기 — 확인 창을 연다. 동작이 없는 방(전사방 · 업무방)은 부르지 않는다 */
+  onRemove: (removal: RoomRemoval) => void
 }
 
-function RoomRow({ room, active, ...actions }: { room: RoomListItem; active: boolean } & RowActions) {
+const REMOVAL_LABEL: Record<RoomRemoval, string> = { delete: "삭제", hide: "숨기기", leave: "나가기" }
+/** 밀었을 때 드러나는 칸 폭(px) — 오른쪽 한 칸 · 왼쪽 두 칸 */
+const RIGHT_W = 76
+const LEFT_W = 136
+
+/**
+ * 목록 한 줄. ⋯ 더보기 단추는 없다(2026-10-29 작업지시자) — 대신
+ *   꾹 누르기(PC 는 우클릭 · 키보드는 Shift+F10) = 메뉴 · 오른쪽→왼쪽 밀기 = 삭제/숨기기/나가기 · 왼쪽→오른쪽 밀기 = 즐겨찾기 · 폴더.
+ * 메뉴와 밀기는 같은 동작을 부른다(RoomMenuBody · onRemove). 꾹 누르기는 base-ui ContextMenu 가 터치에서 0.5초로 연다
+ */
+function RoomRow({
+  room,
+  active,
+  swiped,
+  onSwipe,
+  ...actions
+}: { room: RoomListItem; active: boolean; swiped: SwipeSide | null; onSwipe: (side: SwipeSide | null) => void } & RowActions) {
   const unread = room.unread > 0
+  const removal = roomRemoval(room.kind)
+  const manual = actions.folders.filter((f) => !f.rule)
   return (
     <ContextMenu>
-      <ContextMenuTrigger className={cn(ROW_WRAP, active && ROW_ACTIVE)}>
-        <Link href={roomHref(room)} aria-current={active ? "page" : undefined} className={ROW}>
-          {roomIcon(room)}
-          <span className="min-w-0 flex-1">
-            <span className="flex items-baseline gap-1.5">
-              <span className={cn("min-w-0 flex-1 truncate text-[13px]", unread ? "font-semibold" : "font-medium")}>
-                {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
-                {room.name}
-              </span>
-              {room.favorite && (
-                <HugeiconsIcon
-                  icon={StarIcon}
-                  size={11}
-                  aria-label="즐겨찾기"
-                  className="shrink-0 self-center fill-amber-400 text-amber-500"
-                />
-              )}
-              <time dateTime={room.lastAt} className="shrink-0 text-[10.5px] text-muted-foreground tabular-nums">
-                {listTime(room.lastAt)}
-              </time>
-            </span>
-            <span className="flex items-center gap-1.5">
-              {room.status && (
-                <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">
-                  {TASK_STATUS_LABELS[room.status] ?? room.status}
-                </span>
-              )}
-              <span className={cn("min-w-0 flex-1 truncate text-[11.5px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
-                {room.preview ?? "아직 글이 없어요"}
-              </span>
-              {unread && (
-                <Badge className="h-4 min-w-4 shrink-0 px-1 text-[10px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
-                  {unreadLabel(room.unread)}
-                </Badge>
-              )}
-            </span>
-          </span>
-        </Link>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
+      <ContextMenuTrigger className="mx-2 rounded-lg">
+        <SwipeRow
+          open={swiped}
+          onOpenChange={onSwipe}
+          className="rounded-lg"
+          leftWidth={LEFT_W}
+          rightWidth={removal ? RIGHT_W : 0}
+          left={
+            <>
               <button
                 type="button"
-                aria-label={`${room.name} 메뉴`}
-                className="touch-target mr-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none data-[popup-open]:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100"
-              />
-            }
-          >
-            <HugeiconsIcon icon={MoreHorizontalIcon} size={15} aria-hidden />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <RoomMenuBody room={room} {...actions} ui={DROPDOWN_UI} />
-          </DropdownMenuContent>
-        </DropdownMenu>
+                tabIndex={-1}
+                onClick={() => {
+                  actions.onFavorite()
+                  onSwipe(null)
+                }}
+                className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-amber-500 text-[11px] font-medium text-white"
+              >
+                <HugeiconsIcon icon={StarIcon} size={16} aria-hidden className={room.favorite ? "fill-white" : undefined} />
+                {room.favorite ? "즐겨찾기 끄기" : "즐겨찾기"}
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  tabIndex={-1}
+                  className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-sky-600 text-[11px] font-medium text-white"
+                >
+                  <HugeiconsIcon icon={FolderLibraryIcon} size={16} aria-hidden />
+                  폴더
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>폴더에 넣기</DropdownMenuLabel>
+                    {manual.map((f) => (
+                      <DropdownMenuCheckboxItem
+                        key={f.id}
+                        checked={f.roomKeys.includes(room.key)}
+                        onCheckedChange={() => actions.onFolder(f)}
+                        closeOnClick
+                        className="touch-target"
+                      >
+                        <span className="truncate">{f.name}</span>
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                    <DropdownMenuItem onClick={actions.onNewFolder} className="touch-target text-muted-foreground">
+                      <HugeiconsIcon icon={FolderLibraryIcon} size={14} aria-hidden />
+                      {manual.length === 0 ? "폴더 만들기…" : "폴더 관리…"}
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          }
+          right={
+            removal ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                data-remove-room={removal}
+                onClick={() => actions.onRemove(removal)}
+                className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-destructive text-[11.5px] font-semibold text-white"
+              >
+                <HugeiconsIcon icon={removal === "leave" ? Logout03Icon : Delete02Icon} size={16} aria-hidden />
+                {REMOVAL_LABEL[removal]}
+              </button>
+            ) : undefined
+          }
+        >
+          <div className={cn("rounded-lg hover:bg-muted/60 has-data-[pending]:bg-muted", active && ROW_ACTIVE)}>
+            <Link
+              href={roomHref(room)}
+              aria-current={active ? "page" : undefined}
+              draggable={false}
+              aria-keyshortcuts="Shift+F10"
+              onKeyDown={(e) => {
+                // 키보드로 메뉴 — 메뉴 키 · Shift+F10. 브라우저마다 contextmenu 를 내지 않는 경우가 있어 직접 연다
+                if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                  e.preventDefault()
+                  const r = e.currentTarget.getBoundingClientRect()
+                  e.currentTarget.dispatchEvent(
+                    new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 24, clientY: r.top + r.height / 2 }),
+                  )
+                }
+              }}
+              className={ROW}
+            >
+              {roomIcon(room)}
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-1.5">
+                  <span className={cn("min-w-0 flex-1 truncate text-[13px]", unread ? "font-semibold" : "font-medium")}>
+                    {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
+                    {room.name}
+                  </span>
+                  {room.favorite && (
+                    <HugeiconsIcon
+                      icon={StarIcon}
+                      size={11}
+                      aria-label="즐겨찾기"
+                      className="shrink-0 self-center fill-amber-400 text-amber-500"
+                    />
+                  )}
+                  <time dateTime={room.lastAt} className="shrink-0 text-[10.5px] text-muted-foreground tabular-nums">
+                    {listTime(room.lastAt)}
+                  </time>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  {room.status && (
+                    <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                      {TASK_STATUS_LABELS[room.status] ?? room.status}
+                    </span>
+                  )}
+                  <span className={cn("min-w-0 flex-1 truncate text-[11.5px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
+                    {room.preview ?? "아직 글이 없어요"}
+                  </span>
+                  {unread && (
+                    <Badge className="h-4 min-w-4 shrink-0 px-1 text-[10px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
+                      {unreadLabel(room.unread)}
+                    </Badge>
+                  )}
+                </span>
+              </span>
+              {/* 누르는 즉시 줄이 눌린 색 — 방 화면이 오기 전에도 받은 것이 보인다 */}
+              <LinkPendingMark />
+            </Link>
+          </div>
+        </SwipeRow>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
         <RoomMenuBody room={room} {...actions} ui={CONTEXT_UI} />
@@ -688,21 +837,14 @@ function RoomRow({ room, active, ...actions }: { room: RoomListItem; active: boo
   )
 }
 
-// 우클릭 메뉴와 ⋯ 메뉴는 항목이 같다 — 부품만 다르다
-const DROPDOWN_UI = {
-  Group: DropdownMenuGroup,
-  Label: DropdownMenuLabel,
-  Item: DropdownMenuItem,
-  CheckboxItem: DropdownMenuCheckboxItem,
-  Separator: DropdownMenuSeparator,
-}
+// 꾹 누르기 · 우클릭 메뉴. 밀기 칸과 같은 동작을 부른다
 const CONTEXT_UI = {
   Group: ContextMenuGroup,
   Label: ContextMenuLabel,
   Item: ContextMenuItem,
   CheckboxItem: ContextMenuCheckboxItem,
   Separator: ContextMenuSeparator,
-} as unknown as typeof DROPDOWN_UI
+}
 
 function RoomMenuBody({
   room,
@@ -710,10 +852,12 @@ function RoomMenuBody({
   onFavorite,
   onFolder,
   onNewFolder,
+  onRemove,
   ui,
-}: { room: RoomListItem; ui: typeof DROPDOWN_UI } & RowActions) {
+}: { room: RoomListItem; ui: typeof CONTEXT_UI } & RowActions) {
   const manual = folders.filter((f) => !f.rule)
   const ruled = folders.filter((f) => f.rule && folderHasRoom(f, room))
+  const removal = roomRemoval(room.kind)
   return (
     <>
       <ui.Item onClick={onFavorite} className="touch-target">
@@ -745,7 +889,62 @@ function RoomMenuBody({
           {manual.length === 0 ? "폴더 만들기…" : "폴더 관리…"}
         </ui.Item>
       </ui.Group>
+      {removal && (
+        <>
+          <ui.Separator />
+          <ui.Item onClick={() => onRemove(removal)} className="touch-target text-destructive focus:text-destructive">
+            <HugeiconsIcon icon={removal === "leave" ? Logout03Icon : Delete02Icon} size={14} aria-hidden />
+            {removal === "delete" ? "대화 삭제" : removal === "hide" ? "목록에서 숨기기" : "채팅방 나가기"}
+          </ui.Item>
+        </>
+      )}
     </>
+  )
+}
+
+/** 지우기 · 숨기기 · 나가기 확인(규칙 11 — 브라우저 confirm 을 쓰지 않는다) */
+function RemoveConfirm({
+  target,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  target: { room: RoomListItem; removal: RoomRemoval } | null
+  busy: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const r = target?.removal
+  const name = target?.room.name ?? ""
+  const text =
+    r === "delete"
+      ? { title: "이 대화를 삭제할까요?", body: "내 목록에서 사라지고 다시 열 수 없어요. 옴니스가 이 대화에서 한 일(업무 변경 등)은 그대로 남습니다.", action: "삭제" }
+      : r === "hide"
+        ? { title: `「${name}」 님과의 대화를 목록에서 숨길까요?`, body: "대화는 지워지지 않아요. 상대가 새 글을 보내면 목록에 다시 나타납니다.", action: "숨기기" }
+        : { title: `「${name}」 에서 나갈까요?`, body: "내 목록에서 이 방과 즐겨찾기 · 폴더 표시가 사라지고 더는 글을 볼 수 없어요. 다시 들어오려면 참여자가 초대해야 해요.", action: "나가기" }
+  return (
+    <AlertDialog open={target !== null} onOpenChange={(o) => !o && !busy && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{text.title}</AlertDialogTitle>
+          <AlertDialogDescription>{text.body}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>취소</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={busy}
+            onClick={(e) => {
+              e.preventDefault()
+              onConfirm()
+            }}
+          >
+            {busy && <Spinner className="size-3.5" />}
+            {text.action}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -779,12 +978,12 @@ function EmptyState({
   if (searching) text = `「${query}」 에 맞는 방이 없어요. 방 이름 · 업무 이름 · 슬러그 · 마지막 글로 찾아요`
   else if (chip === "omnis") text = "옴니스와 나눈 대화가 여기에 모여요"
   else if (chip === "unread") text = "안 읽은 글이 없어요"
-  else if (chip === "favorite") text = "방의 ⋯ 메뉴에서 즐겨찾기를 켜면 여기에 모여요"
+  else if (chip === "favorite") text = "방을 오른쪽으로 밀거나 꾹 눌러 즐겨찾기를 켜면 여기에 모여요"
   else if (folder?.rule === "MY_TASKS") text = "내가 담당이거나 지시한 업무에 아직 글이 없어요. 업무 스레드에 글이 생기면 저절로 들어와요"
   else if (folder?.rule === "PROJECT" && !folder.project) text = "이 폴더의 프로젝트가 지워졌어요. 폴더 관리에서 지울 수 있어요"
   else if (folder?.rule === "PROJECT" && folder.project)
     text = `「${folder.project.name}」 업무방에 아직 글이 없어요. 업무 스레드에 글이 생기면 저절로 들어와요`
-  else if (folder) text = "이 폴더에 방이 없어요. 방의 ⋯ 메뉴나 아래 버튼으로 넣을 수 있어요"
+  else if (folder) text = "이 폴더에 방이 없어요. 방을 꾹 누르거나 오른쪽으로 밀어서, 또는 아래 버튼으로 넣을 수 있어요"
   else text = "아직 방이 없어요"
   return (
     <div className="mx-4 mt-1 rounded-md border border-dashed px-3 py-3 text-[11.5px] text-muted-foreground">

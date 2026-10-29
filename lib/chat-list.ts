@@ -224,3 +224,37 @@ export function matchesRoomQuery(room: { name: string; slug?: string; preview: s
 export function filterRooms<T extends { name: string; slug?: string; preview: string | null }>(rooms: T[], q: string): T[] {
   return rooms.filter((r) => matchesRoomQuery(r, q))
 }
+
+// ─── 목록에서 지우기 · 숨기기 · 나가기 (2026-10-29) ─────────────
+
+/**
+ * 방 종류별 「오른쪽→왼쪽 밀기」 의 뜻. null 이면 그 동작이 없다(밀어도 버튼을 보이지 않는다).
+ * - 옴니스 1:1 → delete: 대화 삭제. 나에게서 숨기는 soft delete — 실행 기록(AgentRun · AiUsage)은 남는다
+ * - 사람 1:1 → hide: 내 목록에서 숨기기. 상대가 새 글을 보내면 다시 나타난다
+ * - 단톡방 → leave: 나가기(참여자에서 빠진다)
+ * - 전사방 · 업무방 → 나갈 수 없다
+ */
+export type RoomRemoval = "delete" | "hide" | "leave"
+
+export function roomRemoval(kind: RoomKind): RoomRemoval | null {
+  if (kind === "OMNIS_DM") return "delete"
+  if (kind === "DM") return "hide"
+  if (kind === "GROUP") return "leave"
+  return null
+}
+
+/** 숨김(hiddenAt)을 받는 방 종류 — 서버가 이 밖의 방에 숨김을 쓰면 400 */
+export function acceptsHidden(kind: RoomKind): boolean {
+  const r = roomRemoval(kind)
+  return r === "delete" || r === "hide"
+}
+
+/**
+ * 내 목록에서 빠지는가. 지운 옴니스 대화는 늘 빠지고, 숨긴 사람 1:1 은 숨긴 뒤에 글이 오면 다시 보인다.
+ * lastAt 은 그 방의 마지막 글 시각(ISO), hiddenAt 은 숨긴 시각(ISO · 없으면 null)
+ */
+export function hiddenFromList(room: { kind: RoomKind; lastAt: string }, hiddenAt: string | null): boolean {
+  if (!hiddenAt || !acceptsHidden(room.kind)) return false
+  if (room.kind === "OMNIS_DM") return true
+  return new Date(room.lastAt).getTime() <= new Date(hiddenAt).getTime()
+}

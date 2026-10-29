@@ -46,8 +46,13 @@ export interface AgentRoomState {
 /** 돌고 있다고 보는 시간. 이보다 오래 RUNNING 이면 죽은 실행으로 보고 새 글을 받는다 */
 const RUNNING_STALE_MS = 5 * 60 * 1000
 
+/** 내 옴니스 1:1 방. 목록에서 지운 대화(ChatRoomPref.hiddenAt)는 없는 방과 같다 — 화면 · 묻기 · 상태 모두 404 */
 async function ownRoom(roomId: string, userId: string) {
-  return prisma.chatRoom.findFirst({ where: { id: roomId, kind: "OMNIS_DM", members: { some: { userId } } }, select: { id: true, name: true } })
+  const [room, pref] = await Promise.all([
+    prisma.chatRoom.findFirst({ where: { id: roomId, kind: "OMNIS_DM", members: { some: { userId } } }, select: { id: true, name: true } }),
+    prisma.chatRoomPref.findUnique({ where: { userId_roomKey: { userId, roomKey: `room:${roomId}` } }, select: { hiddenAt: true } }),
+  ])
+  return pref?.hiddenAt ? null : room
 }
 
 function shapeMessage(m: { id: string; content: string; createdAt: Date; authorId: string; omnisQuery: { sources: unknown } | null }): OmnisRoomMessage {

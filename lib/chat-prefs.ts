@@ -2,6 +2,7 @@
 // 규칙(순수 함수): lib/chat-list.ts · 입력 검사: lib/schemas/chat-folder.ts
 import { prisma } from "@/lib/db"
 import {
+  acceptsHidden,
   decideRoomKeyAccess,
   FOLDER_LIMIT,
   parseRoomKey,
@@ -60,13 +61,22 @@ export async function ensureReadBaseline(userId: string): Promise<Date> {
 
 export async function setRoomPref(
   userId: string,
-  input: { roomKey: string; favorite?: boolean; read?: true },
+  input: { roomKey: string; favorite?: boolean; read?: true; hidden?: true },
 ): Promise<PrefResult<{ favorite: boolean; lastReadAt: string | null }>> {
   const access = await checkRoomKey(userId, input.roomKey)
   if (access !== "ok") return keyRefusal(access)
+  if (input.hidden) {
+    // 옴니스 1:1(대화 삭제) · 사람 1:1(숨기기)만. 전사방 · 업무방은 나갈 수 없고 단톡방은 나가기(참여자 행)다
+    const parsed = parseRoomKey(input.roomKey)
+    const room = parsed?.type === "room" ? await prisma.chatRoom.findUnique({ where: { id: parsed.id }, select: { kind: true } }) : null
+    if (!room || !acceptsHidden(room.kind)) return fail(400, "이 방은 목록에서 지울 수 없어요")
+    // 지운 방은 즐겨찾기 · 내 수동 폴더에서도 뺀다 — 칩에 빈 자리가 남지 않게
+    await prisma.chatFolderRoom.deleteMany({ where: { roomKey: input.roomKey, folder: { userId } } })
+  }
   const data = {
     ...(input.favorite !== undefined ? { favorite: input.favorite } : {}),
     ...(input.read ? { lastReadAt: new Date() } : {}),
+    ...(input.hidden ? { hiddenAt: new Date(), favorite: false } : {}),
   }
   const row = await prisma.chatRoomPref.upsert({
     where: { userId_roomKey: { userId, roomKey: input.roomKey } },

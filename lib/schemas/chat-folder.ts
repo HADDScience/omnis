@@ -34,7 +34,15 @@ export const RenameFolderSchema = z.object({ name: FolderNameSchema })
 
 export const FolderRoomSchema = z.object({ roomKey: RoomKeySchema })
 
-/** 방 하나에 대한 내 설정. read: true 면 지금까지 읽은 것으로 */
+/**
+ * 방 하나에 대한 내 설정. read: true 면 지금까지 읽은 것으로, hidden: true 면 내 목록에서 지운다(옴니스 1:1 = 대화 삭제 ·
+ * 사람 1:1 = 숨기기). 숨김을 받는 방 종류는 lib/chat-list.ts acceptsHidden — 서버가 방 종류를 보고 거부한다
+ */
 export const RoomPrefSchema = z
-  .object({ roomKey: RoomKeySchema, favorite: z.boolean().optional(), read: z.literal(true).optional() })
-  .refine((v) => v.favorite !== undefined || v.read !== undefined, "바꿀 것이 없습니다")
+  .object({
+    roomKey: RoomKeySchema,
+    favorite: z.boolean().optional(),
+    read: z.literal(true).optional(),
+    hidden: z.literal(true).optional(),
+  })
+  .refine((v) => v.favorite !== undefined || v.read !== undefined || v.hidden !== undefined, "바꿀 것이 없습니다")

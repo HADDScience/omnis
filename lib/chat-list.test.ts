@@ -3,7 +3,10 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 
 import {
+  acceptsHidden,
   countsAsUnread,
+  hiddenFromList,
+  roomRemoval,
   decideRoomKeyAccess,
   effectiveReadAt,
   filterRooms,
@@ -215,4 +218,32 @@ test("검색 — 없는 말은 걸리지 않는다 · 대소문자 무시 · 빈
   assert.equal(matchesRoomQuery(room({ key: "room:x", kind: "COMPANY", name: "HADD 팀" }), "hadd"), true)
   assert.deepEqual(filterRooms(rooms, "  ").length, rooms.length)
   assert.deepEqual(filterRooms(rooms, "견적").map((r) => r.key), ["task:t1"])
+})
+
+// ─── 지우기 · 숨기기 · 나가기 (2026-10-29) ───
+
+test("방 종류별 밀기 동작 — 옴니스 삭제 · 사람 1:1 숨기기 · 단톡 나가기 · 전사방 · 업무방은 없음", () => {
+  assert.equal(roomRemoval("OMNIS_DM"), "delete")
+  assert.equal(roomRemoval("DM"), "hide")
+  assert.equal(roomRemoval("GROUP"), "leave")
+  assert.equal(roomRemoval("COMPANY"), null)
+  assert.equal(roomRemoval("TASK"), null)
+})
+
+test("숨김은 옴니스 1:1 · 사람 1:1 에만 (거부되어야 하는 경우: 전사방 · 업무방 · 단톡방)", () => {
+  assert.equal(acceptsHidden("OMNIS_DM"), true)
+  assert.equal(acceptsHidden("DM"), true)
+  assert.equal(acceptsHidden("GROUP"), false)
+  assert.equal(acceptsHidden("COMPANY"), false)
+  assert.equal(acceptsHidden("TASK"), false)
+})
+
+test("지운 옴니스 대화는 늘 빠진다 · 숨긴 사람 1:1 은 숨긴 뒤 새 글이 오면 다시 보인다", () => {
+  const at = "2026-10-29T05:00:00.000Z"
+  assert.equal(hiddenFromList({ kind: "OMNIS_DM", lastAt: "2026-10-29T06:00:00.000Z" }, at), true)
+  assert.equal(hiddenFromList({ kind: "DM", lastAt: "2026-10-29T04:59:00.000Z" }, at), true)
+  assert.equal(hiddenFromList({ kind: "DM", lastAt: "2026-10-29T05:00:01.000Z" }, at), false)
+  assert.equal(hiddenFromList({ kind: "DM", lastAt: at }, null), false)
+  // 숨김을 받지 않는 방에 값이 있어도(잘못 쓴 행) 목록에서 빼지 않는다
+  assert.equal(hiddenFromList({ kind: "COMPANY", lastAt: at }, at), false)
 })
