@@ -30,6 +30,7 @@ const room = (over: Partial<ListRoom> & Pick<ListRoom, "key" | "kind">): ListRoo
   preview: null,
   unread: 0,
   favorite: false,
+  muted: false,
   ...over,
 })
 

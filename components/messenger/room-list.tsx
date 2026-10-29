@@ -14,6 +14,8 @@ import {
   Delete02Icon,
   FolderLibraryIcon,
   Logout03Icon,
+  Notification03Icon,
+  NotificationOff03Icon,
   PencilEdit02Icon,
   Search01Icon,
   StarIcon,
@@ -315,6 +317,23 @@ export function RoomList({ version, userId }: { version: number; userId: string 
 
   // ─── 지우기 · 숨기기 · 나가기 ───
   const router = useRouter()
+
+  /** 이 방의 채팅 푸시 끄기 · 켜기. 지금 연 방이면 머리줄도 새 값으로 다시 그린다 */
+  const toggleMuted = useCallback(
+    async (room: RoomListItem) => {
+      const next = !room.muted
+      setData((d) => (d ? patchRoom(d, room.key, { muted: next }) : d))
+      setSearch((s) => (s?.data ? { ...s, data: patchRoom(s.data, room.key, { muted: next }) } : s))
+      try {
+        await chatPrefs.setMuted(room.key, next)
+        if (room.key === activeKey) router.refresh()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "알림 설정을 바꾸지 못했습니다")
+      }
+      void load()
+    },
+    [load, activeKey, router],
+  )
   /** 열린 줄(밀어 둔 줄) — 한 번에 하나 */
   const [swiped, setSwiped] = useState<{ key: string; side: SwipeSide } | null>(null)
   /** 확인 창(규칙 11) — 누른 줄과 그 동작 */
@@ -430,6 +449,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
                   swiped={swiped?.key === r.key ? swiped.side : null}
                   onSwipe={(side) => setSwiped(side ? { key: r.key, side } : null)}
                   onFavorite={() => void toggleFavorite(r)}
+                  onMute={() => void toggleMuted(r)}
                   onFolder={(f) => void toggleFolder(r, f)}
                   onNewFolder={() => setManager({ open: true })}
                   onRemove={(removal) => setConfirm({ room: r, removal })}
@@ -721,6 +741,8 @@ function roomIcon(room: RoomListItem) {
 interface RowActions {
   folders: ChatFolderView[]
   onFavorite: () => void
+  /** 이 방의 채팅 푸시 끄기 · 켜기 */
+  onMute: () => void
   onFolder: (f: ChatFolderView) => void
   onNewFolder: () => void
   /** 지우기 · 숨기기 · 나가기 — 확인 창을 연다. 동작이 없는 방(전사방 · 업무방)은 부르지 않는다 */
@@ -728,13 +750,13 @@ interface RowActions {
 }
 
 const REMOVAL_LABEL: Record<RoomRemoval, string> = { delete: "삭제", hide: "숨기기", leave: "나가기" }
-/** 밀었을 때 드러나는 칸 폭(px) — 오른쪽 한 칸 · 왼쪽 두 칸 */
+/** 밀었을 때 드러나는 칸 폭(px) — 오른쪽 한 칸 · 왼쪽 세 칸(즐겨찾기 · 알림 · 폴더) */
 const RIGHT_W = 76
-const LEFT_W = 136
+const LEFT_W = 204
 
 /**
  * 목록 한 줄. ⋯ 더보기 단추는 없다(2026-10-29 작업지시자) — 대신
- *   꾹 누르기(PC 는 우클릭 · 키보드는 Shift+F10) = 메뉴 · 오른쪽→왼쪽 밀기 = 삭제/숨기기/나가기 · 왼쪽→오른쪽 밀기 = 즐겨찾기 · 폴더.
+ *   꾹 누르기(PC 는 우클릭 · 키보드는 Shift+F10) = 메뉴 · 오른쪽→왼쪽 밀기 = 삭제/숨기기/나가기 · 왼쪽→오른쪽 밀기 = 즐겨찾기 · 알림 · 폴더.
  * 메뉴와 밀기는 같은 동작을 부른다(RoomMenuBody · onRemove). 꾹 누르기는 base-ui ContextMenu 가 터치에서 0.5초로 연다
  */
 function RoomRow({
@@ -769,6 +791,19 @@ function RoomRow({
               >
                 <HugeiconsIcon icon={StarIcon} size={16} aria-hidden className={room.favorite ? "fill-white" : undefined} />
                 {room.favorite ? "즐겨찾기 끄기" : "즐겨찾기"}
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                data-mute-room={room.muted ? "on" : "off"}
+                onClick={() => {
+                  actions.onMute()
+                  onSwipe(null)
+                }}
+                className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-slate-600 text-[11px] font-medium text-white"
+              >
+                <HugeiconsIcon icon={room.muted ? Notification03Icon : NotificationOff03Icon} size={16} aria-hidden />
+                {room.muted ? "알림 켜기" : "알림 끄기"}
               </button>
               <DropdownMenu>
                 <DropdownMenuTrigger
@@ -849,6 +884,14 @@ function RoomRow({
                       className="shrink-0 self-center fill-amber-400 text-amber-500"
                     />
                   )}
+                  {room.muted && (
+                    <HugeiconsIcon
+                      icon={NotificationOff03Icon}
+                      size={11}
+                      aria-label="알림 꺼짐"
+                      className="shrink-0 self-center text-muted-foreground"
+                    />
+                  )}
                   <time dateTime={room.lastAt} className="shrink-0 text-[10.5px] text-muted-foreground tabular-nums">
                     {listTime(room.lastAt)}
                   </time>
@@ -895,6 +938,7 @@ function RoomMenuBody({
   room,
   folders,
   onFavorite,
+  onMute,
   onFolder,
   onNewFolder,
   onRemove,
@@ -908,6 +952,10 @@ function RoomMenuBody({
       <ui.Item onClick={onFavorite} className="touch-target">
         <HugeiconsIcon icon={StarIcon} size={14} aria-hidden className={room.favorite ? "fill-amber-400 text-amber-500" : undefined} />
         {room.favorite ? "즐겨찾기 끄기" : "즐겨찾기"}
+      </ui.Item>
+      <ui.Item onClick={onMute} className="touch-target">
+        <HugeiconsIcon icon={room.muted ? Notification03Icon : NotificationOff03Icon} size={14} aria-hidden />
+        {room.muted ? "알림 켜기" : "알림 끄기"}
       </ui.Item>
       <ui.Separator />
       <ui.Group>

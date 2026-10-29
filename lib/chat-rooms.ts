@@ -60,6 +60,8 @@ export interface RoomListItem {
   /** 안 읽은 글 수 — 셈법은 lib/chat-list.ts countsAsUnread */
   unread: number
   favorite: boolean
+  /** 이 방의 채팅 푸시를 껐다 — 목록에 종 꺼짐 표시 */
+  muted: boolean
 }
 
 export interface RoomList {
@@ -211,10 +213,11 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
   const query = opts.q ? normalizeQuery(opts.q) : ""
   const [baseline, prefs, folders] = await Promise.all([
     ensureReadBaseline(userId),
-    prisma.chatRoomPref.findMany({ where: { userId, roomKey: { not: READ_BASELINE_KEY } }, select: { roomKey: true, favorite: true, hiddenAt: true } }),
+    prisma.chatRoomPref.findMany({ where: { userId, roomKey: { not: READ_BASELINE_KEY } }, select: { roomKey: true, favorite: true, hiddenAt: true, muted: true } }),
     listFolders(userId),
   ])
   const favorites = new Set(prefs.filter((p) => p.favorite).map((p) => p.roomKey))
+  const mutedKeys = new Set(prefs.filter((p) => p.muted).map((p) => p.roomKey))
   // 지운 옴니스 대화 · 숨긴 사람 1:1 (숨긴 뒤 새 글이 오면 다시 보인다 — lib/chat-list.ts hiddenFromList)
   const hidden = new Map(prefs.flatMap((p) => (p.hiddenAt ? [[p.roomKey, p.hiddenAt.toISOString()] as const] : [])))
 
@@ -281,6 +284,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       preview: last ? `${authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
       unread: 0,
       favorite: false,
+      muted: false,
     }
     if (hiddenFromList(item, hidden.get(item.key) ?? null)) continue
     if (r.kind === "OMNIS_DM") omnis.push(item)
@@ -299,6 +303,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
         preview: last ? `${authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
         unread: 0,
         favorite: false,
+        muted: false,
       }
     })
     // 「전체」 를 맨 위에 — 카톡 이식으로 생긴 다른 전사방이 있어도 팀 채팅이 먼저다
@@ -322,6 +327,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       preview: `${authorLabel(t.authorId, t.authorName)}: ${previewText(t.content, t.kind)}`,
       unread: 0,
       favorite: false,
+      muted: false,
     })
   }
 
@@ -339,6 +345,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
   for (const r of all) {
     r.unread = counts.get(r.key) ?? 0
     r.favorite = favorites.has(r.key)
+    r.muted = mutedKeys.has(r.key)
   }
 
   return { ...result, folders, query: query || null }

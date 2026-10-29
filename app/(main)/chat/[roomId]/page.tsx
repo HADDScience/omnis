@@ -8,6 +8,7 @@ import { OmnisRoom } from "@/components/messenger/omnis-room"
 import { CompanyRoom } from "@/components/messenger/company-room"
 import { PeopleRoom } from "@/components/messenger/people-room"
 import { loadPeopleRoom } from "@/lib/chat-people"
+import { roomMuted } from "@/lib/chat-prefs"
 
 export const dynamic = "force-dynamic"
 
@@ -22,6 +23,8 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
   if ((await roomAccess(roomId, userId)) !== "ok") notFound()
   const room = await prisma.chatRoom.findUnique({ where: { id: roomId }, select: { id: true, name: true, kind: true } })
   if (!room) notFound()
+  // 머리줄 「알림 끄기 / 켜기」 의 첫 상태 — 방 키는 room:<id>(전사방 · 옴니스 1:1 · 사람 방 모두)
+  const muted = await roomMuted(userId, `room:${roomId}`)
 
   if (room.kind === "OMNIS_DM") {
     // 글 · 확인 카드 · 돌고 있는 실행 — 새로고침해도 카드가 남고, 돌던 답에는 다시 붙는다(3단계 에이전트)
@@ -38,13 +41,14 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
         initialTools={loaded.tools}
         initialHasMore={loaded.hasMore}
         activeRun={loaded.activeRun}
+        muted={muted}
       />
     )
   }
 
   if (room.kind === "COMPANY") {
     const messages = await recentMessages(roomId)
-    return <CompanyRoom key={roomId} roomId={roomId} roomName={room.name} currentUserId={userId} initialMessages={messages} />
+    return <CompanyRoom key={roomId} roomId={roomId} roomName={room.name} currentUserId={userId} initialMessages={messages} muted={muted} />
   }
 
   if (room.kind === "DM" || room.kind === "GROUP") {
@@ -52,7 +56,7 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
     const people = await loadPeopleRoom(roomId, userId)
     if (!people) notFound()
     const messages = await recentMessages(roomId)
-    return <PeopleRoom key={roomId} room={people} currentUserId={userId} initialMessages={messages} />
+    return <PeopleRoom key={roomId} room={people} currentUserId={userId} initialMessages={messages} muted={muted} />
   }
 
   notFound()

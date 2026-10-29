@@ -140,6 +140,8 @@ export interface ListRoom extends RuleFacts {
   slug?: string
   unread: number
   favorite: boolean
+  /** 이 방의 채팅 푸시를 껐다(ChatRoomPref.muted) */
+  muted: boolean
 }
 
 /** 저장해 둔 칩이 아직 있는가 — 지운 폴더의 칩이면 「전체」 로 */
