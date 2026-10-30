@@ -252,6 +252,9 @@ async function reportItems(q: CalendarQuery, range: Range): Promise<CalendarItem
   )
 }
 
+/** 웍스 캘린더를 누가 보는가 — 관리자는 전부, 나머지는 관리자가 연(ALL) 캘린더만. 에이전트 도구(list_calendar)도 이 함수를 거친다 */
+export const visibleCalendarFilter = (viewer: CalendarQuery["viewer"]) => (viewer.isAdmin ? {} : { audience: "ALL" as const })
+
 async function worksPart(q: CalendarQuery, include: boolean): Promise<[CalendarSource[], CalendarItem[]]> {
   const names = configuredCalendarNames()
   if (names.length === 0) return [[], []]
@@ -260,7 +263,7 @@ async function worksPart(q: CalendarQuery, include: boolean): Promise<[CalendarS
     where: {
       provider: PROVIDER,
       displayName: { in: names },
-      ...(q.viewer.isAdmin ? {} : { audience: "ALL" as const }),
+      ...visibleCalendarFilter(q.viewer),
     },
     orderBy: { displayName: "asc" },
   })

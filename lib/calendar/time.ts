@@ -116,3 +116,8 @@ export function seoulDateKey(instant: Date): string {
   const w = toWall(instant, SEOUL)
   return `${w.year}-${String(w.month).padStart(2, "0")}-${String(w.day).padStart(2, "0")}`
 }
+
+/** "YYYY-MM-DD(요일)" (서울) — 모델에게 오늘을 알릴 때. 「다음 주」「이번 달」 을 풀려면 요일이 필요하다 */
+export function seoulDayLabel(instant: Date): string {
+  return `${seoulDateKey(instant)}(${"일월화수목금토"[weekday(toWall(instant, SEOUL))]})`
+}
