@@ -53,14 +53,14 @@ export async function photoContextFor(fileId: string): Promise<{ ctx: PhotoConte
 }
 
 /** 설명 글을 저장하고 색인한다. 모델 출력이 JSON 으로 읽히지 않으면 저장하지 않고 false */
-export async function savePhotoDescription(fileId: string, modelText: string, describedBy: string, userId?: string): Promise<boolean> {
+export async function savePhotoDescription(fileId: string, modelText: string, describedBy: string, userId?: string, opts: { embed?: boolean } = {}): Promise<boolean> {
   const parsed = parsePhotoDescription(modelText)
   if (!parsed) return false
   await prisma.file.update({
     where: { id: fileId },
     data: { description: photoIndexText(parsed), describedAt: new Date(), describedBy },
   })
-  await syncEmbeddings("PHOTO", fileId, userId)
+  if (opts.embed !== false) await syncEmbeddings("PHOTO", fileId, userId)
   return true
 }
 

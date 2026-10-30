@@ -12,11 +12,10 @@
  * 계획: mydocs/plans/2026-10-29-photo-search.md 5단계
  */
 import "dotenv/config"
-import { execFile } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { homedir, tmpdir } from "node:os"
+import { existsSync, readFileSync } from "node:fs"
+import { homedir } from "node:os"
 import { join } from "node:path"
-import sharp from "sharp"
+import { ClaudePhotoLimitError, describeImageWithClaude } from "../import-tools/photo-describe-cli"
 
 const args = process.argv.slice(2)
 const flag = (name: string) => args.includes(name)
@@ -52,25 +51,9 @@ if (target === "prod") {
   throw new Error("로컬 대상인데 DATABASE_URL 이 localhost 가 아니다. 운영이면 --target prod 를 준다. 중단.")
 }
 
-/** claude CLI — 앱용 ANTHROPIC_API_KEY 가 넘어가면 구독 대신 그 키로 과금된다. 카톡 이식 도구와 같은 처리 */
-function askClaude(prompt: string): Promise<string> {
-  const env = { ...process.env }
-  delete env.CLAUDECODE
-  delete env.ANTHROPIC_API_KEY
-  return new Promise((resolve, reject) => {
-    execFile("claude", ["-p", "--model", model, "--allowedTools", "Read", "--output-format", "json", prompt],
-      { env, maxBuffer: 16 * 1024 * 1024, timeout: 5 * 60 * 1000 },
-      (err, stdout) => {
-        if (err) return reject(err)
-        try { resolve((JSON.parse(stdout) as { result?: string }).result ?? "") } catch (e) { reject(e) }
-      })
-  })
-}
-
 async function main() {
   const { prisma } = await import("../lib/db")
   const { photoContextFor, savePhotoDescription } = await import("../lib/photo-describe")
-  const { photoPrompt } = await import("../lib/photo-text")
   const { objectKeyFor } = await import("../lib/storage")
   const { nasPathOf } = await import("../lib/file-source")
 
@@ -89,25 +72,23 @@ async function main() {
   if (dry) return
   if (todo.length === 0) return reindexMissing()
 
-  const tmp = mkdtempSync(join(tmpdir(), "photo-backfill-"))
   let ok = 0, unparsed = 0, failed = 0, done = 0
+  let quotaError: ClaudePhotoLimitError | null = null
   const t0 = Date.now()
   const queue = [...todo]
   await Promise.all(Array.from({ length: workers }, async () => {
-    for (let f = queue.shift(); f; f = queue.shift()) {
+    for (let f = queue.shift(); f && !quotaError; f = queue.shift()) {
       try {
         const linked = nasPathOf(f.path)
         const src = linked ? join(NAS_ROOT, linked) : join(FILES_DIR, objectKeyFor(f.id, f.name))
         const found = await photoContextFor(f.id)
         if (!found || !existsSync(src)) { failed++; console.log(`  ✗ ${f.id} — ${found ? "실물 없음" : "대상 아님"}`); continue }
-        const img = join(tmp, `${f.id}.jpg`)
-        writeFileSync(img, await sharp(readFileSync(src)).rotate().resize(1280, 1280, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer())
-        const text = await askClaude(`먼저 Read 도구로 이 이미지 파일을 열어 본다: ${img}\n\n${photoPrompt(found.ctx)}`)
+        const text = await describeImageWithClaude(readFileSync(src), found.ctx, model)
         if (await savePhotoDescription(f.id, text, `claude-cli:${model}`)) ok++
         else { unparsed++; console.log(`  ? ${f.id} — 출력을 읽지 못함`) }
-        rmSync(img, { force: true })
       } catch (e) {
         failed++
+        if (e instanceof ClaudePhotoLimitError) quotaError = e
         console.log(`  ✗ ${f.id} — ${(e as Error).message.split("\n")[0].slice(0, 160)}`)
       }
       done++
@@ -117,8 +98,8 @@ async function main() {
       }
     }
   }))
-  rmSync(tmp, { recursive: true, force: true })
   console.log(`끝 — 성공 ${ok} · 못 읽음 ${unparsed} · 실패 ${failed}`)
+  if (quotaError) throw quotaError
   await reindexMissing()
 }
 
