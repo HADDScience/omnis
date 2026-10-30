@@ -28,6 +28,8 @@ interface ThreadComposerProps extends Partial<ThreadRefs> {
   /** 답장 대상 — 목록에서 고른 글. 보내면 비운다 */
   replyTo?: { id: string; authorName: string; content: string } | null
   onClearReply?: () => void
+  /** 메신저 업무방 키(task:) — loading 입력창에 쓴 글을 이어받는다(lib/chat-entry.ts) */
+  handoffKey?: string
 }
 
 class SessionExpired extends Error {}
@@ -52,6 +54,7 @@ export function ThreadComposer({
   tasks = [],
   users = [],
   files = [],
+  handoffKey,
 }: ThreadComposerProps) {
   const router = useRouter()
   const [sending, setSending] = useState(false)
@@ -152,6 +155,7 @@ export function ThreadComposer({
         ariaLabel="이 업무 스레드에 답장"
         // 슬러그를 넣으면 긴 업무명에서 두 줄로 넘친다 — 이 업무로 간다는 것은 탭 이름이 이미 말한다
         placeholder="답장 · @ 사람 · # 업무 · 파일은 끌어다 놓기"
+        handoffKey={handoffKey}
       />
     </div>
   )

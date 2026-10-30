@@ -166,6 +166,28 @@ export function roomsInChip<T extends ListRoom>(rooms: T[], chip: ChipId, folder
   return sortByRecent(picked)
 }
 
+/** 업무방 묶음의 순서 — 손이 가는 상태부터. 완료가 맨 아래 */
+export const TASK_GROUP_ORDER = ["IN_PROGRESS", "REVIEW", "TODO", "DONE"] as const
+export type TaskGroupStatus = (typeof TASK_GROUP_ORDER)[number]
+
+/**
+ * 업무방을 상태별 묶음으로 목록 아래에 뺀다(2026-10-30 작업지시자 — 처음엔 완료만, 이어서 다른 상태도).
+ * 업무방이 아닌 방(옴니스 · 전사 · 사람)은 위에 그대로. 묶음 안 순서는 받은 순서(최근 글 순) 그대로이고, 빈 묶음은 뺀다.
+ * 모르는 상태(값이 없거나 새 상태)는 묶지 않고 위에 둔다 — 어느 묶음에도 없어 사라지는 방이 없게
+ */
+export function groupTaskRooms<T extends { kind: RoomKind; status?: string }>(
+  rooms: T[],
+): { open: T[]; groups: { status: TaskGroupStatus; rooms: T[] }[] } {
+  const open: T[] = []
+  const by = new Map<TaskGroupStatus, T[]>()
+  for (const r of rooms) {
+    const status = r.kind === "TASK" ? TASK_GROUP_ORDER.find((s) => s === r.status) : undefined
+    if (!status) open.push(r)
+    else by.set(status, [...(by.get(status) ?? []), r])
+  }
+  return { open, groups: TASK_GROUP_ORDER.filter((s) => by.has(s)).map((status) => ({ status, rooms: by.get(status)! })) }
+}
+
 export function sortByRecent<T extends { lastAt: string }>(rooms: T[]): T[] {
   return [...rooms].sort((a, b) => b.lastAt.localeCompare(a.lastAt))
 }

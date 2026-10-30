@@ -25,6 +25,7 @@ import {
 } from "@/components/chat/message-parts"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
+import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
 
 interface Message {
   id: string
@@ -47,6 +48,11 @@ interface TaskSidebarProps {
   messages: Message[]
   /** 내 글에만 수정 · 삭제를 보여 준다 */
   currentUserId?: string
+  /**
+   * 메신저 업무방에서 그릴 때의 방 키(task:) — loading 입력창에 쓴 글을 이어받고(lib/chat-entry.ts),
+   * 다음에 열 때 바로 그리게 최근 글을 기기에 저장한다(lib/chat-cache.ts). 업무 상세 · 오른쪽 패널은 비운다
+   */
+  roomKey?: string
 }
 
 function formatTime(iso: string): string {
@@ -100,7 +106,7 @@ function useThreadRefs(): ThreadRefs {
   return refs
 }
 
-export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps) {
+export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSidebarProps) {
   const refs = useThreadRefs()
   const slug = refs.tasks.find((t) => t.id === taskId)?.slug
   const systemMessages = messages.filter(
@@ -114,6 +120,24 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
   const threadMessages = messages
   const rows = layoutMessages(threadMessages.map((m) => ({ ...m, isEvent: eventKindOf(m) !== null })))
   const router = useRouter()
+
+  // 메신저 업무방 — 사람 글만 최근 30개를 기기에 저장한다(채팅 패널과 같은 범위). 사건 줄은 넣지 않는다
+  useEffect(() => {
+    if (!roomKey || !currentUserId) return
+    const people = messages.filter((m) => !m.deletedAt && eventKindOf(m) === null)
+    if (people.length === 0) return
+    void writeCache(
+      currentUserId,
+      roomCacheKey(roomKey),
+      recentForCache(people).map((m) => ({
+        id: m.id,
+        author: m.author,
+        mine: m.author.id === currentUserId,
+        content: m.content,
+        createdAt: m.createdAt,
+      })),
+    )
+  }, [roomKey, currentUserId, messages])
 
   // AI 재구성은 응답 뒤에 돈다. 끝날 때까지 「갱신 중」 한 줄을 두고 2초마다 묻는다 — 입력창은 막지 않는다
   const [rebuildWait, setRebuildWait] = useState<string | null>(null)
@@ -386,6 +410,7 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
             onQueued={setRebuildWait}
             replyTo={replyTarget}
             onClearReply={() => setReplyTarget(null)}
+            handoffKey={roomKey}
           />
         </TabsContent>
 

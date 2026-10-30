@@ -6,6 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft01Icon } from "@hugeicons/core-free-icons"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useStartRoomEntry } from "./messenger-context"
 
 /**
  * 대화 칸 머리 — 방 이름 · 부제 · 동작. 폰에서는 ← 로 목록에 돌아간다(PC 는 목록이 옆에 있어 감춘다).
@@ -23,10 +24,13 @@ export function RoomHeader({
   actions?: ReactNode
   link?: { href: string; label: string }
 }) {
+  const startEntry = useStartRoomEntry()
   return (
     <div className="flex min-h-[64px] shrink-0 items-center gap-2 border-b px-2 py-1.5 md:px-5">
       <Link
         href="/chat"
+        // 목록(/chat)에서 방을 막 누른 입장 화면이면 주소가 그대로라 이동만으로는 화면이 안 바뀐다 — 덮개를 걷는다
+        onClick={() => startEntry(null)}
         aria-label="채팅방 목록으로"
         className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "touch-target size-11 md:hidden")}
       >

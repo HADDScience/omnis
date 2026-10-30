@@ -8,6 +8,7 @@ import { CommandPaletteProvider } from "@/components/layout/command-palette-cont
 import { RightPanelProvider } from "@/components/layout/right-panel-context"
 import { OnboardingProvider } from "@/components/onboarding/onboarding-provider"
 import { PwaRegister } from "@/components/pwa-register"
+import { AppNudge } from "@/components/layout/app-nudge"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 export default async function MainLayout({
@@ -64,6 +65,8 @@ export default async function MainLayout({
           </MainWithChat>
         </main>
         <FloatingNav />
+        {/* 앱 설치 · 기기 알림 권유 — 사용 안내가 끝난 뒤에만 뜬다 */}
+        <AppNudge />
         </OnboardingProvider>
         </RightPanelProvider>
       </CommandPaletteProvider>

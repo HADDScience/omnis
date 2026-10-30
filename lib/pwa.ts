@@ -46,6 +46,53 @@ export function onInstallPromptChange(fn: () => void): () => void {
   return () => listeners.delete(fn)
 }
 
+/**
+ * 잡아 둔 설치 이벤트로 브라우저의 설치 창을 띄운다. 이벤트는 한 번만 쓸 수 있어 쓰고 나면 비운다.
+ * 사람이 설치를 골랐으면 true. 이벤트가 없으면(iOS · 이미 씀) false
+ */
+export async function promptInstall(): Promise<boolean> {
+  const prompt = getInstallPrompt()
+  if (!prompt) return false
+  await prompt.prompt()
+  const { outcome } = await prompt.userChoice
+  setInstallPrompt(null)
+  return outcome === "accepted"
+}
+
+const INSTALLED_KEY = "omnis:app-installed"
+
+/** 이 기기에 설치했다고 적어 둔다 — 설치 이벤트(appinstalled) · 홈 화면으로 열렸을 때 */
+export function markInstalled() {
+  try {
+    window.localStorage.setItem(INSTALLED_KEY, "1")
+  } catch {
+    // 못 적으면 다음 접속에 다시 확인한다
+  }
+}
+
+/**
+ * 이 기기에 앱을 설치했는가 — 브라우저 탭으로 열었어도 안다.
+ * 적어 둔 표시(안드로이드 크롬은 앱과 브라우저가 저장소를 나눠 쓴다) → 브라우저가 알려 주는 설치 목록
+ * (getInstalledRelatedApps, 크롬 계열 · manifest 의 related_applications). iOS 사파리는 앱과 저장소가 따로라 알 길이 없다
+ */
+export async function detectInstalled(): Promise<boolean> {
+  if (typeof window === "undefined") return false
+  if (isStandalone()) return true
+  try {
+    if (window.localStorage.getItem(INSTALLED_KEY) === "1") return true
+  } catch {}
+  const nav = navigator as Navigator & { getInstalledRelatedApps?: () => Promise<unknown[]> }
+  if (!nav.getInstalledRelatedApps) return false
+  try {
+    const apps = await nav.getInstalledRelatedApps()
+    if (apps.length > 0) {
+      markInstalled()
+      return true
+    }
+  } catch {}
+  return false
+}
+
 /** 홈 화면에서 연 상태인가. iOS 는 표준 display-mode 대신 navigator.standalone 을 쓴다. */
 export function isStandalone(): boolean {
   if (typeof window === "undefined") return false

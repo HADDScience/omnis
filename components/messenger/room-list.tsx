@@ -10,6 +10,7 @@ import {
   Building03Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  CheckmarkCircle02Icon,
   Cancel01Icon,
   Delete02Icon,
   FolderLibraryIcon,
@@ -72,6 +73,8 @@ import {
   roomRemoval,
   roomsInChip,
   sortByRecent,
+  groupTaskRooms,
+  type TaskGroupStatus,
   unreadLabel,
   unreadRoomCount,
   type ChatFolderView,
@@ -81,9 +84,11 @@ import {
 import type { RoomList as RoomListData, RoomListItem } from "@/lib/chat-rooms"
 import { chatPrefs } from "./chat-prefs-client"
 import { LIST_CACHE_KEY, readCache, writeCache } from "@/lib/chat-cache"
+import { rememberRoomList } from "@/lib/chat-entry"
 import { FolderManager } from "./folder-manager"
 import { SwipeRow, type SwipeSide } from "./swipe-row"
 import { AuthorAvatar } from "@/components/chat/message-parts"
+import { useStartRoomEntry } from "./messenger-context"
 
 /** 전사방 · 업무방은 다른 사람이 글을 쓴다 — 목록을 열어 둔 동안 이 간격으로 다시 읽는다 */
 const POLL_MS = 30_000
@@ -120,6 +125,7 @@ function patchRoom(d: RoomListData, key: string, patch: Partial<RoomListItem>): 
 }
 
 const chipStorageKey = (userId: string) => `omnis.chat.chip.${userId}`
+const taskGroupsStorageKey = (userId: string) => `omnis.chat.task-groups-open.${userId}`
 
 /**
  * 메신저 왼쪽 목록 — 칩 한 줄(전체 · 옴니스 · 안읽음 · 즐겨찾기 · 내 폴더 · 폴더 관리) · 검색칸 · 방 목록.
@@ -159,6 +165,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
       const next = (await res.json()) as RoomListData
       setData(next)
       setError(null)
+      rememberRoomList(next)
       void writeCache(userId, LIST_CACHE_KEY, next)
     } catch (err) {
       setError(err instanceof Error ? err.message : "목록을 불러오지 못했습니다")
@@ -375,6 +382,46 @@ export function RoomList({ version, userId }: { version: number; userId: string 
   const loading = searching ? !search?.data && !search?.error : data === null && !error
   const currentFolder = chip.startsWith("folder:") ? folders.find((f) => `folder:${f.id}` === chip) : undefined
   const showNewChat = !searching && (chip === "all" || chip === "omnis")
+  // 업무방은 상태별 접는 묶음으로(groupTaskRooms). 기본은 모두 접힘. 검색 결과는 찾은 그대로 한 목록이다
+  const { open: openRooms, groups: taskGroups } = searching ? { open: visible, groups: [] } : groupTaskRooms(visible)
+  const [openGroups, setOpenGroups] = useState<TaskGroupStatus[]>([])
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(taskGroupsStorageKey(userId)) ?? "[]")
+      if (Array.isArray(saved)) setOpenGroups(saved.filter((s): s is TaskGroupStatus => typeof s === "string"))
+    } catch {
+      // 저장소를 못 읽으면 모두 접은 채로 시작한다
+    }
+  }, [userId])
+  const toggleGroup = useCallback(
+    (status: TaskGroupStatus) => {
+      setOpenGroups((prev) => {
+        const next = prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
+        try {
+          window.localStorage.setItem(taskGroupsStorageKey(userId), JSON.stringify(next))
+        } catch {
+          // 펼침 상태는 이번 세션에만 남는다
+        }
+        return next
+      })
+    },
+    [userId],
+  )
+  const renderRow = (r: RoomListItem) => (
+    <RoomRow
+      key={r.key}
+      room={r}
+      active={r.key === activeKey}
+      folders={folders}
+      swiped={swiped?.key === r.key ? swiped.side : null}
+      onSwipe={(side) => setSwiped(side ? { key: r.key, side } : null)}
+      onFavorite={() => void toggleFavorite(r)}
+      onMute={() => void toggleMuted(r)}
+      onFolder={(f) => void toggleFolder(r, f)}
+      onNewFolder={() => setManager({ open: true })}
+      onRemove={(removal) => setConfirm({ room: r, removal })}
+    />
+  )
 
   // 폰에서 처음 그릴 때 검색칸을 위로 밀어 둔다. 목록은 방을 옮겨 다녀도 그대로라(MessengerShell) 한 번이면 된다.
   // isMdUp 은 첫 그림에서 아직 false 라 여기서는 매체 질의를 직접 본다
@@ -440,21 +487,22 @@ export function RoomList({ version, userId }: { version: number; userId: string 
                 }
               />
             ) : (
-              visible.map((r) => (
-                <RoomRow
-                  key={r.key}
-                  room={r}
-                  active={r.key === activeKey}
-                  folders={folders}
-                  swiped={swiped?.key === r.key ? swiped.side : null}
-                  onSwipe={(side) => setSwiped(side ? { key: r.key, side } : null)}
-                  onFavorite={() => void toggleFavorite(r)}
-                  onMute={() => void toggleMuted(r)}
-                  onFolder={(f) => void toggleFolder(r, f)}
-                  onNewFolder={() => setManager({ open: true })}
-                  onRemove={(removal) => setConfirm({ room: r, removal })}
-                />
-              ))
+              <>
+                {openRooms.map(renderRow)}
+                {taskGroups.map((g, i) => (
+                  <TaskStatusGroup
+                    key={g.status}
+                    status={g.status}
+                    rooms={g.rooms}
+                    first={i === 0}
+                    // 지금 연 방이 든 묶음은 펼쳐 둔다 — 연 방이 목록에서 안 보이면 어디 있는지 모른다
+                    open={openGroups.includes(g.status) || g.rooms.some((r) => r.key === activeKey)}
+                    onToggle={() => toggleGroup(g.status)}
+                  >
+                    {g.rooms.map(renderRow)}
+                  </TaskStatusGroup>
+                ))}
+              </>
             )}
           </div>
         </div>
@@ -771,6 +819,7 @@ function RoomRow({
   const unread = room.unread > 0
   const removal = roomRemoval(room.kind)
   const manual = actions.folders.filter((f) => !f.rule)
+  const startEntry = useStartRoomEntry()
   return (
     <ContextMenu>
       <ContextMenuTrigger className="mx-2 rounded-xl">
@@ -859,6 +908,11 @@ function RoomRow({
               aria-current={active ? "page" : undefined}
               draggable={false}
               aria-keyshortcuts="Shift+F10"
+              onClick={(e) => {
+                // 새 탭 · 새 창으로 여는 누르기는 이 화면을 바꾸지 않는다
+                if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                startEntry(room.key)
+              }}
               onKeyDown={(e) => {
                 // 키보드로 메뉴 — 메뉴 키 · Shift+F10. 브라우저마다 contextmenu 를 내지 않는 경우가 있어 직접 연다
                 if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
@@ -1052,6 +1106,69 @@ function ErrorBox({ message, onRetry }: { message: string; onRetry: () => void }
       <Button variant="outline" size="sm" className="touch-target mt-2" onClick={onRetry}>
         다시 불러오기
       </Button>
+    </div>
+  )
+}
+
+const TASK_GROUP_LABEL: Record<TaskGroupStatus, string> = {
+  IN_PROGRESS: "진행 중인 업무",
+  REVIEW: "리뷰 중인 업무",
+  TODO: "할 일",
+  DONE: "완료된 업무",
+}
+
+/**
+ * 업무방 상태별 묶음 — 접어 두면 머리 한 줄(상태 · 개수 · 안 읽은 방)만. 펼침은 기기에 남긴다.
+ * 안 읽은 글이 있으면 접힌 머리에도 배지를 둔다 — 접어 둔 업무에 누가 글을 남겼는지 놓치지 않게
+ */
+function TaskStatusGroup({
+  status,
+  rooms,
+  first,
+  open,
+  onToggle,
+  children,
+}: {
+  status: TaskGroupStatus
+  rooms: RoomListItem[]
+  first: boolean
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  const unreadRooms = unreadRoomCount(rooms)
+  const listId = `task-rooms-${status}`
+  return (
+    <div className={cn(first ? "mt-2 border-t pt-2" : "pt-0.5")} data-task-group={status}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={listId}
+        className="touch-target mx-2 flex w-[calc(100%-1rem)] items-center gap-2.5 rounded-xl px-3 py-3 text-left text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <HugeiconsIcon
+          icon={ArrowRight01Icon}
+          size={16}
+          aria-hidden
+          className={cn("shrink-0 transition-transform duration-150 motion-reduce:transition-none", open && "rotate-90")}
+        />
+        <HugeiconsIcon icon={status === "DONE" ? CheckmarkCircle02Icon : Task01Icon} size={17} aria-hidden className="shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium">{TASK_GROUP_LABEL[status]}</span>
+        {unreadRooms > 0 && !open && (
+          <Badge className="h-5 min-w-5 shrink-0 px-1.5 text-[12px] tabular-nums" aria-label={`안 읽은 방 ${unreadRooms}개`}>
+            {unreadLabel(unreadRooms)}
+          </Badge>
+        )}
+        <span className="shrink-0 rounded-full bg-muted px-2 text-[12.5px] leading-6 tabular-nums" aria-label={`${rooms.length}개`}>
+          {rooms.length}
+        </span>
+      </button>
+      {open && (
+        <div id={listId} className="flex flex-col gap-0.5">
+          {children}
+        </div>
+      )}
     </div>
   )
 }
