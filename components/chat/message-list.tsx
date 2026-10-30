@@ -340,13 +340,13 @@ export function MessageList({
               )}
               {!mine && !selectionMode && (
                 // 묶음 안 줄은 아바타 자리를 비워 본문 줄을 맞춘다
-                row.groupStart ? <AuthorAvatar name={msg.author.name} size={30} lgSize={42} className="mt-5 in-data-[messenger]:mt-[26px]" /> : <span className="w-[30px] shrink-0 in-data-[messenger]:w-[42px]" />
+                row.groupStart ? <AuthorAvatar name={msg.author.name} size={30} lgSize={38} className="mt-5 in-data-[messenger]:mt-[27px]" /> : <span className="w-[30px] shrink-0 in-data-[messenger]:w-[38px]" />
               )}
               <div
-                className={`flex min-w-0 max-w-[78%] flex-col gap-1 in-data-[messenger]:max-w-[84%] ${mine ? "items-end" : ""}`}
+                className={`flex min-w-0 max-w-[78%] flex-col gap-1 ${mine ? "items-end in-data-[messenger]:max-w-[85%]" : "in-data-[messenger]:max-w-[calc(100%-50px)]"}`}
               >
                 {!isMe && row.groupStart && (
-                  <span className="px-0.5 text-[12px] font-semibold text-foreground/80 in-data-[messenger]:text-[14px]">
+                  <span className="px-0.5 text-[12px] font-semibold text-foreground/80 in-data-[messenger]:text-[15.5px] in-data-[messenger]:text-foreground">
                     {msg.author.name}
                   </span>
                 )}
@@ -364,9 +364,9 @@ export function MessageList({
                 <div className={`flex items-end gap-1 ${mine ? "flex-row-reverse" : ""}`}>
                   <div
                     data-message-body
-                    className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[22px] in-data-[messenger]:px-[16px] in-data-[messenger]:py-[11px] in-data-[messenger]:text-[16.5px] ${
-                      mine ? "bg-primary text-primary-foreground" : "bg-muted"
-                    } ${mine && !row.groupStart ? "rounded-tr-md in-data-[messenger]:rounded-tr-lg" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} ${
+                    className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] ${
+                      mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground" : "bg-muted"
+                    } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} ${
                       msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
                     } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}
                   >
@@ -599,19 +599,19 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
             rel="noopener noreferrer"
             title={f.name}
             className={`relative flex max-w-[280px] items-center gap-2.5 overflow-hidden rounded-lg border px-2.5 py-2 in-data-[messenger]:max-w-[340px] in-data-[messenger]:gap-3 in-data-[messenger]:rounded-xl in-data-[messenger]:px-3 in-data-[messenger]:py-2.5 transition-colors ${
-              onPrimary ? "border-white/25 bg-white/10 hover:bg-white/15" : "bg-background hover:bg-muted/60"
+              onPrimary ? "border-white/25 bg-white/10 hover:bg-white/15 in-data-[messenger]:border-border in-data-[messenger]:bg-background in-data-[messenger]:hover:bg-muted/60" : "bg-background hover:bg-muted/60"
             } ${uploading ? "opacity-70" : ""}`}
             onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
           >
             {uploading && (
               <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />
             )}
-            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md in-data-[messenger]:size-[44px] in-data-[messenger]:[&_svg]:size-[22px] ${onPrimary ? "bg-white/20 text-white" : kind.tone}`}>
+            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md in-data-[messenger]:size-[44px] in-data-[messenger]:[&_svg]:size-[22px] ${onPrimary ? "bg-white/20 text-white in-data-[messenger]:bg-muted in-data-[messenger]:text-foreground" : kind.tone}`}>
               <HugeiconsIcon icon={kind.icon} size={17} aria-hidden />
             </span>
             <span className="relative min-w-0 flex-1">
-              <span className={`block truncate text-[12.5px] in-data-[messenger]:text-[15px] font-medium ${onPrimary ? "text-white" : "text-foreground"}`}>{f.name}</span>
-              <span className={`block text-[11px] in-data-[messenger]:text-[13px] ${onPrimary ? "text-white/70" : "text-muted-foreground"}`}>
+              <span className={`block truncate text-[12.5px] in-data-[messenger]:text-[15px] font-medium ${onPrimary ? "text-white in-data-[messenger]:text-foreground" : "text-foreground"}`}>{f.name}</span>
+              <span className={`block text-[11px] in-data-[messenger]:text-[13px] ${onPrimary ? "text-white/70 in-data-[messenger]:text-muted-foreground" : "text-muted-foreground"}`}>
                 {uploading ? "업로드 중..." : `${kind.label} · ${fileSizeLabel(f.size)}`}
               </span>
             </span>
@@ -625,10 +625,10 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
 export function MessageContent({ content, tasks, isMe = false }: { content: string; tasks: TaskRef[]; isMe?: boolean }) {
   // 링크 · 경로는 밑줄 글자, @사람 · #업무는 옅은 칩 — 본문과 한눈에 구분된다
   const mentionClass = isMe
-    ? "font-medium text-white/90 underline decoration-white/40 hover:decoration-white"
+    ? "font-medium text-white/90 underline decoration-white/40 hover:decoration-white in-data-[messenger]:text-blue-700 in-data-[messenger]:decoration-blue-700/40 dark:in-data-[messenger]:text-blue-300 dark:in-data-[messenger]:decoration-blue-300/40"
     : "font-medium text-blue-700 dark:text-blue-300 hover:underline"
   const chipClass = isMe
-    ? "rounded bg-white/20 px-1 py-px font-medium text-white hover:bg-white/30"
+    ? "rounded bg-white/20 px-1 py-px font-medium text-white hover:bg-white/30 in-data-[messenger]:bg-blue-50 in-data-[messenger]:text-blue-700 dark:in-data-[messenger]:bg-blue-950/50 dark:in-data-[messenger]:text-blue-300"
     : "rounded bg-blue-50 px-1 py-px font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-900/60"
 
   const parts: React.ReactNode[] = []

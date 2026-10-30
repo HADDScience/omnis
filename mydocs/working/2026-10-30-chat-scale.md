@@ -171,6 +171,34 @@ Playwright chromium, 폰은 390×844 · 배율 2 · 터치, PC 는 1440×900.
 | PC `/tasks` + 오른쪽 패널 | `pc-panel-tasks-1440-after.png` | `pc-panel-tasks-1440-after-dark.png` | `panel-all-before.png` · `panel-omnis-before.png` · 나란히 `panel-all-sbs.png` · `panel-omnis-sbs.png` |
 | 좁은 폭 320 · 200 | `*-320-narrow.png` · `*-200-narrow.png` | | |
 
+## 옴니스 방과 같은 모양 (추가 요청 — 「옴니스랑 사람 간의 채팅이 다르지 않게」)
+
+기준은 옴니스 방. 메신저 안(`data-messenger`)에서만 바뀌고, 오른쪽 패널은 그대로다. 옴니스 답만 말풍선이 없고(#117 결정), 사람 글은 말풍선을 유지한다.
+
+| 항목 | 맞추기 전(사람 방) | 맞춘 뒤 (옴니스 방과 같음) |
+|---|---|---|
+| 내 말풍선 색 | 진한 파랑(`bg-primary`, 흰 글자) | 옅은 파랑 `bg-primary/10`(다크는 남색), 본문색 글자 |
+| 내 말풍선 글자 · 패딩 · 라운드 | 16.5px · 16×11 · 22px | 17px · 18×12 · 24px, 오른쪽 아래만 lg |
+| 내 말풍선 최대 폭 | 84% | 85% |
+| 내 글 안의 링크 · @ · # 칩 · 파일 카드 | 흰 글자(진한 바탕용) | 파랑 글자 · 옅은 칩 · 테두리 있는 카드(옅은 바탕용) |
+| 남의 아바타 | 42px | 38px |
+| 남의 이름 | 14px, 옅은 색 | 15.5px, 본문색 |
+| 남의 말풍선 글자 · 폭 | 16.5px · 열 폭 84% | 17px · 아바타 옆 남은 폭 전부(`calc(100% - 50px)`) |
+| 업무방 본문 · 아바타 · 사건 줄 들여쓰기 | 16.5px · 40px · 52px | 17px · 38px · 50px |
+| 입력창 모양 | + · 입력칸(테두리) · 보내기 세 덩어리, 높이 48px | 알약 하나(라운드 32px · 테두리 · 카드 바탕 · 그림자 · 포커스 시 진한 테두리), 폭 최대 760px |
+| 입력창 안 | 입력칸에 따로 테두리 | + 는 알약 왼쪽 안 48px 원, 글자 17px 테두리 없음, 보내기 48px 원이 오른쪽 안 |
+| 보내기 아이콘 | 종이비행기 | ↑ (옴니스 방과 같은 `ArrowUp01Icon`). 무지개 테두리는 옴니스 방 전용으로 뒀다 |
+| 입력줄 바깥 여백 | 14px | 가로 12px(sm 이상 24px) · 위 8 · 아래 12 — 옴니스 방과 같음 |
+
+날짜 구분선(`DayDivider`)과 사건 줄은 두 화면이 이미 같은 컴포넌트를 써서 크기가 같다. 「대화의 시작」 은 사람 방에만 있는 줄이고 날짜 구분선과 같은 13px 로 맞췄다.
+입력창의 기능(@ 멘션 · / 명령 · # 업무 · 파일 첨부 · 끌어다 놓기 · 답장 줄)은 DOM 을 옮기지 않고 모양만 바꿔 그대로다. `aria-label`(추가 · 메시지 전송) · placeholder 도 그대로라 e2e 셀렉터(`tests/helpers.ts` · `tests/feature/*` · `scripts/usability-scenarios.mjs`)는 고친 것이 없다. 이번에도 `pnpm run test:e2e` 는 돌리지 않았다.
+
+검증: `pnpm run verify` 타입 통과 · 린트 0 errors / 37 warnings(변경 전과 같음), `pnpm run test:unit` 180건 통과.
+오른쪽 패널: 변경 전(main)과 대조 — 「전체」 탭 입력창 구역은 픽셀이 같고, 목록은 스크롤 위치가 실행마다 달라 픽셀이 어긋나지만 크기 · 모양이 같다(`panel-all-sbs.png`). 「옴니스」 탭은 무지개 테두리 프레임 차이 5×5px 뿐. 업무 상세는 픽셀이 같다.
+
+스크린샷(같은 폴더 `scratchpad/chat-scale/`, 390×844): `omnis-390-unified-light.png` · `group-390-unified-light.png` · `company-390-unified-light.png` · `task-390-unified-light.png` 와 `…-unified-dark.png`.
+옴니스 방과 단톡방을 나란히 붙인 것: `unified-sbs.png`(라이트) · `unified-sbs-dark.png`. 단톡방 데이터에는 남의 글이 없어 남의 말풍선은 `company-390-unified-*.png`(전사방)에서 본다.
+
 ## 남은 것 · 알아 둘 것
 
 - 전사방 · 업무방의 입력창 안내문(`메시지 입력...  / 명령 · @ 사람 · # 업무`)이 폰에서 17px 로 두 줄이 된다. 입력창이 한 줄일 때보다 28px 높다. 글은 `ChatPanel` 이 넘기는 문구라 이번에 건드리지 않았다.

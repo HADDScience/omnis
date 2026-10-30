@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { SentIcon, Attachment01Icon, Cancel01Icon, PlusSignIcon, Task01Icon, AtIcon, Folder01Icon } from "@hugeicons/core-free-icons"
+import { ArrowUp01Icon, SentIcon, Attachment01Icon, Cancel01Icon, PlusSignIcon, Task01Icon, AtIcon, Folder01Icon } from "@hugeicons/core-free-icons"
 import { Spinner } from "@/components/ui/spinner"
 import {
   DropdownMenu,
@@ -389,7 +389,7 @@ export function MessageInput({
   return (
     <div
       ref={dropRef}
-      className={`relative p-3 pt-2 sm:p-4 sm:pt-2 in-data-[messenger]:px-[14px] in-data-[messenger]:pb-[14px] ${dragging ? "ring-2 ring-primary ring-inset rounded-lg bg-primary/5" : ""}`}
+      className={`relative p-3 pt-2 sm:p-4 sm:pt-2 in-data-[messenger]:px-3! in-data-[messenger]:sm:px-6! in-data-[messenger]:pt-2! in-data-[messenger]:pb-3! ${dragging ? "ring-2 ring-primary ring-inset rounded-lg bg-primary/5" : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -507,7 +507,8 @@ export function MessageInput({
         </div>
       )}
 
-      <div className="flex items-end gap-2">
+      {/* 메신저 안: 옴니스 방 입력줄(omnis-room Composer)과 같은 알약 하나 — + 는 왼쪽 안, 보내기는 오른쪽 안 */}
+      <div className="flex items-end gap-2 in-data-[messenger]:mx-auto in-data-[messenger]:max-w-[760px] in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-[32px] in-data-[messenger]:border in-data-[messenger]:bg-card in-data-[messenger]:p-1.5 in-data-[messenger]:shadow-[0_2px_8px_rgba(0,0,0,0.04)] in-data-[messenger]:focus-within:border-border-strong">
         {!noFiles && (
           <input
             ref={fileInputRef}
@@ -585,7 +586,7 @@ export function MessageInput({
             placeholder={placeholder}
             aria-label={ariaLabel}
             enterKeyHint="enter"
-            className="max-h-40 min-h-[40px] resize-none py-[7px] text-base leading-6 md:min-h-[30px] md:py-[5px] md:text-sm md:leading-[18px] in-data-[messenger]:max-h-48 in-data-[messenger]:min-h-[48px]! in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[11px]! in-data-[messenger]:text-[17px]! in-data-[messenger]:leading-[26px]!"
+            className="max-h-40 min-h-[40px] resize-none py-[7px] text-base leading-6 md:min-h-[30px] md:py-[5px] md:text-sm md:leading-[18px] in-data-[messenger]:max-h-48 in-data-[messenger]:min-h-[48px]! in-data-[messenger]:rounded-none in-data-[messenger]:border-0 in-data-[messenger]:bg-transparent! in-data-[messenger]:px-1 in-data-[messenger]:py-[11px]! in-data-[messenger]:text-[17px]! in-data-[messenger]:leading-[26px]! in-data-[messenger]:shadow-none in-data-[messenger]:focus-visible:border-transparent! in-data-[messenger]:focus-visible:ring-0! in-data-[messenger]:placeholder:text-[15px]"
             rows={1}
             disabled={disabled || sending}
           />
@@ -597,7 +598,8 @@ export function MessageInput({
           onClick={handleSend}
           disabled={(!content.trim() && attachedFiles.length === 0 && nasFiles.length === 0) || sending}
         >
-          <HugeiconsIcon icon={SentIcon} size={18} className="in-data-[messenger]:h-[24px]! in-data-[messenger]:w-[24px]!" />
+          <HugeiconsIcon icon={SentIcon} size={18} className="in-data-[messenger]:hidden" />
+          <HugeiconsIcon icon={ArrowUp01Icon} size={16} aria-hidden className="hidden in-data-[messenger]:block in-data-[messenger]:h-[24px]! in-data-[messenger]:w-[24px]!" />
         </Button>
       </div>
       {!noFiles && (

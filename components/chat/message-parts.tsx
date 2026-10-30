@@ -108,7 +108,7 @@ export function EventRow({
   iso: string
 }) {
   return (
-    <div className="flex items-center gap-2 py-1 pl-9 text-[12px] text-muted-foreground in-data-[messenger]:gap-2.5 in-data-[messenger]:py-2 in-data-[messenger]:pl-[52px] in-data-[messenger]:text-[14px]">
+    <div className="flex items-center gap-2 py-1 pl-9 text-[12px] text-muted-foreground in-data-[messenger]:gap-2.5 in-data-[messenger]:py-2 in-data-[messenger]:pl-[50px] in-data-[messenger]:text-[14px]">
       <HugeiconsIcon icon={EVENT_ICON[kind]} size={14} className="shrink-0 text-primary/70 in-data-[messenger]:size-[18px]" aria-hidden />
       <span className="min-w-0 break-keep">{children}</span>
       <MessageTime iso={iso} className="ml-auto shrink-0" />
