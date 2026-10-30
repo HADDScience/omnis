@@ -37,6 +37,38 @@ export function pushAllowed(pref: NotifyPrefRow | null | undefined, category: No
   return pref[PREF_FIELD[category]]
 }
 
+// ─── 쓰고 있는 기기 ──────────────────────────────────────
+// mydocs/plans/2026-10-30-push-active-device.md
+
+/** 그 기기를 마지막으로 만진 뒤 이만큼은 그 기기에서 쓰는 중으로 본다 */
+export const PRESENCE_WINDOW_MS = 5 * 60_000
+
+/** 기기 신호는 이 간격보다 자주 보내지 않는다 — 판정이 이만큼 늦을 수 있다 */
+export const PRESENCE_PING_MS = 60_000
+
+export interface PresenceRow {
+  userId: string
+  activeAt: Date
+  endpoint: string | null
+}
+
+/**
+ * 보낼 구독만 남긴다. 다른 기기에서 쓰는 중인 사람은 그 기기의 구독만 남고,
+ * 그 기기가 구독하지 않았으면(endpoint 가 없거나 목록에 없으면) 하나도 남지 않는다 — 쓰는 화면의 벨에서 본다.
+ * 신호가 없거나 오래된 사람은 전부 남는다.
+ */
+export function presenceTargets<S extends { userId: string; endpoint: string }>(
+  subscriptions: S[],
+  presences: PresenceRow[],
+  now: Date
+): S[] {
+  const active = new Map<string, string | null>()
+  for (const p of presences) {
+    if (now.getTime() - p.activeAt.getTime() < PRESENCE_WINDOW_MS) active.set(p.userId, p.endpoint)
+  }
+  return subscriptions.filter((s) => !active.has(s.userId) || active.get(s.userId) === s.endpoint)
+}
+
 // ─── 채팅 ────────────────────────────────────────────────
 
 export type ChatRoomKind = "COMPANY" | "TASK" | "DM" | "GROUP" | "OMNIS_DM"

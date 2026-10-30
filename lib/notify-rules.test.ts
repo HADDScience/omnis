@@ -11,6 +11,8 @@ import {
   categoryOfType,
   chatPushPayload,
   chatRecipients,
+  PRESENCE_WINDOW_MS,
+  presenceTargets,
   pushAllowed,
   type NewCalendarEvent,
 } from "./notify-rules"
@@ -35,6 +37,39 @@ test("설정: 행이 없으면 켜짐, 끈 종류만 막는다, 종류 없는 �
   assert.equal(pushAllowed(off, "task"), false)
   assert.equal(pushAllowed(off, "chat"), true)
   assert.equal(pushAllowed({ chatPush: false, taskPush: false, calendarPush: false }, null), true)
+})
+
+// ─── 쓰고 있는 기기 ──────────────────────────────────────
+
+const NOW = new Date("2026-10-30T10:00:00Z")
+const ago = (ms: number) => new Date(NOW.getTime() - ms)
+const SUBS = [
+  { userId: "a", endpoint: "a-phone" },
+  { userId: "a", endpoint: "a-pc" },
+  { userId: "b", endpoint: "b-phone" },
+]
+const endpoints = (subs: { endpoint: string }[]) => subs.map((s) => s.endpoint)
+
+test("기기: 신호가 없으면 전부 보낸다", () => {
+  assert.deepEqual(endpoints(presenceTargets(SUBS, [], NOW)), ["a-phone", "a-pc", "b-phone"])
+})
+
+test("기기: 구독한 PC 에서 쓰는 중이면 그 PC 로만, 다른 사람은 그대로", () => {
+  const r = presenceTargets(SUBS, [{ userId: "a", activeAt: ago(60_000), endpoint: "a-pc" }], NOW)
+  assert.deepEqual(endpoints(r), ["a-pc", "b-phone"])
+})
+
+test("기기: 구독하지 않은 PC 에서 쓰는 중이면 아무 기기로도 안 보낸다", () => {
+  assert.deepEqual(endpoints(presenceTargets(SUBS, [{ userId: "a", activeAt: ago(0), endpoint: null }], NOW)), ["b-phone"])
+  // 목록에 없는 endpoint(지워진 구독)도 같다
+  assert.deepEqual(endpoints(presenceTargets(SUBS, [{ userId: "a", activeAt: ago(0), endpoint: "gone" }], NOW)), ["b-phone"])
+})
+
+test("기기: 5분이 지나면 다시 전부 보낸다(경계 포함)", () => {
+  const just = presenceTargets(SUBS, [{ userId: "a", activeAt: ago(PRESENCE_WINDOW_MS - 1), endpoint: null }], NOW)
+  assert.deepEqual(endpoints(just), ["b-phone"])
+  const over = presenceTargets(SUBS, [{ userId: "a", activeAt: ago(PRESENCE_WINDOW_MS), endpoint: null }], NOW)
+  assert.deepEqual(endpoints(over), ["a-phone", "a-pc", "b-phone"])
 })
 
 // ─── 채팅 ────────────────────────────────────────────────

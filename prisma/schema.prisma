@@ -42,6 +42,7 @@ model User {
   notifications    Notification[]
   pushSubscriptions PushSubscription[]
   notificationPref NotificationPref?
+  pushPresence     PushPresence?
   omnisViewLogs    OmnisViewLog[]
   bookmarks        Bookmark[]
   activityLogs     ActivityLog[]
@@ -689,6 +690,17 @@ model PushSubscription {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+/// 사람이 지금 Omnis 를 쓰고 있는 기기(2026-10-30). 사람마다 한 줄, 화면을 만질 때 덮어쓴다.
+/// activeAt 이 최근이면 푸시를 이 기기로만 보낸다 — PC 에서 쓰는 중에 폰이 울리지 않게.
+/// 규칙의 정본은 lib/notify-rules.ts presenceTargets 다.
+model PushPresence {
+  userId   String   @id
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeAt DateTime
+  /// 그 기기의 푸시 구독 endpoint. 구독하지 않은 기기면 null — 그때는 어느 기기로도 보내지 않는다
+  endpoint String?
 }
 
 /// 사람마다 종류별 기기 알림(푸시) 켜고 끄기(2026-10-29). 행이 없으면 전부 켜짐이다.
