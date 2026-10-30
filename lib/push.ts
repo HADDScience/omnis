@@ -13,7 +13,7 @@ import { appendFile } from "node:fs/promises"
 import webpush from "web-push"
 
 import { prisma } from "@/lib/db"
-import { PREF_FIELD, pushAllowed, type NotifyCategory } from "@/lib/notify-rules"
+import { PREF_FIELD, presenceTargets, pushAllowed, type NotifyCategory } from "@/lib/notify-rules"
 
 export function pushConfigured(): boolean {
   return Boolean(
@@ -102,7 +102,12 @@ export async function deliverPush(
     return { sent: 0, removed: 0, skipped: "unconfigured" }
   }
 
-  const subscriptions = await prisma.pushSubscription.findMany({ where: { userId: { in: ids } } })
+  // 다른 기기에서 쓰는 중인 사람은 그 기기로만 보낸다 — PC 에서 쓰는 중에 폰이 울리지 않게
+  const [allSubscriptions, presences] = await Promise.all([
+    prisma.pushSubscription.findMany({ where: { userId: { in: ids } } }),
+    prisma.pushPresence.findMany({ where: { userId: { in: ids } } }),
+  ])
+  const subscriptions = presenceTargets(allSubscriptions, presences, new Date())
   await recordPush(ids, payload, category, "sent", subscriptions.length)
   if (subscriptions.length === 0) return { sent: 0, removed: 0 }
 
