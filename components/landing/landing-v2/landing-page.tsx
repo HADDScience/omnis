@@ -16,7 +16,7 @@ import { DemoStage } from "./demo-stage"
 import "./landing-v2.css"
 
 /**
- * 새 랜딩 — 「HADD Science 는 이렇게 일한다」(mydocs/plans/2026-10-29-landing-v2.md).
+ * 새 랜딩 — 「HADD Science 는 이렇게 일한다」(mydocs/plans/archives/2026-10-29-landing-v2.md).
  *
  * 보는 사람은 회사 밖(고객 · 투자자 · 지원기관)과 안(구성원) 모두다. 그래서 주어를 「HADD Science 는 / 우리는」 으로 쓴다 —
  * 밖에서 읽으면 자랑, 안에서 읽으면 「이게 우리 것이다」. 판매 문구(「당신의 업무를 혁신」)를 쓰지 않는다.

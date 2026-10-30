@@ -62,6 +62,8 @@ data/omnis/
 !/public/icon-192.png
 !/public/icon-512.png
 !/public/icon-maskable-512.png
+# 랜딩 머리줄의 회사 로고 (components/landing/motion/landing-page.tsx)
+!/public/hadd-logo-white.png
 .vercel
 .env*
 
