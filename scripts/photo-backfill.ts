@@ -89,7 +89,8 @@ async function main() {
         if (!found || !existsSync(src)) { failed++; console.log(`  ✗ ${f.id} — ${found ? "실물 없음" : "대상 아님"}`); continue }
         const image = readFileSync(src)
         const text = engine === "claude" ? await describeImageWithClaude(image, found.ctx, model) : await describeImageWithCodex(image, found.ctx, model)
-        if (await savePhotoDescription(f.id, text, describedBy)) ok++
+        // 색인은 끝에 100장씩 묶어서 — 사진마다 부르면 Gemini 하루 호출 한도(앱과 같이 쓴다)를 이 일괄이 다 쓴다(2026-10-30)
+        if (await savePhotoDescription(f.id, text, describedBy, undefined, { embed: false })) ok++
         else { unparsed++; console.log(`  ? ${f.id} — 출력을 읽지 못함`) }
       } catch (e) {
         failed++
@@ -109,22 +110,21 @@ async function main() {
 }
 
 /**
- * 설명은 저장됐는데 색인이 없는 사진 — 설명을 저장한 뒤 임베딩이 실패하면 생긴다(설명은 다시 만들지 않는다).
+ * 설명은 저장됐는데 색인이 없는 사진 — 설명 단계는 색인하지 않으므로 여기서 모두 줍는다(설명은 다시 만들지 않는다).
  * 설명 단계와 따로 둬서, 키 문제로 색인만 실패해도 다시 돌리면 여기서 줍는다.
  */
 async function reindexMissing() {
   const { prisma } = await import("../lib/db")
-  const { syncEmbeddings } = await import("../lib/embeddings")
+  const { syncEmbeddingsBatch } = await import("../lib/embeddings")
   const described = await prisma.file.findMany({ where: { describedAt: { not: null } }, select: { id: true } })
   const indexed = new Set((await prisma.embeddingChunk.findMany({ where: { source: "PHOTO" }, select: { sourceId: true } })).map((c) => c.sourceId))
   const missing = described.filter((f) => !indexed.has(f.id))
   if (missing.length === 0) return
-  console.log(`색인 빠진 사진 ${missing.length}장 — 다시 색인`)
-  let fail = 0
-  for (const f of missing) {
-    try { await syncEmbeddings("PHOTO", f.id) } catch (e) { fail++; if (fail <= 3) console.log(`  ✗ ${f.id} — ${(e as Error).message.slice(0, 120)}`) }
-  }
-  console.log(`  색인 ${missing.length - fail}/${missing.length}`)
+  console.log(`색인 빠진 사진 ${missing.length}장 — 100장씩 묶어 색인`)
+  const r = await syncEmbeddingsBatch("PHOTO", missing.map((f) => f.id), {
+    onProgress: (done, total) => console.log(`  색인 ${done}/${total}`),
+  })
+  console.log(`  색인 끝 — 새로 ${r.embedded} · 그대로 ${r.unchanged} · 대상 아님 ${r.removed}`)
 }
 
 main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1) })
