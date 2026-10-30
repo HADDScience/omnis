@@ -35,15 +35,15 @@ export function PhotoAlbum({ photos }: { photos: AlbumPhoto[] }) {
 
   return (
     <>
-      <div className="mt-3 flex max-w-[360px] flex-col gap-0.5 overflow-hidden rounded-xl" aria-label={`사진 ${photos.length}장`}>
+      <div className="@container mt-3 flex max-w-[360px] flex-col gap-0.5 overflow-hidden rounded-xl" aria-label={`사진 ${photos.length}장`}>
         {rows.map((row, r) => (
-          <div key={r} className="flex gap-0.5">
+          <div key={r} className="flex gap-0.5 @max-[140px]:flex-wrap">
             {row.map(({ p, i }) => (
               <button
                 key={p.sourceId}
                 type="button"
                 onClick={() => setOpen(i)}
-                className={`relative min-w-0 flex-1 bg-muted ${single ? "" : "aspect-square"}`}
+                className={`touch-target relative min-w-0 flex-1 bg-muted @max-[140px]:basis-[calc(50%-1px)] ${single ? "" : "aspect-square"}`}
                 aria-label={`${p.title} 크게 보기`}
               >
                 {/* 줄인 사본(?w=) — 원본은 평균 1.4MB. 한 장일 때만 원본을 띄운다 */}
@@ -80,7 +80,7 @@ function PhotoViewer({ photos, index, onIndex }: { photos: AlbumPhoto[]; index: 
   return (
     <Dialog open={index !== null} onOpenChange={(o) => !o && onIndex(null)}>
       <DialogContent
-        className="max-w-[calc(100%-1rem)] gap-3 bg-black p-3 text-white ring-0 sm:max-w-3xl"
+        className="max-w-[calc(100%-1rem)] gap-3 bg-black p-3 text-white ring-0 sm:max-w-3xl [&>[data-slot=dialog-close]]:min-h-[44px] [&>[data-slot=dialog-close]]:min-w-[44px]"
         onKeyDown={(e) => {
           if (e.key === "ArrowLeft") go(-1)
           if (e.key === "ArrowRight") go(1)
@@ -105,16 +105,16 @@ function PhotoViewer({ photos, index, onIndex }: { photos: AlbumPhoto[]; index: 
               <img src={apiUrl(`/api/files/${p.sourceId}/raw`)} alt={p.title} className="max-h-[75vh] w-auto max-w-full object-contain" />
               {photos.length > 1 && (
                 <>
-                  <button type="button" onClick={() => go(-1)} aria-label="이전 사진" className="absolute left-1 flex size-9 items-center justify-center rounded-full bg-black/50 hover:bg-black/70">
+                  <button type="button" onClick={() => go(-1)} aria-label="이전 사진" className="touch-target absolute left-1 flex size-9 items-center justify-center rounded-full bg-black/50 hover:bg-black/70">
                     <HugeiconsIcon icon={ArrowLeft01Icon} size={20} />
                   </button>
-                  <button type="button" onClick={() => go(1)} aria-label="다음 사진" className="absolute right-1 flex size-9 items-center justify-center rounded-full bg-black/50 hover:bg-black/70">
+                  <button type="button" onClick={() => go(1)} aria-label="다음 사진" className="touch-target absolute right-1 flex size-9 items-center justify-center rounded-full bg-black/50 hover:bg-black/70">
                     <HugeiconsIcon icon={ArrowRight01Icon} size={20} />
                   </button>
                 </>
               )}
             </div>
-            <a href={apiUrl(`/api/files/${p.sourceId}/raw`)} target="_blank" rel="noreferrer" className="justify-self-end text-[12px] text-white/70 underline-offset-2 hover:underline">
+            <a href={apiUrl(`/api/files/${p.sourceId}/raw`)} target="_blank" rel="noreferrer" className="touch-target flex items-center justify-self-end text-[12px] text-white/70 underline-offset-2 hover:underline">
               원본 열기
             </a>
           </>
