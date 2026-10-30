@@ -14,7 +14,12 @@ const CHAT_MIN_LENGTH = 15
 export async function embed(opts: { dry: boolean }) {
   const reembedAll = process.env.KAKAO_REEMBED_ALL === "1"
   const [tasks, messages] = await Promise.all([
-    prisma.task.findMany({ where: { sourceId: { startsWith: "kakao-task:" }, archived: false }, select: { id: true } }),
+    // 업무도 같은 이유로 — 색인이 없거나 마지막 색인 뒤에 고쳐진 카드만. 전량은 KAKAO_REEMBED_ALL=1
+    prisma.$queryRaw<{ id: string }[]>`
+      SELECT t."id" FROM "Task" t
+      WHERE t."sourceId" LIKE 'kakao-task:%' AND t."archived" = false
+        AND (${reembedAll} OR t."updatedAt" > COALESCE(
+          (SELECT max(e."updatedAt") FROM "EmbeddingChunk" e WHERE e."source" = 'TASK' AND e."sourceId" = t."id"), 'epoch'::timestamp))`,
     // 색인 조건은 lib/embeddings 의 buildChatMessageChunks 와 같다 — 전사방 글만.
     // 기본은 색인이 없는 글만 고른다. 전량을 하나씩 확인하면 방마다 8천 건을 운영 DB 에서 읽어 2시간 넘게 걸렸다(2026-10-30).
     // 청크 형식이 바뀌어(예: 시각 추가) 이미 색인된 것도 다시 실어야 하면 KAKAO_REEMBED_ALL=1 로 전량을 해시 비교한다.
