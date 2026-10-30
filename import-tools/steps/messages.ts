@@ -2,7 +2,7 @@
 //
 // 멱등: sourceId 유니크 제약으로 이미 넣은 메시지는 건너뛴다. 중간에 끊겨도 다시 돌리면 이어진다.
 // 부수효과 없음: AI·알림을 타지 않는다. 1년 전 대화 때문에 오늘 알림이 오면 안 된다.
-import { prisma, ROOMS, messageSourceId, parseKst, resolveUsers, type RawSession } from "../kakao-common"
+import { prisma, ROOMS, ensureRooms, touchRooms, messageSourceId, parseKst, resolveUsers, type RawSession } from "../kakao-common"
 import { matchHandCopies } from "../hand-copies"
 
 export async function importMessages(sessions: RawSession[], opts: { dry: boolean }): Promise<{ inserted: number; total: number }> {
@@ -48,9 +48,7 @@ export async function importMessages(sessions: RawSession[], opts: { dry: boolea
   console.log(`  대상 ${list.length}건 · 이미 있음 ${existing}건 · 새로 넣을 것 ${list.length - existing}건`)
   if (opts.dry) return { inserted: 0, total: existing }
 
-  for (const room of Object.values(ROOMS)) {
-    await prisma.chatRoom.upsert({ where: { id: room.id }, update: {}, create: { id: room.id, name: room.name } })
-  }
+  await ensureRooms()
 
   const CHUNK = 500
   let inserted = 0
@@ -58,6 +56,7 @@ export async function importMessages(sessions: RawSession[], opts: { dry: boolea
     const { count } = await prisma.chatMessage.createMany({ data: list.slice(i, i + CHUNK), skipDuplicates: true })
     inserted += count
   }
+  await touchRooms()
   const total = await prisma.chatMessage.count({ where: { sourceId: { startsWith: "kakao:" } } })
   console.log(`  새로 넣은 메시지 ${inserted}건 · 이식된 메시지 총 ${total}건`)
   return { inserted, total }

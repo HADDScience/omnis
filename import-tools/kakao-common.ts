@@ -286,15 +286,45 @@ export const SPEAKER_TO_USER: Record<string, string> = {
 /**
  * 이식할 방.
  *
- * 1:1 대화("윤훈 상무님" 등)는 제외한다 — ChatRoom 에 멤버십·접근 통제가 없어서
- * (roomId 만 알면 누구나 읽는다) 넣는 순간 사적인 대화가 전 구성원에게 공개된다.
+ * 1:1 대화("윤훈 상무님" 등)는 넣지 않는다 — 옮길지 정하지 않았다.
  */
-export const ROOMS: Record<string, { id: string; name: string }> = {
-  // 두 방을 한 방으로 합친다(사용자 결정 2026-09-04).
-  // 같은 사람들이 두 방을 오가며 일했으므로 시간순 한 흐름으로 읽는 편이 맞다.
+export interface ImportRoom {
+  id: string
+  name: string
+  /** 전사방(COMPANY)이 아니면 단톡방(GROUP) — 참여자만 읽고, 사내 검색 색인 · 사진 설명에 넣지 않는다 */
+  kind: "COMPANY" | "GROUP"
+  /** 단톡방 참여자의 옴니스 정식 이름 */
+  members?: string[]
+}
+
+export const ROOMS: Record<string, ImportRoom> = {
   // id 가 default-room 인 것은 채팅 독이 그 방을 열기 때문이다.
-  "하드사이언스 인턴방": { id: "default-room", name: "하드사이언스" },
-  "HADD-수원대": { id: "default-room", name: "하드사이언스" },
+  "HADD-수원대": { id: "default-room", name: "하드사이언스", kind: "COMPANY" },
+  // 인턴방은 따로 둔다(사용자 결정 2026-10-30). 옴니스로 넘어오면 톡방이 나뉘므로 카톡 방을 그대로 옮긴다.
+  // 2026-09-04 부터 두 방을 전사방 한 흐름으로 합쳐 왔다 — 이미 들어간 글은 import-tools/split-intern-room.ts 가 옮긴다.
+  // 이미 만든 업무 카드와의 연결은 그대로 둔다(사용자 결정) — 업무 화면에서는 그 글이 계속 보인다.
+  "하드사이언스 인턴방": { id: "kakao-intern-room", name: "인턴방", kind: "GROUP", members: ["정우창", "노혜린", "김아리"] },
+}
+
+/** 방을 만들고 단톡방이면 참여자를 맞춘다. 멱등 — 이미 있으면 참여자만 채운다 */
+export async function ensureRooms(): Promise<void> {
+  for (const room of Object.values(ROOMS)) {
+    await prisma.chatRoom.upsert({ where: { id: room.id }, update: {}, create: { id: room.id, name: room.name, kind: room.kind } })
+    for (const name of room.members ?? []) {
+      const user = await prisma.user.findUnique({ where: { name }, select: { id: true } })
+      if (!user) throw new Error(`${room.name} 참여자 「${name}」 이 옴니스에 없다. 중단.`)
+      await prisma.chatRoomMember.upsert({ where: { roomId_userId: { roomId: room.id, userId: user.id } }, update: {}, create: { roomId: room.id, userId: user.id } })
+    }
+  }
+}
+
+/** 단톡방 목록은 lastMessageAt 으로 정렬한다 — 이식한 글의 마지막 시각으로 맞춘다 */
+export async function touchRooms(): Promise<void> {
+  for (const room of Object.values(ROOMS)) {
+    if (room.kind === "COMPANY") continue
+    const last = await prisma.chatMessage.findFirst({ where: { roomId: room.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } })
+    if (last) await prisma.chatRoom.update({ where: { id: room.id }, data: { lastMessageAt: last.createdAt } })
+  }
 }
 
 /** 지시자·수행자 구분. 담당자 추정에 쓴다. */
