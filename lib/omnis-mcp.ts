@@ -127,7 +127,7 @@ export const OMNIS_TOOLS = [
   {
     name: "search_knowledge",
     description:
-      "의미 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권 조각을 유사도 순으로 돌려준다. ask_omnis 가 답을 만들기 전에 무엇을 근거로 삼는지 직접 보고 싶을 때, 또는 원문 조각이 필요할 때.",
+      "의미 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권·사진(설명) 조각을 유사도 순으로 돌려준다. ask_omnis 가 답을 만들기 전에 무엇을 근거로 삼는지 직접 보고 싶을 때, 또는 원문 조각이 필요할 때.",
     inputSchema: {
       type: "object",
       properties: {

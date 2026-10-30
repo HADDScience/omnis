@@ -36,6 +36,8 @@ import {
 } from "@/components/ui/tooltip"
 
 import { apiUrl } from "@/lib/base-path"
+import { albumPhotos } from "@/lib/photo-album"
+import { PhotoAlbum } from "@/components/omnis/photo-album"
 /**
  * 서버가 쓰는 것과 **같은** 타입을 가져온다. 여기서 따로 선언해 두면 서버 쪽에
  * 값이 늘어났을 때 조용히 어긋나고, sourceHref 가 undefined 를 돌려주고,
@@ -529,6 +531,11 @@ function AnswerBlock({ qa }: { qa: QA }) {
  */
 export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: Source[] }) {
   const components = useMemo(() => buildMarkdownComponents(sources), [sources])
+  // 답이 가리킨 사진은 본문 아래에 한 묶음으로 — 각주 배지만으로는 무슨 사진인지 하나씩 눌러 봐야 안다
+  const album = useMemo(
+    () => albumPhotos(answer, sources).map(({ photo, num }) => ({ sourceId: photo.sourceId, title: photo.title, num })),
+    [answer, sources]
+  )
   const qa = { answer, sources }
   return (
     <>
@@ -539,6 +546,8 @@ export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: 
           </ReactMarkdown>
         </div>
       </TooltipProvider>
+
+      <PhotoAlbum photos={album} />
 
       {/* 참고 자료 — 하단에 접힌 상태로 제공 */}
       {qa.sources.length > 0 && (

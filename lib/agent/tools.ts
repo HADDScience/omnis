@@ -60,7 +60,7 @@ export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
   const specs: AgentToolSpec[] = [
     {
       name: "search_knowledge",
-      description: "의미 + 키워드 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권 조각을 돌려준다. 대화 내용·진행 상황·결정을 물으면 먼저 쓴다.",
+      description: "의미 + 키워드 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권·사진(설명) 조각을 돌려준다. 대화 내용·진행 상황·결정을 물으면 먼저 쓴다.",
       schema: {
         type: "object",
         properties: {
