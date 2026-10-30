@@ -26,6 +26,7 @@ import {
   isIos,
   isStandalone,
   onInstallPromptChange,
+  promptInstall,
 } from "@/lib/pwa"
 
 const DISMISS_KEY = "omnis:install-card-dismissed"
@@ -43,8 +44,6 @@ const DISMISS_KEY = "omnis:install-card-dismissed"
 export function InstallAppCard() {
   const [visible, setVisible] = useState(false)
   const [open, setOpen] = useState(false)
-  const [ios, setIos] = useState(false)
-  const [installable, setInstallable] = useState(false)
 
   useEffect(() => {
     // 기기 판정은 브라우저에서만 가능하다 — 서버 렌더와 어긋나지 않게 마운트 뒤에 채운다.
@@ -53,9 +52,6 @@ export function InstallAppCard() {
       dismissed = localStorage.getItem(DISMISS_KEY) === "1"
     } catch {}
     setVisible(!isStandalone() && !dismissed)
-    setIos(isIos())
-    setInstallable(getInstallPrompt() !== null)
-    return onInstallPromptChange(() => setInstallable(getInstallPrompt() !== null))
   }, [])
 
   function dismiss() {
@@ -63,19 +59,6 @@ export function InstallAppCard() {
       localStorage.setItem(DISMISS_KEY, "1")
     } catch {}
     setVisible(false)
-  }
-
-  async function install() {
-    const prompt = getInstallPrompt()
-    if (!prompt) return
-    await prompt.prompt()
-    const { outcome } = await prompt.userChoice
-    if (outcome === "accepted") {
-      toast.success("설치했습니다. 홈 화면의 Omnis 아이콘으로 열어 주세요.")
-      setVisible(false)
-      setOpen(false)
-    }
-    setInstallable(getInstallPrompt() !== null)
   }
 
   if (!visible) return null
@@ -105,56 +88,93 @@ export function InstallAppCard() {
         </Button>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[calc(var(--app-vh,100dvh)-2rem)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Omnis 앱 설치</DialogTitle>
-            <DialogDescription>
-              휴대폰 홈 화면에 Omnis 아이콘을 만들어 앱처럼 씁니다.
-            </DialogDescription>
-          </DialogHeader>
-
-          {installable && (
-            <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
-              <p className="text-sm">이 브라우저에서는 버튼 하나로 바로 설치됩니다.</p>
-              <Button className="touch-target h-10 w-full" onClick={install}>
-                <HugeiconsIcon icon={Download04Icon} size={15} aria-hidden />
-                바로 설치
-              </Button>
-            </div>
-          )}
-
-          <Tabs defaultValue={ios ? "ios" : "android"}>
-            <TabsList className="w-full">
-              <TabsTrigger value="android" className="touch-target">
-                <HugeiconsIcon icon={AndroidIcon} size={14} aria-hidden />
-                Android
-              </TabsTrigger>
-              <TabsTrigger value="ios" className="touch-target">
-                <HugeiconsIcon icon={AppleIcon} size={14} aria-hidden />
-                iPhone
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="android">
-              <AndroidSteps />
-            </TabsContent>
-            <TabsContent value="ios">
-              <IosSteps />
-            </TabsContent>
-          </Tabs>
-
-          <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-            <div className="flex shrink-0 flex-col items-center gap-1">
-              <OmnisMark className="size-12 rounded-[12px] shadow-sm" />
-              <span className="text-[10.5px]">Omnis</span>
-            </div>
-            <p className="text-sm">
-              홈 화면에 이 아이콘이 생겼는지 확인해 주세요. 앞으로는 이 아이콘을 눌러 Omnis 를 엽니다.
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <InstallGuideDialog open={open} onOpenChange={setOpen} onInstalled={() => setVisible(false)} />
     </>
+  )
+}
+
+/**
+ * 설치 방법 대화상자 — 마이 탭 카드와 첫 화면 권유(app-nudge.tsx)가 같이 연다.
+ * 브라우저가 설치 이벤트를 줬으면 **바로 설치** 가 맨 위에 뜬다. 아니면 기기별 순서(iOS 는 이것이 유일한 길이다).
+ */
+export function InstallGuideDialog({
+  open,
+  onOpenChange,
+  onInstalled,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onInstalled?: () => void
+}) {
+  const [ios, setIos] = useState(false)
+  const [installable, setInstallable] = useState(false)
+
+  useEffect(() => {
+    setIos(isIos())
+    setInstallable(getInstallPrompt() !== null)
+    return onInstallPromptChange(() => setInstallable(getInstallPrompt() !== null))
+  }, [])
+
+  async function install() {
+    const accepted = await promptInstall()
+    if (accepted) {
+      toast.success("설치했습니다. 홈 화면의 Omnis 아이콘으로 열어 주세요.")
+      onOpenChange(false)
+      onInstalled?.()
+    }
+    setInstallable(getInstallPrompt() !== null)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(var(--app-vh,100dvh)-2rem)] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Omnis 앱 설치</DialogTitle>
+          <DialogDescription>
+            휴대폰 홈 화면에 Omnis 아이콘을 만들어 앱처럼 씁니다.
+          </DialogDescription>
+        </DialogHeader>
+
+        {installable && (
+          <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <p className="text-sm">이 브라우저에서는 버튼 하나로 바로 설치됩니다.</p>
+            <Button className="touch-target h-10 w-full" onClick={install}>
+              <HugeiconsIcon icon={Download04Icon} size={15} aria-hidden />
+              바로 설치
+            </Button>
+          </div>
+        )}
+
+        <Tabs defaultValue={ios ? "ios" : "android"}>
+          <TabsList className="w-full">
+            <TabsTrigger value="android" className="touch-target">
+              <HugeiconsIcon icon={AndroidIcon} size={14} aria-hidden />
+              Android
+            </TabsTrigger>
+            <TabsTrigger value="ios" className="touch-target">
+              <HugeiconsIcon icon={AppleIcon} size={14} aria-hidden />
+              iPhone
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="android">
+            <AndroidSteps />
+          </TabsContent>
+          <TabsContent value="ios">
+            <IosSteps />
+          </TabsContent>
+        </Tabs>
+
+        <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+          <div className="flex shrink-0 flex-col items-center gap-1">
+            <OmnisMark className="size-12 rounded-[12px] shadow-sm" />
+            <span className="text-[10.5px]">Omnis</span>
+          </div>
+          <p className="text-sm">
+            홈 화면에 이 아이콘이 생겼는지 확인해 주세요. 앞으로는 이 아이콘을 눌러 Omnis 를 엽니다.
+          </p>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

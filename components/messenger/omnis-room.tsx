@@ -21,6 +21,8 @@ import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
 import { answeredAfter, mergeLatest, prependOlder, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
 import { isStuckToBottom, prependScrollDelta } from "@/lib/agent/scroll-follow"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
+import { resolveHandoff } from "@/lib/chat-entry"
+import { useComposerHandoff } from "@/hooks/use-composer-handoff"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
 import { ToolTrail } from "./tool-trail"
@@ -420,6 +422,15 @@ export function OmnisRoom({
     setDraft("")
     void ask(files.length ? { content, fileIds: files.map((f) => f.id) } : { content }, content, files.length ? files : undefined)
   }
+
+  // 방이 오기 전 loading 화면에서 쓴 글 · 눌러 둔 보내기를 이어받는다(lib/chat-entry.ts).
+  // 오른쪽 패널(embedded)은 메신저 밖이라 받지 않는다. 답하는 중이거나 2자가 안 되면 보내지 않고 입력칸에 남긴다
+  useComposerHandoff(embedded || !roomId ? undefined : `room:${roomId}`, textareaRef, (h) => {
+    const { send: queued, text } = resolveHandoff(h, Date.now())
+    const sendNow = queued !== null && !busy && queued.trim().length >= 2
+    if (sendNow) send(queued)
+    setDraft(queued !== null && !sendNow ? (text ? `${queued}\n${text}` : queued) : text)
+  })
 
   async function decide(card: AgentCardData, decision: "approve" | "reject") {
     // [확인] 을 같은 순간 두 번 눌러도 한 번만(서버도 조건부 갱신으로 하나만 받는다)
