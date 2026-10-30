@@ -7,9 +7,10 @@
 // 이 파일은 Workflow 문맥(결정적 · Node 없음)에서 돈다. DB · 벤더 호출은 전부 steps.ts 의 "use step" 함수다.
 import { WorkflowAgent, type ModelCallStreamPart } from "@ai-sdk/workflow"
 import { jsonSchema, tool, type ToolSet } from "ai"
-import { getWritable } from "workflow"
+import { getWorkflowMetadata, getWritable } from "workflow"
 import { OmnisLanguageModel } from "./model"
 import { limitReason, spentWith, usageOf } from "./limits"
+import { RUN_STOPPED_RESULT } from "./stop-stream"
 import { closeAgentStream, loadAgentContext, runAgentReadTool, runAgentWriteTool, saveAgentPass } from "./steps"
 
 /** 막힌 제안만 있어 곧바로 이어 가는 일이 끝없이 돌지 않게 */
@@ -18,6 +19,8 @@ const MAX_PASSES = 3
 export async function omnisAgentWorkflow(runId: string) {
   "use workflow"
   const writable = getWritable<ModelCallStreamPart>()
+  // 「답변 중지」 신호는 이 Workflow 실행의 멈춤 스트림으로 온다 — 모델 단계가 듣는다(lib/agent/model.ts)
+  const { workflowRunId } = getWorkflowMetadata()
   let status = "RUNNING"
 
   for (let pass = 0; pass < MAX_PASSES; pass++) {
@@ -43,7 +46,7 @@ export async function omnisAgentWorkflow(runId: string) {
     }
 
     const agent = new WorkflowAgent({
-      model: new OmnisLanguageModel({ vendor: ctx.model.vendor, model: ctx.model.model }),
+      model: new OmnisLanguageModel({ vendor: ctx.model.vendor, model: ctx.model.model, stopRunId: workflowRunId }),
       instructions: ctx.instructions,
       tools,
       providerOptions: ctx.providerOptions,
@@ -58,7 +61,9 @@ export async function omnisAgentWorkflow(runId: string) {
       // 여러 구간을 한 스트림으로 보낸다 — 닫는 것은 Workflow 가 끝날 때
       preventClose: true,
       sendFinish: false,
+      // 상한에 닿았거나, 도구가 도는 동안 사용자가 멈췄으면(도구가 RUN_STOPPED_RESULT 를 돌려준다) 모델을 더 부르지 않는다
       stopWhen: ({ steps }) =>
+        steps.some((s) => s.toolResults.some((r) => r.output === RUN_STOPPED_RESULT)) ||
         limitReason(spentWith(ctx.spent, ctx.modelKey, steps.map((s) => usageOf(s.usage))), ctx.limits) !== null,
     })
 

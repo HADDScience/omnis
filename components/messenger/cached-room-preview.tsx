@@ -46,7 +46,7 @@ export function CachedRoomPreview() {
               {!m.mine && <span className="px-1 text-[13.5px] text-muted-foreground">{m.author.name}</span>}
               <div
                 className={cn(
-                  "max-w-[85%] whitespace-pre-wrap break-keep rounded-[22px] px-4 py-2.5 text-[16.5px] leading-[1.6] [overflow-wrap:anywhere]",
+                  "max-w-[85%] whitespace-pre-wrap break-keep rounded-[24px] px-[18px] py-3 text-[17px] leading-[1.6] [overflow-wrap:anywhere]",
                   m.mine ? "rounded-br-lg bg-primary/10" : m.fromOmnis ? "px-0" : "rounded-bl-lg border bg-card",
                   m.fromOmnis && "line-clamp-6",
                 )}

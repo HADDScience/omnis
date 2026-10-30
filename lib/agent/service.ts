@@ -16,6 +16,8 @@ import { approvalResponses } from "./messages"
 import { checkDecision, type StepStatus } from "./approval"
 import type { WritePreview } from "./tools"
 import { toolTrail, type ToolUse } from "./tool-trail"
+import { stopRun } from "./stop"
+import { AGENT_STOP_NAMESPACE } from "./stop-stream"
 
 export type Fail = { ok: false; status: number; error: string }
 
@@ -43,6 +45,8 @@ export interface AgentRoomState {
   tools: Record<string, ToolUse[]>
   /** 이 앞에 글이 더 있는가 — 위로 올리면 OMNIS_PAGE_SIZE 개씩 더 받는다 */
   hasMore: boolean
+  /** 사용자가 멈춘 질문 글 id → 그때까지의 답 글 id(「중지됨」 을 붙인다). 글 없이 멈췄으면 null(「답을 멈췄어요」) */
+  stopped: Record<string, string | null>
 }
 
 /** 돌고 있다고 보는 시간. 이보다 오래 RUNNING 이면 죽은 실행으로 보고 새 글을 받는다 */
@@ -97,14 +101,18 @@ async function messagePage(roomId: string, userId: string, before?: Date) {
   const runs = await prisma.agentRun.findMany({
     where: { roomId, userId, questionMessageId: { in: page.map((m) => m.id) } },
     orderBy: { createdAt: "asc" },
-    select: { questionMessageId: true, messages: true },
+    select: { questionMessageId: true, messages: true, status: true, stoppedMessageId: true },
   })
   const tools: Record<string, ToolUse[]> = {}
+  const stopped: Record<string, string | null> = {}
   for (const r of runs) {
     const t = toolTrail(r.messages as unknown as { role: string; content: unknown }[])
     if (t.length) tools[r.questionMessageId] = [...(tools[r.questionMessageId] ?? []), ...t]
+    // 같은 질문의 마지막 실행만 본다(다시 물어 답을 받았으면 멈춤 표시는 없다)
+    if (r.status === "STOPPED") stopped[r.questionMessageId] = r.stoppedMessageId
+    else delete stopped[r.questionMessageId]
   }
-  return { messages: page.map(shapeMessage), tools, hasMore }
+  return { messages: page.map(shapeMessage), tools, hasMore, stopped }
 }
 
 export async function loadAgentRoom(roomId: string, userId: string): Promise<AgentRoomState | null> {
@@ -128,6 +136,7 @@ export async function loadAgentRoom(roomId: string, userId: string): Promise<Age
     activeRun: live ? { id: live.id, status: live.status } : null,
     tools: page.tools,
     hasMore: page.hasMore,
+    stopped: page.stopped,
   }
 }
 
@@ -323,4 +332,32 @@ export async function reattachAgentRun(runId: string, userId: string): Promise<{
   const wf = getRun(run.workflowRunId)
   const r = streamResponse(run.workflowRunId, wf.getReadable({ startIndex: 0 }), { "x-agent-run-id": runId })
   return { ok: true, stream: r.stream, headers: r.headers }
+}
+
+/** 멈춘 실행의 Workflow 가 끝나기를 기다리는 상한 — 모델 단계는 신호를 받는 즉시 끊지만, 도는 도구는 끝까지 간다 */
+const STOP_WAIT_MS = 10_000
+
+/**
+ * 「답변 중지」 — 규칙은 lib/agent/stop.ts. 멈춤 신호는 그 Workflow 실행의 멈춤 스트림에 한 줄 쓰는 것이다
+ * (모델 단계가 듣고 벤더 연결을 끊는다, lib/agent/model.ts). 끝나기를 기다린 뒤 돌려준다 — 화면이 곧바로 방을 다시 읽으면
+ * 그때까지의 답(「중지됨」)이 이미 방에 있다. 기다림이 상한을 넘어도 STOPPED 는 이미 DB 에 있어 도구 · 다음 구간이 멈춘다.
+ * run.cancel() 은 쓰지 않는다 — 구간 끝(saveAgentPass)을 건너뛰어 사용량 · 그때까지의 답이 남지 않는다(stop-stream.ts 머리말)
+ */
+export async function stopAgentRun(runId: string, userId: string) {
+  return stopRun(runId, userId, {
+    findRun: (id, uid) => prisma.agentRun.findFirst({ where: { id, userId: uid }, select: { status: true, workflowRunId: true } }),
+    stopIfRunning: async (id, uid) =>
+      (await prisma.agentRun.updateMany({ where: { id, userId: uid, status: "RUNNING" }, data: { status: "STOPPED" } })).count,
+    signal: async (workflowRunId) => {
+      const wf = getRun(workflowRunId)
+      try {
+        const writer = wf.getWritable<{ stoppedAt: string }>({ namespace: AGENT_STOP_NAMESPACE }).getWriter()
+        await writer.write({ stoppedAt: new Date().toISOString() })
+        writer.releaseLock()
+      } catch {
+        // 이미 끝난 Workflow — 쓸 곳이 없다. 다음 구간은 DB 의 STOPPED 를 보고 열리지 않는다
+      }
+      await Promise.race([wf.returnValue.catch(() => null), new Promise((r) => setTimeout(r, STOP_WAIT_MS))])
+    },
+  })
 }

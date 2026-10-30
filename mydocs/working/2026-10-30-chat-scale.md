@@ -171,6 +171,34 @@ Playwright chromium, 폰은 390×844 · 배율 2 · 터치, PC 는 1440×900.
 | PC `/tasks` + 오른쪽 패널 | `pc-panel-tasks-1440-after.png` | `pc-panel-tasks-1440-after-dark.png` | `panel-all-before.png` · `panel-omnis-before.png` · 나란히 `panel-all-sbs.png` · `panel-omnis-sbs.png` |
 | 좁은 폭 320 · 200 | `*-320-narrow.png` · `*-200-narrow.png` | | |
 
+## 옴니스 방과 같은 모양 (추가 요청 — 「옴니스랑 사람 간의 채팅이 다르지 않게」)
+
+기준은 옴니스 방. 메신저 안(`data-messenger`)에서만 바뀌고, 오른쪽 패널은 그대로다. 옴니스 답만 말풍선이 없고(#117 결정), 사람 글은 말풍선을 유지한다.
+
+| 항목 | 맞추기 전(사람 방) | 맞춘 뒤 (옴니스 방과 같음) |
+|---|---|---|
+| 내 말풍선 색 | 진한 파랑(`bg-primary`, 흰 글자) | 옅은 파랑 `bg-primary/10`(다크는 남색), 본문색 글자 |
+| 내 말풍선 글자 · 패딩 · 라운드 | 16.5px · 16×11 · 22px | 17px · 18×12 · 24px, 오른쪽 아래만 lg |
+| 내 말풍선 최대 폭 | 84% | 85% |
+| 내 글 안의 링크 · @ · # 칩 · 파일 카드 | 흰 글자(진한 바탕용) | 파랑 글자 · 옅은 칩 · 테두리 있는 카드(옅은 바탕용) |
+| 남의 아바타 | 42px | 38px |
+| 남의 이름 | 14px, 옅은 색 | 15.5px, 본문색 |
+| 남의 말풍선 글자 · 폭 | 16.5px · 열 폭 84% | 17px · 아바타 옆 남은 폭 전부(`calc(100% - 50px)`) |
+| 업무방 본문 · 아바타 · 사건 줄 들여쓰기 | 16.5px · 40px · 52px | 17px · 38px · 50px |
+| 입력창 모양 | + · 입력칸(테두리) · 보내기 세 덩어리, 높이 48px | 알약 하나(라운드 32px · 테두리 · 카드 바탕 · 그림자 · 포커스 시 진한 테두리), 폭 최대 760px |
+| 입력창 안 | 입력칸에 따로 테두리 | + 는 알약 왼쪽 안 48px 원, 글자 17px 테두리 없음, 보내기 48px 원이 오른쪽 안 |
+| 보내기 아이콘 | 종이비행기 | ↑ (옴니스 방과 같은 `ArrowUp01Icon`). 무지개 테두리는 옴니스 방 전용으로 뒀다 |
+| 입력줄 바깥 여백 | 14px | 가로 12px(sm 이상 24px) · 위 8 · 아래 12 — 옴니스 방과 같음 |
+
+날짜 구분선(`DayDivider`)과 사건 줄은 두 화면이 이미 같은 컴포넌트를 써서 크기가 같다. 「대화의 시작」 은 사람 방에만 있는 줄이고 날짜 구분선과 같은 13px 로 맞췄다.
+입력창의 기능(@ 멘션 · / 명령 · # 업무 · 파일 첨부 · 끌어다 놓기 · 답장 줄)은 DOM 을 옮기지 않고 모양만 바꿔 그대로다. `aria-label`(추가 · 메시지 전송) · placeholder 도 그대로라 e2e 셀렉터(`tests/helpers.ts` · `tests/feature/*` · `scripts/usability-scenarios.mjs`)는 고친 것이 없다. 이번에도 `pnpm run test:e2e` 는 돌리지 않았다.
+
+검증: `pnpm run verify` 타입 통과 · 린트 0 errors / 37 warnings(변경 전과 같음), `pnpm run test:unit` 180건 통과.
+오른쪽 패널: 변경 전(main)과 대조 — 「전체」 탭 입력창 구역은 픽셀이 같고, 목록은 스크롤 위치가 실행마다 달라 픽셀이 어긋나지만 크기 · 모양이 같다(`panel-all-sbs.png`). 「옴니스」 탭은 무지개 테두리 프레임 차이 5×5px 뿐. 업무 상세는 픽셀이 같다.
+
+스크린샷(같은 폴더 `scratchpad/chat-scale/`, 390×844): `omnis-390-unified-light.png` · `group-390-unified-light.png` · `company-390-unified-light.png` · `task-390-unified-light.png` 와 `…-unified-dark.png`.
+옴니스 방과 단톡방을 나란히 붙인 것: `unified-sbs.png`(라이트) · `unified-sbs-dark.png`. 단톡방 데이터에는 남의 글이 없어 남의 말풍선은 `company-390-unified-*.png`(전사방)에서 본다.
+
 ## 남은 것 · 알아 둘 것
 
 - 전사방 · 업무방의 입력창 안내문(`메시지 입력...  / 명령 · @ 사람 · # 업무`)이 폰에서 17px 로 두 줄이 된다. 입력창이 한 줄일 때보다 28px 높다. 글은 `ChatPanel` 이 넘기는 문구라 이번에 건드리지 않았다.
@@ -178,3 +206,87 @@ Playwright chromium, 폰은 390×844 · 배율 2 · 터치, PC 는 1440×900.
 - 메신저 안 드롭다운 · 컨텍스트 메뉴 · 다이얼로그(방 메뉴 · 폴더 관리 · 참여자 · 확인 창)는 포털이라 셸 밖이고, 이번 요청 범위도 아니라 크기를 그대로 뒀다.
 - 이 세션에서 `pkill -f "next dev"` 로 서버를 끄다가 다른 워크트리(`omnis-ip`, 포트 3010)의 dev 프로세스에도 신호가 갔다. 확인 시점에 3010 은 HTTP 200 으로 살아 있었다. 이후에는 포트 3117 의 PID 만 종료했다.
 - `.env` 는 워크트리에 복사해 둔 채다(`cp ~/work/omnis-local/.env .env`, gitignore 대상).
+
+## 실행 중 중지 단추 (추가 요청 2026-10-30 — 「실행 중일 때 전송 버튼을 중지 버튼으로」)
+
+옴니스가 답하는 동안 보내기 단추 자리에 같은 크기(메신저 48px · 패널 32px)의 **■ 답변 중지**(aria-label 「답변 중지」)가 뜬다.
+메신저(`/chat/…`)와 오른쪽 패널 옴니스 탭은 같은 `OmnisRoom` 이라 둘 다 같다. 온보딩 시연의 `Composer` 는 `onStop` 을 주지 않아 예전 그대로다.
+
+### 마이그레이션 — 있다 (추가만)
+
+`prisma/migrations/20261030000000_agent_run_stopped`:
+- `AgentRunStatus` 에 **`STOPPED`**(사용자가 멈춤)를 더했다. 기존 `CANCELLED`(확인 대기 중 새 글이 와서 버림)와 섞지 않는다
+- `AgentRun.stoppedMessageId`(nullable) — 멈출 때까지 흘러나온 답 글. 화면은 이 글에 「중지됨」 을 붙인다. 백필은 없다(새 칸 · 새 값뿐). API 입력이 없어 Zod 도 없다
+- **로컬(localhost:5433)에만 적용했다.** 운영 반영 순서는 이전과 같다(운영 migrate 먼저 → 머지)
+
+### 멈추는 방식 — 왜 `run.cancel()` 을 쓰지 않았나
+
+`workflow` 5.2.2 의 `getRun(id).cancel()` 은 문서(`docs/foundations/cancellation.mdx`)대로 **다음 멈춤 지점**에서 Workflow 를 세울 뿐, 돌고 있는 단계(모델 호출)는 끝까지 돈다.
+긴 답은 대개 모델 호출 한 번이라 멈추는 효과가 없고, 그 뒤 구간 끝(`saveAgentPass`)이 돌지 않아 **사용량 · 그때까지의 답이 남지 않는다.** 그래서 쓰지 않았다. 대신 세 겹으로 멈춘다.
+
+1. **중지 API** `POST /api/agent/runs/[runId]/stop` (`lib/agent/stop.ts` 규칙 · `service.ts stopAgentRun`): 내 실행만(남의 것은 404). `status=RUNNING` 조건부 갱신으로 STOPPED. 아니면 409(DONE 을 STOPPED 로 덮지 않는다).
+   바꾼 뒤 그 Workflow 실행의 이름 붙은 스트림 `agent-stop` 에 한 줄 쓰고(`getRun(id).getWritable({ namespace })`), Workflow 가 끝나기를 `returnValue` 로 최대 10초 기다린 뒤 돌려준다. 그래서 화면이 곧바로 방을 다시 읽으면 「중지됨」 답이 이미 있다
+2. **모델 단계 안에서 끊기** (`lib/agent/model.ts` · `stop-stream.ts`): 모델 껍데기가 그 스트림을 듣다가 신호가 오면 벤더 연결을 끊고, 열린 글 칸을 닫은 뒤 `finish(stop)` 로 **정상 종료**한다.
+   WorkflowAgent 의 `abortSignal` 로 끊으면 단계가 `{ aborted: true }` 를 돌려 흘러나온 글을 버린다(`@ai-sdk/workflow/src/do-stream-step.ts`) — 그래서 그 경로를 쓰지 않았다. 모델 껍데기는 Workflow 묶음에도 들어가 prisma 를 넣을 수 없어 DB 대신 Workflow 스트림으로 신호를 받는다
+3. **DB 확인**: 도구 단계(`readTool` · `writeTool`)는 STOPPED 면 돌지 않고 표식을 돌려주며, `stopWhen` 이 그 표식을 보고 모델을 더 부르지 않는다. 구간 사이에 멈췄으면 다음 구간의 `loadContext` 가 열지 않는다
+
+구간 끝(`savePass`)은 STOPPED 면 `saveStopped`: 기다리던 카드는 EXPIRED, **새 확인 카드는 만들지 않는다**, 마지막 단계 글이 있으면 옴니스 글로 남기고 `stoppedMessageId` 에 적는다. 기기 알림은 보내지 않는다.
+카드 경로는 순서를 바꿨다 — **상태(RUNNING → AWAITING_APPROVAL)를 조건부로 먼저 잡고** 카드를 만든다. 그사이 멈췄으면 카드 없이 `saveStopped`.
+DONE · LIMIT · FAILED 경로는 그대로다(멈춤과 거의 같은 때 답이 끝났으면 끝난 답이 이긴다).
+
+**사용량**: 끝까지 받은 호출은 벤더 값 그대로. 끊은 호출은 벤더가 사용량을 주지 않아 **어림**(UTF-8 3바이트 ≈ 1토큰, 캐시 없음으로)으로 `AiUsage` 에 남긴다. 적게 잡지 않는 쪽이다.
+실측: 같은 질문을 끝까지 받은 마지막 호출 입력 21,086토큰(캐시 13,585) ↔ 멈춘 호출 어림 20,108토큰(캐시 0). 추론 토큰은 어림에 들어가지 않는다.
+
+### 화면
+
+- 바쁠 때(질문 보내는 중 · 답 받는 중 · 확인 결정 중 · 서버에서 도는 중) 보내기 → ■. 누르면 읽던 스트림을 바로 끊고(`AbortController`) 흐르던 글은 그대로 둔 채 「멈추는 중…」 → 중지 API → 방 다시 읽기
+- 실행 id(`x-agent-run-id`)를 받기 전에 누르면 응답 머리가 오는 즉시 멈춘다. 거절(409 · 429)이거나 이어 가지 않는 확인이면 단추를 푼다
+- 멈춘 답: 본문 아래 작은 「■ 중지됨」 꼬리표. 글 없이 멈췄으면 옴니스 자리에 「답을 멈췄어요」. **「답을 받지 못했어요 · 다시 묻기」 는 뜨지 않는다**(`unansweredQuestion` 이 멈춘 질문을 뺀다)
+- 입력칸은 예전처럼 답하는 중에도 미리 써 둘 수 있다
+- 다른 탭 · 기기: STOPPED 는 `activeRun`(RUNNING · AWAITING) 이 아니라 기존 흐름(스트림 끝 → 방 다시 읽기, 화면 복귀 시 다시 읽기)으로 「중지됨」 이 보인다. 새 장치는 넣지 않았다
+
+### 검증
+
+```
+$ pnpm run verify
+✖ 37 problems (0 errors, 37 warnings)     ← 전부 이번에 손대지 않은 파일(이전과 같은 수). 바꾼 파일만 eslint: 0
+
+$ pnpm run test:unit
+ℹ tests 192
+ℹ pass 192
+ℹ fail 0
+```
+
+더한 단위 시험: `lib/agent/stop.test.ts`(내 실행만 · 남의 것 404 · DONE/FAILED/LIMIT/AWAITING/CANCELLED/STOPPED 는 409 이고 상태 그대로 · 동시 두 번은 하나만 · Workflow id 없을 때),
+`lib/agent/stop-stream.test.ts`(멈추지 않으면 그대로 · 멈추면 벤더를 끊고 text-end + finish 하나 · 글 전에 멈춤 · 이미 finish 뒤 신호 · 신호 거절 · 입력 어림이 암호화 추론을 세지 않음),
+`room-view.test.ts`(멈춘 질문은 미답이 아니다 · 다른 질문의 멈춤은 상관없다).
+
+실제 확인 — 로컬 dev 3117(`.env` 의 로컬 DB · OpenAI 키, 모델은 비용 때문에 `OMNIS_AGENT_MODEL=openai:gpt-6-luna`, 승인 서명 비밀은 `.env` 에 없어 띄울 때만 임의 값),
+`TOKEN=$(pnpm exec tsx --env-file=.env scripts/agent-cookie.ts) BASE=http://localhost:3117 OUT=… node scripts/verify-agent-stop.mjs`:
+
+```
+✓ 처음은 보내기 단추 ({"label":"보내기","w":48,"h":48,"x":326,"y":709,"disabled":true})
+✓ 보내면 같은 자리 · 같은 크기의 ■ ({"label":"답변 중지","w":48,"h":48,"x":326,"y":709,"disabled":false})
+✓ 답이 흐르는 중 (307자, 30911ms)
+✓ 누른 뒤 흐름이 멈춘다 (누르기 전 327자 → 1.2초 뒤 정리됨)
+✓ 「중지됨」 이 붙은 답이 남는다 (336자, 누르고 1341ms)
+✓ 흐르는 칸이 걷히고 「답을 받지 못했어요」 가 없다
+✓ 새로고침해도 「중지됨」 · 보내기 단추 ({"tag":true,"unanswered":false,"send":true})
+✓ 패널: 받는 즉시 멈춤 — 마지막 줄 {"last":"답을 멈췄어요","unanswered":false,"live":false}   (ONLY=panel 재실행)
+```
+
+서버 쪽(로컬 DB): 중지 API `200 in 126ms`, 실행 STOPPED · `stoppedMessageId` 있음, 사용량 5줄(끝까지 받은 4줄 + 끊은 호출 어림 1줄). 패널 실행은 STOPPED · 글 없음 · 어림 1줄(입력 7,962 · 출력 0).
+첫 시도는 dev 첫 컴파일(중지 경로 17초)을 기다리는 사이 답이 끝나 409 → 화면이 끝난 답을 그대로 보였다(409 경로 확인). 그 뒤 경로를 미리 컴파일하고 다시 돌렸다.
+쓴 비용: 실행 4번 합계 약 12.3원(5.8 · 4.3 · 1.1 · 1.1, gpt-6-luna). 로컬 DB 에 시험 방 2개가 남았다(「이번 달 업무를 담당자별로…」 · 「올해 정부과제 목록을…」).
+
+캡처(`/private/tmp/claude-501/-Users-jeong-uchang-work-omnis-local/94daa007-779b-4ee8-9c84-fb288600d17f/scratchpad/chat-scale/`):
+`stop-1-button.png`(보낸 직후 ■) · `stop-2-streaming.png`(흐르는 중 ■) · `stop-3-stopping.png`(누른 직후) · `stop-4-stopped.png`(「중지됨」) · `stop-5-reloaded.png`(새로고침 뒤) — 390x844 메신저,
+`stop-6-panel-stopping.png` · `stop-7-panel-stopped.png`(「답을 멈췄어요」) — 1440 오른쪽 패널.
+
+### 남은 문제 (이번 것)
+
+1. **패널 「옴니스와 새 대화」 단추의 기존 문제** — 방을 보던 중 새 대화를 누르면 `OmnisRoom key="new"` 가 바뀐 그 순간 아직 남은 앞 방 state 로 마운트돼, 앞 방 글이 보인 채 새 방으로 보내진다(`panel-omnis.tsx` 의 `initialMessages={state?.messages ?? []}`). 이번 변경과 무관해 고치지 않았다 — 시험은 최근 방에 이어 묻는 것으로 피했다
+2. 끊은 호출의 사용량은 어림이다. 실제 청구와는 월 청구서로 대조해야 한다. 벤더가 끊긴 요청의 입력을 청구하지 않으면 조금 크게 잡힌다
+3. 모델 단계는 벤더 응답 머리를 받은 뒤에야 신호에 반응한다. 도구 단계(검색 등)는 끝까지 돈 뒤 멈춘다 — 중지 API 의 10초 기다림을 넘으면 화면은 「답을 멈췄어요」 를 먼저 보이고, 남은 글은 다음 다시 읽기에 보인다
+4. 운영(Vercel World)에서 이름 붙은 스트림을 단계에서 읽는 것은 로컬(Local World)에서만 확인했다. 프리뷰에서 한 번 눌러 봐야 한다
+5. 확인 중 본 것(이번 변경과 무관): 로컬 Gemini 임베딩이 402 를 돌려 `search_knowledge` 가 재시도 뒤 실패한다 · `/tasks` 에 하이드레이션 불일치 경고 1건 · 로컬에 없는 첨부의 `/api/files/…/raw` 500

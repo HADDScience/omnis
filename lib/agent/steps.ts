@@ -33,5 +33,8 @@ export async function saveAgentPass(runId: string, pass: PassResult) {
 export async function closeAgentStream() {
   "use step"
   const { getWritable } = await import("workflow")
+  const { AGENT_STOP_NAMESPACE } = await import("./stop-stream")
   await getWritable().close()
+  // 멈춤 스트림도 닫는다 — 듣던 쪽이 남지 않게. 신호가 한 번도 오지 않았으면 열린 적이 없을 수 있다
+  await getWritable({ namespace: AGENT_STOP_NAMESPACE }).close().catch(() => {})
 }

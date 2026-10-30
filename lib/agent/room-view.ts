@@ -22,15 +22,18 @@ export interface RoomViewCard {
  * 답을 못 받은 내 글 — 「다시 묻기」 를 붙일 글. 없으면 null.
  * - 화면이 스트림을 읽는 중(busy)이거나, 서버에 돌고 있는 실행이 있으면(running) 아직 답하는 중이다
  * - 확인을 기다리는 카드가 있거나, 내 글 뒤에 카드가 생겼으면 답을 받은 것이다(카드가 답이다)
+ * - 내가 멈춘 질문(stopped — 질문 id 가 키)은 못 받은 것이 아니다. 글 없이 멈췄어도 「답을 멈췄어요」 로 보인다
  */
 export function unansweredQuestion<M extends RoomViewMessage>(input: {
   messages: M[]
   cards: RoomViewCard[]
   busy: boolean
   running: boolean
+  stopped?: Record<string, string | null>
 }): M | null {
   const last = input.messages.at(-1)
   if (!last || last.fromOmnis || input.busy || input.running) return null
+  if (input.stopped && last.id in input.stopped) return null
   if (input.cards.some((c) => c.status === "PENDING")) return null
   if (input.cards.some((c) => c.createdAt > last.createdAt)) return null
   return last

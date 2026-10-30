@@ -1836,6 +1836,8 @@ model AgentRun {
   /// 찾은 사내 지식 조각 [{ id, source, sourceId, title, sourceLabel, similarity }] — 답의 각주 [n] 이 이 순서를 가리킨다
   sources           Json           @default("[]")
   error             String?
+  /// 멈춘(STOPPED) 실행이 남긴 옴니스 글 — 그때까지 흘러나온 답. 화면이 이 글에 「중지됨」 을 붙인다. 글 없이 멈췄으면 null
+  stoppedMessageId  String?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   steps             AgentStep[]
@@ -1854,6 +1856,8 @@ enum AgentRunStatus {
   LIMIT
   /// 확인을 기다리는 동안 새 글이 와서 버렸다
   CANCELLED
+  /// 답하는 중에 사용자가 「답변 중지」 를 눌렀다 (CANCELLED 와 다르다 — 그건 새 글이 앞 제안을 버린 것)
+  STOPPED
 }
 
 /// 쓰기 제안 하나 = 확인 카드 하나. 승인은 화면에 보인 제안(planHash)에 묶이고 한 번만 쓴다

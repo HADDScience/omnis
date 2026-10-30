@@ -230,10 +230,10 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                     }`}
                   >
                     {row.groupStart ? (
-                      <AuthorAvatar name={m.author.name} lgSize={40} className="mt-0.5" />
+                      <AuthorAvatar name={m.author.name} lgSize={38} className="mt-0.5" />
                     ) : (
                       // 묶음 안 줄은 아바타 자리에 hover 로 시간만 — 폭은 아바타와 같게 두고 글자는 띄워 본문 줄이 어긋나지 않게
-                      <span className="relative w-[28px] shrink-0 in-data-[messenger]:w-[40px]">
+                      <span className="relative w-[28px] shrink-0 in-data-[messenger]:w-[38px]">
                         <MessageTime
                           iso={m.createdAt}
                           compact
@@ -286,7 +286,7 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                         </div>
                       ) : (
                         <div
-                          className={`whitespace-pre-wrap break-keep text-[13px] leading-[1.6] in-data-[messenger]:text-[16.5px] [overflow-wrap:anywhere] ${
+                          className={`whitespace-pre-wrap break-keep text-[13px] leading-[1.6] in-data-[messenger]:text-[17px] [overflow-wrap:anywhere] ${
                             m.deletedAt ? "italic text-muted-foreground" : ""
                           }`}
                         >
@@ -348,9 +348,9 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
               })}
               {showPending && (
                 <div className={`-mx-3 mt-2.5 flex gap-2.5 px-3 pb-1 pt-1 ${MESSAGE_ENTER}`} aria-live="polite">
-                  <span className="w-[28px] shrink-0 in-data-[messenger]:w-[40px]" />
+                  <span className="w-[28px] shrink-0 in-data-[messenger]:w-[38px]" />
                   <div className="min-w-0 flex-1">
-                    <div className="whitespace-pre-wrap break-keep text-[13px] leading-[1.6] text-foreground/60 in-data-[messenger]:text-[16.5px] [overflow-wrap:anywhere]">
+                    <div className="whitespace-pre-wrap break-keep text-[13px] leading-[1.6] text-foreground/60 in-data-[messenger]:text-[17px] [overflow-wrap:anywhere]">
                       {tidyBody(showPending.content)}
                     </div>
                     <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground in-data-[messenger]:text-[13px]">
@@ -364,7 +364,7 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                 <div
                   role="status"
                   aria-live="polite"
-                  className={`flex items-center gap-2 py-1.5 pl-9 text-[12px] text-muted-foreground in-data-[messenger]:pl-[52px] in-data-[messenger]:text-[14px] ${MESSAGE_ENTER}`}
+                  className={`flex items-center gap-2 py-1.5 pl-9 text-[12px] text-muted-foreground in-data-[messenger]:pl-[50px] in-data-[messenger]:text-[14px] ${MESSAGE_ENTER}`}
                 >
                   <Spinner className="h-3.5 w-3.5 text-primary" />
                   <span className="break-keep">

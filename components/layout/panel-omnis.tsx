@@ -154,6 +154,7 @@ export function PanelOmnis({ userId }: { userId: string }) {
           initialCards={state?.cards ?? []}
           initialTools={state?.tools ?? {}}
           initialHasMore={state?.hasMore ?? false}
+          initialStopped={state?.stopped ?? {}}
           activeRun={state?.activeRun ?? null}
           embedded={{
             onRoomCreated: (id) => {
