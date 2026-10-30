@@ -66,6 +66,28 @@ export async function getMembership(userId: string): Promise<IpMembership | null
   return { userId: r.user_id, email: r.email, displayName: r.display_name, role: r.role }
 }
 
+/**
+ * 지식재산권에 들어올 때 쓰는 자격. 명단(getMembership)이 아니라 이것을 본다.
+ *
+ * 문턱을 최대한 낮춰 두었다(2026-10-29 작업지시자 — 「권한은 존재하는데 접근 권한을
+ * 낮춰놔, 최대한」). 역할은 ip.members 에 그대로 남기되 들어오고 쓰는 것을 막지 않는다.
+ *   - 명단에 없는 활성 Omnis 계정 → editor
+ *   - viewer → editor (쓰기 허용)
+ *   - owner 는 owner — 멤버 관리처럼 owner 만 하는 일은 그대로 owner 에게만
+ * 비활성 계정만 null 이다. 다시 조이려면 이 함수를 getMembership 으로 되돌리면 된다.
+ */
+export async function getIpAccess(userId: string): Promise<IpMembership | null> {
+  const member = await getMembership(userId)
+  if (member) return member.role === "viewer" ? { ...member, role: "editor" } : member
+
+  const user = await prisma.user.findFirst({
+    where: { id: userId, isActive: true },
+    select: { email: true, name: true },
+  })
+  if (!user) return null
+  return { userId, email: user.email ?? "", displayName: user.name, role: "editor" }
+}
+
 export function canWrite(m: IpMembership | null): boolean {
   return m !== null && m.role !== "viewer"
 }

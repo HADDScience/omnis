@@ -27,7 +27,7 @@ import { createOmnisCard, updateOmnisCard } from "@/lib/omnis-cards"
 import { readChatFeed, type FeedView } from "@/lib/chat-feed"
 import type { Prisma } from "@/generated/prisma/client"
 import { createNotification } from "@/lib/notifications"
-import { getMembership, type IpMembership } from "@/lib/ip-data"
+import { getIpAccess, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
@@ -90,7 +90,7 @@ export async function resolveCaller(authorization: string | null): Promise<Calle
   })
   if (!user || !user.isActive) return null
 
-  return { userId: user.id, name: user.name, role: user.role, ip: await getMembership(user.id) }
+  return { userId: user.id, name: user.name, role: user.role, ip: await getIpAccess(user.id) }
 }
 
 // ─── 지침 ───────────────────────────────────────────────────────────

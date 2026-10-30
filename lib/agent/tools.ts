@@ -9,7 +9,7 @@
 //   쓰기  — 확인 카드
 //   되돌리기 어려운 것(삭제 · 외부 게시 · 알림 응답 · 지식재산권 기록) — 이번에 열지 않는다
 import { prisma } from "@/lib/db"
-import { getMembership } from "@/lib/ip-data"
+import { getIpAccess } from "@/lib/ip-data"
 import { retrieveHybrid, type EmbeddingSource } from "@/lib/embeddings"
 import { buildIpOverview, SOURCE_LABEL, type AskSource } from "@/lib/omnis-ask"
 import { TASK_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/constants"
@@ -105,7 +105,7 @@ export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
 export async function callerFor(userId: string): Promise<Caller> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, role: true, isActive: true } })
   if (!user || !user.isActive) throw new Error("사용자를 찾지 못했습니다")
-  return { userId: user.id, name: user.name, role: user.role === "ADMIN" ? "ADMIN" : "MEMBER", ip: await getMembership(user.id) }
+  return { userId: user.id, name: user.name, role: user.role === "ADMIN" ? "ADMIN" : "MEMBER", ip: await getIpAccess(user.id) }
 }
 
 // ─── 읽기 ───────────────────────────────────────────────────────────
