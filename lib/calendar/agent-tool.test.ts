@@ -237,3 +237,28 @@ test("마지막 동기화 — 가장 오래된 캘린더 기준으로 「최대 
   const never = text(await listCalendarText({}, ADMIN, { now: NOW, load: fakeLoad([{ ...COMPANY, syncedAt: null }], []) }))
   assert.match(never, /동기화 기록 없음/)
 })
+
+test("읽기 전에 웍스를 당긴다 — 동기화가 끝난 뒤 읽는다", async () => {
+  const order: string[] = []
+  const load: CalendarLoader = async (q) => {
+    order.push("load")
+    return fakeLoad([COMPANY], [])(q)
+  }
+  await listCalendarText({}, ADMIN, {
+    now: NOW,
+    load,
+    sync: async () => {
+      order.push("sync")
+    },
+  })
+  assert.deepEqual(order, ["sync", "load"])
+})
+
+test("동기화가 실패하거나 늦어도 저장해 둔 것으로 답한다", async () => {
+  const failed = await listCalendarText({}, ADMIN, { now: NOW, load: fakeLoad([COMPANY], []), sync: async () => Promise.reject(new Error("웍스 503")) })
+  assert.ok("text" in failed)
+  const started = Date.now()
+  const slow = await listCalendarText({}, ADMIN, { now: NOW, load: fakeLoad([COMPANY], []), sync: () => new Promise(() => {}), syncWaitMs: 30 })
+  assert.ok("text" in slow)
+  assert.ok(Date.now() - started < 1_000)
+})

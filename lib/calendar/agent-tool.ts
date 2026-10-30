@@ -7,10 +7,12 @@
  * 가 화면과 같다. 화면처럼 설명(description)은 싣지 않고, 참석자 · 주최자도 싣지 않는다(화면에 없다).
  * 비공개(CLASS:PRIVATE)는 동기화가 저장하지 않아 화면도 가리지 않는다 — 여기도 같다.
  *
- * 웍스로 동기화를 부르지 않는다(읽기만). 대신 캘린더마다 마지막 동기화 시각을 붙여
+ * 읽기 전에 캘린더 탭을 열 때처럼 웍스를 한 번 당긴다(syncWorksCalendars — 60초에 한 번 · 겹치면 하나로).
+ * 웍스가 늦거나 실패하면 SYNC_WAIT_MS 만 기다리고 저장해 둔 것으로 답한다. 캘린더마다 마지막 동기화 시각을 붙여
  * 모델이 「웍스와 최대 N시간 차이」 를 말할 수 있게 한다. mydocs/working/2026-10-30-omnis-calendar-read.md
  */
 
+import { syncWorksCalendars } from "@/lib/caldav/sync"
 import { getCalendarItems, type CalendarQuery } from "@/lib/calendar/items"
 import { SEOUL, addDays, dayDiff, seoulMidnight, toWall, weekday, type WallTime } from "@/lib/calendar/time"
 import type { CalendarItem, CalendarResponse } from "@/lib/calendar/types"
@@ -150,11 +152,27 @@ export function calendarToolText(data: CalendarResponse, win: CalendarWindow, ar
 
 export type CalendarLoader = (q: CalendarQuery) => Promise<CalendarResponse>
 
-/** 도구 실행 — 입력 검증(Zod) → 창 → 캘린더 탭과 같은 getCalendarItems → 글 */
+/** 읽기 전 웍스 동기화를 기다리는 최대 시간. 넘으면 동기화는 뒤에서 마저 돌고 저장해 둔 것으로 답한다 */
+export const SYNC_WAIT_MS = 8_000
+
+/** 웍스를 당긴다 — 실패 · 시간 초과는 삼킨다(답은 저장해 둔 것과 마지막 동기화 시각으로) */
+async function syncBeforeRead(sync: () => Promise<unknown>, waitMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, waitMs)
+  })
+  try {
+    await Promise.race([sync().catch((err) => console.error("[list_calendar sync]", err)), timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** 도구 실행 — 입력 검증(Zod) → 창 → 웍스 동기화 → 캘린더 탭과 같은 getCalendarItems → 글 */
 export async function listCalendarText(
   rawArgs: unknown,
   viewer: CalendarQuery["viewer"],
-  opts: { now?: Date; load?: CalendarLoader } = {}
+  opts: { now?: Date; load?: CalendarLoader; sync?: () => Promise<unknown>; syncWaitMs?: number } = {}
 ): Promise<{ text: string } | { error: string }> {
   const parsed = CalendarToolArgsSchema.safeParse(rawArgs ?? {})
   if (!parsed.success) {
@@ -163,6 +181,9 @@ export async function listCalendarText(
   const now = opts.now ?? new Date()
   const win = calendarToolWindow(parsed.data, now)
   if ("error" in win) return win
+  // 시험(load 를 넘긴 경우)은 웍스로 나가지 않는다
+  const sync = opts.sync ?? (opts.load ? null : () => syncWorksCalendars())
+  if (sync) await syncBeforeRead(sync, opts.syncWaitMs ?? SYNC_WAIT_MS)
   const data = await (opts.load ?? getCalendarItems)({ from: win.from, until: win.until, groups: ["works"], viewer, taskScope: "mine" })
   return { text: calendarToolText(data, win, parsed.data, now) }
 }
