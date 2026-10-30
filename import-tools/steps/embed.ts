@@ -1,4 +1,4 @@
-// 6단계 — 이식된 업무·메시지를 옴니스 AI 검색 색인에 싣는다.
+// 7단계 — 이식된 업무·메시지·사진을 옴니스 AI 검색 색인에 싣는다.
 //
 // 이식 경로 안에서 임베딩을 타지 않는 원칙(부수효과 없음)은 그대로다. 이건 이식이 끝난
 // 뒤 명시적으로 도는 마지막 단계이고, `--no-embed` 로 뺄 수 있다.
@@ -11,7 +11,7 @@ import { syncEmbeddingsBatch } from "../../lib/embeddings"
 /** 앱의 채팅 청킹 규칙과 같은 조건 — 짧은 잡담·시스템 메시지는 색인하지 않는다. */
 const CHAT_MIN_LENGTH = 15
 
-export async function embed(opts: { dry: boolean }) {
+export async function embed(opts: { dry: boolean; photoIds?: string[] }) {
   const reembedAll = process.env.KAKAO_REEMBED_ALL === "1"
   const [tasks, messages] = await Promise.all([
     // 업무도 같은 이유로 — 색인이 없거나 마지막 색인 뒤에 고쳐진 카드만. 전량은 KAKAO_REEMBED_ALL=1
@@ -52,4 +52,9 @@ export async function embed(opts: { dry: boolean }) {
     onProgress: (d, n) => process.stdout.write(`\r  메시지 ${d}/${n}`),
   })
   console.log(`\r  메시지 — 새로 ${m.embedded} · 그대로 ${m.unchanged} · 제거 ${m.removed}`)
+
+  const p = await syncEmbeddingsBatch("PHOTO", opts.photoIds ?? [], {
+    onProgress: (d, n) => process.stdout.write(`\r  사진 ${d}/${n}`),
+  })
+  console.log(`\r  사진 — 새로 ${p.embedded} · 그대로 ${p.unchanged} · 제거 ${p.removed}`)
 }

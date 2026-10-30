@@ -7,7 +7,7 @@
 //   npm run kakao -- <csv...> --dry                          쓰지 않고 무엇을 할지만 본다
 //   npm run kakao -- <csv...> --target prod                  프로덕션(Neon)에 적용
 //
-// 단계: 수집 → 분류(Claude 병렬) → 메시지 → 구조화(Claude 순차) → 첨부 → 임베딩
+// 단계: 수집 → 분류(Claude 병렬) → 메시지 → 구조화(Claude 순차) → 첨부 → 사진 설명(Claude 구독) → 임베딩
 // 모든 단계가 멱등이다. 같은 CSV 를 두 번 주면 두 번째는 아무것도 하지 않는다.
 // 중간에 끊기면 다시 돌리면 이어진다 — 각 단계가 "아직 안 된 것" 만 고르기 때문이다.
 //
@@ -67,10 +67,11 @@ async function main() {
   const { importMessages } = await import("./steps/messages")
   const { structure } = await import("./steps/structure")
   const { attachMedia } = await import("./steps/media")
+  const { describeImportedPhotos } = await import("./steps/photos")
   const { embed } = await import("./steps/embed")
 
   const t0 = Date.now()
-  const step = (n: number, title: string) => console.log(`\n${n}/6 ${title}`)
+  const step = (n: number, title: string) => console.log(`\n${n}/7 ${title}`)
 
   step(1, "수집 — CSV 읽기 · 세션 자르기")
   const { sessions, rooms } = ingest(args.csv, args.mobile)
@@ -92,9 +93,12 @@ async function main() {
   if (args.media) await attachMedia(sessions.filter((x) => x.room === mediaRoom), args.media, { dry: args.dry })
   else console.log("  --media 가 없어 건너뜀 (카톡 채팅방 서랍에서 저장한 폴더를 주면 붙는다)")
 
-  step(6, "임베딩 — 옴니스 AI 색인")
+  step(6, "사진 설명 — Claude 구독")
+  const photoIds = await describeImportedPhotos(args.csv, { dry: args.dry, workers: args.workers })
+
+  step(7, "임베딩 — 옴니스 AI 색인")
   if (args.noEmbed) console.log("  --no-embed 로 건너뜀")
-  else await embed({ dry: args.dry })
+  else await embed({ dry: args.dry, photoIds })
 
   const [msgs, tasks] = await Promise.all([
     prisma.chatMessage.count({ where: { sourceId: { startsWith: "kakao:" } } }),
