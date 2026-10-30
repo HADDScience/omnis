@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { DayDivider, MessageTime } from "@/components/chat/message-parts"
-import { MESSAGE_ENTER } from "@/components/chat/message-list"
+import { MESSAGE_ENTER, MessageFiles } from "@/components/chat/message-list"
 import { OmnisAnswerBody } from "@/components/omnis/omnis-ask"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
@@ -757,6 +757,8 @@ export function OmnisMessage({ message, fresh, tools, stopped = false }: { messa
         <div className="min-w-0 py-1">
           <OmnisAnswerBody answer={message.content} sources={message.sources} />
         </div>
+        {/* 옴니스가 만든 파일 — 눌러 내려받는다(방 주인만, lib/agent/room-files.ts) */}
+        {message.files && message.files.length > 0 && <MessageFiles files={message.files} />}
         {stopped && <StoppedTag />}
       </div>
     </div>

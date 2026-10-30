@@ -61,13 +61,17 @@ async function ownRoom(roomId: string, userId: string) {
   return pref?.hiddenAt ? null : room
 }
 
-function shapeMessage(m: { id: string; content: string; createdAt: Date; authorId: string; omnisQuery: { sources: unknown } | null }): OmnisRoomMessage {
+function shapeMessage(m: {
+  id: string; content: string; createdAt: Date; authorId: string; omnisQuery: { sources: unknown } | null
+  files?: NonNullable<OmnisRoomMessage["files"]>
+}): OmnisRoomMessage {
   return {
     id: m.id,
     content: m.content,
     createdAt: m.createdAt.toISOString(),
     fromOmnis: m.authorId === SYSTEM_USER_ID,
     sources: Array.isArray(m.omnisQuery?.sources) ? (m.omnisQuery.sources as unknown as AskSource[]) : [],
+    ...(m.files?.length ? { files: m.files } : {}),
   }
 }
 
@@ -85,7 +89,11 @@ function shapeCard(s: {
 /** 방을 열 때 · 위로 올릴 때 한 번에 받는 글 수(2026-10-29 「매번 전부 불러오지 말고」) */
 export const OMNIS_PAGE_SIZE = 30
 
-const MESSAGE_SELECT = { id: true, content: true, createdAt: true, authorId: true, omnisQuery: { select: { sources: true } } } as const
+const MESSAGE_SELECT = {
+  id: true, content: true, createdAt: true, authorId: true, omnisQuery: { select: { sources: true } },
+  // 옴니스가 만든 파일 — 이 방(내 옴니스 1:1)의 글에 붙어 있다
+  files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
+} as const
 
 /** 글 한 페이지(최근부터 거꾸로 PAGE+1 개를 읽어 더 있는지 안다) + 그 글들의 질문에 붙은 도구 기록 */
 async function messagePage(roomId: string, userId: string, before?: Date) {

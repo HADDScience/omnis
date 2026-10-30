@@ -11,7 +11,8 @@ import { agentLimits, modelFor, modelKey, type ModelChoice } from "@/lib/ai-mode
 import { costOf } from "@/lib/ai-pricing"
 import type { AskSource } from "@/lib/omnis-ask"
 import { agentInstructions } from "./prompt"
-import { agentToolSpecs, buildPreview, callerFor, executeWrite, isWriteTool, runReadTool, type AgentToolSpec } from "./tools"
+import { agentToolSpecs, buildPreview, callerFor, executeWrite, isWriteTool, runReadTool, type AgentToolSpec, type AgentWriteTool, type WritePreview } from "./tools"
+import { executeOutput, isOutputTool } from "./outputs"
 import { checkExecution, planHash, type StepStatus } from "./approval"
 import { redactSecrets, secretBlockReason } from "./secrets"
 import { limitMessage, limitReason, type Spent, type StepUsage } from "./limits"
@@ -84,12 +85,12 @@ export async function readTool(runId: string, name: string, input: Record<string
  * APPROVED → EXECUTED 를 조건부로 한 번에 바꿔 같은 승인이 두 번 쓰이지 않게 한다.
  */
 export async function writeTool(runId: string, name: string, input: Record<string, unknown>, toolCallId: string): Promise<string> {
-  const run = await prisma.agentRun.findUniqueOrThrow({ where: { id: runId }, select: { userId: true, status: true } })
+  const run = await prisma.agentRun.findUniqueOrThrow({ where: { id: runId }, select: { userId: true, roomId: true, status: true } })
   if (run.status === "STOPPED") return RUN_STOPPED_RESULT
   const step = await prisma.agentStep.findUnique({ where: { runId_toolCallId: { runId, toolCallId } } })
   const check = checkExecution(step ? { ...step, status: step.status as StepStatus } : null, { toolName: name, input })
   if (!check.ok) return `실행하지 않았습니다: ${check.error}`
-  if (!isWriteTool(name)) return `실행하지 않았습니다: 열려 있지 않은 쓰기 도구입니다 (${name})`
+  if (!isWriteTool(name) && !isOutputTool(name)) return `실행하지 않았습니다: 열려 있지 않은 쓰기 도구입니다 (${name})`
 
   const claimed = await prisma.agentStep.updateMany({
     where: { id: step!.id, status: "APPROVED" },
@@ -98,9 +99,14 @@ export async function writeTool(runId: string, name: string, input: Record<strin
   if (claimed.count !== 1) return "실행하지 않았습니다: 이미 실행한 제안입니다 — 같은 승인은 한 번만 씁니다"
 
   try {
-    const r = await executeWrite(name, input, await callerFor(run.userId))
+    // 결과물(문서 초안 · 파일 · 기록 제안)은 이 방에 붙는다 — 방 · 사람을 넘긴다
+    const r = isOutputTool(name)
+      ? await executeOutput(name, input, { runId, roomId: run.roomId, userId: run.userId })
+      : await executeWrite(name as AgentWriteTool, input, await callerFor(run.userId))
     await prisma.agentStep.update({ where: { id: step!.id }, data: { status: r.ok ? "EXECUTED" : "FAILED", result: r.text.slice(0, 4000) } })
-    return r.ok ? r.text : `실행이 실패했습니다: ${r.text}`
+    // 결과물은 결과 글이 초안 본문 그대로라 모델이 「확인을 기다린다」 고 다시 쓰는 일이 있었다(2026-10-30 주간보고 실측) — 실행됐다는 것을 앞에 박는다
+    const done = isOutputTool(name) || name === "write_weekly_report" ? `사용자가 확인해 실행을 마쳤습니다. 다시 확인을 요청하지 마세요.\n${r.text}` : r.text
+    return r.ok ? done : `실행이 실패했습니다: ${r.text}`
   } catch (err) {
     // 던지지 않는다 — 던지면 Workflow 가 단계를 다시 돌리고, 두 번째는 위의 조건부 갱신에서 막혀 사람이 보기에 이유가 흐려진다
     const msg = err instanceof Error ? err.message : String(err)
@@ -212,7 +218,7 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
   if (fresh.length > 0) {
     const drafts = []
     for (const a of fresh) {
-      const preview = await buildPreview(a.toolName, a.input).catch((e) => ({
+      const preview = await buildPreview(a.toolName, a.input, { userId: run.userId, roomId: run.roomId }).catch((e): WritePreview => ({
         title: a.toolName, target: "", changes: [], risk: "", problem: `카드를 만들지 못했습니다: ${e instanceof Error ? e.message : e}`,
       }))
       const secret = secretBlockReason(a.input)
