@@ -194,6 +194,20 @@ export function RegisterView() {
     return map
   }, [stageOrder, kind, defaultOrder])
 
+  /**
+   * 단계별 건수. 검색과 무관하게 이 종류 전체를 센다 — 「등록 몇 건, 출원 몇 건」을
+   * 필터를 열지 않고도 한눈에 보려는 것이다. 차례는 정렬 기본 차례(등록 > 출원 > …).
+   */
+  const stageCounts = useMemo(() => {
+    const base: Row[] = isPatent ? patents : trademarks
+    const counts = new Map<string, number>()
+    for (const row of base) counts.set(row.status, (counts.get(row.status) ?? 0) + 1)
+    const known = defaultOrder.filter((v) => counts.has(v))
+    // 단계 목록에 없는 값(옛 자료)도 빠뜨리지 않고 뒤에 붙인다
+    const unknown = [...counts.keys()].filter((v) => !defaultOrder.includes(v))
+    return [...known, ...unknown].map((stage) => ({ stage, count: counts.get(stage)! }))
+  }, [isPatent, patents, trademarks, defaultOrder])
+
   const columns = useMemo(
     () => (isPatent ? patentColumns() : trademarkColumns()),
     [isPatent]
@@ -323,6 +337,43 @@ export function RegisterView() {
           </Badge>
         ) : null}
       </div>
+
+      {stageCounts.length > 0 ? (
+        <ul
+          aria-label={`${isPatent ? "특허" : "상표"} 단계별 건수`}
+          className="flex flex-wrap gap-1.5"
+        >
+          {stageCounts.map(({ stage, count }) => {
+            const on = picked.includes(stage)
+            return (
+              <li key={stage}>
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  title={on ? `${stage} 필터 끄기` : `${stage}만 보기`}
+                  onClick={() =>
+                    setPicked((prev) =>
+                      on ? prev.filter((s) => s !== stage) : [...prev, stage]
+                    )
+                  }
+                  className={cn(
+                    "touch-target flex items-center gap-1.5 rounded-lg border px-2 py-1 transition-colors",
+                    on
+                      ? "border-primary bg-primary/10"
+                      : "bg-card hover:bg-muted/60"
+                  )}
+                >
+                  <StatusBadge status={stage} />
+                  <span className="text-[13px] font-semibold tabular-nums">
+                    {count}
+                    <span className="ml-0.5 text-[12px] font-normal text-muted-foreground">건</span>
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
 
       {showFilter ? (
         <div className="flex flex-wrap items-center gap-1.5 rounded-lg border p-2.5">
