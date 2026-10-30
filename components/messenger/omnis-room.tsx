@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { DayDivider, MessageTime } from "@/components/chat/message-parts"
-import { MESSAGE_ENTER } from "@/components/chat/message-list"
+import { MESSAGE_ENTER, MessageFiles, type FileInfo } from "@/components/chat/message-list"
 import { OmnisAnswerBody } from "@/components/omnis/omnis-ask"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
@@ -27,6 +27,8 @@ import { ToolTrail } from "./tool-trail"
 import { RoomHeader } from "./room-header"
 import { RoomMuteButton } from "./room-mute-button"
 import { useChatUserId, useRoomListReload } from "./messenger-shell"
+import { AttachButton, AttachChips, useOmnisAttachments, type PickedFile } from "./omnis-attach"
+import { IS_DEMO } from "@/lib/demo"
 
 const EXAMPLES = [
   "이번 주 마감인 업무 정리해 줘",
@@ -79,7 +81,9 @@ export function OmnisRoom({
   const [tools, setTools] = useState(initialTools)
   const [draft, setDraft] = useState("")
   /** 보내는 중인 글 — 방 글에 그 질문(questionId)이 들어올 때까지 옅게 보인다 */
-  const [pending, setPending] = useState<{ content: string; questionId: string | null } | null>(null)
+  const [pending, setPending] = useState<{ content: string; questionId: string | null; files?: FileInfo[] } | null>(null)
+  /** ＋ 로 고른 파일 — 고르는 즉시 올리고, 질문을 보낼 때 id 를 붙인다(./omnis-attach.tsx) */
+  const attach = useOmnisAttachments()
   /** 스트림으로 받는 중인 답. null 이면 읽고 있지 않다 */
   const [live, setLive] = useState<LiveAnswer | null>(null)
   /**
@@ -331,14 +335,14 @@ export function OmnisRoom({
     return state
   }
 
-  async function ask(body: { content: string } | { retryOf: string }, shown: string) {
+  async function ask(body: { content: string; fileIds?: string[] } | { retryOf: string }, shown: string, files?: FileInfo[]) {
     // 보내는 중에는 다시 보내지 않는다 — 버튼 · Enter · 예시 칸이 모두 여기로 온다
     if (busy || sendingRef.current) return
     sendingRef.current = true
     stickRef.current = true // 내가 보낸 글은 바로 보인다
     setAway(false)
     let questionId: string | null = "retryOf" in body ? body.retryOf : null
-    setPending({ content: shown, questionId })
+    setPending({ content: shown, questionId, files })
     setError(null)
     let id = roomId
     try {
@@ -351,7 +355,9 @@ export function OmnisRoom({
         const qid = h.get("x-question-id")
         if (qid) {
           questionId = qid
-          setPending({ content: shown, questionId: qid })
+          setPending({ content: shown, questionId: qid, files })
+          // 서버가 질문을 받았다 — 첨부는 그 질문에 붙었다. 거절(429 · 409)이면 칩을 그대로 둔다
+          if (files?.length) attach.clear()
         }
         if (created && !id) {
           id = created
@@ -395,14 +401,24 @@ export function OmnisRoom({
   }
 
   function send(raw: string) {
-    const content = raw.trim()
+    const files = attach.ready
+    if (attach.uploading) {
+      toast.error("파일을 올리는 중이에요. 다 올라간 뒤 보내 주세요")
+      return
+    }
+    if (attach.failed) {
+      toast.error("올리지 못한 파일이 있어요. 빼거나 다시 골라 주세요")
+      return
+    }
+    // 파일만 보내면 사람 방과 같은 자리 글(「[파일 N개 첨부]」) — 옴니스는 첨부를 보고 답한다
+    const content = raw.trim() || (files.length ? `[파일 ${files.length}개 첨부]` : "")
     if (content.length < 2) {
       toast.error("2자 이상 입력해 주세요")
       return
     }
     if (busy || sendingRef.current) return
     setDraft("")
-    void ask({ content }, content)
+    void ask(files.length ? { content, fileIds: files.map((f) => f.id) } : { content }, content, files.length ? files : undefined)
   }
 
   async function decide(card: AgentCardData, decision: "approve" | "reject") {
@@ -618,12 +634,12 @@ export function OmnisRoom({
               ) : (
                 <Fragment key={row.key}>
                   {before}
-                  <MyMessage content={m.content} iso={m.createdAt} fresh={fresh} />
+                  <MyMessage content={m.content} iso={m.createdAt} fresh={fresh} files={m.files} />
                 </Fragment>
               )
             })}
             {bareStop()}
-            {pending && showPendingBubble(messages, pending) && <MyMessage content={pending.content} sending />}
+            {pending && showPendingBubble(messages, pending) && <MyMessage content={pending.content} sending files={pending.files} />}
             {(live || pending || running) && <LiveOmnis text={text} tools={live?.tools ?? []} resuming={!live && !pending} stopping={stopping} />}
             {unanswered && roomId && (
               <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground in-data-[messenger]:mt-3 in-data-[messenger]:text-[14.5px]" role="status">
@@ -668,6 +684,7 @@ export function OmnisRoom({
         autoFocus={isNew}
         waitingCard={waitingCard}
         compact={!!embedded}
+        attach={IS_DEMO ? undefined : { items: attach.items, onFiles: attach.addFiles, onNas: attach.addNas, onRemove: attach.remove }}
       />
     </div>
   )
@@ -716,7 +733,7 @@ export function LiveOmnis({ text, tools, resuming = false, stopping = false }: {
   )
 }
 
-export function MyMessage({ content, iso, sending = false, fresh = false }: { content: string; iso?: string; sending?: boolean; fresh?: boolean }) {
+export function MyMessage({ content, iso, sending = false, fresh = false, files }: { content: string; iso?: string; sending?: boolean; fresh?: boolean; files?: FileInfo[] }) {
   return (
     <div className={cn("mt-3 flex flex-col items-end gap-0.5 in-data-[messenger]:mt-5 in-data-[messenger]:gap-1", fresh && MESSAGE_ENTER)}>
       <div
@@ -727,6 +744,12 @@ export function MyMessage({ content, iso, sending = false, fresh = false }: { co
       >
         {tidyBody(content)}
       </div>
+      {/* 질문에 붙인 파일 — 사람 방과 같은 파일 카드(이미지는 미리보기), 말풍선 아래 오른쪽 */}
+      {files && files.length > 0 && (
+        <div className={cn("flex max-w-[85%] justify-end [&>div]:items-end", sending && "opacity-60")}>
+          <MessageFiles files={files} />
+        </div>
+      )}
       {sending ? (
         <span className="text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]">보내는 중…</span>
       ) : iso ? (
@@ -794,6 +817,7 @@ export function Composer({
   autoFocus,
   waitingCard,
   compact = false,
+  attach,
 }: {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   value: string
@@ -808,6 +832,13 @@ export function Composer({
   waitingCard: boolean
   /** 오른쪽 패널 안 — 좁은 칸이라 여백을 줄인다 */
   compact?: boolean
+  /** 알약 안 왼쪽 ＋(첨부)와 입력창 위 칩. 없으면(온보딩 시연 · 데모) 예전처럼 ＋ 가 없다 */
+  attach?: {
+    items: PickedFile[]
+    onFiles: (files: File[]) => void
+    onNas: (entry: { path: string; name: string; size?: number }) => void
+    onRemove: (key: string) => void
+  }
 }) {
   // 내용만큼 늘린다 — 6줄을 넘으면 안에서 민다
   useEffect(() => {
@@ -818,18 +849,47 @@ export function Composer({
   }, [value, textareaRef])
 
   const tooLong = value.length > OMNIS_MESSAGE_MAX
-  const canSend = !busy && value.trim().length >= 2 && !tooLong
+  const items = attach?.items ?? []
+  const attachReady = items.length > 0 && items.every((i) => i.status === "done")
+  // 파일만 붙여도 보낼 수 있다. 올리는 중 · 실패한 파일이 있으면 기다린다(칩에 상태가 보인다)
+  const canSend = !busy && (value.trim().length >= 2 || attachReady) && !tooLong && items.every((i) => i.status === "done")
+  const [dragging, setDragging] = useState(false)
 
   return (
-    <div className={cn("shrink-0 border-t bg-background pb-3 pt-2", compact ? "px-2.5" : "px-3 sm:px-6")}>
+    <div
+      className={cn("shrink-0 border-t bg-background pb-3 pt-2", compact ? "px-2.5" : "px-3 sm:px-6", dragging && "bg-primary/5")}
+      // 끌어 놓기 — 사람 방 입력창과 같다
+      onDragOver={attach ? (e) => { e.preventDefault(); setDragging(true) } : undefined}
+      onDragLeave={attach ? () => setDragging(false) : undefined}
+      onDrop={attach ? (e) => {
+        e.preventDefault()
+        setDragging(false)
+        const files = Array.from(e.dataTransfer.files)
+        if (files.length) attach.onFiles(files)
+      } : undefined}
+    >
       <div className="mx-auto w-full max-w-[760px]">
+        {attach && <AttachChips items={items} onRemove={attach.onRemove} />}
         {/* 한 줄일 때 글자와 보내기 버튼의 세로 가운데가 같게 — 입력칸 최소 높이 = 버튼 높이(PC 32px · 터치 44px),
             남는 높이는 위아래 여백으로. 여러 줄로 늘면 버튼은 아래에 붙는다(items-end). 2026-10-29 폰에서 글자가 아래로 처졌다 */}
-        <div className="flex items-end gap-2 rounded-[22px] border bg-card py-1 pr-1 pl-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-[32px] in-data-[messenger]:py-1.5 in-data-[messenger]:pr-1.5 in-data-[messenger]:pl-[22px]">
+        <div className={cn(
+          "flex items-end gap-2 rounded-[22px] border bg-card py-1 pr-1 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-[32px] in-data-[messenger]:py-1.5 in-data-[messenger]:pr-1.5",
+          // ＋ 가 있으면 왼쪽 안에 붙는다(사람 방 알약과 같은 자리) — 없으면 글자 앞 여백
+          attach ? "pl-1 in-data-[messenger]:pl-1.5" : "pl-3.5 in-data-[messenger]:pl-[22px]",
+        )}>
+          {attach && <AttachButton onFiles={attach.onFiles} onNas={attach.onNas} />}
           <textarea
             ref={textareaRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onPaste={attach ? (e) => {
+              // 붙여넣은 파일(스크린샷 등) — 사람 방 입력창과 같다
+              const files = Array.from(e.clipboardData?.files ?? [])
+              if (files.length) {
+                e.preventDefault()
+                attach.onFiles(files)
+              }
+            } : undefined}
             onKeyDown={(e) => {
               // PC 는 Enter 보내기 · Shift+Enter 줄바꿈, 폰은 Enter 가 줄바꿈이고 보내기는 버튼으로만(lib/enter-to-send.ts)
               if (enterSends(e, isTouchTyping())) {

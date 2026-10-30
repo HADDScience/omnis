@@ -31,6 +31,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "HADD Science 공유폴더 안의 경로만 연결할 수 있습니다" }, { status: 400 })
   }
 
+  // scope=private — 옴니스 1:1 · 사람끼리 방에 붙일 연결(POST /api/files 와 같은 뜻)
+  const isPrivate = body?.scope === "private"
+
   const entry = await statNasFile(path)
   if (!entry) {
     return NextResponse.json({ error: `시놀로지에서 파일을 찾지 못했습니다 — ${path}` }, { status: 404 })
@@ -43,6 +46,7 @@ export async function POST(req: NextRequest) {
       size: Math.min(entry.size ?? 0, INT_MAX),
       // /api/nas 가 그 자리에서 여는 형식이면 그 타입으로 — 말풍선이 이미지 미리보기를 그린다
       mimeType: inlineContentType(entry.name)?.split(";")[0] ?? "application/octet-stream",
+      privateToUserId: isPrivate ? session.user.id : null,
     },
   })
 

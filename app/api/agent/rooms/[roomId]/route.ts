@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ room
   return NextResponse.json(state, { headers: { "Cache-Control": "no-store" } })
 }
 
-/** 묻기 — { content } 새 글, { retryOf } 답을 못 받은 내 글. 답은 스트림 */
+/** 묻기 — { content, fileIds? } 새 글(+ 첨부), { retryOf } 답을 못 받은 내 글. 답은 스트림 */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ roomId: string }> }) {
   const session = await auth()
   if (!session?.user?.id) return apiError(401, "인증 필요")

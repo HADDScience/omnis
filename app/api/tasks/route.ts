@@ -11,6 +11,7 @@ import { findOrCreateProduct, findOrCreateProject } from "@/lib/project-resolve"
 import { recordTaskEvents } from "@/lib/task-events"
 import { assignmentTargets } from "@/lib/notify-rules"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
 import type { Prisma, Priority } from "@/generated/prisma/client"
 
 export async function GET(req: NextRequest) {
@@ -282,8 +283,9 @@ export async function POST(req: NextRequest) {
     })
 
     // 선택된 메시지에 첨부된 파일을 업무에도 연결
+    // 참여자만 보는 방의 파일은 업무 첨부로 옮기지 않는다(lib/file-access.ts)
     await prisma.file.updateMany({
-      where: { messageId: { in: messageIds } },
+      where: { messageId: { in: messageIds }, ...PUBLIC_FILE_WHERE },
       data: { taskId: task.id },
     })
   }
