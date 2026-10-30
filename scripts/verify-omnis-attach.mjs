@@ -1,7 +1,7 @@
 // 옴니스 방 첨부 화면 확인(Playwright) — 실제 모델을 부른다(질문 2번). 로컬 dev 에서만 돌린다.
 // 실행: TOKEN=$(pnpm exec tsx --env-file=.env scripts/agent-cookie.ts) BASE=http://localhost:3118 OUT=<캡처 폴더> \
 //       IMAGE=<표가 든 png> DOC=<짧은 pdf · txt> node scripts/verify-omnis-attach.mjs
-//       ONLY=messenger | ONLY=panel 로 하나만
+//       ONLY=messenger | ONLY=panel | ONLY=fail 로 하나만(messenger 만 모델을 부른다)
 //  1. 390x844 · 메신저(/chat/new): ＋ → 파일 업로드 → 칩(올리는 중 → 다 올림) → 「이 파일 내용 요약해 줘」 → 답 · 내 말풍선 아래 파일 카드
 //     IMAGE 와 DOC 를 각각 새 대화로
 //  2. 1440 · 오른쪽 패널 옴니스 탭: ＋ 가 같은 자리에 있고 칩이 뜬다(보내지 않는다 — 모델을 부르지 않는다), 칩 빼기
@@ -103,12 +103,12 @@ async function askWithFile(file, tag) {
   return { answer, card }
 }
 
-if (ONLY !== "panel") {
+if (ONLY === "" || ONLY === "messenger") {
   if (process.env.IMAGE) await askWithFile(process.env.IMAGE, "image")
   if (process.env.DOC) await askWithFile(process.env.DOC, "doc")
 }
 
-if (ONLY !== "messenger") {
+if (ONLY === "" || ONLY === "panel") {
   const { browser, page } = await open({ width: 1440, height: 900 }, false)
   await page.goto(`${BASE}/tasks`, { waitUntil: "networkidle" })
   await page.getByRole("button", { name: /대화 패널 열기/ }).click()
