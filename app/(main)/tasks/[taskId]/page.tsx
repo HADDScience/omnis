@@ -99,6 +99,7 @@ export default async function TaskDetailPage({ params }: Props) {
     kind: m.kind,
     files: m.deletedAt ? [] : m.files,
     editedAt: m.editedAt?.toISOString() ?? null,
+    changedAt: m.changedAt?.toISOString() ?? null,
     deletedAt: m.deletedAt?.toISOString() ?? null,
     replyTo: m.replyTo
       ? {

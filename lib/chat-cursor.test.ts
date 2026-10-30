@@ -3,6 +3,8 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 
 import {
+  applyChanges,
+  changedSince,
   compareMessages,
   encodeCursor,
   laterOf,
@@ -77,4 +79,32 @@ test("보내는 중인 글은 새 글이 와도 맨 뒤에 남는다", () => {
   const prev = [msg("a"), msg("temp-1", "2026-08-20T03:00:09.000Z")]
   const next = mergeIncoming(prev, [msg("b", "2026-08-20T03:00:01.000Z")], isLocal)
   assert.deepEqual(next.map((m) => m.id), ["a", "b", "temp-1"])
+})
+
+test("바뀐 글은 겹침 시간만큼 앞부터 본다", () => {
+  const where = changedSince(new Date(T))
+  assert.equal(where.changedAt.gt.getTime(), new Date(T).getTime() - POLL_OVERLAP_MS)
+})
+
+type Row = { id: string; content: string; changedAt: string | null }
+
+test("남이 지운 글은 제자리에서 바뀐다 · 순서는 그대로", () => {
+  const prev: Row[] = [
+    { id: "a", content: "안녕", changedAt: null },
+    { id: "b", content: "비밀번호는 1234", changedAt: null },
+    { id: "c", content: "끝", changedAt: null },
+  ]
+  const next = applyChanges(prev, [{ id: "b", content: "삭제된 메시지입니다", changedAt: T }])
+  assert.deepEqual(next.map((m) => m.content), ["안녕", "삭제된 메시지입니다", "끝"])
+  assert.equal(next[0], prev[0])
+})
+
+test("겹쳐 읽어 같은 변경이 다시 오면 그대로 — 다시 그리지 않는다", () => {
+  const prev = [{ id: "b", content: "고침", changedAt: T }]
+  assert.equal(applyChanges(prev, [{ id: "b", content: "고침", changedAt: T }]), prev)
+})
+
+test("거부 — 목록에 없는 글의 변경은 끼워 넣지 않는다", () => {
+  const prev: Row[] = [{ id: "a", content: "안녕", changedAt: null }]
+  assert.equal(applyChanges(prev, [{ id: "zz", content: "옛 글", changedAt: T }]), prev)
 })

@@ -10,7 +10,7 @@ import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { reportIncident } from "@/lib/report-client-error"
 import { ChatSearch } from "@/components/chat/chat-search"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
-import { encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
+import { applyChanges, encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
 
 interface Message {
   id: string
@@ -21,6 +21,8 @@ interface Message {
   task?: { id: string; name: string; slug: string } | null
   /** 고친 시각 · 지운 시각 · 답장 대상 (2026-09-16) */
   editedAt?: string | null
+  /** 화면에 보이는 것이 바뀐 시각 — 폴링이 같은 변경을 두 번 끼우지 않게 비교한다(2026-10-30) */
+  changedAt?: string | null
   deletedAt?: string | null
   replyTo?: { id: string; authorName: string; content: string } | null
   files?: { id: string; name: string; path: string; size: number; mimeType: string }[]
@@ -150,16 +152,29 @@ export function ChatPanel({
     initialMessages.length > 0 ? edgeOf(initialMessages[initialMessages.length - 1]) : null
   )
 
+  // 남이 고치거나 지운 글을 마지막으로 물어본 서버 시각 — 화면 시계가 아니라 서버가 돌려준 값을 쓴다
+  const changesCheckedAt = useRef<string | null>(null)
+
   const fetchMessages = useCallback(async () => {
     if (pausePolling.current || jumpedRef.current) return
     try {
       const params = new URLSearchParams({ roomId })
-      if (lastFetchedAt.current) params.set("after", encodeCursor(lastFetchedAt.current))
+      if (lastFetchedAt.current) {
+        params.set("after", encodeCursor(lastFetchedAt.current))
+        params.set("changes", "1")
+        if (changesCheckedAt.current) params.set("changesSince", changesCheckedAt.current)
+      }
       if (filterTaskId) params.set("taskId", filterTaskId)
 
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
       if (!res.ok) return
-      const newMsgs = await res.json()
+      const body = await res.json()
+      // 폴링(changes=1)은 { messages, changed, checkedAt }, 첫 읽기는 배열
+      const newMsgs: Message[] = Array.isArray(body) ? body : body.messages
+      if (!Array.isArray(body)) {
+        changesCheckedAt.current = body.checkedAt
+        if (body.changed.length > 0) setMessages((prev) => applyChanges(prev, body.changed as Message[]))
+      }
 
       if (!lastFetchedAt.current) {
         // 초기 로드: 최신 페이지로 교체
@@ -170,7 +185,7 @@ export function ChatPanel({
         setHasMoreOlder(newMsgs.length >= CHAT_PAGE_SIZE)
       } else if (newMsgs.length > 0) {
         // 이후: 새 메시지만 추가. 서버는 커서보다 조금 앞부터 겹쳐 준다 — 늦게 커밋된 글은 제자리에 끼운다
-        setMessages((prev) => dropEchoed(mergeIncoming(prev, newMsgs as Message[], isLocal)))
+        setMessages((prev) => dropEchoed(mergeIncoming(prev, newMsgs, isLocal)))
         lastFetchedAt.current = laterOf(lastFetchedAt.current, edgeOf(newMsgs[newMsgs.length - 1]))
       }
     } catch {

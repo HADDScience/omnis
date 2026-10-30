@@ -83,6 +83,7 @@ async function recentMessages(roomId: string) {
     files: m.deletedAt ? [] : m.files,
     createdAt: m.createdAt.toISOString(),
     editedAt: m.editedAt?.toISOString() ?? null,
+    changedAt: m.changedAt?.toISOString() ?? null,
     deletedAt: m.deletedAt?.toISOString() ?? null,
     replyTo: m.replyTo
       ? {

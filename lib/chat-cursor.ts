@@ -95,3 +95,38 @@ export function mergeIncoming<T extends Ordered>(prev: T[], incoming: T[], isLoc
   const local = prev.filter(isLocal)
   return [...settled, ...fresh].sort(compareMessages).concat(local)
 }
+
+/**
+ * 남이 고치거나 지운 글 — `changedAt` 이 기준 시각 뒤인 것. 새 글과 같은 까닭(늦은 커밋)으로 겹쳐 읽는다.
+ * 기준 시각은 서버가 돌려준 `checkedAt` 이다 — 화면 시계는 서버와 어긋날 수 있다.
+ */
+export function changedSince(since: Date) {
+  return { changedAt: { gt: new Date(since.getTime() - POLL_OVERLAP_MS) } }
+}
+
+/** 기준 시각을 모를 때(방을 막 열었다) 이만큼 앞부터 본다 — 첫 화면을 그린 뒤 첫 폴링 사이에 바뀐 글을 줍는다 */
+export const FIRST_CHANGE_LOOKBACK_MS = 2 * 60_000
+
+type Changeable = { id: string; changedAt?: string | Date | null }
+
+/**
+ * 바뀐 글을 목록의 제자리에 갈아 끼운다. 목록에 없는 글(아직 안 불러온 옛 글)은 버린다 — 불러올 때 새 모습으로 온다.
+ * 겹쳐 읽어 같은 변경이 여러 번 오므로 `changedAt` 이 같으면 건너뛴다. 바뀐 것이 없으면 `prev` 그대로.
+ */
+export function applyChanges<T extends Changeable>(prev: T[], changed: T[]): T[] {
+  if (changed.length === 0) return prev
+  const byId = new Map(changed.map((m) => [m.id, m]))
+  let touched = false
+  const next = prev.map((m) => {
+    const c = byId.get(m.id)
+    if (!c || stamp(c.changedAt) === stamp(m.changedAt)) return m
+    touched = true
+    return { ...m, ...c }
+  })
+  return touched ? next : prev
+}
+
+function stamp(v: string | Date | null | undefined): number | null {
+  if (v == null) return null
+  return typeof v === "string" ? new Date(v).getTime() : v.getTime()
+}

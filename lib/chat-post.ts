@@ -136,9 +136,10 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
 
     if (task && restText.trim().length > 0) {
       // 메시지를 업무에 연결
+      // changedAt — 먼저 이 글을 읽어 간 화면에도 업무 표시가 붙게
       await prisma.chatMessage.update({
         where: { id: message.id },
-        data: { taskId: task.id },
+        data: { taskId: task.id, changedAt: new Date() },
       })
 
       // 파일도 업무에 연결
@@ -161,7 +162,7 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
         }
       }
     } else if (task) {
-      await prisma.chatMessage.update({ where: { id: message.id }, data: { taskId: task.id } })
+      await prisma.chatMessage.update({ where: { id: message.id }, data: { taskId: task.id, changedAt: new Date() } })
     }
   }
 

@@ -8,7 +8,7 @@ import { roomAccess } from "@/lib/chat-rooms"
 import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
 import { AttachFileIdsSchema, ChatClientIdSchema } from "@/lib/schemas/chat-room"
 import { decideClientId, isUniqueViolation } from "@/lib/chat-client-id"
-import { newerThan, olderThan, parseCursor, pollSince } from "@/lib/chat-cursor"
+import { changedSince, FIRST_CHANGE_LOOKBACK_MS, newerThan, olderThan, parseCursor, pollSince } from "@/lib/chat-cursor"
 
 // 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
 export const maxDuration = 60
@@ -170,6 +170,23 @@ export async function GET(req: NextRequest) {
   })
 
   const shaped = messages.map(shape)
+
+  // 폴링이 changes=1 을 실으면 남이 고치거나 지운 글도 함께 — 새 글만 받으면 그 글들이 옛 모습으로 남는다.
+  // 받는 모양이 배열에서 객체로 바뀌므로 묻는 화면에만 준다(설치된 앱이 캐시한 옛 번들은 배열을 기대한다)
+  if (isPolling && !takeGiven && searchParams.get("changes") === "1") {
+    const checkedAt = new Date()
+    const sinceRaw = searchParams.get("changesSince")
+    const sinceParsed = sinceRaw ? new Date(sinceRaw) : null
+    const since =
+      sinceParsed && !Number.isNaN(sinceParsed.getTime()) ? sinceParsed : new Date(checkedAt.getTime() - FIRST_CHANGE_LOOKBACK_MS)
+    const changed = await prisma.chatMessage.findMany({
+      where: { roomId, ...(taskId ? { taskId } : {}), ...changedSince(since) },
+      orderBy: { changedAt: "asc" },
+      take: 200,
+      include: MESSAGE_INCLUDE,
+    })
+    return NextResponse.json({ messages: shaped, changed: changed.map(shape), checkedAt: checkedAt.toISOString() })
+  }
 
   // 초기 로드·이전 메시지는 desc로 가져왔으므로 화면 표시용 오름차순으로 정렬
   return NextResponse.json(isPolling ? shaped : shaped.reverse())

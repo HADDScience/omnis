@@ -279,7 +279,7 @@ export async function POST(req: NextRequest) {
   if (messageIds?.length) {
     await prisma.chatMessage.updateMany({
       where: { id: { in: messageIds } },
-      data: { isTaskInstruction: true, taskId: task.id },
+      data: { isTaskInstruction: true, taskId: task.id, changedAt: new Date() },
     })
 
     // 선택된 메시지에 첨부된 파일을 업무에도 연결
