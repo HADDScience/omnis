@@ -16,7 +16,7 @@
 import { createHash, randomBytes } from "crypto"
 
 import { prisma } from "@/lib/db"
-import { isYmd } from "@/lib/ip-data"
+import { getIpAccess, isYmd } from "@/lib/ip-data"
 
 export const PROTOCOL_VERSION = "2025-06-18"
 export const SERVER_INFO = { name: "hadd-ip", version: "1.0.0" }
@@ -88,10 +88,8 @@ export async function reissueMcpToken(userId: string): Promise<string> {
   const raw = `hadd_${randomBytes(24).toString("hex")}`
 
   await prisma.$transaction(async (tx) => {
-    // 멤버가 아니면 발급하지 않는다.
-    const member = await tx.$queryRaw<{ user_id: string }[]>`
-      SELECT user_id FROM ip.members WHERE user_id = ${userId}`
-    if (member.length === 0) throw new Error("멤버가 아닙니다.")
+    // 자격이 없으면(비활성 계정) 발급하지 않는다. 명단 여부는 보지 않는다 — getIpAccess.
+    if (!(await getIpAccess(userId))) throw new Error("발급할 수 없는 계정입니다.")
 
     // 쓰던 것은 즉시 죽인다. 지우지 않고 껐다는 기록을 남긴다.
     await tx.$executeRaw`

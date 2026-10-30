@@ -67,8 +67,6 @@ const EXAMPLES = [
   "진행 중인 업무를 요약해줘",
 ]
 
-const IP_PLATFORM_URL = "https://haddscience.github.io/ip-platform/"
-
 /**
  * 출처를 열 주소. 열 곳이 없으면 null 을 준다.
  *
@@ -86,8 +84,7 @@ function sourceHref(s: Source): string | null {
     case "CHAT_MESSAGE":
       return "/chat/default-room"
     case "IP_CASE":
-      // 지식재산권은 아직 옴니스 안에 상세 화면이 없다. 외부 플랫폼으로 보낸다.
-      return IP_PLATFORM_URL
+      return "/ip/register"
     case "PHOTO":
       // 사진 자체를 새 탭으로 연다 — 찾던 것이 사진이다
       return apiUrl(`/api/files/${s.sourceId}/raw`)
