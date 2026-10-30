@@ -816,7 +816,6 @@ function RoomRow({
   onSwipe,
   ...actions
 }: { room: RoomListItem; active: boolean; swiped: SwipeSide | null; onSwipe: (side: SwipeSide | null) => void } & RowActions) {
-  const unread = room.unread > 0
   const removal = roomRemoval(room.kind)
   const manual = actions.folders.filter((f) => !f.rule)
   const startEntry = useStartRoomEntry()
@@ -925,49 +924,7 @@ function RoomRow({
               }}
               className={ROW}
             >
-              {roomIcon(room)}
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-2">
-                  <span className={cn("min-w-0 flex-1 truncate text-[16.5px]", unread ? "font-semibold" : "font-medium")}>
-                    {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
-                    {room.name}
-                  </span>
-                  {room.favorite && (
-                    <HugeiconsIcon
-                      icon={StarIcon}
-                      size={15}
-                      aria-label="즐겨찾기"
-                      className="shrink-0 self-center fill-amber-400 text-amber-500"
-                    />
-                  )}
-                  {room.muted && (
-                    <HugeiconsIcon
-                      icon={NotificationOff03Icon}
-                      size={15}
-                      aria-label="알림 꺼짐"
-                      className="shrink-0 self-center text-muted-foreground"
-                    />
-                  )}
-                  <time dateTime={room.lastAt} className="shrink-0 text-[12.5px] text-muted-foreground tabular-nums">
-                    {listTime(room.lastAt)}
-                  </time>
-                </span>
-                <span className="mt-0.5 flex items-center gap-2">
-                  {room.status && (
-                    <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-[12px] text-muted-foreground">
-                      {TASK_STATUS_LABELS[room.status] ?? room.status}
-                    </span>
-                  )}
-                  <span className={cn("min-w-0 flex-1 truncate text-[14.5px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
-                    {room.preview ?? "아직 글이 없어요"}
-                  </span>
-                  {unread && (
-                    <Badge className="h-[22px] min-w-[22px] shrink-0 px-1.5 text-[12px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
-                      {unreadLabel(room.unread)}
-                    </Badge>
-                  )}
-                </span>
-              </span>
+              <RoomRowContent room={room} />
               {/* 누르는 즉시 줄이 눌린 색 — 방 화면이 오기 전에도 받은 것이 보인다 */}
               <LinkPendingMark />
             </Link>
@@ -978,6 +935,72 @@ function RoomRow({
         <RoomMenuBody room={room} {...actions} ui={CONTEXT_UI} />
       </ContextMenuContent>
     </ContextMenu>
+  )
+}
+
+/** 목록 한 줄의 보이는 부분 — 아이콘 · 이름 · 시각 · 미리보기 · 안 읽음. RoomRow 와 랜딩 시연(RoomRowPreview)이 함께 쓴다 */
+function RoomRowContent({ room }: { room: RoomListItem }) {
+  const unread = room.unread > 0
+  return (
+    <>
+      {roomIcon(room)}
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-2">
+          <span className={cn("min-w-0 flex-1 truncate text-[16.5px]", unread ? "font-semibold" : "font-medium")}>
+            {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
+            {room.name}
+          </span>
+          {room.favorite && (
+            <HugeiconsIcon
+              icon={StarIcon}
+              size={15}
+              aria-label="즐겨찾기"
+              className="shrink-0 self-center fill-amber-400 text-amber-500"
+            />
+          )}
+          {room.muted && (
+            <HugeiconsIcon
+              icon={NotificationOff03Icon}
+              size={15}
+              aria-label="알림 꺼짐"
+              className="shrink-0 self-center text-muted-foreground"
+            />
+          )}
+          <time dateTime={room.lastAt} className="shrink-0 text-[12.5px] text-muted-foreground tabular-nums">
+            {listTime(room.lastAt)}
+          </time>
+        </span>
+        <span className="mt-0.5 flex items-center gap-2">
+          {room.status && (
+            <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-[12px] text-muted-foreground">
+              {TASK_STATUS_LABELS[room.status] ?? room.status}
+            </span>
+          )}
+          <span className={cn("min-w-0 flex-1 truncate text-[14.5px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
+            {room.preview ?? "아직 글이 없어요"}
+          </span>
+          {unread && (
+            <Badge className="h-[22px] min-w-[22px] shrink-0 px-1.5 text-[12px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
+              {unreadLabel(room.unread)}
+            </Badge>
+          )}
+        </span>
+      </span>
+    </>
+  )
+}
+
+/**
+ * 동작 없이 모양만 있는 목록 한 줄 — 랜딩의 업무 시연(components/landing/motion/workflow-film.tsx)이 실제 목록과
+ * 같은 모양을 쓰려고 부른다. 메뉴 · 밀기 · 링크가 없다
+ */
+export function RoomRowPreview({ room, active = false }: { room: RoomListItem; active?: boolean }) {
+  return (
+    <div className={cn("mx-2 rounded-xl", active && ROW_ACTIVE)}>
+      <div className={ROW}>
+        <RoomRowContent room={room} />
+      </div>
+    </div>
   )
 }
 

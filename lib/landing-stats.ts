@@ -4,7 +4,7 @@ import { countCases } from "@/lib/ip-data"
 
 /**
  * 랜딩 「쌓이는 것」 의 숫자 — 비로그인 화면이라 **개수만** 센다. 이름 · 내용 · 사람(구성원 수 포함)은 내보내지 않는다
- * (mydocs/plans/2026-10-29-landing-v2.md 「정한 것」 1 · 2). 예전 랜딩의 지표(80% · 10× …)는 잰 값이 아니어서
+ * (mydocs/plans/archives/2026-10-29-landing-v2.md 「정한 것」 1 · 2). 예전 랜딩의 지표(80% · 10× …)는 잰 값이 아니어서
  * 여기서는 DB 가 센 값만 쓴다.
  */
 export interface LandingStats {

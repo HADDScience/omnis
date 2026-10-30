@@ -550,7 +550,7 @@ export async function listCases(): Promise<IpCase[]> {
 
 /**
  * 상표 · 특허 건수만. 랜딩의 「쌓이는 것」 이 쓴다 — 이름 · 번호는 꺼내지 않는다
- * (mydocs/plans/2026-10-29-landing-v2.md 「정한 것」 1).
+ * (mydocs/plans/archives/2026-10-29-landing-v2.md 「정한 것」 1).
  */
 export async function countCases(): Promise<number> {
   const [row] = await prisma.$queryRaw<{ n: bigint }[]>`

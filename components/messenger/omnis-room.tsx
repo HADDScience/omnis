@@ -573,31 +573,7 @@ export function OmnisRoom({
         }}
       >
         <div className={cn("mx-auto flex w-full max-w-[760px] flex-col py-4 in-data-[messenger]:px-4 in-data-[messenger]:py-5", embedded ? "px-3" : "px-3 sm:px-6")}>
-          {isNew && !pending && (
-            <div className={cn("flex flex-col items-center gap-4 text-center", embedded ? "py-4" : "py-8 sm:py-14")}>
-              <span className="ai-rainbow-border flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary in-data-[messenger]:size-[68px] in-data-[messenger]:rounded-3xl in-data-[messenger]:[&_svg]:size-[34px]">
-                <HugeiconsIcon icon={BubbleChatSparkIcon} size={24} aria-hidden />
-              </span>
-              <div>
-                <h2 className="text-[18px] font-bold tracking-[-0.02em] in-data-[messenger]:text-[26px]">옴니스에게 물어보세요</h2>
-                <p className="mt-1 break-keep text-[12.5px] text-muted-foreground in-data-[messenger]:mt-2 in-data-[messenger]:text-[16px] in-data-[messenger]:leading-[1.6]">
-                  업무 · 지식 카드 · 주간보고 · 채팅 · 지식재산권 · 회사 기록을 찾아 답합니다. 업무를 만들거나 고치는 일은 확인 카드를 띄우고, 확인하면 실행합니다.
-                </p>
-              </div>
-              <div className={cn("grid w-full max-w-[520px] gap-2 in-data-[messenger]:gap-3", !embedded && "sm:grid-cols-2")}>
-                {EXAMPLES.map((ex) => (
-                  <button
-                    key={ex}
-                    type="button"
-                    onClick={() => send(ex)}
-                    className="touch-target rounded-lg border bg-card px-3 py-2.5 text-left text-[12.5px] in-data-[messenger]:rounded-2xl in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[16px] in-data-[messenger]:leading-[1.5] transition-colors hover:border-border-strong hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                  >
-                    {ex}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {isNew && !pending && <OmnisWelcome embedded={!!embedded} onPick={send} />}
 
           {hasMore && (
             <div className="flex justify-center pb-2">
@@ -697,6 +673,38 @@ export function OmnisRoom({
         compact={!!embedded}
         attach={IS_DEMO ? undefined : { items: attach.items, onFiles: attach.addFiles, onNas: attach.addNas, onRemove: attach.remove }}
       />
+    </div>
+  )
+}
+
+/**
+ * 새 대화의 첫 화면 — 옴니스 소개와 예시 질문. 랜딩의 업무 시연(components/landing/motion/workflow-film.tsx)도
+ * 실제 화면과 같은 모양을 쓰려고 부른다
+ */
+export function OmnisWelcome({ embedded = false, onPick }: { embedded?: boolean; onPick: (example: string) => void }) {
+  return (
+    <div className={cn("flex flex-col items-center gap-4 text-center", embedded ? "py-4" : "py-8 sm:py-14")}>
+      <span className="ai-rainbow-border flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary in-data-[messenger]:size-[68px] in-data-[messenger]:rounded-3xl in-data-[messenger]:[&_svg]:size-[34px]">
+        <HugeiconsIcon icon={BubbleChatSparkIcon} size={24} aria-hidden />
+      </span>
+      <div>
+        <h2 className="text-[18px] font-bold tracking-[-0.02em] in-data-[messenger]:text-[26px]">옴니스에게 물어보세요</h2>
+        <p className="mt-1 break-keep text-[12.5px] text-muted-foreground in-data-[messenger]:mt-2 in-data-[messenger]:text-[16px] in-data-[messenger]:leading-[1.6]">
+          업무 · 지식 카드 · 주간보고 · 채팅 · 지식재산권 · 회사 기록을 찾아 답합니다. 업무를 만들거나 고치는 일은 확인 카드를 띄우고, 확인하면 실행합니다.
+        </p>
+      </div>
+      <div className={cn("grid w-full max-w-[520px] gap-2 in-data-[messenger]:gap-3", !embedded && "sm:grid-cols-2")}>
+        {EXAMPLES.map((ex) => (
+          <button
+            key={ex}
+            type="button"
+            onClick={() => onPick(ex)}
+            className="touch-target rounded-lg border bg-card px-3 py-2.5 text-left text-[12.5px] in-data-[messenger]:rounded-2xl in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[16px] in-data-[messenger]:leading-[1.5] transition-colors hover:border-border-strong hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            {ex}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
