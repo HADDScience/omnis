@@ -49,6 +49,8 @@ interface ChatPanelProps {
    * 이 방 글은 업무에 붙지 않고(서버가 업무 연결을 하지 않는다) 파일 목록은 방을 가리지 않아서다
    */
   people?: { members: User[] }
+  /** 메신저 방 키 — loading 입력창에 쓴 글을 이어받는다(lib/chat-entry.ts). 오른쪽 패널은 비운다 */
+  handoffKey?: string
 }
 
 // 사람끼리 방은 업무 · 파일 후보가 없다. MessageInput 의 기본값([])은 그릴 때마다 새 배열이라
@@ -67,6 +69,7 @@ export function ChatPanel({
   onSearchOpenChange,
   searchFocus = 0,
   people,
+  handoffKey,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
@@ -570,9 +573,10 @@ export function ChatPanel({
             commands={false}
             attachments={false}
             placeholder="메시지 입력...  @ 사람"
+            handoffKey={handoffKey}
           />
         ) : (
-          <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
+          <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} handoffKey={handoffKey} />
         )}
       </div>
 

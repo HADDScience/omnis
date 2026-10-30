@@ -18,6 +18,7 @@ import {
   roomKeyFromPath,
   roomKeyOf,
   roomsInChip,
+  splitDoneTasks,
   unreadLabel,
   unreadRoomCount,
   type ChatFolderView,
@@ -247,4 +248,22 @@ test("지운 옴니스 대화는 늘 빠진다 · 숨긴 사람 1:1 은 숨긴 �
   assert.equal(hiddenFromList({ kind: "DM", lastAt: at }, null), false)
   // 숨김을 받지 않는 방에 값이 있어도(잘못 쓴 행) 목록에서 빼지 않는다
   assert.equal(hiddenFromList({ kind: "COMPANY", lastAt: at }, at), false)
+})
+
+// ─── 완료된 업무 묶음 (2026-10-30) ───
+
+test("완료된 업무방만 아래 묶음으로 — 순서는 그대로 (거부되어야 하는 경우: 진행 중 업무 · 상태 없는 방 · 업무방이 아닌 DONE)", () => {
+  const rows = [
+    { key: "task:a", kind: "TASK" as const, status: "DONE" },
+    { key: "room:o", kind: "OMNIS_DM" as const },
+    { key: "task:b", kind: "TASK" as const, status: "IN_PROGRESS" },
+    { key: "task:c", kind: "TASK" as const, status: "DONE" },
+    { key: "task:d", kind: "TASK" as const },
+    // 업무방이 아닌데 status 가 붙어 온 행 — 묶지 않는다
+    { key: "room:x", kind: "GROUP" as const, status: "DONE" },
+  ]
+  const { open, done } = splitDoneTasks(rows)
+  assert.deepEqual(done.map((r) => r.key), ["task:a", "task:c"])
+  assert.deepEqual(open.map((r) => r.key), ["room:o", "task:b", "task:d", "room:x"])
+  assert.deepEqual(splitDoneTasks([]), { open: [], done: [] })
 })

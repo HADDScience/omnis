@@ -166,6 +166,17 @@ export function roomsInChip<T extends ListRoom>(rooms: T[], chip: ChipId, folder
   return sortByRecent(picked)
 }
 
+/**
+ * 완료된 업무의 업무방을 목록 아래 묶음으로 뺀다(2026-10-30 작업지시자) — 끝난 일이 진행 중인 방 사이에 끼지 않게.
+ * 두 묶음 모두 받은 순서(최근 글 순)를 그대로 둔다. 업무방이 아닌 방은 상태가 없어 늘 위에 남는다
+ */
+export function splitDoneTasks<T extends { kind: RoomKind; status?: string }>(rooms: T[]): { open: T[]; done: T[] } {
+  const open: T[] = []
+  const done: T[] = []
+  for (const r of rooms) (r.kind === "TASK" && r.status === "DONE" ? done : open).push(r)
+  return { open, done }
+}
+
 export function sortByRecent<T extends { lastAt: string }>(rooms: T[]): T[] {
   return [...rooms].sort((a, b) => b.lastAt.localeCompare(a.lastAt))
 }

@@ -46,6 +46,19 @@ export function onInstallPromptChange(fn: () => void): () => void {
   return () => listeners.delete(fn)
 }
 
+/**
+ * 잡아 둔 설치 이벤트로 브라우저의 설치 창을 띄운다. 이벤트는 한 번만 쓸 수 있어 쓰고 나면 비운다.
+ * 사람이 설치를 골랐으면 true. 이벤트가 없으면(iOS · 이미 씀) false
+ */
+export async function promptInstall(): Promise<boolean> {
+  const prompt = getInstallPrompt()
+  if (!prompt) return false
+  await prompt.prompt()
+  const { outcome } = await prompt.userChoice
+  setInstallPrompt(null)
+  return outcome === "accepted"
+}
+
 /** 홈 화면에서 연 상태인가. iOS 는 표준 display-mode 대신 navigator.standalone 을 쓴다. */
 export function isStandalone(): boolean {
   if (typeof window === "undefined") return false
