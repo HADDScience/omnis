@@ -1,20 +1,17 @@
 "use client"
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react"
+import { useCallback, useState, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { BubbleChatSparkIcon, PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { roomKeyFromPath } from "@/lib/chat-list"
 import { RoomList } from "./room-list"
+import { CachedRoomPreview } from "./cached-room-preview"
+import { ChatUser, RoomListReload, RoomSurfaceReady, StartRoomEntry } from "./messenger-context"
 
-/** 방 화면이 목록을 다시 읽게 할 때 — 새 대화를 만들었거나 답을 받아 순서가 바뀌었을 때 */
-const RoomListReload = createContext<() => void>(() => {})
-export const useRoomListReload = () => useContext(RoomListReload)
-
-/** 메신저를 보는 사람 — 기기 저장(lib/chat-cache.ts)의 키. 메신저 밖(오른쪽 패널)에서는 빈 값이라 저장하지 않는다 */
-const ChatUser = createContext<string>("")
-export const useChatUserId = () => useContext(ChatUser)
+export { useChatUserId, useRoomListReload, useRoomSurfaceReady, useStartRoomEntry } from "./messenger-context"
 
 /**
  * 메신저 셸 — 왼쪽 방 목록 + 가운데 대화. 카톡 PC 처럼 목록은 사이드바가 아니라 이 화면 안의 왼쪽 칸이다.
@@ -34,13 +31,33 @@ export const useChatUserId = () => useContext(ChatUser)
  */
 export function MessengerShell({ children, userId }: { children: ReactNode; userId: string }) {
   const pathname = usePathname()
-  const atList = pathname === "/chat"
   const [version, setVersion] = useState(0)
   const reload = useCallback(() => setVersion((v) => v + 1), [])
+
+  // 방을 누른 순간부터 그 방 화면이 그려질 때까지 — 그 방의 입장 화면(CachedRoomPreview)을 셸이 덮어 그린다(2026-10-30).
+  // loading.tsx 는 링크를 미리 받아 둔(prefetch) 뒤에야 바로 뜬다. 화면 밖에 있다 막 스크롤해 들어온 줄 · 미리 받은 것이
+  // 낡은 줄은 서버가 답할 때까지 아무것도 바뀌지 않았고, 주소가 먼저 바뀐 뒤 방 칸이 한동안 비기도 했다.
+  // 그래서 주소가 아니라 그 방 화면(또는 loading 화면)이 실제로 그려졌다는 알림(RoomSurfaceReady)을 받고 걷는다.
+  // 다른 곳으로 옮기면(뒤로 가기 · 다른 링크) 바로 걷는다
+  const [entering, setEntering] = useState<string | null>(null)
+  const [seenPath, setSeenPath] = useState(pathname)
+  if (seenPath !== pathname) {
+    // 그리는 중에 맞춘다(effect 로 미루면 떠난 방의 입장 화면이 한 번 더 그려진다)
+    setSeenPath(pathname)
+    if (entering && roomKeyFromPath(pathname) !== entering) setEntering(null)
+  }
+  const startEntry = useCallback(
+    (key: string | null) => setEntering(key === roomKeyFromPath(pathname) ? null : key),
+    [pathname],
+  )
+  const surfaceReady = useCallback((key: string) => setEntering((e) => (e === key ? null : e)), [])
+  const atList = pathname === "/chat" && !entering
 
   return (
     <ChatUser.Provider value={userId}>
     <RoomListReload.Provider value={reload}>
+    <StartRoomEntry.Provider value={startEntry}>
+    <RoomSurfaceReady.Provider value={surfaceReady}>
       <div data-messenger className="flex h-full min-h-0 flex-col md:pt-12">
         <div className="flex min-h-0 flex-1">
           <aside
@@ -53,11 +70,19 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
             <RoomList version={version} userId={userId} />
             <NewChatFab />
           </aside>
-          <section className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", atList ? "hidden" : "flex")}>
+          <section className={cn("relative min-h-0 min-w-0 flex-1 flex-col md:flex", atList ? "hidden" : "flex")}>
             {children}
+            {/* 방 화면은 그 아래에서 그대로 받아 그린다 — 다 그려지면 입력창이 글을 이어받고 이 덮개를 걷는다 */}
+            {entering && (
+              <div className="absolute inset-0 z-[1] flex flex-col bg-background">
+                <CachedRoomPreview roomKey={entering} overlay />
+              </div>
+            )}
           </section>
         </div>
       </div>
+    </RoomSurfaceReady.Provider>
+    </StartRoomEntry.Provider>
     </RoomListReload.Provider>
     </ChatUser.Provider>
   )

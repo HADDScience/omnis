@@ -18,6 +18,7 @@ import {
   roomKeyFromPath,
   roomKeyOf,
   roomsInChip,
+  groupTaskRooms,
   unreadLabel,
   unreadRoomCount,
   type ChatFolderView,
@@ -247,4 +248,30 @@ test("지운 옴니스 대화는 늘 빠진다 · 숨긴 사람 1:1 은 숨긴 �
   assert.equal(hiddenFromList({ kind: "DM", lastAt: at }, null), false)
   // 숨김을 받지 않는 방에 값이 있어도(잘못 쓴 행) 목록에서 빼지 않는다
   assert.equal(hiddenFromList({ kind: "COMPANY", lastAt: at }, at), false)
+})
+
+// ─── 업무방 상태별 묶음 (2026-10-30) ───
+
+test("업무방은 상태별 묶음으로 — 진행 중 · 리뷰 · 할 일 · 완료 순, 묶음 안은 받은 순서 (거부되어야 하는 경우: 업무방이 아닌 DONE · 모르는 상태)", () => {
+  const rows = [
+    { key: "task:a", kind: "TASK" as const, status: "DONE" },
+    { key: "room:o", kind: "OMNIS_DM" as const },
+    { key: "task:b", kind: "TASK" as const, status: "TODO" },
+    { key: "task:c", kind: "TASK" as const, status: "IN_PROGRESS" },
+    { key: "task:d", kind: "TASK" as const, status: "DONE" },
+    // 상태 없는 업무방 · 모르는 상태 — 위에 남는다
+    { key: "task:e", kind: "TASK" as const },
+    { key: "task:f", kind: "TASK" as const, status: "ARCHIVED" },
+    // 업무방이 아닌데 status 가 붙어 온 행 — 묶지 않는다
+    { key: "room:x", kind: "GROUP" as const, status: "DONE" },
+  ]
+  const { open, groups } = groupTaskRooms(rows)
+  assert.deepEqual(open.map((r) => r.key), ["room:o", "task:e", "task:f", "room:x"])
+  assert.deepEqual(
+    groups.map((g) => [g.status, g.rooms.map((r) => r.key)]),
+    [["IN_PROGRESS", ["task:c"]], ["TODO", ["task:b"]], ["DONE", ["task:a", "task:d"]]],
+  )
+  // 빈 묶음(REVIEW)은 없다
+  assert.equal(groups.some((g) => g.status === "REVIEW"), false)
+  assert.deepEqual(groupTaskRooms([]), { open: [], groups: [] })
 })

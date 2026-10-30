@@ -60,7 +60,7 @@ export default async function TaskRoomPage({ params }: { params: Promise<{ taskI
         link={{ href: `/tasks/${task.id}`, label: "업무 열기" }}
       />
       <div className="min-h-0 flex-1">
-        <TaskThread key={task.id} taskId={task.id} taskName={task.name} messages={messages} currentUserId={session.user.id} />
+        <TaskThread key={task.id} roomKey={`task:${task.id}`} taskId={task.id} taskName={task.name} messages={messages} currentUserId={session.user.id} />
       </div>
     </div>
   )

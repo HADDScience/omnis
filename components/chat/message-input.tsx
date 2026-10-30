@@ -18,6 +18,8 @@ import { SLASH_COMMANDS } from "./slash-command-parser"
 import { IS_DEMO } from "@/lib/demo"
 import { toast } from "sonner"
 import { MAX_UPLOAD_BYTES } from "@/lib/constants"
+import { resolveHandoff } from "@/lib/chat-entry"
+import { useComposerHandoff } from "@/hooks/use-composer-handoff"
 import { reportIncident } from "@/lib/report-client-error"
 import { NasFilePicker } from "./nas-file-picker"
 
@@ -48,6 +50,8 @@ interface MessageInputProps {
   attachments?: boolean
   placeholder?: string
   ariaLabel?: string
+  /** 메신저 방 키(room: · task:) — 방이 오기 전 loading 입력창에 쓴 글을 이어받는다(lib/chat-entry.ts). 메신저 밖은 비운다 */
+  handoffKey?: string
 }
 
 /** # 자동완성에 보일 업무 — 진행 중인 것이 먼저, 완료된 업무는 뒤에 「완료」 표시와 함께 */
@@ -71,6 +75,7 @@ export function MessageInput({
   attachments = true,
   placeholder = "메시지 입력...  / 명령 · @ 사람 · # 업무",
   ariaLabel = "메시지 입력",
+  handoffKey,
 }: MessageInputProps) {
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
@@ -91,6 +96,27 @@ export function MessageInput({
   const [mentionStart, setMentionStart] = useState(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
+
+  // loading 입력창에서 쓴 글을 받고, 눌러 둔 보내기는 바로 보낸다. 보내지 못하면 그 글을 입력칸에 되돌린다
+  useComposerHandoff(handoffKey, textareaRef, (h) => {
+    const { send: queued, text } = resolveHandoff(h, Date.now())
+    const putBack = (q: string) => setContent((c) => (c ? `${q}\n${c}` : q))
+    setContent(text)
+    if (queued === null) return
+    if (disabled) {
+      putBack(queued)
+      return
+    }
+    sendingRef.current = true
+    setSending(true)
+    onSend(queued)
+      .catch(() => putBack(queued))
+      .finally(() => {
+        sendingRef.current = false
+        setSending(false)
+        if (h.focused) requestAnimationFrame(() => textareaRef.current?.focus())
+      })
+  })
   // 데모에는 NAS 가 없고, 사람끼리 방은 attachments=false — 둘 다 파일을 받지 않는다
   const noFiles = IS_DEMO || !attachments
 
