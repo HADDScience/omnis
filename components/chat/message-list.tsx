@@ -179,7 +179,14 @@ export function MessageList({
   // 이전 메시지(prepend)면 스크롤 위치 유지, 그 외(새 메시지·초기 로드)는 맨 아래로
   useLayoutEffect(() => {
     const el = scrollRef.current
-    if (!el) return
+    if (!el) {
+      // 빈 목록 화면이라 스크롤 칸이 없다. 다음에 그려질 칸은 새 칸(scrollTop 0)이다 — 처음 그리는 것으로 되돌린다.
+      // 이게 없으면 방을 열 때(ChatPanel 이 목록을 비웠다 다시 채운다) 같은 글이 「새 글 없음」 으로 보여 맨 위에 머문다
+      prevFirstIdRef.current = null
+      prevIdsRef.current = null
+      stuckRef.current = true
+      return
+    }
     const firstId = messages[0]?.id ?? null
     const prevFirstId = prevFirstIdRef.current
     const isPrepend =

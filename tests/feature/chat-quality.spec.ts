@@ -42,7 +42,12 @@ async function otherUser(browser: Browser, name: DemoUser) {
 
 async function openRoom(page: Page) {
   await page.goto(`/chat/${ROOM}`)
-  await page.locator('[role="log"][aria-label="채팅 메시지"]').waitFor({ timeout: 30_000 })
+  // 빈 방이면 목록 대신 「아직 메시지가 없습니다」 가 뜬다
+  await page
+    .locator('[role="log"][aria-label="채팅 메시지"]')
+    .or(page.getByText("아직 메시지가 없습니다"))
+    .first()
+    .waitFor({ timeout: 30_000 })
   await page.locator("textarea").first().waitFor()
 }
 
@@ -129,6 +134,8 @@ test("위로 올려 읽는 중에 남의 글이 오면 자리를 지키고 「�
   await openRoom(page)
 
   const scroller = page.locator('[role="log"][aria-label="채팅 메시지"]').locator("..")
+  // 방을 열면 맨 아래 — 목록을 비웠다 다시 채우는 사이 맨 위에 머물던 회귀(이 작업 중 시험이 잡았다)
+  await expect.poll(() => scroller.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(80)
   await scroller.hover()
   await page.mouse.wheel(0, -1500)
   await page.waitForTimeout(800)
