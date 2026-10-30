@@ -39,6 +39,7 @@ import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { assignmentTargets } from "@/lib/notify-rules"
 import * as XLSX from "xlsx"
 import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
+import { listCalendarText } from "@/lib/calendar/agent-tool"
 import { findVisibleFile } from "@/lib/file-access-server"
 import {
   TOOLS as IP_TOOLS,
@@ -107,6 +108,7 @@ export const INSTRUCTIONS = [
   "주간보고는 list_weekly_reports·write_weekly_report, 사내 지식 카드 작성은 write_omnis_card, 업무 밖 채팅은 list_chat 입니다.",
   "업무 카드의 상태·마감·우선순위는 update_task, 체크리스트는 update_checklist. 진행 보고라면 post_message 가 먼저입니다(담당자 확인과 AI 재구성이 따라옵니다).",
   "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
+  "웍스 캘린더 일정(행사·미팅·외근)은 list_calendar — 날짜는 서울 기준이고, 결과의 마지막 동기화 시각만큼 웍스와 늦을 수 있습니다.",
   "",
   IP_INSTRUCTIONS.replace("HADD SCIENCE 지식재산권 기록 서버입니다.", "지식재산권 도구(list_ip·get_ip·add_progress …)는 구성원에게만 열립니다."),
 ].join("\n")
@@ -535,6 +537,25 @@ export const OMNIS_TOOLS = [
     description:
       "대상 하나(업무·프로젝트·사람·기관·견적·세금계산서·연혁·특허·카드)와 DB 로 이어진 것, 의미상 가까운 것. 「국일그래핀과 엮인 견적·세금계산서」「이 과제에 딸린 업무」 처럼 관계를 물으면 쓴다. node 는 이전 결과의 key, 없으면 query 에 이름을 준다.",
     inputSchema: { type: "object", properties: { node: { type: "string" }, query: { type: "string" } } },
+  },
+  // ─── 캘린더 (lib/calendar/agent-tool) — 캘린더 탭과 같은 함수 · 같은 보기 권한 ───
+  {
+    name: "list_calendar",
+    description:
+      "네이버 웍스 캘린더 일정(회사 행사 · 미팅 · 외근 · 출장 · 제출 마감)을 기간으로 읽는다. 반복 일정은 회차마다 펼쳐 준다. " +
+      "「다음 주 일정」「이번 달 회사 행사」「11/4 에 누가 외근이야」 처럼 일정 · 날짜를 물으면 쓴다. 날짜는 서울 기준 YYYY-MM-DD. " +
+      "웍스 일정에는 사람별 칸이 없다 — 사람은 제목에 적힌 이름으로 찾는다(query). 캘린더 화면에서 볼 수 있는 캘린더만 보이고, 마지막 동기화 시각을 함께 준다. " +
+      "업무 마감은 list_tasks, 연혁 · 정부과제 기간은 list_company_records.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "시작 날짜 YYYY-MM-DD(서울). 생략하면 오늘" },
+        to: { type: "string", description: "끝 날짜 YYYY-MM-DD(서울, 그날 포함). 생략하면 from 부터 7일. from~to 는 최대 62일" },
+        calendar: { type: "string", description: "캘린더 이름 일부(예: 대표님). 생략하면 볼 수 있는 캘린더 전부" },
+        query: { type: "string", description: "제목 · 장소에서 찾을 말 — 사람 이름 · 기관 · 행사명 · 외근. 띄어 쓴 말은 모두 든 일정만" },
+        all_day: { type: "boolean", description: "true 면 종일 일정만, false 면 시간 있는 일정만" },
+      },
+    },
   },
 ] as const
 
@@ -1480,6 +1501,8 @@ export async function runTool(
       return { text: await marketCompaniesText(args) }
     case "get_context":
       return contextText(args, caller.role === "ADMIN")
+    case "list_calendar":
+      return listCalendarText(args, { id: caller.userId, isAdmin: caller.role === "ADMIN" })
   }
 
   return { error: `모르는 도구입니다: ${name}` }

@@ -19,6 +19,7 @@ import { limitMessage, limitReason, type Spent, type StepUsage } from "./limits"
 import { approvalResponses, pendingApprovals } from "./messages"
 import { RUN_STOPPED_RESULT } from "./stop-stream"
 import { dispatchAgentPushSafe } from "@/lib/chat-push"
+import { seoulDayLabel } from "@/lib/calendar/time"
 
 export interface AgentContext {
   ok: true
@@ -41,7 +42,8 @@ export function providerOptionsFor(m: ModelChoice): AgentContext["providerOption
   return {}
 }
 
-const kstToday = () => new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 10)
+/** 서울 날짜와 요일 — 「다음 주」「이번 달」 을 모델이 날짜로 풀려면 요일이 필요하다(list_calendar) */
+const kstToday = () => seoulDayLabel(new Date())
 
 export async function loadContext(runId: string): Promise<AgentContext | { ok: false; reason: string }> {
   const run = await prisma.agentRun.findUnique({ where: { id: runId } })

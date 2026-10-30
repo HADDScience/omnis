@@ -10,6 +10,8 @@ import { answerWithOmnis, runGeminiToolLoop, type GeminiFunctionDeclaration, typ
 import { writeActivity } from "@/lib/api"
 import { listCases, listOpenTurns } from "@/lib/ip-data"
 import type { OmnisTurn } from "@/lib/omnis-history"
+import { seoulDayLabel } from "@/lib/calendar/time"
+import { CALENDAR_WRITE_RULE } from "@/lib/agent/prompt"
 
 export const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   OMNIS_CARD: "옴니스 카드",
@@ -291,10 +293,10 @@ export const ROUTE_READ_TOOLS = new Set([
   "list_tasks", "get_task", "read_file", "list_notifications", "list_projects", "list_members",
   "crm_overview", "find_org", "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat",
   "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
-  "list_market_companies", "get_context",
+  "list_market_companies", "get_context", "list_calendar",
 ])
 
-function routeSystemPrompt(today: string, userName: string, withHistory = false): string {
+export function routeSystemPrompt(today: string, userName: string, withHistory = false): string {
   return `당신은 HADD Science 의 사내 지식 비서 "옴니스" 입니다. 오늘은 ${today} 이고, 질문한 사람은 ${userName} 입니다.
 직원의 질문에 답하려면 도구를 골라 부르세요. 한 번에 여러 도구를 불러도 됩니다. 최대 5번까지 부를 수 있습니다.
 ${withHistory ? HISTORY_RULE : ""}
@@ -303,7 +305,10 @@ ${withHistory ? HISTORY_RULE : ""}
 - 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true), 한 업무의 체크리스트·최근 대화는 get_task.
 - 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org, 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
 - 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
+- 일정·행사·미팅·외근·「다음 주」「11/4」 같은 날짜 질문은 list_calendar(웍스 캘린더). 날짜는 오늘(서울)을 기준으로 YYYY-MM-DD 로 풀어 from·to 에 넣으세요.
 - 첫 도구 결과로 충분하면 바로 답하세요. 부족할 때만 더 부르세요.
+
+${CALENDAR_WRITE_RULE}
 
 답변 규칙:
 - 도구 결과에 있는 내용만으로 답하세요. 결과에 없으면 추측하지 말고 "관련 내용을 찾지 못했습니다" 라고 답하세요.
@@ -379,7 +384,8 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
     return "error" in r ? `오류: ${r.error}` : r.text
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  // 서울 날짜 · 요일 — UTC 날짜면 서울 0~9시에 하루 어긋나 「오늘」「다음 주」 가 틀린다(list_calendar)
+  const today = `${seoulDayLabel(new Date())} · 시간대 Asia/Seoul`
   const history = opts.history ?? []
   const loop = await runGeminiToolLoop(routeSystemPrompt(today, user.name, history.length > 0), question, tools, runOne, {
     model, thinking, maxSteps: 6, endpoint: opts.endpoint ?? "omnisAsk.route", userId, history,

@@ -36,6 +36,8 @@ export const AGENT_READ_TOOLS = [
   "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat", "list_notifications",
   "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
   "list_market_companies", "get_context",
+  // 웍스 캘린더 — 캘린더 탭과 같은 함수 · 보기 권한(lib/calendar/agent-tool)
+  "list_calendar",
   // 지식재산권 읽기 — 구성원이 아니면 runTool 이 거절한다
   "list_stages", "list_ip", "get_ip", "list_todo",
 ] as const
