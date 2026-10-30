@@ -256,6 +256,12 @@ function writeDoc(t: number, at: string): Frame {
   }
 }
 
+/** 대본의 첫 지시 — 시연이 그려지기 전(스크립트를 받는 중) 자리를 채울 때 쓴다 */
+export const DEMO_ASK: Record<DemoScript, string> = {
+  "create-task": TASK_ASK,
+  "write-doc": DOC_ASK,
+}
+
 /** 대본이 다 끝난 시각 — 모션 감소 설정이면 여기를 바로 보인다 */
 export const DEMO_END: Record<DemoScript, number> = {
   "create-task": 11400,

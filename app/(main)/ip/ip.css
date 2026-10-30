@@ -1,0 +1,188 @@
+/*
+ * 「IP 에서 보기」로 넘어왔을 때 해당 행을 잠깐 반짝인다.
+ * 목록이 길어 어느 줄이 문제인지 눈으로 찾기 어렵기 때문이다.
+ * 자동으로 펼치지는 않는다 — 어디인지만 알려주고 여는 것은 사람이 정한다.
+ *
+ * 테두리를 tr 에 주지 않고 각 td 에 inset 그림자로 그린다. 표는 기본이
+ * border-collapse 라 tr 의 box-shadow 가 브라우저마다 다르게 잘린다.
+ */
+@keyframes hadd-flash {
+  0%,
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+  15%,
+  55% {
+    background-color: color-mix(
+      in oklab,
+      var(--color-amber-500) 14%,
+      transparent
+    );
+    box-shadow:
+      inset 0 2px 0 0 var(--color-amber-500),
+      inset 0 -2px 0 0 var(--color-amber-500);
+  }
+}
+
+.hadd-flash > td {
+  animation: hadd-flash 2.4s ease-in-out 1;
+}
+
+/* 양 끝을 막아 테두리가 닫히게 한다. */
+@keyframes hadd-flash-left {
+  0%,
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+  15%,
+  55% {
+    background-color: color-mix(
+      in oklab,
+      var(--color-amber-500) 14%,
+      transparent
+    );
+    box-shadow:
+      inset 0 2px 0 0 var(--color-amber-500),
+      inset 0 -2px 0 0 var(--color-amber-500),
+      inset 2px 0 0 0 var(--color-amber-500);
+  }
+}
+
+@keyframes hadd-flash-right {
+  0%,
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+  15%,
+  55% {
+    background-color: color-mix(
+      in oklab,
+      var(--color-amber-500) 14%,
+      transparent
+    );
+    box-shadow:
+      inset 0 2px 0 0 var(--color-amber-500),
+      inset 0 -2px 0 0 var(--color-amber-500),
+      inset -2px 0 0 0 var(--color-amber-500);
+  }
+}
+
+.hadd-flash > td:first-child {
+  animation-name: hadd-flash-left;
+}
+
+.hadd-flash > td:last-child {
+  animation-name: hadd-flash-right;
+}
+
+/* 움직임을 줄이도록 설정한 사람에게는 색만 잠깐 남긴다. */
+@media (prefers-reduced-motion: reduce) {
+  .hadd-flash > td {
+    animation: none;
+    background-color: color-mix(
+      in oklab,
+      var(--color-amber-500) 14%,
+      transparent
+    );
+  }
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * AI 연결 버튼의 장식 — Magic UI 의 BorderBeam · 반짝이는 AI 표식
+ *
+ * 이 화면에서 「AI 도구에 연결하기」는 한 번 해 두면 입력 방식 자체가 바뀌는
+ * 걸음인데, 다른 버튼들과 같은 모양이라 그냥 지나쳤다. 눈에 띄어야 하는
+ * 버튼이라 테두리를 도는 빛을 붙인다.
+ *
+ * 컴포넌트가 아니라 여기 두는 이유: 마스크 두 겹과 offset-path 는 Tailwind
+ * 임의값으로 적으면 대괄호가 겹쳐 읽을 수 없고, 지원하지 않는 브라우저를
+ * 위한 @supports 는 유틸리티로 쓸 수 없다.
+ * ---------------------------------------------------------------------------
+ */
+
+/*
+ * 테두리만 남기는 마스크. 안쪽(padding-box)은 투명, 바깥(border-box)은 불투명한
+ * 두 마스크를 교차시키면 테두리 띠만 남는다. 그 띠 안에서만 빛이 보인다.
+ */
+.hadd-border-beam {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  border: calc(var(--beam-border) * 1px) solid transparent;
+  mask-image:
+    linear-gradient(transparent, transparent), linear-gradient(#000, #000);
+  mask-clip: padding-box, border-box;
+  mask-composite: intersect;
+}
+
+.hadd-border-beam::after {
+  content: "";
+  position: absolute;
+  aspect-ratio: 1;
+  width: calc(var(--beam-size) * 1px);
+  background: linear-gradient(
+    to left,
+    var(--beam-from),
+    var(--beam-to),
+    transparent
+  );
+  /* 사각형 궤도를 돈다. 모서리는 빛 크기만큼 둥글려 급하게 꺾이지 않게 한다. */
+  offset-path: rect(0 auto auto 0 round calc(var(--beam-size) * 1px));
+  offset-anchor: 90% 50%;
+  animation: hadd-border-beam var(--beam-duration) linear infinite;
+  animation-delay: var(--beam-delay);
+}
+
+@keyframes hadd-border-beam {
+  to {
+    offset-distance: 100%;
+  }
+}
+
+/*
+ * offset-path 의 rect() 를 모르는 브라우저에서는 빛이 궤도를 못 타고 모서리에
+ * 붙은 얼룩으로 남는다. 장식 하나 때문에 버튼이 이상해 보이느니 안 그리는 편이 낫다.
+ */
+@supports not (offset-path: rect(0 auto auto 0)) {
+  .hadd-border-beam::after {
+    display: none;
+  }
+}
+
+/* 도는 빛은 시선을 끌기 위한 장식이라, 움직임을 줄이라고 한 사람에게는 지운다. */
+@media (prefers-reduced-motion: reduce) {
+  .hadd-border-beam::after {
+    display: none;
+  }
+}
+
+/* AI 표식이 천천히 숨 쉬듯 반짝인다. 버튼 안의 작은 별에만 쓴다. */
+@keyframes hadd-ai-twinkle {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.hadd-ai-twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hadd-ai-twinkle 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hadd-ai-twinkle {
+    animation: none;
+    opacity: 0.9;
+  }
+}
