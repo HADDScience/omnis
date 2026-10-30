@@ -10,6 +10,7 @@ import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { createNotification } from "@/lib/notifications"
 import { queueChatPush } from "@/lib/chat-push"
 import { roomKeyOf } from "@/lib/chat-list"
+import { checkAttachable } from "@/lib/file-access"
 import { defaultGroupName, dmKeyOf, mentionedMembers, peopleRoomTitle, planPeopleRoom } from "@/lib/chat-people-rules"
 
 export type PeopleResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string }
@@ -157,27 +158,53 @@ const MESSAGE_INCLUDE = {
 /** 알림 한 줄에 보일 본문 길이 */
 const NOTIFY_PREVIEW = 80
 
+/** 트랜잭션 안에서 첨부를 잡지 못했다 — 그사이 다른 글에 붙었다. 글까지 되돌린다 */
+class AttachRace extends Error {}
+
 /**
  * 사람끼리 방에 글 하나. 업무 연결 · 재구성 · 색인 · ChatMention 을 하지 않는다 — 방 밖으로 내용이 나가는 길이 그것들이다.
  * 답장 대상은 **같은 방의 글**만 받는다(다른 방 글 id 를 넣어 인용으로 끌어오지 못하게).
  * `@이름` 이 이 방 참여자면 그 사람에게만 알림(chat_mention → /chat/<방>)을 보낸다.
+ * fileIds — scope=private 로 올린 내 파일만 붙는다(lib/file-access.ts checkAttachable). 붙은 뒤에는 이 방 참여자만 본다.
+ * 사진 설명 · 색인을 만들지 않는다(lib/photo-describe.ts · embeddings.ts 가 전사방만 다룬다)
  */
 export async function postPeopleMessage(
   me: { id: string; name: string },
   room: PeopleRoomView,
-  input: { content: string; replyToId?: string | null },
-) {
+  input: { content: string; replyToId?: string | null; fileIds?: string[] },
+): Promise<{ ok: true; message: Prisma.ChatMessageGetPayload<{ include: typeof MESSAGE_INCLUDE }> } | { ok: false; status: number; error: string }> {
   const content = input.content.trim()
+  const fileIds = input.fileIds ?? []
+  if (fileIds.length) {
+    const found = await prisma.file.findMany({ where: { id: { in: fileIds } }, select: { id: true, privateToUserId: true, messageId: true, taskId: true } })
+    const check = checkAttachable(fileIds, found, me.id)
+    if (!check.ok) return check
+  }
   const replyOk = input.replyToId
     ? !!(await prisma.chatMessage.findFirst({ where: { id: input.replyToId, roomId: room.id }, select: { id: true } }))
     : false
-  const [message] = await prisma.$transaction([
-    prisma.chatMessage.create({
-      data: { roomId: room.id, authorId: me.id, content, replyToId: replyOk ? input.replyToId! : null },
-      include: MESSAGE_INCLUDE,
-    }),
-    prisma.chatRoom.update({ where: { id: room.id }, data: { lastMessageAt: new Date() } }),
-  ])
+  let message: Prisma.ChatMessageGetPayload<{ include: typeof MESSAGE_INCLUDE }>
+  try {
+    message = await prisma.$transaction(async (tx) => {
+      const created = await tx.chatMessage.create({
+        data: { roomId: room.id, authorId: me.id, content, replyToId: replyOk ? input.replyToId! : null },
+        select: { id: true },
+      })
+      await tx.chatRoom.update({ where: { id: room.id }, data: { lastMessageAt: new Date() } })
+      if (fileIds.length) {
+        // 위에서 본 뒤 그사이 다른 글에 붙었으면 잡지 못한다 — 글까지 되돌린다
+        const claimed = await tx.file.updateMany({
+          where: { id: { in: fileIds }, privateToUserId: me.id, messageId: null, taskId: null },
+          data: { messageId: created.id },
+        })
+        if (claimed.count !== fileIds.length) throw new AttachRace()
+      }
+      return tx.chatMessage.findUniqueOrThrow({ where: { id: created.id }, include: MESSAGE_INCLUDE })
+    })
+  } catch (err) {
+    if (err instanceof AttachRace) return { ok: false, status: 409, error: "이미 다른 글에 붙은 파일입니다 — 다시 올려 주세요" }
+    throw err
+  }
 
   const targets = mentionedMembers(content, room.members, me.id)
   // 참여자에게 채팅 푸시(벨 없이) — 멘션 받는 사람은 아래 chat_mention 으로 한 번만 울린다
@@ -198,5 +225,5 @@ export async function postPeopleMessage(
       ),
     )
   }
-  return message
+  return { ok: true, message }
 }
