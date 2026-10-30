@@ -40,6 +40,7 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
         initialCards={loaded.cards}
         initialTools={loaded.tools}
         initialHasMore={loaded.hasMore}
+        initialStopped={loaded.stopped}
         activeRun={loaded.activeRun}
         muted={muted}
       />

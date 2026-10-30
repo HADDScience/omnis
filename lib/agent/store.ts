@@ -16,6 +16,7 @@ import { checkExecution, planHash, type StepStatus } from "./approval"
 import { redactSecrets, secretBlockReason } from "./secrets"
 import { limitMessage, limitReason, type Spent, type StepUsage } from "./limits"
 import { approvalResponses, pendingApprovals } from "./messages"
+import { RUN_STOPPED_RESULT } from "./stop-stream"
 import { dispatchAgentPushSafe } from "@/lib/chat-push"
 
 export interface AgentContext {
@@ -66,7 +67,9 @@ export async function loadContext(runId: string): Promise<AgentContext | { ok: f
 // ─── 도구 실행 ───────────────────────────────────────────────────────
 
 export async function readTool(runId: string, name: string, input: Record<string, unknown>): Promise<string> {
-  const run = await prisma.agentRun.findUniqueOrThrow({ where: { id: runId }, select: { userId: true, sources: true } })
+  const run = await prisma.agentRun.findUniqueOrThrow({ where: { id: runId }, select: { userId: true, sources: true, status: true } })
+  // 사용자가 멈췄다 — 도구를 돌리지 않고, Workflow 의 stopWhen 이 이 값을 보고 모델을 더 부르지 않는다
+  if (run.status === "STOPPED") return RUN_STOPPED_RESULT
   const caller = await callerFor(run.userId)
   const before = (run.sources as unknown as AskSource[]) ?? []
   const r = await runReadTool(name, input, caller, before)
@@ -81,7 +84,8 @@ export async function readTool(runId: string, name: string, input: Record<string
  * APPROVED → EXECUTED 를 조건부로 한 번에 바꿔 같은 승인이 두 번 쓰이지 않게 한다.
  */
 export async function writeTool(runId: string, name: string, input: Record<string, unknown>, toolCallId: string): Promise<string> {
-  const run = await prisma.agentRun.findUniqueOrThrow({ where: { id: runId }, select: { userId: true } })
+  const run = await prisma.agentRun.findUniqueOrThrow({ where: { id: runId }, select: { userId: true, status: true } })
+  if (run.status === "STOPPED") return RUN_STOPPED_RESULT
   const step = await prisma.agentStep.findUnique({ where: { runId_toolCallId: { runId, toolCallId } } })
   const check = checkExecution(step ? { ...step, status: step.status as StepStatus } : null, { toolName: name, input })
   if (!check.ok) return `실행하지 않았습니다: ${check.error}`
@@ -121,10 +125,41 @@ export interface PassResult {
 async function postOmnisMessage(roomId: string, content: string, omnisQueryId?: string) {
   const systemId = await getSystemUserId()
   const now = new Date()
-  await prisma.$transaction([
-    prisma.chatMessage.create({ data: { roomId, authorId: systemId, content, createdAt: now, ...(omnisQueryId ? { omnisQueryId } : {}) } }),
+  const [message] = await prisma.$transaction([
+    prisma.chatMessage.create({ data: { roomId, authorId: systemId, content, createdAt: now, ...(omnisQueryId ? { omnisQueryId } : {}) }, select: { id: true } }),
     prisma.chatRoom.update({ where: { id: roomId }, data: { lastMessageAt: now } }),
   ])
+  return message.id
+}
+
+/**
+ * 사용자가 멈춘 실행의 구간 끝. 사용량은 이미 남겼다(savePass 앞부분). 확인 카드는 만들지 않고, 기다리던 카드도 버린다.
+ * 그때까지 흘러나온 답이 있으면 옴니스 글로 남기고 그 글을 실행에 적는다 — 화면이 「중지됨」 을 붙인다.
+ * 상태는 STOPPED 그대로 둔다. 기기 알림은 보내지 않는다 — 멈춘 사람이 화면을 보고 있다
+ */
+async function saveStopped(
+  run: { id: string; roomId: string; userId: string; questionMessageId: string; sources: unknown },
+  base: { messages: Prisma.InputJsonValue; turns: number; costKrw: number },
+  lastText: string,
+): Promise<{ autoContinue: false; status: "STOPPED" }> {
+  await prisma.agentStep.updateMany({ where: { runId: run.id, status: { in: ["PENDING", "APPROVED"] } }, data: { status: "EXPIRED" } })
+  let stoppedMessageId: string | null = null
+  if (lastText) {
+    const question = await prisma.chatMessage.findUnique({ where: { id: run.questionMessageId }, select: { content: true } })
+    const sources = (run.sources as AskSource[]) ?? []
+    const saved = await prisma.omnisQuery.create({
+      data: { userId: run.userId, question: question?.content ?? "", answer: lastText, sources: sources as unknown as Prisma.InputJsonValue },
+    })
+    stoppedMessageId = await postOmnisMessage(run.roomId, lastText, saved.id)
+  }
+  await prisma.agentRun.update({ where: { id: run.id }, data: { ...base, stoppedMessageId } })
+  return { autoContinue: false, status: "STOPPED" }
+}
+
+/** 상태를 RUNNING 에서만 바꾼다. 그사이 사용자가 멈췄으면(STOPPED) false */
+async function moveFromRunning(runId: string, data: Prisma.AgentRunUpdateManyMutationInput): Promise<boolean> {
+  const moved = await prisma.agentRun.updateMany({ where: { id: runId, status: "RUNNING" }, data })
+  return moved.count === 1
 }
 
 /**
@@ -138,9 +173,11 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
   const mKey = run.model
   const now = new Date()
 
-  if (pass.steps.length > 0) {
+  // 멈춘 실행에서 벤더를 부르지 않고 끝낸 호출(토큰 0)은 남기지 않는다
+  const used = pass.steps.filter((s) => s.inputTokens + s.outputTokens > 0)
+  if (used.length > 0) {
     await prisma.aiUsage.createMany({
-      data: pass.steps.map((s) => {
+      data: used.map((s) => {
         const c = costOf(mKey, s)
         return {
           vendor, model: rest.join(":"), feature: "agent",
@@ -160,6 +197,9 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
 
   const base = { messages: messages as unknown as Prisma.InputJsonValue, turns: spent.turns, costKrw: spent.krw }
 
+  // 사용자가 멈췄다(중지 API 가 RUNNING → STOPPED). 오류로 끝났어도 같다 — 멈춘 것이 먼저다
+  if (run.status === "STOPPED") return saveStopped(run, base, lastText)
+
   if (pass.error) {
     await prisma.agentRun.update({ where: { id: runId }, data: { ...base, status: "FAILED", error: pass.error.slice(0, 2000) } })
     return { autoContinue: false, status: "FAILED" }
@@ -170,7 +210,7 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
   const fresh = approvals.filter((a) => !known.has(a.toolCallId))
 
   if (fresh.length > 0) {
-    const created = []
+    const drafts = []
     for (const a of fresh) {
       const preview = await buildPreview(a.toolName, a.input).catch((e) => ({
         title: a.toolName, target: "", changes: [], risk: "", problem: `카드를 만들지 못했습니다: ${e instanceof Error ? e.message : e}`,
@@ -182,32 +222,32 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
         preview.target = redactSecrets(preview.target)
         preview.changes = preview.changes.map((c) => ({ ...c, before: c.before === null ? null : redactSecrets(c.before), after: redactSecrets(c.after) }))
       }
-      created.push(
-        await prisma.agentStep.create({
-          data: {
-            runId, toolCallId: a.toolCallId, approvalId: a.approvalId, toolName: a.toolName,
-            input: a.input as Prisma.InputJsonValue, preview: preview as unknown as Prisma.InputJsonValue,
-            planHash: planHash({ runId, toolCallId: a.toolCallId, toolName: a.toolName, input: a.input, preview }),
-            status: blockedReason ? "BLOCKED" : "PENDING", blockedReason,
-          },
-        })
-      )
+      drafts.push({
+        runId, toolCallId: a.toolCallId, approvalId: a.approvalId, toolName: a.toolName,
+        input: a.input as Prisma.InputJsonValue, preview: preview as unknown as Prisma.InputJsonValue,
+        planHash: planHash({ runId, toolCallId: a.toolCallId, toolName: a.toolName, input: a.input, preview }),
+        status: blockedReason ? ("BLOCKED" as const) : ("PENDING" as const), blockedReason,
+      })
     }
+    // 상태를 먼저 잡고 카드를 만든다 — 그사이 사용자가 멈췄으면(STOPPED) 카드를 만들지 않는다
+    const allBlocked = drafts.every((d) => d.status === "BLOCKED")
+    const nextMessages = [...messages, approvalResponses(drafts)]
+    // 막힌 것만 있으면 바로 이어 간다 — 다만 상한에 닿았으면 멈춘다
+    const reason = allBlocked ? limitReason(spent, agentLimits()) : null
+    const target = !allBlocked ? "AWAITING_APPROVAL" : reason ? "LIMIT" : "RUNNING"
+    const claimed = await moveFromRunning(
+      runId,
+      allBlocked ? { ...base, messages: nextMessages as unknown as Prisma.InputJsonValue, status: target } : { ...base, status: target },
+    )
+    if (!claimed) return saveStopped(run, base, lastText)
+    for (const d of drafts) await prisma.agentStep.create({ data: d })
     if (lastText) await postOmnisMessage(run.roomId, lastText)
-    if (created.every((s) => s.status === "BLOCKED")) {
-      const nextMessages = [...messages, approvalResponses(created)]
-      // 막힌 것만 있으면 바로 이어 간다 — 다만 상한에 닿았으면 멈춘다
-      const reason = limitReason(spent, agentLimits())
-      if (reason) {
-        await prisma.agentRun.update({ where: { id: runId }, data: { ...base, messages: nextMessages as unknown as Prisma.InputJsonValue, status: "LIMIT" } })
-        await postOmnisMessage(run.roomId, limitMessage(reason, spent))
-        await dispatchAgentPushSafe({ roomId: run.roomId, userId: run.userId, kind: "limit", text: limitMessage(reason, spent) })
-        return { autoContinue: false, status: "LIMIT" }
-      }
-      await prisma.agentRun.update({ where: { id: runId }, data: { ...base, messages: nextMessages as unknown as Prisma.InputJsonValue, status: "RUNNING" } })
-      return { autoContinue: true, status: "RUNNING" }
+    if (target === "LIMIT") {
+      await postOmnisMessage(run.roomId, limitMessage(reason!, spent))
+      await dispatchAgentPushSafe({ roomId: run.roomId, userId: run.userId, kind: "limit", text: limitMessage(reason!, spent) })
+      return { autoContinue: false, status: "LIMIT" }
     }
-    await prisma.agentRun.update({ where: { id: runId }, data: { ...base, status: "AWAITING_APPROVAL" } })
+    if (target === "RUNNING") return { autoContinue: true, status: "RUNNING" }
     // 확인 카드가 떴다 — 사람이 눌러야 이어 간다. 그 방을 보고 있지 않으면 기기로 알린다(보고 있으면 service worker 가 거른다)
     await dispatchAgentPushSafe({ roomId: run.roomId, userId: run.userId, kind: "approval" })
     return { autoContinue: false, status: "AWAITING_APPROVAL" }
