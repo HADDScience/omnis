@@ -20,6 +20,12 @@ export function pointAtProd() {
   for (const k of ["SYNOLOGY_WEBDAV_URL", "SYNOLOGY_WEBDAV_USER", "SYNOLOGY_WEBDAV_PASSWORD", "SYNOLOGY_WEBDAV_BASE_PATH", "SYNOLOGY_TLS_FINGERPRINT", "GEMINI_API_KEY"]) {
     if (env[k]) process.env[k] = env[k]
   }
+  // Gemini 키는 Vercel 에서 민감 변수라 위 파일로 내려오지 않는다. 그러면 ~/.zshrc 의 옛 키(잔액 0)가 셸에 남아
+  // 임베딩이 402 로 끝난다(2026-10-30 카톡 이식). 로컬 .env 의 키로 덮는다 — scripts/photo-backfill.ts 와 같은 처리
+  if (!env.GEMINI_API_KEY && existsSync(".env")) {
+    const key = readFileSync(".env", "utf8").match(/^GEMINI_API_KEY=["']?([^"'\s]+)/m)?.[1]
+    if (key) process.env.GEMINI_API_KEY = key
+  }
   // 첨부 저장 위치는 Vercel 에서 민감 변수라 .env.production.local 로 내려오지 않는다. 그러면 Prisma 가 읽어 둔
   // 로컬 .env 의 `_dev/files` 가 남아, 운영 DB 에 기록하면서 실물은 개발 폴더에 올린다 — 화면에서는 500.
   // 같은 사고가 세 번 났다(9/7 홈페이지 사진 · 9/14 서명 · 10/6 카톡 첨부 1,348개). 운영 경로로 못박는다.
