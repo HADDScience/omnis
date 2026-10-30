@@ -21,6 +21,7 @@ import { apiUrl } from "@/lib/base-path"
 import { decideNudge, nudgeLaterKey, nudgeOffKey, type NudgeStage } from "@/lib/app-nudge"
 import {
   currentSubscription,
+  detectInstalled,
   getInstallPrompt,
   isIos,
   isStandalone,
@@ -70,20 +71,22 @@ export function AppNudge() {
     let alive = true
     const timer = setTimeout(async () => {
       const standalone = isStandalone()
-      // 서버 · 구독 상태는 알림 권유를 판단할 때만 묻는다 — 탭에서는 설치 권유가 먼저다
+      // 이미 한 것은 권하지 않는다 — 설치 흔적과 이 기기의 구독은 탭에서도 본다(설치 없이 알림을 받는 안드로이드 · PC)
+      const installed = await detectInstalled()
+      const subscribed = pushSupported() && (await currentSubscription().catch(() => null)) !== null
+      // 서버 푸시 키는 알림 권유를 판단할 때만 묻는다
       let server: { configured: boolean; publicKey: string | null } | null = null
-      let subscribed = false
       if (standalone && pushSupported()) {
         server = await fetch(apiUrl("/api/push/subscriptions"))
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null)
-        subscribed = (await currentSubscription().catch(() => null)) !== null
       }
       if (!alive) return
       setPublicKey(server?.publicKey ?? null)
       setStage(
         decideNudge({
           standalone,
+          installed,
           off: { install: readFlag(local, nudgeOffKey("install")), push: readFlag(local, nudgeOffKey("push")) },
           later: { install: readFlag(session, nudgeLaterKey("install")), push: readFlag(session, nudgeLaterKey("push")) },
           pushSupported: pushSupported(),

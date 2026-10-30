@@ -5,7 +5,7 @@ canonical: mydocs/plans/2026-10-30-chat-entry-and-app-nudge.md
 last_verified: 2026-10-30
 ---
 
-# 방 입장 · 완료 업무 묶음 · 앱 설치/알림 권유 — 실측
+# 방 입장 · 업무방 상태별 묶음 · 앱 설치/알림 권유 — 실측
 
 계획과 이유: [`../plans/2026-10-30-chat-entry-and-app-nudge.md`](../plans/2026-10-30-chat-entry-and-app-nudge.md). 브랜치 `feat/chat-instant-entry`.
 
@@ -43,11 +43,21 @@ $ pnpm run build                       # exit 0
 덮개 뒤  66ms 입장 화면 → 89ms 주소 바뀜 · 입장 화면 그대로 → 2614ms 방 화면
 ```
 
-## 2. 완료된 업무 묶음
+## 2. 업무방 상태별 묶음
+
+완료만 묶었을 때(운영 빌드):
 
 ```
 [1440] 완료 묶음: 1 「완료된 업무 15」 | 접힘 aria-expanded=false 줄 0 | 펼침 aria-expanded=true 줄 15
 [375]  같음
+```
+
+상태별로 넓힌 뒤(dev 서버, 로컬 스냅샷 — 리뷰 상태 업무방은 없어 묶음이 없다):
+
+```
+IN_PROGRESS 진행 중인 업무 7 펼침: false
+TODO        할 일 38         펼침: false
+DONE        완료된 업무 15   펼침: false
 ```
 
 ## 3. 앱 설치 · 알림 권유 (navigator.webdriver 를 false 로 덮어 시험)
@@ -59,6 +69,8 @@ $ pnpm run build                       # exit 0
 「더 이상 안 보기」 뒤 새 탭: null
 홈 화면(display-mode: standalone) · 권한 denied(헤드리스 기본값): null
 홈 화면 · 권한 default: push
+탭 · 설치 흔적 없음: install
+탭 · 설치 흔적 있음(omnis:app-installed): 뜨지 않음
 ```
 
 ## e2e (CI 와 같은 조건 — 별도 DB omnis_test · 데모 시드 · 운영 빌드)
