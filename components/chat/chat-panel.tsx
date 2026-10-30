@@ -379,6 +379,8 @@ export function ChatPanel({
           setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 30))
           const form = new FormData()
           form.append("file", files[i])
+          // 사람끼리 방 — 참여자만 보는 파일로 올린다(붙기 전에는 나만, 붙은 뒤에는 그 방 참여자만, lib/file-access.ts)
+          if (people) form.append("scope", "private")
           const fRes = await fetch(apiUrl("/api/files"), { method: "POST", body: form })
           if (!fRes.ok) {
             // 예전에는 실패한 파일을 건너뛰고 글만 보냈다 — 첨부가 빠진 줄 모른 채 "보냈다"가 됐다(2026-09-17).
@@ -398,7 +400,7 @@ export function ChatPanel({
         const lRes = await fetch(apiUrl("/api/files/nas"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path }),
+          body: JSON.stringify(people ? { path, scope: "private" } : { path }),
         })
         if (!lRes.ok) {
           const err = await lRes.json().catch(() => ({}))
@@ -430,6 +432,8 @@ export function ChatPanel({
         // 화면 동작은 그대로 두고(보내는 중 말풍선이 남는다) 알리기만 한다
         const err = await res.json().catch(() => ({}))
         reportIncident({ kind: "send_failed", message: err?.error ?? "메시지 전송 실패", status: res.status })
+        // 사람 방은 첨부를 서버가 거절할 수 있다(남의 파일 · 이미 붙은 파일) — 말풍선을 걷고 쓴 글 · 첨부를 남긴다
+        if (people) stopSending(tempId, err?.error ?? "보내지 못했습니다")
       }
       if (res.ok) {
         const newMsg = await res.json()
@@ -452,7 +456,7 @@ export function ChatPanel({
       if (!queued) setProcessing(null)
       pausePolling.current = false
     },
-    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild, replyTo, stopSending, endJump]
+    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild, replyTo, stopSending, endJump, people]
   )
 
   /**
@@ -571,7 +575,7 @@ export function ChatPanel({
             tasks={NO_TASKS}
             files={NO_FILES}
             commands={false}
-            attachments={false}
+            taskMentions={false}
             placeholder="메시지 입력...  @ 사람"
             handoffKey={handoffKey}
           />

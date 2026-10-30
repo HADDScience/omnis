@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Readable } from "node:stream"
 import sharp from "sharp"
-import { prisma } from "@/lib/db"
+import { findVisibleFile } from "@/lib/file-access-server"
 import { auth } from "@/lib/auth"
 import { openFileObject } from "@/lib/file-object"
 import { demoStorageBlocked } from "@/lib/demo"
@@ -21,10 +21,8 @@ export async function GET(req: NextRequest, { params }: Props) {
   if (blocked) return blocked
 
   const { fileId } = await params
-  const file = await prisma.file.findUnique({
-    where: { id: fileId },
-    select: { id: true, name: true, path: true, mimeType: true },
-  })
+  // 참여자만 보는 방의 파일은 그 방 사람에게만(방을 나가면 더 받지 못한다) — 못 보는 파일도 없는 파일과 같은 404
+  const file = await findVisibleFile(fileId, session.user.id)
   if (!file) return NextResponse.json({ error: "파일 없음" }, { status: 404 })
 
   const object = await openFileObject(file)
@@ -37,7 +35,7 @@ export async function GET(req: NextRequest, { params }: Props) {
     const side = Math.min(Math.max(Math.round(w), 32), 640)
     const thumb = await sharp(Buffer.concat(chunks)).rotate().resize(side, side, { fit: "cover", withoutEnlargement: true }).webp({ quality: 70 }).toBuffer()
     return new NextResponse(new Uint8Array(thumb), {
-      headers: { "Content-Type": "image/webp", "Cache-Control": "private, max-age=86400" },
+      headers: { "Content-Type": "image/webp", "Cache-Control": file.isPrivate ? "private, no-store" : "private, max-age=86400" },
     })
   }
 
@@ -45,7 +43,8 @@ export async function GET(req: NextRequest, { params }: Props) {
     headers: {
       "Content-Type": file.mimeType,
       "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,
-      "Cache-Control": "private, max-age=3600",
+      // 참여자만 보는 방의 파일은 저장하지 않는다 — 방을 나간 뒤 브라우저 저장본으로 다시 열리지 않게
+      "Cache-Control": file.isPrivate ? "private, no-store" : "private, max-age=3600",
     },
   })
 }

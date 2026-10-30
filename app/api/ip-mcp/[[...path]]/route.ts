@@ -19,6 +19,7 @@ import {
   MAX_UPLOAD_BYTES,
 } from "@/lib/omnis-mcp"
 import { openFileObject } from "@/lib/file-object"
+import { findVisibleFile } from "@/lib/file-access-server"
 import { Readable } from "node:stream"
 
 /**
@@ -377,10 +378,8 @@ async function downloadViaLink(req: NextRequest) {
   if (!grant) {
     return json({ error: "링크가 만료되었거나 올바르지 않습니다. read_file 로 다시 받으세요." }, 401)
   }
-  const file = await prisma.file.findUnique({
-    where: { id: grant.fileId },
-    select: { id: true, name: true, path: true, mimeType: true },
-  })
+  // 링크를 받은 사람이 지금도 볼 수 있는 파일만 — 방을 나갔으면 링크가 남아 있어도 받지 못한다(lib/file-access.ts)
+  const file = await findVisibleFile(grant.fileId, grant.userId)
   if (!file) return json({ error: "파일 없음" }, 404)
 
   const object = await openFileObject(file)

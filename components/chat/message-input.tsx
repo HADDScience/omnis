@@ -46,8 +46,10 @@ interface MessageInputProps {
   users?: { id: string; name: string }[]
   /** `/업무` 명령과 「업무 지시」 메뉴. 업무 스레드처럼 명령을 받을 곳이 없으면 끈다. */
   commands?: boolean
-  /** 파일 업로드 · NAS 연결 · 붙여넣기 · 끌어 놓기. 사람끼리 방은 끈다(파일 목록이 방을 가리지 않는다) */
+  /** 파일 업로드 · NAS 연결 · 붙여넣기 · 끌어 놓기 */
   attachments?: boolean
+  /** + 메뉴의 「업무 언급(#)」. 사람끼리 방은 업무 목록을 받지 않아 끈다 */
+  taskMentions?: boolean
   placeholder?: string
   ariaLabel?: string
   /** 메신저 방 키(room: · task:) — 방이 오기 전 loading 입력창에 쓴 글을 이어받는다(lib/chat-entry.ts). 메신저 밖은 비운다 */
@@ -73,6 +75,7 @@ export function MessageInput({
   users = [],
   commands = true,
   attachments = true,
+  taskMentions = true,
   placeholder = "메시지 입력...  / 명령 · @ 사람 · # 업무",
   ariaLabel = "메시지 입력",
   handoffKey,
@@ -117,7 +120,7 @@ export function MessageInput({
         if (h.focused) requestAnimationFrame(() => textareaRef.current?.focus())
       })
   })
-  // 데모에는 NAS 가 없고, 사람끼리 방은 attachments=false — 둘 다 파일을 받지 않는다
+  // 데모에는 NAS 가 없어 파일을 받지 않는다
   const noFiles = IS_DEMO || !attachments
 
   // 자동완성 후보 계산
@@ -589,8 +592,8 @@ export function MessageInput({
               사람 언급
               <span className="ml-auto font-mono text-[10px] text-muted-foreground">@</span>
             </DropdownMenuItem>
-            {/* 사람끼리 방은 업무 목록을 받지 않는다(commands · attachments 와 함께 끈다) */}
-            {attachments && (
+            {/* 사람끼리 방은 업무 목록을 받지 않는다(commands 와 함께 끈다) */}
+            {taskMentions && (
               <DropdownMenuItem onClick={() => startMention("task")}>
                 <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
                 업무 언급

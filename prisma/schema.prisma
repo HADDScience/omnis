@@ -621,6 +621,12 @@ model File {
   describedAt DateTime?
   /// 만든 모델 — "openai:gpt-6.1-terra" (앱 업로드) · "claude-cli:sonnet" (카톡 이식 · 일괄)
   describedBy String?
+  /// 참여자만 보는 방(옴니스 1:1 · 사람 1:1 · 단톡방)에 붙이려고 올린 파일이면 올린 사람 id. 전사방 · 업무 첨부는 null.
+  /// 메시지에 붙기 전에는 올린 사람만, 붙은 뒤에는 그 방 참여자만 본다 — 판정은 lib/file-access.ts 한 곳.
+  /// User 관계를 두지 않는다(AgentRun.userId 와 같은 이유 — 사람이 바뀌어도 행은 남는다)
+  privateToUserId String?
+
+  @@index([privateToUserId])
 }
 
 // ─── Gemini 토큰 사용 로그 ───────────────────────────────
