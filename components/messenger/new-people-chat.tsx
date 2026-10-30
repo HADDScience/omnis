@@ -52,20 +52,20 @@ export function NewPeopleChat({ me }: { me: Person }) {
       <RoomHeader title="사람과 대화" subtitle="한 명을 고르면 1:1, 여러 명이면 단톡방이에요. 옴니스는 들어오지 않아요" />
       <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col">
         <PeoplePicker meId={me.id} selected={selected} onChange={setSelected} autoFocus />
-        <div className="shrink-0 space-y-2 border-t px-4 py-3">
+        <div className="shrink-0 space-y-2 border-t px-4 py-3 in-data-[messenger]:space-y-3 in-data-[messenger]:py-4">
           {group && (
             <label className="block">
-              <span className="mb-1 block text-[11.5px] text-muted-foreground">단톡방 이름</span>
+              <span className="mb-1 block text-[11.5px] text-muted-foreground in-data-[messenger]:text-[14px]">단톡방 이름</span>
               <Input
                 value={roomName}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={PEOPLE_ROOM_NAME_MAX}
                 aria-label="단톡방 이름"
-                className="touch-target h-8 text-[13px]"
+                className="touch-target h-8 text-[13px] in-data-[messenger]:h-[50px] in-data-[messenger]:rounded-xl in-data-[messenger]:px-4 in-data-[messenger]:text-[16px]!"
               />
             </label>
           )}
-          <Button className="touch-target w-full" disabled={selected.length === 0 || busy} onClick={() => void start()}>
+          <Button className="touch-target w-full in-data-[messenger]:h-[50px] in-data-[messenger]:rounded-xl in-data-[messenger]:text-[16px]" disabled={selected.length === 0 || busy} onClick={() => void start()}>
             {busy && <Spinner className="size-3.5" />}
             {selected.length === 0
               ? "대화할 사람을 골라 주세요"

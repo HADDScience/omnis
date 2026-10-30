@@ -389,7 +389,7 @@ export function MessageInput({
   return (
     <div
       ref={dropRef}
-      className={`relative p-3 pt-2 sm:p-4 sm:pt-2 ${dragging ? "ring-2 ring-primary ring-inset rounded-lg bg-primary/5" : ""}`}
+      className={`relative p-3 pt-2 sm:p-4 sm:pt-2 in-data-[messenger]:px-[14px] in-data-[messenger]:pb-[14px] ${dragging ? "ring-2 ring-primary ring-inset rounded-lg bg-primary/5" : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -406,7 +406,7 @@ export function MessageInput({
           ref={popoverRef}
           className="absolute bottom-full left-4 right-4 z-20 mb-1 rounded-md border bg-popover p-1 shadow-md"
         >
-          <div className="px-2 py-1 text-[10px] text-muted-foreground">
+          <div className="px-2 py-1 text-[10px] text-muted-foreground in-data-[messenger]:px-3 in-data-[messenger]:text-[12.5px]">
             {mentionType === "command"
               ? "명령어"
               : mentionType === "task"
@@ -417,7 +417,7 @@ export function MessageInput({
             <button
               key={`${item.type}-${item.id}`}
               type="button"
-              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm ${
+              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-lg in-data-[messenger]:px-3 in-data-[messenger]:py-2.5 in-data-[messenger]:text-[16px] ${
                 i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
               }`}
               onMouseDown={(e) => {
@@ -440,7 +440,7 @@ export function MessageInput({
               )}
               <span className="truncate">{item.label}</span>
               {item.hint && (
-                <span className="ml-auto truncate pl-2 text-[11px] text-muted-foreground">
+                <span className="ml-auto truncate pl-2 text-[11px] text-muted-foreground in-data-[messenger]:text-[13px]">
                   {item.hint}
                 </span>
               )}
@@ -454,7 +454,7 @@ export function MessageInput({
         <div className="flex flex-wrap gap-1.5 mb-2">
           {/* NAS 연결 — 올리지 않으므로 로딩이 없다 */}
           {nasFiles.map((f) => (
-            <Badge key={f.path} variant="secondary" className="text-[10px] gap-1 pr-1" title={f.path}>
+            <Badge key={f.path} variant="secondary" className="text-[10px] gap-1 pr-1 in-data-[messenger]:h-7 in-data-[messenger]:text-[13px]" title={f.path}>
               <HugeiconsIcon icon={Folder01Icon} size={10} aria-hidden />
               <span className="font-medium">시놀로지</span>
               {f.name.length > 20 ? f.name.slice(0, 20) + "..." : f.name}
@@ -491,7 +491,7 @@ export function MessageInput({
                     )}
                   </div>
                 ) : (
-                  <Badge variant="secondary" className={`text-[10px] gap-1 pr-1 ${isUploading ? "animate-pulse" : ""}`}>
+                  <Badge variant="secondary" className={`text-[10px] gap-1 pr-1 in-data-[messenger]:h-7 in-data-[messenger]:text-[13px] ${isUploading ? "animate-pulse" : ""}`}>
                     {isUploading && <Spinner className="h-3 w-3" />}
                     {f.name.length > 20 ? f.name.slice(0, 20) + "..." : f.name}
                     {!isUploading && (
@@ -529,12 +529,12 @@ export function MessageInput({
                 variant="ghost"
                 size="icon"
                 aria-label="추가"
-                className="size-[40px] shrink-0 md:size-[30px]"
+                className="size-[40px] shrink-0 md:size-[30px] in-data-[messenger]:size-[48px]! in-data-[messenger]:rounded-full"
                 disabled={disabled || sending}
               />
             }
           >
-            <HugeiconsIcon icon={PlusSignIcon} size={18} />
+            <HugeiconsIcon icon={PlusSignIcon} size={18} className="in-data-[messenger]:h-[26px]! in-data-[messenger]:w-[26px]!" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" className="w-52">
             {!noFiles && (
@@ -585,7 +585,7 @@ export function MessageInput({
             placeholder={placeholder}
             aria-label={ariaLabel}
             enterKeyHint="enter"
-            className="max-h-40 min-h-[40px] resize-none py-[7px] text-base leading-6 md:min-h-[30px] md:py-[5px] md:text-sm md:leading-[18px]"
+            className="max-h-40 min-h-[40px] resize-none py-[7px] text-base leading-6 md:min-h-[30px] md:py-[5px] md:text-sm md:leading-[18px] in-data-[messenger]:max-h-48 in-data-[messenger]:min-h-[48px]! in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[11px]! in-data-[messenger]:text-[17px]! in-data-[messenger]:leading-[26px]!"
             rows={1}
             disabled={disabled || sending}
           />
@@ -593,11 +593,11 @@ export function MessageInput({
         <Button
           size="icon"
           aria-label="메시지 전송"
-          className="size-[40px] shrink-0 md:size-[30px]"
+          className="size-[40px] shrink-0 md:size-[30px] in-data-[messenger]:size-[48px]! in-data-[messenger]:rounded-full"
           onClick={handleSend}
           disabled={(!content.trim() && attachedFiles.length === 0 && nasFiles.length === 0) || sending}
         >
-          <HugeiconsIcon icon={SentIcon} size={18} />
+          <HugeiconsIcon icon={SentIcon} size={18} className="in-data-[messenger]:h-[24px]! in-data-[messenger]:w-[24px]!" />
         </Button>
       </div>
       {!noFiles && (

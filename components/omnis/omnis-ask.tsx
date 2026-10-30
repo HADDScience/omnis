@@ -542,16 +542,16 @@ export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: 
 
       {/* 참고 자료 — 하단에 접힌 상태로 제공 */}
       {qa.sources.length > 0 && (
-        <details className="group mt-3 border-t pt-2.5">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <details className="group mt-3 border-t pt-2.5 in-data-[messenger]:mt-4 in-data-[messenger]:pt-3">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10.5px] in-data-[messenger]:min-h-9 in-data-[messenger]:gap-2 in-data-[messenger]:text-[13.5px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
             <HugeiconsIcon
               icon={ArrowDown01Icon}
               size={12}
-              className="-rotate-90 transition-transform group-open:rotate-0"
+              className="-rotate-90 transition-transform in-data-[messenger]:size-[16px] group-open:rotate-0"
             />
             참고한 자료 {qa.sources.length}건
           </summary>
-          <div className="mt-2 flex flex-col gap-1.5">
+          <div className="mt-2 flex flex-col gap-1.5 in-data-[messenger]:gap-2">
             {qa.sources.map((s, i) => (
               <SourceRow key={s.id} index={i} source={s} />
             ))}
@@ -570,7 +570,7 @@ function SourceRow({ index, source }: { index: number; source: Source }) {
   const external = (href?.startsWith("http") ?? false) || photo
   const body = (
     <>
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[9px] font-semibold text-primary">
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[9px] font-semibold text-primary in-data-[messenger]:size-[22px] in-data-[messenger]:text-[12px]">
         {index + 1}
       </span>
       {photo && (
@@ -580,20 +580,20 @@ function SourceRow({ index, source }: { index: number; source: Source }) {
           src={apiUrl(`/api/files/${source.sourceId}/raw?w=96`)}
           alt=""
           loading="lazy"
-          className="h-8 w-8 shrink-0 rounded object-cover"
+          className="h-8 w-8 shrink-0 rounded object-cover in-data-[messenger]:size-11"
         />
       )}
-      <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+      <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
         {source.sourceLabel}
       </span>
       <span className="flex-1 truncate font-medium">{source.title}</span>
-      <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+      <span className="shrink-0 font-mono text-[10px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
         {source.similarity}%
       </span>
     </>
   )
   const base =
-    "flex items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-[12px]"
+    "flex items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-[12px] in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-lg in-data-[messenger]:px-3.5 in-data-[messenger]:py-2.5 in-data-[messenger]:text-[14.5px]"
 
   if (!href) {
     return <div className={base}>{body}</div>

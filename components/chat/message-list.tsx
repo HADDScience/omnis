@@ -264,16 +264,16 @@ export function MessageList({
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className="min-h-0 flex-1 overflow-y-auto px-4"
+      className="min-h-0 flex-1 overflow-y-auto px-4 in-data-[messenger]:px-[16px]"
     >
-      <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3">
+      <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3 in-data-[messenger]:py-4">
         {loadingOlder && (
           <div className="flex justify-center py-1">
             <Spinner className="h-4 w-4" />
           </div>
         )}
         {!hasMoreOlder && !loadingOlder && (
-          <div className="py-1 text-center text-[11px] text-muted-foreground">
+          <div className="py-1 text-center text-[11px] text-muted-foreground in-data-[messenger]:text-[13px]">
             대화의 시작
           </div>
         )}
@@ -312,7 +312,7 @@ export function MessageList({
               // 재구성 요약은 한 줄을 넘는다 — 줄바꿈 없이 두면 380px 패널 밖으로 잘렸다(2026-09-15 녹화)
               <div key={msg.id} className="mt-2 flex items-center gap-3 py-1">
                 <div className="min-w-4 flex-1 border-t border-dashed border-muted-foreground/20" />
-                <span className="max-w-[80%] break-keep text-center text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                <span className="max-w-[80%] break-keep text-center text-[11px] leading-snug text-muted-foreground in-data-[messenger]:text-[13.5px] [overflow-wrap:anywhere]">
                   {msg.content.startsWith("🤖") ? msg.content : `🤖 ${msg.content}`}
                 </span>
                 <div className="min-w-4 flex-1 border-t border-dashed border-muted-foreground/20" />
@@ -328,8 +328,8 @@ export function MessageList({
             <div
               key={msg.id}
               data-message-id={msg.id}
-              className={`group/msg flex gap-2.5 rounded-lg transition-colors duration-700 motion-reduce:transition-none ${mine ? "flex-row-reverse" : ""} ${
-                row.groupStart ? "mt-3" : "mt-0.5"
+              className={`group/msg flex gap-2.5 rounded-lg transition-colors duration-700 in-data-[messenger]:gap-3 motion-reduce:transition-none ${mine ? "flex-row-reverse" : ""} ${
+                row.groupStart ? "mt-3 in-data-[messenger]:mt-5" : "mt-0.5 in-data-[messenger]:mt-1"
               } ${fresh ? MESSAGE_ENTER : ""} ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "bg-primary/5 ring-1 ring-primary/20 p-1" : ""} ${flashing ? "bg-amber-200/50 ring-2 ring-amber-400/60 dark:bg-amber-400/15" : ""}`}
               onClick={selectionMode ? () => onToggleSelect?.(msg.id) : undefined}
             >
@@ -340,20 +340,20 @@ export function MessageList({
               )}
               {!mine && !selectionMode && (
                 // 묶음 안 줄은 아바타 자리를 비워 본문 줄을 맞춘다
-                row.groupStart ? <AuthorAvatar name={msg.author.name} size={30} className="mt-5" /> : <span className="w-[30px] shrink-0" />
+                row.groupStart ? <AuthorAvatar name={msg.author.name} size={30} lgSize={42} className="mt-5 in-data-[messenger]:mt-[26px]" /> : <span className="w-[30px] shrink-0 in-data-[messenger]:w-[42px]" />
               )}
               <div
-                className={`flex min-w-0 max-w-[78%] flex-col gap-1 ${mine ? "items-end" : ""}`}
+                className={`flex min-w-0 max-w-[78%] flex-col gap-1 in-data-[messenger]:max-w-[84%] ${mine ? "items-end" : ""}`}
               >
                 {!isMe && row.groupStart && (
-                  <span className="px-0.5 text-[12px] font-semibold text-foreground/80">
+                  <span className="px-0.5 text-[12px] font-semibold text-foreground/80 in-data-[messenger]:text-[14px]">
                     {msg.author.name}
                   </span>
                 )}
                 {/* 답장 인용 — 어떤 글에 답하는지 한 줄로만 보인다 */}
                 {msg.replyTo && (
                   <div
-                    className={`max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground ${
+                    className={`max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground in-data-[messenger]:px-3 in-data-[messenger]:py-1.5 in-data-[messenger]:text-[13.5px] ${
                       mine ? "text-right" : ""
                     }`}
                     title={msg.replyTo.content}
@@ -364,9 +364,9 @@ export function MessageList({
                 <div className={`flex items-end gap-1 ${mine ? "flex-row-reverse" : ""}`}>
                   <div
                     data-message-body
-                    className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] ${
+                    className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[22px] in-data-[messenger]:px-[16px] in-data-[messenger]:py-[11px] in-data-[messenger]:text-[16.5px] ${
                       mine ? "bg-primary text-primary-foreground" : "bg-muted"
-                    } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md" : ""} ${
+                    } ${mine && !row.groupStart ? "rounded-tr-md in-data-[messenger]:rounded-tr-lg" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} ${
                       msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
                     } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}
                   >
@@ -391,9 +391,9 @@ export function MessageList({
                             }
                           }}
                           rows={Math.min(6, editDraft.split("\n").length + 1)}
-                          className="w-[min(60vw,340px)] resize-none rounded-md bg-background p-1.5 text-[13.5px] text-foreground outline-none ring-1 ring-primary/40"
+                          className="w-[min(60vw,340px)] resize-none rounded-md bg-background p-1.5 text-[13.5px] text-foreground outline-none ring-1 ring-primary/40 in-data-[messenger]:w-[min(66vw,420px)] in-data-[messenger]:p-2 in-data-[messenger]:text-[16px]"
                         />
-                        <span className="text-[10.5px] opacity-70">Enter 저장 · Esc 취소</span>
+                        <span className="text-[10.5px] opacity-70 in-data-[messenger]:text-[12.5px]">Enter 저장 · Esc 취소</span>
                       </div>
                     ) : (
                       <>
@@ -421,7 +421,7 @@ export function MessageList({
                           onClick={() =>
                             onReply({ id: msg.id, authorName: msg.author.name, content: msg.content.slice(0, 80) })
                           }
-                          className="rounded p-1 text-muted-foreground hover:bg-muted"
+                          className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
                         >
                           <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
                         </button>
@@ -435,7 +435,7 @@ export function MessageList({
                             setEditDraft(msg.content)
                             setEditingId(msg.id)
                           }}
-                          className="rounded p-1 text-muted-foreground hover:bg-muted"
+                          className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
                         >
                           <HugeiconsIcon icon={PencilEdit01Icon} size={13} />
                         </button>
@@ -451,7 +451,7 @@ export function MessageList({
                             setBusyId(msg.id)
                             void onDelete(msg.id).finally(() => setBusyId(null))
                           }}
-                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                          className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted hover:text-destructive"
                         >
                           <HugeiconsIcon icon={Delete02Icon} size={13} />
                         </button>
@@ -463,7 +463,7 @@ export function MessageList({
                   <div className="flex items-center gap-2 px-0.5">
                     {row.groupEnd &&
                       (pending ? (
-                        <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground" aria-live="polite">
+                        <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]" aria-live="polite">
                           <Spinner className="h-2.5 w-2.5" />
                           보내는 중…
                         </span>
@@ -472,13 +472,13 @@ export function MessageList({
                           <MessageTime iso={msg.createdAt} className="text-[10.5px]" />
                           {/* 고친 글임을 알린다 — 나중에 읽는 사람이 원문과 다름을 알아야 한다 */}
                           {msg.editedAt && !msg.deletedAt && (
-                            <span className="text-[10px] text-muted-foreground">수정됨</span>
+                            <span className="text-[10px] text-muted-foreground in-data-[messenger]:text-[12px]">수정됨</span>
                           )}
                         </span>
                       ))}
                     {msg.task && (row.groupEnd || msg.nextTaskId !== msg.task.id) && (
                       <Link href={`/tasks/${msg.task.id}`} onClick={(e) => e.stopPropagation()} title={msg.task.name}>
-                        <Badge variant="outline" className="max-w-[180px] cursor-pointer truncate text-[10px] transition-colors hover:bg-primary/10">
+                        <Badge variant="outline" className="max-w-[180px] cursor-pointer truncate text-[10px] in-data-[messenger]:h-6 in-data-[messenger]:px-2.5 in-data-[messenger]:text-[12.5px] transition-colors hover:bg-primary/10">
                           #{msg.task.slug}
                         </Badge>
                       </Link>
@@ -497,7 +497,7 @@ export function MessageList({
         {processingSlug && (
           <div className="flex items-center gap-2 rounded-lg bg-primary/5 border border-primary/10 px-3 py-2 animate-pulse">
             <div className="h-2 w-2 rounded-full bg-primary animate-bounce" />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground in-data-[messenger]:text-[14px]">
               <span className="font-medium text-primary">#{processingSlug}</span> 업무를 분석하고 있습니다...
             </span>
           </div>
@@ -577,11 +577,11 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
               href={uploading ? undefined : apiUrl(f.path)}
               target="_blank"
               rel="noopener noreferrer"
-              className={`block rounded-md overflow-hidden max-w-[200px] border ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
+              className={`block rounded-md overflow-hidden max-w-[200px] in-data-[messenger]:max-w-[260px] border ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
               onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
             >
               <img src={apiUrl(f.path)} alt={f.name} className="w-full h-auto" loading="lazy" />
-              <div className="relative px-1.5 py-0.5 text-[10px] text-muted-foreground bg-background/80 truncate overflow-hidden">
+              <div className="relative px-1.5 py-0.5 text-[10px] in-data-[messenger]:text-[12.5px] text-muted-foreground bg-background/80 truncate overflow-hidden">
                 {uploading && (
                   <div className="absolute inset-0 bg-primary/20 animate-[gauge_1.5s_ease-in-out_infinite]" />
                 )}
@@ -598,7 +598,7 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
             target="_blank"
             rel="noopener noreferrer"
             title={f.name}
-            className={`relative flex max-w-[280px] items-center gap-2.5 overflow-hidden rounded-lg border px-2.5 py-2 transition-colors ${
+            className={`relative flex max-w-[280px] items-center gap-2.5 overflow-hidden rounded-lg border px-2.5 py-2 in-data-[messenger]:max-w-[340px] in-data-[messenger]:gap-3 in-data-[messenger]:rounded-xl in-data-[messenger]:px-3 in-data-[messenger]:py-2.5 transition-colors ${
               onPrimary ? "border-white/25 bg-white/10 hover:bg-white/15" : "bg-background hover:bg-muted/60"
             } ${uploading ? "opacity-70" : ""}`}
             onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
@@ -606,12 +606,12 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
             {uploading && (
               <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />
             )}
-            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${onPrimary ? "bg-white/20 text-white" : kind.tone}`}>
+            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md in-data-[messenger]:size-[44px] in-data-[messenger]:[&_svg]:size-[22px] ${onPrimary ? "bg-white/20 text-white" : kind.tone}`}>
               <HugeiconsIcon icon={kind.icon} size={17} aria-hidden />
             </span>
             <span className="relative min-w-0 flex-1">
-              <span className={`block truncate text-[12.5px] font-medium ${onPrimary ? "text-white" : "text-foreground"}`}>{f.name}</span>
-              <span className={`block text-[11px] ${onPrimary ? "text-white/70" : "text-muted-foreground"}`}>
+              <span className={`block truncate text-[12.5px] in-data-[messenger]:text-[15px] font-medium ${onPrimary ? "text-white" : "text-foreground"}`}>{f.name}</span>
+              <span className={`block text-[11px] in-data-[messenger]:text-[13px] ${onPrimary ? "text-white/70" : "text-muted-foreground"}`}>
                 {uploading ? "업로드 중..." : `${kind.label} · ${fileSizeLabel(f.size)}`}
               </span>
             </span>
@@ -733,26 +733,26 @@ function TaskCreatedCard({
       <Link
         href={href}
         onClick={(e) => e.stopPropagation()}
-        className="group flex w-full max-w-[88%] flex-col gap-2 rounded-xl border border-primary/25 bg-primary/[0.04] px-3.5 py-3 transition-colors hover:border-primary/45 hover:bg-primary/[0.07]"
+        className="group flex w-full max-w-[88%] flex-col gap-2 rounded-xl border border-primary/25 bg-primary/[0.04] px-3.5 py-3 in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-2xl in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] transition-colors hover:border-primary/45 hover:bg-primary/[0.07]"
       >
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-primary">
-          <HugeiconsIcon icon={Task01Icon} size={13} />
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-primary in-data-[messenger]:text-[13.5px]">
+          <HugeiconsIcon icon={Task01Icon} size={13} className="in-data-[messenger]:size-[17px]" />
           새 업무가 생성되었습니다
         </div>
 
-        <div className="text-[13px] font-semibold leading-snug text-foreground">
+        <div className="text-[13px] font-semibold leading-snug text-foreground in-data-[messenger]:text-[16.5px]">
           {task?.name ?? "업무"}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
           {task?.slug && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-[10px] in-data-[messenger]:h-6 in-data-[messenger]:text-[12.5px]">
               #{task.slug}
             </Badge>
           )}
           {statusLabel && (
             <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+              className={`rounded px-1.5 py-0.5 text-[10px] font-medium in-data-[messenger]:text-[12.5px] ${
                 (task?.status && TASK_STATUS_COLORS[task.status]) ||
                 "bg-muted text-muted-foreground"
               }`}
@@ -761,25 +761,25 @@ function TaskCreatedCard({
             </span>
           )}
           {task?.priority && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[10px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
               {PRIORITY_LABELS[task.priority] ?? task.priority}
             </span>
           )}
         </div>
 
         {(task?.owner || deadlineLabel || checklistCount > 0) && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[13px]">
             {task?.owner && <span>담당 {task.owner.name}</span>}
             {deadlineLabel && <span>마감 {deadlineLabel}</span>}
             {checklistCount > 0 && <span>체크리스트 {checklistCount}개</span>}
           </div>
         )}
 
-        <span className="text-[10.5px] font-medium text-primary opacity-70 transition-opacity group-hover:opacity-100">
+        <span className="text-[10.5px] font-medium text-primary opacity-70 in-data-[messenger]:text-[13px] transition-opacity group-hover:opacity-100">
           업무 상세 보기 →
         </span>
       </Link>
-      <span className="text-[10px] text-muted-foreground">
+      <span className="text-[10px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
         {format(new Date(createdAt), "HH:mm")}
       </span>
     </div>

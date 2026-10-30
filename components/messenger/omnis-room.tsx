@@ -434,25 +434,25 @@ export function OmnisRoom({
           if (el.scrollTop < 120) void loadOlder()
         }}
       >
-        <div className={cn("mx-auto flex w-full max-w-[760px] flex-col py-4", embedded ? "px-3" : "px-3 sm:px-6")}>
+        <div className={cn("mx-auto flex w-full max-w-[760px] flex-col py-4 in-data-[messenger]:px-4 in-data-[messenger]:py-5", embedded ? "px-3" : "px-3 sm:px-6")}>
           {isNew && !pending && (
             <div className={cn("flex flex-col items-center gap-4 text-center", embedded ? "py-4" : "py-8 sm:py-14")}>
-              <span className="ai-rainbow-border flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <span className="ai-rainbow-border flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary in-data-[messenger]:size-[68px] in-data-[messenger]:rounded-3xl in-data-[messenger]:[&_svg]:size-[34px]">
                 <HugeiconsIcon icon={BubbleChatSparkIcon} size={24} aria-hidden />
               </span>
               <div>
-                <h2 className="text-[18px] font-bold tracking-[-0.02em]">옴니스에게 물어보세요</h2>
-                <p className="mt-1 break-keep text-[12.5px] text-muted-foreground">
+                <h2 className="text-[18px] font-bold tracking-[-0.02em] in-data-[messenger]:text-[26px]">옴니스에게 물어보세요</h2>
+                <p className="mt-1 break-keep text-[12.5px] text-muted-foreground in-data-[messenger]:mt-2 in-data-[messenger]:text-[16px] in-data-[messenger]:leading-[1.6]">
                   업무 · 지식 카드 · 주간보고 · 채팅 · 지식재산권 · 회사 기록을 찾아 답합니다. 업무를 만들거나 고치는 일은 확인 카드를 띄우고, 확인하면 실행합니다.
                 </p>
               </div>
-              <div className={cn("grid w-full max-w-[520px] gap-2", !embedded && "sm:grid-cols-2")}>
+              <div className={cn("grid w-full max-w-[520px] gap-2 in-data-[messenger]:gap-3", !embedded && "sm:grid-cols-2")}>
                 {EXAMPLES.map((ex) => (
                   <button
                     key={ex}
                     type="button"
                     onClick={() => send(ex)}
-                    className="touch-target rounded-lg border bg-card px-3 py-2.5 text-left text-[12.5px] transition-colors hover:border-border-strong hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="touch-target rounded-lg border bg-card px-3 py-2.5 text-left text-[12.5px] in-data-[messenger]:rounded-2xl in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[16px] in-data-[messenger]:leading-[1.5] transition-colors hover:border-border-strong hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
                     {ex}
                   </button>
@@ -463,7 +463,7 @@ export function OmnisRoom({
 
           {hasMore && (
             <div className="flex justify-center pb-2">
-              <Button variant="ghost" size="sm" className="touch-target text-[12px] text-muted-foreground" onClick={() => void loadOlder()} disabled={loadingOlder}>
+              <Button variant="ghost" size="sm" className="touch-target text-[12px] text-muted-foreground in-data-[messenger]:h-11 in-data-[messenger]:px-4 in-data-[messenger]:text-[14.5px]" onClick={() => void loadOlder()} disabled={loadingOlder}>
                 {loadingOlder ? <Spinner className="size-3.5" /> : null}
                 앞의 대화 더 보기
               </Button>
@@ -506,10 +506,10 @@ export function OmnisRoom({
             {pending && showPendingBubble(messages, pending) && <MyMessage content={pending.content} sending />}
             {(live || pending || running) && <LiveOmnis text={text} tools={live?.tools ?? []} resuming={!live && !pending} />}
             {unanswered && roomId && (
-              <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground" role="status">
+              <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground in-data-[messenger]:mt-3 in-data-[messenger]:text-[14.5px]" role="status">
                 <span>{error ?? "이 질문에 아직 답을 받지 못했어요"}</span>
-                <Button size="sm" variant="outline" className="touch-target gap-1" onClick={() => void ask({ retryOf: unanswered.id }, unanswered.content)}>
-                  <HugeiconsIcon icon={Refresh01Icon} size={14} aria-hidden />
+                <Button size="sm" variant="outline" className="touch-target gap-1 in-data-[messenger]:h-11 in-data-[messenger]:px-4 in-data-[messenger]:text-[14.5px]" onClick={() => void ask({ retryOf: unanswered.id }, unanswered.content)}>
+                  <HugeiconsIcon icon={Refresh01Icon} size={14} aria-hidden className="in-data-[messenger]:h-[18px]! in-data-[messenger]:w-[18px]!" />
                   다시 묻기
                 </Button>
               </div>
@@ -524,16 +524,16 @@ export function OmnisRoom({
           variant="outline"
           onClick={followBottom}
           data-scroll-bottom
-          className="touch-target absolute bottom-3 left-1/2 -translate-x-1/2 gap-1 rounded-full bg-background/95 text-[12px] shadow-md backdrop-blur"
+          className="touch-target absolute bottom-3 left-1/2 -translate-x-1/2 gap-1 rounded-full bg-background/95 text-[12px] shadow-md backdrop-blur in-data-[messenger]:h-11 in-data-[messenger]:px-4 in-data-[messenger]:text-[14.5px]"
         >
-          <HugeiconsIcon icon={ArrowDown01Icon} size={14} aria-hidden />
+          <HugeiconsIcon icon={ArrowDown01Icon} size={14} aria-hidden className="in-data-[messenger]:h-[18px]! in-data-[messenger]:w-[18px]!" />
           {unseen ? "새 답" : "맨 아래로"}
         </Button>
       )}
       </div>
 
       {quotaNotice && (
-        <p role="status" data-agent-quota className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-1 text-center text-[12.5px] text-amber-700 dark:text-amber-300">
+        <p role="status" data-agent-quota className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-1 text-center text-[12.5px] text-amber-700 dark:text-amber-300 in-data-[messenger]:text-[14.5px]">
           {quotaNotice}
         </p>
       )}
@@ -568,10 +568,10 @@ export function LiveOmnis({ text, tools, resuming = false }: { text: string; too
         ? "쓰는 중…"
         : "옴니스가 생각하는 중…"
   return (
-    <div className="mt-4 flex gap-2.5" role="status" aria-live="polite" data-agent-live>
+    <div className="mt-4 flex gap-2.5 in-data-[messenger]:mt-6 in-data-[messenger]:gap-3" role="status" aria-live="polite" data-agent-live>
       <OmnisAvatar />
       <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+        <div className="mb-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground in-data-[messenger]:mb-2 in-data-[messenger]:gap-2 in-data-[messenger]:text-[14.5px]">
           <Spinner />
           {status}
         </div>
@@ -581,9 +581,9 @@ export function LiveOmnis({ text, tools, resuming = false }: { text: string; too
             <OmnisAnswerBody answer={text} sources={[]} />
           ) : (
             <div className="flex flex-col gap-2">
-              <Skeleton className="h-3 w-[85%]" />
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-[60%]" />
+              <Skeleton className="h-3 w-[85%] in-data-[messenger]:h-4" />
+              <Skeleton className="h-3 w-full in-data-[messenger]:h-4" />
+              <Skeleton className="h-3 w-[60%] in-data-[messenger]:h-4" />
             </div>
           )}
         </div>
@@ -594,19 +594,19 @@ export function LiveOmnis({ text, tools, resuming = false }: { text: string; too
 
 export function MyMessage({ content, iso, sending = false, fresh = false }: { content: string; iso?: string; sending?: boolean; fresh?: boolean }) {
   return (
-    <div className={cn("mt-3 flex flex-col items-end gap-0.5", fresh && MESSAGE_ENTER)}>
+    <div className={cn("mt-3 flex flex-col items-end gap-0.5 in-data-[messenger]:mt-5 in-data-[messenger]:gap-1", fresh && MESSAGE_ENTER)}>
       <div
         className={cn(
-          "max-w-[85%] whitespace-pre-wrap break-keep rounded-2xl rounded-br-md bg-primary/10 px-3.5 py-2 text-[13.5px] leading-[1.6] [overflow-wrap:anywhere]",
+          "max-w-[85%] whitespace-pre-wrap break-keep rounded-2xl rounded-br-md bg-primary/10 px-3.5 py-2 text-[13.5px] leading-[1.6] [overflow-wrap:anywhere] in-data-[messenger]:rounded-[24px] in-data-[messenger]:rounded-br-lg in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] in-data-[messenger]:leading-[1.6]",
           sending && "opacity-60",
         )}
       >
         {tidyBody(content)}
       </div>
       {sending ? (
-        <span className="text-[10.5px] text-muted-foreground">보내는 중…</span>
+        <span className="text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]">보내는 중…</span>
       ) : iso ? (
-        <MessageTime iso={iso} className="text-[10.5px]" />
+        <MessageTime iso={iso} className="text-[10.5px] in-data-[messenger]:text-[12.5px]" />
       ) : null}
     </div>
   )
@@ -614,7 +614,7 @@ export function MyMessage({ content, iso, sending = false, fresh = false }: { co
 
 function OmnisAvatar() {
   return (
-    <span aria-hidden className="ai-rainbow-border mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+    <span aria-hidden className="ai-rainbow-border mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary in-data-[messenger]:size-[38px] in-data-[messenger]:[&_svg]:size-[21px]">
       <HugeiconsIcon icon={BubbleChatSparkIcon} size={15} />
     </span>
   )
@@ -622,11 +622,11 @@ function OmnisAvatar() {
 
 export function OmnisMessage({ message, fresh, tools }: { message: OmnisRoomMessage; fresh: boolean; tools: ToolUse[] }) {
   return (
-    <div className={cn("mt-4 flex gap-2.5", fresh && MESSAGE_ENTER)}>
+    <div className={cn("mt-4 flex gap-2.5 in-data-[messenger]:mt-6 in-data-[messenger]:gap-3", fresh && MESSAGE_ENTER)}>
       <OmnisAvatar />
       <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-baseline gap-1.5">
-          <span className="text-[13px] font-semibold">옴니스</span>
+        <div className="mb-1 flex items-baseline gap-1.5 in-data-[messenger]:mb-1.5 in-data-[messenger]:gap-2">
+          <span className="text-[13px] font-semibold in-data-[messenger]:text-[15.5px]">옴니스</span>
           <MessageTime iso={message.createdAt} />
         </div>
         <ToolTrail items={tools} />
@@ -674,7 +674,7 @@ export function Composer({
       <div className="mx-auto w-full max-w-[760px]">
         {/* 한 줄일 때 글자와 보내기 버튼의 세로 가운데가 같게 — 입력칸 최소 높이 = 버튼 높이(PC 32px · 터치 44px),
             남는 높이는 위아래 여백으로. 여러 줄로 늘면 버튼은 아래에 붙는다(items-end). 2026-10-29 폰에서 글자가 아래로 처졌다 */}
-        <div className="flex items-end gap-2 rounded-[22px] border bg-card py-1 pr-1 pl-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong">
+        <div className="flex items-end gap-2 rounded-[22px] border bg-card py-1 pr-1 pl-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-[32px] in-data-[messenger]:py-1.5 in-data-[messenger]:pr-1.5 in-data-[messenger]:pl-[22px]">
           <textarea
             ref={textareaRef}
             value={value}
@@ -691,7 +691,7 @@ export function Composer({
             autoFocus={autoFocus}
             aria-label="옴니스에게 보낼 글"
             placeholder={busy ? "옴니스가 답하는 중…" : "옴니스에게 물어보세요"}
-            className="max-h-40 min-h-[32px] flex-1 resize-none bg-transparent py-[5px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:py-[11px] [@media(pointer:coarse)]:text-[16px]"
+            className="max-h-40 min-h-[32px] flex-1 resize-none bg-transparent py-[5px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:py-[11px] [@media(pointer:coarse)]:text-[16px] in-data-[messenger]:max-h-48 in-data-[messenger]:min-h-[48px]! in-data-[messenger]:py-[11px]! in-data-[messenger]:text-[17px]! in-data-[messenger]:leading-[26px]!"
           />
           <Button
             size="icon"
@@ -699,12 +699,12 @@ export function Composer({
             disabled={!canSend}
             aria-label="보내기"
             title="보내기 (Enter)"
-            className="touch-target ai-rainbow-border size-[32px] shrink-0 rounded-full"
+            className="touch-target ai-rainbow-border size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]"
           >
-            {busy ? <Spinner /> : <HugeiconsIcon icon={ArrowUp01Icon} size={16} aria-hidden />}
+            {busy ? <Spinner /> : <HugeiconsIcon icon={ArrowUp01Icon} size={16} aria-hidden className="in-data-[messenger]:h-[24px]! in-data-[messenger]:w-[24px]!" />}
           </Button>
         </div>
-        <div className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground">
+        <div className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
           <span className={cn("hidden [@media(pointer:coarse)]:hidden!", !compact && "sm:inline")}>
             {waitingCard ? "위 확인 카드를 눌러 주세요 · 새 글을 보내면 그 제안은 버려집니다" : "Enter 보내기 · Shift+Enter 줄바꿈 · 쓰기는 확인 카드를 거칩니다"}
           </span>
