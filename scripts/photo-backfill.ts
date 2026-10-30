@@ -6,6 +6,7 @@
  *   npx tsx scripts/photo-backfill.ts --limit 50            # 로컬 DB 에 50장
  *   npx tsx scripts/photo-backfill.ts --target prod         # 운영 DB — 작업지시자 승인 뒤
  *   … --since 2026-10-29T00:00:00+09:00                     # 그 시각 뒤에 올라온 것만 (카톡 이식 직후)
+ *   … --engine codex                                        # Claude 대신 Codex(ChatGPT 구독). --model 은 Codex 모델 이름
  *
  * 사진 실물은 NAS 마운트(~/NAS)에서 읽기만 한다. 로컬 DB 는 운영 스냅샷이라 운영 첨부 폴더를 읽는다.
  * 멱등: describedAt 이 빈 것만 고른다 — 끊겨도 다시 돌리면 잇는다.
@@ -15,7 +16,7 @@ import "dotenv/config"
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { ClaudePhotoLimitError, describeImageWithClaude } from "../import-tools/photo-describe-cli"
+import { PhotoLimitError, describeImageWithClaude, describeImageWithCodex } from "../import-tools/photo-describe-cli"
 
 const args = process.argv.slice(2)
 const flag = (name: string) => args.includes(name)
@@ -25,7 +26,10 @@ const dry = flag("--dry")
 const limit = Number(value("--limit") ?? Infinity)
 const since = value("--since")
 const workers = Number(value("--workers") ?? 3)
-const model = value("--model") ?? "sonnet"
+const engine = value("--engine") ?? "claude"
+if (engine !== "claude" && engine !== "codex") throw new Error("--engine 은 claude 또는 codex")
+const model = value("--model") ?? (engine === "claude" ? "sonnet" : undefined)
+const describedBy = engine === "claude" ? `claude-cli:${model}` : `codex-cli:${model ?? "default"}`
 
 /** 운영 첨부 폴더(읽기만). 로컬 DB 도 운영 스냅샷이라 같은 폴더를 본다 */
 const NAS_ROOT = join(homedir(), "NAS")
@@ -68,12 +72,12 @@ async function main() {
     select: { id: true, name: true, path: true },
   })
   const todo = files.slice(0, limit)
-  console.log(`대상 ${files.length}장${todo.length < files.length ? ` · 이번에 ${todo.length}장` : ""} · ${target} · claude ${model} · 동시 ${workers}`)
+  console.log(`대상 ${files.length}장${todo.length < files.length ? ` · 이번에 ${todo.length}장` : ""} · ${target} · ${describedBy} · 동시 ${workers}`)
   if (dry) return
   if (todo.length === 0) return reindexMissing()
 
   let ok = 0, unparsed = 0, failed = 0, done = 0
-  let quotaError: ClaudePhotoLimitError | null = null
+  let quotaError: PhotoLimitError | null = null
   const t0 = Date.now()
   const queue = [...todo]
   await Promise.all(Array.from({ length: workers }, async () => {
@@ -83,12 +87,13 @@ async function main() {
         const src = linked ? join(NAS_ROOT, linked) : join(FILES_DIR, objectKeyFor(f.id, f.name))
         const found = await photoContextFor(f.id)
         if (!found || !existsSync(src)) { failed++; console.log(`  ✗ ${f.id} — ${found ? "실물 없음" : "대상 아님"}`); continue }
-        const text = await describeImageWithClaude(readFileSync(src), found.ctx, model)
-        if (await savePhotoDescription(f.id, text, `claude-cli:${model}`)) ok++
+        const image = readFileSync(src)
+        const text = engine === "claude" ? await describeImageWithClaude(image, found.ctx, model) : await describeImageWithCodex(image, found.ctx, model)
+        if (await savePhotoDescription(f.id, text, describedBy)) ok++
         else { unparsed++; console.log(`  ? ${f.id} — 출력을 읽지 못함`) }
       } catch (e) {
         failed++
-        if (e instanceof ClaudePhotoLimitError) quotaError = e
+        if (e instanceof PhotoLimitError) quotaError = e
         console.log(`  ✗ ${f.id} — ${(e as Error).message.split("\n")[0].slice(0, 160)}`)
       }
       done++
