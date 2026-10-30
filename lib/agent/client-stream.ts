@@ -116,4 +116,8 @@ export const TOOL_LABEL: Record<string, string> = {
   post_message: "업무방 글 제안",
   write_omnis_card: "지식 카드 제안",
   save_company_record: "회사 기록 제안",
+  write_weekly_report: "주간보고 초안",
+  draft_document: "문서 초안",
+  create_file: "파일 만들기 제안",
+  propose_records: "연혁 제안",
 }

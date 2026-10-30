@@ -799,6 +799,8 @@ export function OmnisMessage({ message, fresh, tools, stopped = false }: { messa
         <div className="min-w-0 py-1">
           <OmnisAnswerBody answer={message.content} sources={message.sources} />
         </div>
+        {/* 옴니스가 만든 파일 — 눌러 내려받는다(방 주인만, lib/file-access.ts) */}
+        {message.files && message.files.length > 0 && <MessageFiles files={message.files} />}
         {stopped && <StoppedTag />}
       </div>
     </div>

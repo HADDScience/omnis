@@ -1,7 +1,9 @@
 "use client"
 
+import { useState } from "react"
+import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Alert02Icon, CheckmarkCircle02Icon, SquareLock02Icon } from "@hugeicons/core-free-icons"
+import { Alert02Icon, ArrowDown01Icon, ArrowUp01Icon, CheckmarkCircle02Icon, Copy01Icon, SquareLock02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
@@ -70,6 +72,8 @@ export function AgentCard({
         </dl>
       )}
 
+      {p.draft && p.draft.body && <DraftBody body={p.draft.body} copy={p.draft.copy} />}
+
       {card.status === "BLOCKED" && card.blockedReason ? (
         <p className="flex gap-2 border-t bg-destructive/5 px-3.5 py-2.5 text-[12.5px] text-destructive in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[15px]" role="alert">
           <HugeiconsIcon icon={SquareLock02Icon} size={15} className="mt-0.5 shrink-0 in-data-[messenger]:size-[20px]" aria-hidden />
@@ -110,10 +114,64 @@ export function AgentCard({
           </Button>
           <Button size="sm" className="touch-target in-data-[messenger]:h-11 in-data-[messenger]:min-w-[84px] in-data-[messenger]:rounded-xl in-data-[messenger]:text-[15px]" disabled={disabled || deciding !== null} onClick={() => onDecide("approve")}>
             {deciding === "approve" && <Spinner />}
-            확인
+            {p.confirmLabel ?? "확인"}
           </Button>
         </div>
       )}
     </section>
+  )
+}
+
+/** 초안 본문 — 처음엔 몇 줄만, [펼치기] 로 전부. copy 가 있으면 [복사](메일 회신은 보내지 않고 붙여 넣는다) */
+function DraftBody({ body, copy }: { body: string; copy?: string }) {
+  const [open, setOpen] = useState(false)
+  const long = body.length > 360 || body.split("\n").length > 8
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(copy ?? body)
+      toast.success("복사했어요")
+    } catch {
+      toast.error("복사하지 못했어요 — 본문을 길게 눌러 직접 복사해 주세요")
+    }
+  }
+  return (
+    <div className="border-t" data-agent-draft>
+      <div
+        className={cn(
+          "relative px-3.5 py-2.5 text-[12.5px] leading-[1.6] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[15px]",
+          long && !open && "max-h-[11.5em] overflow-hidden",
+        )}
+      >
+        <p className="whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">{body}</p>
+        {long && !open && <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-card to-transparent" />}
+      </div>
+      {(long || copy !== undefined) && (
+        <div className="flex flex-wrap gap-2 px-3 pb-2.5 in-data-[messenger]:gap-3 in-data-[messenger]:px-[14px] in-data-[messenger]:pb-[12px]">
+          {long && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="touch-target gap-1 text-muted-foreground in-data-[messenger]:h-11 in-data-[messenger]:rounded-xl in-data-[messenger]:text-[14.5px]"
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+            >
+              <HugeiconsIcon icon={open ? ArrowUp01Icon : ArrowDown01Icon} size={14} aria-hidden className="in-data-[messenger]:h-[18px]! in-data-[messenger]:w-[18px]!" />
+              {open ? "접기" : "펼치기"}
+            </Button>
+          )}
+          {copy !== undefined && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="touch-target gap-1 in-data-[messenger]:h-11 in-data-[messenger]:rounded-xl in-data-[messenger]:text-[14.5px]"
+              onClick={() => void copyText()}
+            >
+              <HugeiconsIcon icon={Copy01Icon} size={14} aria-hidden className="in-data-[messenger]:h-[18px]! in-data-[messenger]:w-[18px]!" />
+              복사
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
