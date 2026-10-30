@@ -955,6 +955,9 @@ export async function runTool(
     case "read_file": {
       const f = await findFile(args)
       if ("error" in f) return f
+      // 남의 옴니스 1:1 방 파일은 없는 파일과 같다 — lib/agent/room-files.ts
+      const { omnisRoomFileBlocked } = await import("@/lib/agent/room-files")
+      if (await omnisRoomFileBlocked(f.id, caller.userId)) return { error: `'${f.id}' 파일이 없습니다. get_task 의 첨부 목록에서 파일 ID 를 확인하세요.` }
       const head = `# ${f.name}  (${(f.size / 1024).toFixed(1)}KB · ${f.mimeType}${f.task ? ` · 업무 #${f.task.slug}` : ""} · 파일 ID ${f.id})`
       const kind = fileKind(f.name, f.mimeType)
       if (kind === "other" || f.size > MAX_UPLOAD_BYTES) {

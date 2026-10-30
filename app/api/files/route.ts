@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { demoStorageBlocked } from "@/lib/demo"
+import { NOT_OMNIS_ROOM_FILE } from "@/lib/agent/room-files"
 
 export async function GET() {
   const session = await auth()
@@ -12,6 +13,8 @@ export async function GET() {
   }
 
   const files = await prisma.file.findMany({
+    // 옴니스 1:1 방 파일(옴니스가 만든 문서)은 방을 가리지 않는 이 목록에 내지 않는다 — lib/agent/room-files.ts
+    where: NOT_OMNIS_ROOM_FILE,
     orderBy: { createdAt: "desc" },
     take: 50,
     select: { id: true, name: true, path: true, mimeType: true, size: true },
