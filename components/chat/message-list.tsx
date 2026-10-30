@@ -41,6 +41,8 @@ interface Message {
   _isSystem?: boolean
   /** 보내는 중 말풍선을 서버 응답으로 바꾼 것 — 이미 한 번 떠올랐으니 다시 움직이지 않는다 */
   _settled?: boolean
+  /** 보내지 못한 글 — 까닭. 「다시 보내기 · 지우기」 를 띄운다 */
+  _failed?: string
   author: { id: string; name: string }
   task?: {
     id: string
@@ -106,6 +108,9 @@ interface MessageListProps {
   /** 내 글 고치기. 저장이 끝나면 목록을 다시 읽는 것은 부모가 한다 */
   onEdit?: (id: string, content: string) => Promise<void>
   onDelete?: (id: string) => Promise<void>
+  /** 보내지 못한 글 다시 보내기 · 거두기 (보내는 중 말풍선 id) */
+  onResend?: (tempId: string) => void
+  onDiscardFailed?: (tempId: string) => void
   /** 검색 결과로 갈 때 — 이 글을 가운데로 가져와 잠깐 강조한다. n 은 같은 글을 다시 눌렀을 때 다시 움직이게 */
   highlight?: { id: string; n: number } | null
   /** 검색 결과 보기 중 — 최신이 아닌 자리를 보고 있다. 뒤를 붙여도 맨 아래로 끌어내리지 않는다 */
@@ -132,6 +137,8 @@ export function MessageList({
   onReply,
   onEdit,
   onDelete,
+  onResend,
+  onDiscardFailed,
   highlight = null,
   jumped = false,
   onLoadNewer,
@@ -462,7 +469,30 @@ export function MessageList({
                 {(row.groupEnd || (msg.task && msg.nextTaskId !== msg.task.id)) && (
                   <div className="flex items-center gap-2 px-0.5">
                     {row.groupEnd &&
-                      (pending ? (
+                      (pending && msg._failed ? (
+                        // 보내지 못했다 — 예전에는 「보내는 중」 으로 영원히 남아 다시 보낼 길이 없었다
+                        <span className="flex flex-wrap items-center gap-x-1 text-[10.5px] text-destructive in-data-[messenger]:text-[12.5px]" role="alert">
+                          <span>{msg._failed}</span>
+                          {onResend && (
+                            <button
+                              type="button"
+                              onClick={() => onResend(msg.id)}
+                              className="inline-flex min-h-11 items-center rounded px-2 font-medium underline underline-offset-2 hover:bg-destructive/10"
+                            >
+                              다시 보내기
+                            </button>
+                          )}
+                          {onDiscardFailed && (
+                            <button
+                              type="button"
+                              onClick={() => onDiscardFailed(msg.id)}
+                              className="inline-flex min-h-11 items-center rounded px-2 text-muted-foreground hover:bg-muted"
+                            >
+                              지우기
+                            </button>
+                          )}
+                        </span>
+                      ) : pending ? (
                         <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]" aria-live="polite">
                           <Spinner className="h-2.5 w-2.5" />
                           보내는 중…

@@ -6,7 +6,8 @@ import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
 import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
-import { AttachFileIdsSchema } from "@/lib/schemas/chat-room"
+import { AttachFileIdsSchema, ChatClientIdSchema } from "@/lib/schemas/chat-room"
+import { decideClientId, isUniqueViolation } from "@/lib/chat-client-id"
 import { newerThan, olderThan, parseCursor, pollSince } from "@/lib/chat-cursor"
 
 // 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
@@ -174,6 +175,28 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(isPolling ? shaped : shaped.reverse())
 }
 
+/**
+ * 같은 clientId 로 이미 저장된 글이 있으면 그 글을 돌려준다(응답만 끊긴 글의 다시 보내기). 없으면 null — 새로 저장한다.
+ * 알림 · 재구성은 처음 저장 때 돌았으니 다시 돌리지 않는다(lib/chat-client-id.ts)
+ */
+async function replayByClientId(clientId: string | undefined, userId: string, roomId: string) {
+  if (!clientId) return null
+  const prior = await prisma.chatMessage.findUnique({ where: { clientId }, include: MESSAGE_INCLUDE })
+  const decision = decideClientId(prior, { userId, roomId })
+  if (decision === "new") return null
+  if (decision === "conflict") return NextResponse.json({ error: "이미 쓰인 clientId 입니다" }, { status: 409 })
+  return NextResponse.json({ ...shape(prior!), _taskUpdate: null, _rebuild: null, _replayed: true }, { status: 200 })
+}
+
+/** 저장하다 같은 clientId 가 먼저 들어간 것을 알면(동시에 두 번 보냄) 먼저 들어간 글로 답한다 */
+async function onClientIdRace(err: unknown, clientId: string | undefined, userId: string, roomId: string) {
+  if (clientId && isUniqueViolation(err)) {
+    const replay = await replayByClientId(clientId, userId, roomId)
+    if (replay) return replay
+  }
+  throw err
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
@@ -186,6 +209,11 @@ export async function POST(req: NextRequest) {
   if (!roomId || !content?.trim()) {
     return NextResponse.json({ error: "roomId, content 필수" }, { status: 400 })
   }
+  // 화면이 만든 id — 없으면(MCP · 옛 화면) 예전처럼 매번 새로 저장한다
+  const parsedClientId = ChatClientIdSchema.optional().safeParse(body.clientId ?? undefined)
+  if (!parsedClientId.success) return NextResponse.json({ error: parsedClientId.error.issues[0]?.message }, { status: 400 })
+  const clientId = parsedClientId.data
+  const me = session.user.id
   // 전사방(팀 채팅 · 업무 스레드)은 postChatMessage, 사람끼리 방(1:1 · 단톡)은 postPeopleMessage.
   // 옴니스 방은 에이전트 API(/api/agent/rooms/…)로 쓴다 — 여기로 들어오면 업무 재구성 · 색인이 1:1 대화에 붙는다.
   // 없는 방은 postChatMessage 가 만든다(전사방)
@@ -200,7 +228,14 @@ export async function POST(req: NextRequest) {
     if (typeof content !== "string" || content.trim().length > PEOPLE_MESSAGE_MAX) {
       return NextResponse.json({ error: `${PEOPLE_MESSAGE_MAX}자 이내로 입력해 주세요` }, { status: 400 })
     }
-    const posted = await postPeopleMessage({ id: session.user.id, name: session.user.name ?? "" }, room, { content, replyToId, fileIds: files.data })
+    const replay = await replayByClientId(clientId, me, roomId)
+    if (replay) return replay
+    let posted: Awaited<ReturnType<typeof postPeopleMessage>>
+    try {
+      posted = await postPeopleMessage({ id: me, name: session.user.name ?? "" }, room, { content, replyToId, fileIds: files.data, clientId })
+    } catch (err) {
+      return onClientIdRace(err, clientId, me, roomId)
+    }
     if (!posted.ok) return NextResponse.json({ error: posted.error }, { status: posted.status })
     return NextResponse.json({ ...shapeReply(posted.message), _taskUpdate: null, _rebuild: null }, { status: 201 })
   }
@@ -213,18 +248,28 @@ export async function POST(req: NextRequest) {
     if (!target) return NextResponse.json({ error: "답장할 글을 찾을 수 없습니다" }, { status: 400 })
   }
 
-  const { message, taskUpdate, rebuild } = await postChatMessage(
-    {
-      user: { id: session.user.id, name: session.user.name ?? "" },
-      roomId,
-      content,
-      taskId,
-      fileIds,
-      replyToId,
-    },
-    // 글은 바로 돌려주고 AI 재구성은 응답 뒤에 — 화면은 GET /api/tasks/[taskId]/rebuild-status 로 끝을 안다
-    { deferRebuild: true },
-  )
+  const replay = await replayByClientId(clientId, me, roomId)
+  if (replay) return replay
+
+  let posted: Awaited<ReturnType<typeof postChatMessage>>
+  try {
+    posted = await postChatMessage(
+      {
+        user: { id: me, name: session.user.name ?? "" },
+        roomId,
+        content,
+        taskId,
+        fileIds,
+        replyToId,
+        clientId,
+      },
+      // 글은 바로 돌려주고 AI 재구성은 응답 뒤에 — 화면은 GET /api/tasks/[taskId]/rebuild-status 로 끝을 안다
+      { deferRebuild: true },
+    )
+  } catch (err) {
+    return onClientIdRace(err, clientId, me, roomId)
+  }
+  const { message, taskUpdate, rebuild } = posted
   if (rebuild) {
     after(async () => {
       await runTaskRebuild(rebuild)

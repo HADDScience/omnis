@@ -28,6 +28,8 @@ export interface PostMessageInput {
   fileIds?: string[]
   /** 답장 대상 메시지. 화면은 인용 한 줄로 그린다. */
   replyToId?: string | null
+  /** 화면이 만든 id — 다시 보내기 중복 막기(ChatMessage.clientId). 화면 밖에서는 비운다 */
+  clientId?: string | null
 }
 
 export interface PostMessageOptions {
@@ -94,6 +96,7 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
       content: trimmedContent,
       taskId: linkedTaskId,
       replyToId: input.replyToId ?? null,
+      clientId: input.clientId ?? null,
     },
     include: {
       author: { select: { id: true, name: true } },

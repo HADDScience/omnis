@@ -171,7 +171,7 @@ class AttachRace extends Error {}
 export async function postPeopleMessage(
   me: { id: string; name: string },
   room: PeopleRoomView,
-  input: { content: string; replyToId?: string | null; fileIds?: string[] },
+  input: { content: string; replyToId?: string | null; fileIds?: string[]; clientId?: string | null },
 ): Promise<{ ok: true; message: Prisma.ChatMessageGetPayload<{ include: typeof MESSAGE_INCLUDE }> } | { ok: false; status: number; error: string }> {
   const content = input.content.trim()
   const fileIds = input.fileIds ?? []
@@ -187,7 +187,7 @@ export async function postPeopleMessage(
   try {
     message = await prisma.$transaction(async (tx) => {
       const created = await tx.chatMessage.create({
-        data: { roomId: room.id, authorId: me.id, content, replyToId: replyOk ? input.replyToId! : null },
+        data: { roomId: room.id, authorId: me.id, content, replyToId: replyOk ? input.replyToId! : null, clientId: input.clientId ?? null },
         select: { id: true },
       })
       await tx.chatRoom.update({ where: { id: room.id }, data: { lastMessageAt: new Date() } })

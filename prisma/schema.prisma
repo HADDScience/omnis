@@ -225,6 +225,13 @@ model ChatMessage {
   /// 지운 시각. 행은 지우지 않는다 — 답장이 가리키는 글 · 업무 연결 · 색인이 함께 사라지기 때문이다.
   /// 본문은 그대로 두고 API 가 내려보내지 않는다.
   deletedAt         DateTime?
+  /// 만든 뒤 화면에 보이는 것이 바뀐 시각 — 고치기 · 지우기(2026-10-30).
+  /// 폴링은 새 글만 가져와서, 이것이 없으면 남이 고치거나 지운 글이 내 화면에 옛 모습으로 남는다.
+  /// null 이면 보낸 그대로다. 백필하지 않는다(지금까지 바뀐 글은 이미 각 화면이 처음 읽을 때 받았다)
+  changedAt         DateTime?
+  /// 화면이 보낼 때 만든 id. 응답만 끊긴 글을 다시 보내도 두 번 저장되지 않게 한다(2026-10-30).
+  /// 화면 밖(MCP · 카톡 이식 · 시스템 글)은 비워 둔다
+  clientId          String?     @unique
   /// 답장 대상. 지워진 글에도 답장이 달려 있을 수 있어 행을 남긴다.
   replyToId         String?
   replyTo           ChatMessage?  @relation("MessageReply", fields: [replyToId], references: [id])
@@ -238,6 +245,7 @@ model ChatMessage {
   mentions ChatMention[]
 
   @@index([roomId, createdAt])
+  @@index([roomId, changedAt])
   @@index([taskId])
   @@index([replyToId])
 }
