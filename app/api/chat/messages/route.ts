@@ -7,6 +7,7 @@ import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
 import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
 import { AttachFileIdsSchema } from "@/lib/schemas/chat-room"
+import { newerThan, olderThan, parseCursor, pollSince } from "@/lib/chat-cursor"
 
 // 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
 export const maxDuration = 60
@@ -139,19 +140,30 @@ export async function GET(req: NextRequest) {
   // after: 폴링(새 메시지) / before: 무한 스크롤(이전 메시지) / 둘 다 없음: 초기 로드(최신 페이지)
   const isPolling = !!after
   // take: 검색 결과 보기에서 아래로 이어 불러올 때 한 페이지만. 폴링은 넉넉히 200
+  const takeGiven = Number.isInteger(takeParam) && takeParam > 0 && takeParam <= 200
   const take = isPolling
-    ? Number.isInteger(takeParam) && takeParam > 0 && takeParam <= 200 ? takeParam : 200
+    ? takeGiven ? takeParam : 200
     : CHAT_PAGE_SIZE
 
+  // 커서는 `시각|id` — 시각만 보면 같은 시각의 글 · 늦게 커밋된 글이 빠진다(lib/chat-cursor.ts)
+  const afterCursor = parseCursor(after)
+  const beforeCursor = parseCursor(before)
+  if ((after && !afterCursor) || (before && !beforeCursor)) {
+    return NextResponse.json({ error: "커서가 날짜가 아닙니다" }, { status: 400 })
+  }
+
+  const direction = isPolling ? "asc" : "desc"
   const messages = await prisma.chatMessage.findMany({
     where: {
       roomId,
       ...(taskId ? { taskId } : {}),
-      ...(after ? { createdAt: { gt: new Date(after) } } : {}),
-      ...(before ? { createdAt: { lt: new Date(before) } } : {}),
+      // take 를 준 것은 검색 결과 보기의 다음 페이지다 — 겹쳐 읽지 않고 딱 이어 붙인다
+      ...(afterCursor ? (takeGiven ? newerThan(afterCursor) : pollSince(afterCursor)) : {}),
+      ...(beforeCursor ? olderThan(beforeCursor) : {}),
     },
-    // 폴링은 오름차순 누적, 그 외에는 최신순 한 페이지를 가져온 뒤 뒤집어 반환
-    orderBy: { createdAt: isPolling ? "asc" : "desc" },
+    // 폴링은 오름차순 누적, 그 외에는 최신순 한 페이지를 가져온 뒤 뒤집어 반환.
+    // 시각이 같으면 id 로 — 페이지 경계가 매번 같은 자리에 선다
+    orderBy: [{ createdAt: direction }, { id: direction }],
     take,
     include: MESSAGE_INCLUDE,
   })

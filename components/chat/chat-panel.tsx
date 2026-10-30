@@ -10,6 +10,7 @@ import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { reportIncident } from "@/lib/report-client-error"
 import { ChatSearch } from "@/components/chat/chat-search"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
+import { encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
 
 interface Message {
   id: string
@@ -57,6 +58,12 @@ interface ChatPanelProps {
 // 후보 계산 effect 가 setState 를 되풀이해 무한 갱신이 났다(대화상자를 열면 터졌다) — 같은 배열을 넘긴다
 const NO_TASKS: { id: string; name: string; slug: string; status?: string }[] = []
 const NO_FILES: { id: string; name: string; path: string; mimeType: string }[] = []
+
+/** 커서로 쓰는 두 칸 — 시각만 들고 있으면 같은 시각의 글이 빠진다(lib/chat-cursor.ts) */
+type CursorEdge = { createdAt: string; id: string }
+const edgeOf = (m: { createdAt: string; id: string }): CursorEdge => ({ createdAt: m.createdAt, id: m.id })
+/** 아직 서버 id 가 없는 보내는 중 말풍선 */
+const isLocal = (m: { id: string }) => m.id.startsWith("temp-")
 
 export function ChatPanel({
   roomId,
@@ -107,15 +114,16 @@ export function ChatPanel({
     )
   }, [messages, roomId, currentUserId, filterTaskId, jumped])
 
-  const lastFetchedAt = useRef(
-    initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : ""
+  // 마지막으로 받은 글. 비어 있으면 다음 읽기가 최신 한 페이지로 갈아 끼운다
+  const lastFetchedAt = useRef<CursorEdge | null>(
+    initialMessages.length > 0 ? edgeOf(initialMessages[initialMessages.length - 1]) : null
   )
 
   const fetchMessages = useCallback(async () => {
     if (pausePolling.current || jumpedRef.current) return
     try {
       const params = new URLSearchParams({ roomId })
-      if (lastFetchedAt.current) params.set("after", lastFetchedAt.current)
+      if (lastFetchedAt.current) params.set("after", encodeCursor(lastFetchedAt.current))
       if (filterTaskId) params.set("taskId", filterTaskId)
 
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
@@ -126,17 +134,13 @@ export function ChatPanel({
         // 초기 로드: 최신 페이지로 교체
         setMessages(newMsgs)
         if (newMsgs.length > 0) {
-          lastFetchedAt.current = newMsgs[newMsgs.length - 1].createdAt
+          lastFetchedAt.current = edgeOf(newMsgs[newMsgs.length - 1])
         }
         setHasMoreOlder(newMsgs.length >= CHAT_PAGE_SIZE)
       } else if (newMsgs.length > 0) {
-        // 이후: 새 메시지만 추가
-        setMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.id))
-          const unique = newMsgs.filter((m: { id: string }) => !existingIds.has(m.id))
-          return unique.length > 0 ? [...prev, ...unique] : prev
-        })
-        lastFetchedAt.current = newMsgs[newMsgs.length - 1].createdAt
+        // 이후: 새 메시지만 추가. 서버는 커서보다 조금 앞부터 겹쳐 준다 — 늦게 커밋된 글은 제자리에 끼운다
+        setMessages((prev) => mergeIncoming(prev, newMsgs as Message[], isLocal))
+        lastFetchedAt.current = laterOf(lastFetchedAt.current, edgeOf(newMsgs[newMsgs.length - 1]))
       }
     } catch {
       /* ignore */
@@ -146,11 +150,11 @@ export function ChatPanel({
   // 무한 스크롤 — 현재 가장 오래된 메시지보다 이전 메시지 한 페이지를 앞에 붙임
   const loadOlder = useCallback(async () => {
     if (loadingOlder || !hasMoreOlder) return
-    const oldest = messages[0]
+    const oldest = messages.find((m) => !isLocal(m))
     if (!oldest) return
     setLoadingOlder(true)
     try {
-      const params = new URLSearchParams({ roomId, before: oldest.createdAt })
+      const params = new URLSearchParams({ roomId, before: encodeCursor(oldest) })
       if (filterTaskId) params.set("taskId", filterTaskId)
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
       if (!res.ok) return
@@ -181,7 +185,7 @@ export function ChatPanel({
 
   useEffect(() => {
     endJump()
-    lastFetchedAt.current = ""
+    lastFetchedAt.current = null
     setMessages([])
     setHasMoreOlder(true)
     fetchMessages()
@@ -191,7 +195,7 @@ export function ChatPanel({
   const backToLatest = useCallback(() => {
     endJump()
     setHighlight(null)
-    lastFetchedAt.current = ""
+    lastFetchedAt.current = null
     setMessages([])
     setHasMoreOlder(true)
     fetchMessages()
@@ -222,7 +226,7 @@ export function ChatPanel({
       setHasMoreNewer(data.hasMoreNewer)
       setHasMoreOlder(data.hasMoreOlder)
       setMessages(data.messages)
-      if (data.messages.length > 0) lastFetchedAt.current = data.messages[data.messages.length - 1].createdAt
+      if (data.messages.length > 0) lastFetchedAt.current = edgeOf(data.messages[data.messages.length - 1])
       setHighlight((prev) => ({ id: data.targetId, n: (prev?.n ?? 0) + 1 }))
     },
     [roomId, filterTaskId],
@@ -256,7 +260,7 @@ export function ChatPanel({
     if (loadingNewer || !hasMoreNewer || !lastFetchedAt.current) return
     setLoadingNewer(true)
     try {
-      const params = new URLSearchParams({ roomId, after: lastFetchedAt.current, take: String(CHAT_PAGE_SIZE) })
+      const params = new URLSearchParams({ roomId, after: encodeCursor(lastFetchedAt.current), take: String(CHAT_PAGE_SIZE) })
       if (filterTaskId) params.set("taskId", filterTaskId)
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
       if (!res.ok) return
@@ -267,7 +271,7 @@ export function ChatPanel({
           const fresh = newer.filter((m) => !ids.has(m.id))
           return fresh.length > 0 ? [...prev, ...fresh] : prev
         })
-        lastFetchedAt.current = newer[newer.length - 1].createdAt
+        lastFetchedAt.current = edgeOf(newer[newer.length - 1])
       }
       if (newer.length < CHAT_PAGE_SIZE) endJump()
     } catch {
@@ -341,7 +345,7 @@ export function ChatPanel({
       if (jumpedRef.current) {
         endJump()
         setHighlight(null)
-        lastFetchedAt.current = ""
+        lastFetchedAt.current = null
         setMessages([])
         setHasMoreOlder(true)
       }
