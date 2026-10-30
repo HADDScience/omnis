@@ -18,6 +18,7 @@ import { writeActivity } from "@/lib/api"
 import { recordTaskEvents } from "@/lib/task-events"
 import { queueChatPush, type ChatPushRoom } from "@/lib/chat-push"
 import { describePhotosSafe } from "@/lib/photo-describe"
+import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
 
 export interface PostMessageInput {
   user: { id: string; name: string }
@@ -102,9 +103,10 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
   })
 
   // 파일 연결
+  // 참여자만 보는 방(옴니스 1:1 · 사람 방)에 올린 파일은 전사방 글로 옮기지 않는다(lib/file-access.ts)
   if (fileIds && fileIds.length > 0) {
     await prisma.file.updateMany({
-      where: { id: { in: fileIds } },
+      where: { id: { in: fileIds }, ...PUBLIC_FILE_WHERE },
       data: { messageId: message.id },
     })
   }
@@ -139,7 +141,7 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
       // 파일도 업무에 연결
       if (fileIds && fileIds.length > 0) {
         await prisma.file.updateMany({
-          where: { id: { in: fileIds } },
+          where: { id: { in: fileIds }, ...PUBLIC_FILE_WHERE },
           data: { taskId: task.id },
         })
       }

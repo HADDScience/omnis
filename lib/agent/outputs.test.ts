@@ -3,7 +3,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 
 import { DraftSchema, RecordItemSchema, draftAsFile, evidenceSnippet, mailCopyText } from "./output-rules"
-import { canOpenRoomFile, NOT_OMNIS_ROOM_FILE } from "./room-files"
+import { canSeeFile, visibleFileWhere } from "../file-access"
 import { secretBlockReason } from "./secrets"
 import { checkExecution, type StepForCheck } from "./approval"
 import { buildFile, expectOf, verifyOfficeFile } from "./doc-files"
@@ -46,17 +46,15 @@ test("근거 조각 — 따옴표를 떼고 첫 줄 40자. 줄을 이어 붙이�
   assert.equal(evidenceSnippet("「」"), "")
 })
 
-test("옴니스 1:1 방 파일 — 방 주인만 연다. 남은 못 연다 (거부되어야 하는 경우)", () => {
-  const room = { kind: "OMNIS_DM", memberIds: ["owner"] }
-  assert.equal(canOpenRoomFile(room, "owner"), true)
-  assert.equal(canOpenRoomFile(room, "other"), false)
-  // 그 밖의 파일(전사방 · 업무 첨부 · 어디에도 안 붙은 파일)은 지금 규칙 그대로 — 여기서 막지 않는다
-  assert.equal(canOpenRoomFile({ kind: "COMPANY", memberIds: [] }, "other"), true)
-  assert.equal(canOpenRoomFile(null, "other"), true)
-})
-
-test("최근 파일 목록 조건 — 옴니스 1:1 방 글에 붙은 파일을 뺀다", () => {
-  assert.deepEqual(NOT_OMNIS_ROOM_FILE, { NOT: { message: { is: { room: { kind: "OMNIS_DM" } } } } })
+test("옴니스가 만든 파일(privateToUserId = 방 주인, 옴니스 글에 붙음) — 방 주인만 본다. 남은 못 본다 (거부되어야 하는 경우)", () => {
+  // lib/agent/outputs.ts saveFileToRoom 이 만드는 행의 모양 — 판정은 attach 의 canSeeFile 한 곳
+  const made = { privateToUserId: "owner", messageId: "omnis-msg", roomMemberIds: ["owner"] }
+  assert.equal(canSeeFile(made, "owner"), true)
+  assert.equal(canSeeFile(made, "other"), false)
+  // 목록 조건도 같은 규칙 — 비공개 파일은 그 방 참여자 조건으로만 보인다
+  const where = visibleFileWhere("other") as { OR: Record<string, unknown>[] }
+  assert.ok(where.OR.some((c) => c.privateToUserId === null))
+  assert.ok(!where.OR.some((c) => c.privateToUserId === "owner"))
 })
 
 test("결과물 입력에 비밀이 있으면 막는다 — 표 칸 · 슬라이드 · 메일 본문 깊숙이 있어도 (거부되어야 하는 경우)", () => {

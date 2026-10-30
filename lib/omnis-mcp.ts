@@ -38,6 +38,8 @@ import { recordTaskEvents } from "@/lib/task-events"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { assignmentTargets } from "@/lib/notify-rules"
 import * as XLSX from "xlsx"
+import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
+import { findVisibleFile } from "@/lib/file-access-server"
 import {
   TOOLS as IP_TOOLS,
   INSTRUCTIONS as IP_INSTRUCTIONS,
@@ -705,19 +707,20 @@ export async function verifyUploadLink(token: string): Promise<{ taskId: string 
 
 export const signDownloadLink = (userId: string, fileId: string) => signLink("download", { u: userId, f: fileId })
 
-export async function verifyDownloadLink(token: string): Promise<{ fileId: string } | null> {
+export async function verifyDownloadLink(token: string): Promise<{ fileId: string; userId: string } | null> {
   const p = await verifyLink("download", token)
-  return p && typeof p.f === "string" ? { fileId: p.f } : null
+  return p && typeof p.f === "string" && typeof p.u === "string" ? { fileId: p.f, userId: p.u } : null
 }
 
 type FileRow = { id: string; name: string; path: string; mimeType: string; size: number; task: { slug: string } | null }
 
 /** 파일 찾기 — ID, 없으면 업무 첨부(업무에 직접 붙었거나 그 스레드 메시지에 붙은 것) 중 이름 일부. 여럿이면 고르지 않는다. */
-async function findFile(args: Record<string, unknown>): Promise<FileRow | { error: string }> {
+async function findFile(args: Record<string, unknown>, userId: string): Promise<FileRow | { error: string }> {
   const select = { id: true, name: true, path: true, mimeType: true, size: true, task: { select: { slug: true } } } as const
   const id = str(args.file)
   if (id) {
-    const f = await prisma.file.findUnique({ where: { id }, select })
+    // 참여자만 보는 방의 파일은 그 방 사람에게만(lib/file-access.ts) — 못 보는 파일은 없는 파일과 같게
+    const f = (await findVisibleFile(id, userId)) ? await prisma.file.findUnique({ where: { id }, select }) : null
     return f ?? { error: `'${id}' 파일이 없습니다. get_task 의 첨부 목록에서 파일 ID 를 확인하세요.` }
   }
   if (!str(args.task)) return { error: "file(파일 ID) 또는 task 를 주세요." }
@@ -727,6 +730,7 @@ async function findFile(args: Record<string, unknown>): Promise<FileRow | { erro
   const hits = await prisma.file.findMany({
     where: {
       OR: [{ taskId: found.id }, { message: { taskId: found.id } }],
+      ...PUBLIC_FILE_WHERE,
       ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
     },
     select, orderBy: { createdAt: "desc" }, take: 20,
@@ -878,7 +882,8 @@ export async function runTool(
       // 여기서는 모델이 ID 를 잘못 옮기면 남의 메시지 첨부를 빼앗아 온다.
       const fileIds = Array.isArray(args.files) ? [...new Set(args.files.map(String).map((s) => s.trim()).filter(Boolean))] : []
       if (fileIds.length) {
-        const rows = await prisma.file.findMany({ where: { id: { in: fileIds } }, select: { id: true, name: true, messageId: true } })
+        // 참여자만 보는 방의 파일은 없는 파일로 본다 — 전사방 글로 옮기지 않는다(lib/file-access.ts)
+        const rows = await prisma.file.findMany({ where: { id: { in: fileIds }, ...PUBLIC_FILE_WHERE }, select: { id: true, name: true, messageId: true } })
         const missing = fileIds.filter((id) => !rows.some((r) => r.id === id))
         if (missing.length) return { error: `없는 파일 ID: ${missing.join(", ")}. upload_file 로 받은 ID 를 넣으세요.` }
         const taken = rows.filter((r) => r.messageId)
@@ -953,11 +958,8 @@ export async function runTool(
     }
 
     case "read_file": {
-      const f = await findFile(args)
+      const f = await findFile(args, caller.userId)
       if ("error" in f) return f
-      // 남의 옴니스 1:1 방 파일은 없는 파일과 같다 — lib/agent/room-files.ts
-      const { omnisRoomFileBlocked } = await import("@/lib/agent/room-files")
-      if (await omnisRoomFileBlocked(f.id, caller.userId)) return { error: `'${f.id}' 파일이 없습니다. get_task 의 첨부 목록에서 파일 ID 를 확인하세요.` }
       const head = `# ${f.name}  (${(f.size / 1024).toFixed(1)}KB · ${f.mimeType}${f.task ? ` · 업무 #${f.task.slug}` : ""} · 파일 ID ${f.id})`
       const kind = fileKind(f.name, f.mimeType)
       if (kind === "other" || f.size > MAX_UPLOAD_BYTES) {

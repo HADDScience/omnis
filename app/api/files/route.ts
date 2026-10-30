@@ -4,8 +4,9 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { demoStorageBlocked } from "@/lib/demo"
-import { NOT_OMNIS_ROOM_FILE } from "@/lib/agent/room-files"
+import { visibleFileWhere } from "@/lib/file-access"
 
+/** 최근 파일 — 내가 볼 수 있는 것만(참여자만 보는 방의 파일은 그 방 사람에게만, lib/file-access.ts) */
 export async function GET() {
   const session = await auth()
   if (!session?.user?.id) {
@@ -13,8 +14,7 @@ export async function GET() {
   }
 
   const files = await prisma.file.findMany({
-    // 옴니스 1:1 방 파일(옴니스가 만든 문서)은 방을 가리지 않는 이 목록에 내지 않는다 — lib/agent/room-files.ts
-    where: NOT_OMNIS_ROOM_FILE,
+    where: visibleFileWhere(session.user.id),
     orderBy: { createdAt: "desc" },
     take: 50,
     select: { id: true, name: true, path: true, mimeType: true, size: true },
@@ -34,6 +34,8 @@ export async function POST(req: NextRequest) {
   const file = formData.get("file") as File | null
   const messageId = formData.get("messageId") as string | null
   const taskId = formData.get("taskId") as string | null
+  // scope=private — 옴니스 1:1 · 사람끼리 방에 붙일 파일. 붙기 전에는 올린 사람만, 붙은 뒤에는 그 방 참여자만 본다
+  const isPrivate = formData.get("scope") === "private"
 
   if (!file) {
     return NextResponse.json({ error: "파일 필수" }, { status: 400 })
@@ -57,8 +59,9 @@ export async function POST(req: NextRequest) {
       path: `/api/files/${id}/raw`,
       size: file.size,
       mimeType: file.type || "application/octet-stream",
-      messageId: messageId || null,
-      taskId: taskId || null,
+      messageId: isPrivate ? null : messageId || null,
+      taskId: isPrivate ? null : taskId || null,
+      privateToUserId: isPrivate ? session.user.id : null,
     },
   })
 

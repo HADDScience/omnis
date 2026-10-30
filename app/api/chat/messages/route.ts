@@ -6,6 +6,7 @@ import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
 import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
+import { AttachFileIdsSchema } from "@/lib/schemas/chat-room"
 
 // 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
 export const maxDuration = 60
@@ -181,15 +182,15 @@ export async function POST(req: NextRequest) {
     // 참여자가 아니면 없는 방과 같은 404 — 403 이면 그 id 의 방이 있다는 것이 샌다
     const room = await loadPeopleRoom(roomId, session.user.id)
     if (!room) return NextResponse.json({ error: "방을 찾을 수 없습니다" }, { status: 404 })
-    // 첨부는 아직 받지 않는다 — 파일 목록(GET /api/files) · 내려받기가 방을 가리지 않아 참여자 밖으로 이름이 샌다
-    if (Array.isArray(fileIds) && fileIds.length > 0) {
-      return NextResponse.json({ error: "이 방에는 아직 파일을 붙일 수 없어요" }, { status: 400 })
-    }
+    // 첨부 — scope=private 로 올린 내 파일만(lib/file-access.ts). 붙은 뒤에는 이 방 참여자만 목록 · 내려받기로 본다
+    const files = AttachFileIdsSchema.optional().safeParse(fileIds ?? undefined)
+    if (!files.success) return NextResponse.json({ error: files.error.issues[0]?.message ?? "잘못된 첨부입니다" }, { status: 400 })
     if (typeof content !== "string" || content.trim().length > PEOPLE_MESSAGE_MAX) {
       return NextResponse.json({ error: `${PEOPLE_MESSAGE_MAX}자 이내로 입력해 주세요` }, { status: 400 })
     }
-    const message = await postPeopleMessage({ id: session.user.id, name: session.user.name ?? "" }, room, { content, replyToId })
-    return NextResponse.json({ ...shapeReply(message), _taskUpdate: null, _rebuild: null }, { status: 201 })
+    const posted = await postPeopleMessage({ id: session.user.id, name: session.user.name ?? "" }, room, { content, replyToId, fileIds: files.data })
+    if (!posted.ok) return NextResponse.json({ error: posted.error }, { status: posted.status })
+    return NextResponse.json({ ...shapeReply(posted.message), _taskUpdate: null, _rebuild: null }, { status: 201 })
   }
   if (access && access.kind !== "COMPANY") {
     return NextResponse.json({ error: "이 방에는 여기로 글을 쓸 수 없습니다" }, { status: 403 })

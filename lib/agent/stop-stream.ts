@@ -21,6 +21,8 @@ export const RUN_STOPPED_RESULT = "[omnis:run-stopped] 사용자가 답을 멈�
 export type StreamPart = { type: string }
 
 const utf8 = new TextEncoder()
+/** 첨부 이미지 한 장의 입력 토큰 어림 */
+const IMAGE_TOKENS = 1_500
 const bytes = (s: string) => utf8.encode(s).length
 
 /**
@@ -46,6 +48,8 @@ export function promptBytes(options: { prompt?: unknown; tools?: unknown }): num
       if (typeof p.text === "string") n += bytes(p.text)
       else if (p.type === "tool-call") n += bytes(JSON.stringify(p.input ?? null))
       else if (p.type === "tool-result") n += bytes(JSON.stringify(p.output ?? null))
+      // 첨부 이미지(긴 변 1280, lib/agent/attachments.ts) — 벤더 표로 장당 1,500토큰 안팎. base64 길이로 세면 수십 배 크게 잡힌다
+      else if (p.type === "file") n += IMAGE_TOKENS * 3
     }
   }
   if (options.tools) n += bytes(JSON.stringify(options.tools))

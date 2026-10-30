@@ -335,7 +335,8 @@ const kb = (n: number) => (n < 1024 ? `${n}B` : `${Math.round(n / 1024)}KB`)
 
 /**
  * 파일을 만들어 이 방에 붙인다 — 만들기 → 검증 → NAS 저장 → 다시 읽어 검증(실패면 지움) → 옴니스 글 + File 행.
- * File 은 옴니스 글(방 = 이 옴니스 1:1 방)에 붙는다 — 그것이 소유자 · 방 기록이다(lib/agent/room-files.ts).
+ * File 은 옴니스 글(방 = 이 옴니스 1:1 방)에 붙고 privateToUserId = 방 주인이다 — 사람이 올린 옴니스 방 첨부와 같은 규칙(lib/file-access.ts canSeeFile:
+ * 비공개 파일 · 메시지에 붙음 → 그 방 참여자만)을 탄다. 목록 · 내려받기 · MCP read_file 이 따로 판정하지 않는다.
  * DB 기록이 실패하면 NAS 의 파일도 지운다.
  */
 export async function saveFileToRoom(spec: FileSpec, ctx: OutputCtx, note: string): Promise<{ ok: true; text: string; fileId: string } | { ok: false; text: string }> {
@@ -357,7 +358,7 @@ export async function saveFileToRoom(spec: FileSpec, ctx: OutputCtx, note: strin
     const systemId = await getSystemUserId()
     const now = new Date()
     await prisma.$transaction([
-      prisma.chatMessage.create({ data: { roomId: ctx.roomId, authorId: systemId, content: note, createdAt: now, files: { create: { id, name, path: `/api/files/${id}/raw`, size: buf.length, mimeType: MIME[spec.format] } } } }),
+      prisma.chatMessage.create({ data: { roomId: ctx.roomId, authorId: systemId, content: note, createdAt: now, files: { create: { id, name, path: `/api/files/${id}/raw`, size: buf.length, mimeType: MIME[spec.format], privateToUserId: ctx.userId } } } }),
       prisma.chatRoom.update({ where: { id: ctx.roomId }, data: { lastMessageAt: now } }),
     ])
   } catch (e) {

@@ -213,3 +213,61 @@ run 7cf518d2 DONE 턴 3 17.66원 카드 write_weekly_report:EXECUTED     ← 고
 5. 만든 파일은 방을 지워도(목록에서 숨김) NAS 에 남는다 — 3단계 「대화 삭제는 숨김」 방침과 같다
 6. 로컬에 남긴 것: 정우창 W44 주간보고 본문(시나리오가 바꿈) · PENDING 연혁 제안 1건(「경기도경제과학진흥원 … 최종 선정」, 사실이 아닌 시험 문장) · 옴니스 방 5개 · NAS `_dev` 파일 2개. 로컬 자료라 지우지 않았다 — 연혁 제안은 큐에서 [제외] 하면 된다
 7. 파일 카드는 새 탭으로 연다(`MessageFiles` 그대로, `Content-Disposition: inline`). docx · xlsx · pptx 는 브라우저가 내려받는다
+
+## 합친 결과 — feat/omnis-attach merge (2026-10-30)
+
+로컬 `feat/omnis-attach`(e9414f4, 마이그레이션 `20261030010000_file_private_owner` 포함 — 먼저 main 에 머지될 예정)를 `git merge feat/omnis-attach` 로 합쳤다.
+**파일 접근 판정은 attach 의 것이 정본이다** — 위 「파일 접근 — 이 브랜치의 최소한의 막음」 과 「합칠 때 할 일」 1 · 2 · 4 · 6 은 이것으로 끝났다(3 은 attach 가 `PUBLIC_FILE_WHERE` 로 막았다).
+
+### 충돌 6곳 — 어떻게 풀었나
+
+| 파일 | 풀이 |
+|---|---|
+| `app/api/files/route.ts` | attach 의 `visibleFileWhere(userId)`. 이쪽 `NOT_OMNIS_ROOM_FILE` 은 버렸다 — 이제 방 주인은 자기 옴니스 방 파일을 목록에서 본다(남은 못 본다) |
+| `app/api/files/[fileId]/route.ts` · `raw/route.ts` | attach 의 `findVisibleFile`. `omnisRoomFileBlocked` import 도 지웠다 |
+| `lib/omnis-room.ts` | `OmnisRoomMessage.files` 주석만 겹쳤다 — 한 칸에 두 가지(내 질문 첨부 · 옴니스가 만든 파일) |
+| `lib/agent/service.ts` | attach 의 `FileShape` · `FILE_SELECT`(순서 정렬) 쪽. 모양이 같아 옴니스 글의 파일도 그대로 실린다 |
+| `components/messenger/omnis-room.tsx` | import 한 줄(`type FileInfo` 더함). 내 글의 파일 카드(attach) · 옴니스 글의 파일 카드(이쪽) · ＋ 첨부(attach) · 초안/파일 확인 카드(이쪽)가 모두 남았다 |
+
+충돌 밖에서 고친 것:
+
+- `lib/agent/room-files.ts` **삭제**. 부르던 곳 중 마지막 남은 MCP `read_file` 의 한 줄도 지웠다 — attach 의 `findFile` 이 이미 `findVisibleFile` 로 거른다
+- **생성 파일을 `privateToUserId = 방 주인` 으로 만든다**(`lib/agent/outputs.ts saveFileToRoom`). 옴니스 글에 붙어 있으니 attach 규칙 「비공개 · 메시지에 붙음 → 그 방 참여자만」 을 그대로 탄다. 불변식 「privateToUserId 가 있다 ⇔ 참여자만 보는 방의 파일」 도 지킨다
+- `outputs.test.ts` 의 이쪽 판정 시험 둘을 attach 의 `canSeeFile` · `visibleFileWhere` 로 같은 행 모양(주인 · 붙음 · 참여자 [주인])을 거부 사례와 함께 보는 시험 하나로 바꿨다
+
+스키마 · 마이그레이션은 attach 의 것뿐이다(이 브랜치는 여전히 없음). 로컬 DB 에는 이미 적용돼 있었다. 운영 반영 순서: attach 의 migrate → attach 머지 → 이 브랜치 머지.
+
+### 검증
+
+```
+$ pnpm exec prisma generate && pnpm run verify
+verify exit 0
+✖ 40 problems (0 errors, 40 warnings)      ← 합치기 전과 같은 수
+
+$ pnpm run test:unit
+ℹ tests 238
+ℹ pass 238
+ℹ fail 0                                    ← 215(이쪽) + attach 시험 − 바꾼 1
+```
+
+dev `env -u GEMINI_API_KEY NEXTAUTH_URL=http://localhost:3119 OMNIS_AGENT_APPROVAL_SECRET=<임시값> pnpm next dev --webpack -p 3119`(로그는 파일), 390x844 · 정우창. 질문 2번.
+
+```
+① 옴니스 방 이미지 첨부 — ONLY=messenger IMAGE=sample-status.png node scripts/verify-omnis-attach.mjs
+✓ ＋ · 보내기 세로 가운데가 같다(±1px) · ✓ 메뉴: 파일 업로드 · 시놀로지 파일 연결 · ✓ 칩: uploading → done · ✓ 질문에 fileIds 1개
+  답(26초): 첨부 파일은 2026년 10월 30일 기준 샘플 발송 현황으로 … 부산대 나노대 ADD Gel 3 발송 완료 …
+✓ 옴니스가 답했다 · ✓ 내 말풍선 아래 파일 카드 · ✓ 새로고침해도 파일 카드가 남는다
+전부 통과
+
+② xlsx 생성 — node scripts/output-scenarios.mjs file
+  카드 11.5s · 실행 8.9s · EXECUTED · 재고 현황.xlsx (9KB · 시트 1개) · zip · XML 10개 모두 정상
+  내려받기 200 · …spreadsheetml.sheet · 8867B · 내 GET /api/files 목록에 있나: true
+  다시 열어 보기: 재고 [["품목","수량","비고"],["애드젤",12,"샘플용"],["라이브젤",3,"재주문 필요"],["뉴로힐",5,""]]
+  DB: {"privateTo":"정우창","author":"system","room":"OMNIS_DM","members":["정우창"]}
+
+③ 다른 계정(윤훈)으로 그 생성 파일
+  /api/files/<id> 404 · /raw 404 · GET /api/files 목록에 없음 · 방 주소 200(본문 404 표식, 글 없음 — 3단계 그대로)
+```
+
+캡처 `mydocs/working/omnis-outputs/merge/` — `image-1-menu.png` … `image-6-answer.png`(① 첨부 메뉴 · 올리는 중 · 칩 · 답) · `file-1-card.png`(입력칸에 ＋ 와 확인 카드가 함께) · `file-3-done.png` · `file-4-file-card.png`. 끝나고 dev 를 껐다.
+쓴 비용: 이미지 질문 1번 · 엑셀 1번(모델 호출 수 · 원은 `AiUsage` 에 남아 있다, 앞 실측과 같은 규모).

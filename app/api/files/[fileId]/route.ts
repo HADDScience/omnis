@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/db"
+import { findVisibleFile } from "@/lib/file-access-server"
 import { auth } from "@/lib/auth"
-import { omnisRoomFileBlocked } from "@/lib/agent/room-files"
 
 interface Props {
   params: Promise<{ fileId: string }>
@@ -14,12 +13,8 @@ export async function GET(_req: NextRequest, { params }: Props) {
   }
 
   const { fileId } = await params
-  const file = await prisma.file.findUnique({
-    where: { id: fileId },
-    select: { id: true, name: true, path: true, size: true, mimeType: true },
-  })
-
-  // 남의 옴니스 1:1 방 파일은 없는 파일과 같다 — lib/agent/room-files.ts
-  if (!file || (await omnisRoomFileBlocked(file.id, session.user.id))) return NextResponse.json({ error: "파일 없음" }, { status: 404 })
-  return NextResponse.json(file)
+  // 참여자만 보는 방의 파일은 그 방 사람에게만 — 못 보는 파일도 없는 파일과 같은 404
+  const file = await findVisibleFile(fileId, session.user.id)
+  if (!file) return NextResponse.json({ error: "파일 없음" }, { status: 404 })
+  return NextResponse.json({ id: file.id, name: file.name, path: file.path, size: file.size, mimeType: file.mimeType })
 }
