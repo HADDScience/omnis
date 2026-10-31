@@ -19,7 +19,7 @@ const omnisContent = z
 
 /**
  * 화면이 글을 보낼 때 만든 id(crypto.randomUUID). 응답만 끊긴 글을 다시 보내면 서버가 처음 저장한 글을 돌려준다.
- * 계획: mydocs/plans/2026-10-30-chat-quality.md
+ * 계획: mydocs/plans/archives/2026-10-30-chat-quality.md
  */
 export const ChatClientIdSchema = z.string().uuid("잘못된 clientId 입니다")
 

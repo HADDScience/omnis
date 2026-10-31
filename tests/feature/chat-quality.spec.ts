@@ -1,6 +1,6 @@
 /**
  * 채팅 품질 — 커서 누락 · 다시 보내기 · 남의 삭제 반영 · 위로 읽는 중 끌어내리지 않기.
- * 계획: mydocs/plans/2026-10-30-chat-quality.md
+ * 계획: mydocs/plans/archives/2026-10-30-chat-quality.md
  *
  *   pnpm run test:e2e:local -- tests/feature/chat-quality.spec.ts
  *

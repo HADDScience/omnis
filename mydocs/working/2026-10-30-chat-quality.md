@@ -1,13 +1,13 @@
 ---
 kind: snapshot
 status: active
-canonical: mydocs/plans/2026-10-30-chat-quality.md
+canonical: mydocs/plans/archives/2026-10-30-chat-quality.md
 last_verified: 2026-10-31
 ---
 
 # 채팅 품질 — 결과와 실측
 
-계획: [`../plans/2026-10-30-chat-quality.md`](../plans/2026-10-30-chat-quality.md). 브랜치 `feat/chat-quality`.
+계획: [`../plans/archives/2026-10-30-chat-quality.md`](../plans/archives/2026-10-30-chat-quality.md). 브랜치 `feat/chat-quality`.
 
 ## 한 것
 
@@ -74,8 +74,9 @@ $ pnpm run test:e2e:local tests/feature/{omnis-hub,onboarding,record-proposals,r
 새로 넣은 알약 · 다시 보내기 버튼은 `min-h-11`(44px)이지만 점검 화면에는 그 상태가 나타나지 않아 측정되지 않았다.
 점검 도중 dev 서버가 죽어 200px 구간은 재지 못했다.
 
-## 남은 일 (작업지시자 승인 필요)
+## 마감 (2026-10-31)
 
-1. push · PR
-2. **운영 DB 에 마이그레이션 먼저** — 이 워크트리에서 `pnpm run db:deploy`(운영 env). 그 다음 머지
-3. 머지 뒤 이 계획서를 `plans/archives/` 로, 워크트리 정리
+1. PR #134 — CI verify · e2e(7m4s) · Vercel 프리뷰 둘 통과
+2. 운영 DB 에 머지 전 적용 — `prisma migrate status` 가 `20261031000000_chat_message_changed_client` 하나만 미적용 →
+   `prisma migrate deploy` → `Database schema is up to date!`
+3. 머지 `ac9fbc8`. 계획서는 `plans/archives/` 로
