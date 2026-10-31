@@ -177,8 +177,9 @@ export function ChatPanel({
       }
 
       if (!lastFetchedAt.current) {
-        // 초기 로드: 최신 페이지로 교체
-        setMessages(newMsgs)
+        // 초기 로드: 최신 페이지로 교체. 보내는 중 · 보내지 못한 말풍선은 남긴다 — 빈 방에서 보낸 글은 커서가 없어
+        // 다음 폴링이 이 길로 와서, 예전에는 실패 말풍선까지 지워 다시 보낼 길이 사라졌다
+        setMessages((prev) => dropEchoed([...newMsgs, ...prev.filter(isLocal)]))
         if (newMsgs.length > 0) {
           lastFetchedAt.current = edgeOf(newMsgs[newMsgs.length - 1])
         }

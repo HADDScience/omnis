@@ -54,34 +54,39 @@ async function openRoom(page: Page) {
 const bubbles = (page: Page, text: string) =>
   page.locator('[role="log"][aria-label="채팅 메시지"] [data-message-id]', { hasText: text })
 
-test("응답만 끊긴 글을 다시 보내면 한 번만 저장되고 한 번만 보인다", async ({ page }) => {
+const isMessagesApi = (url: URL) => url.pathname.endsWith("/api/chat/messages")
+
+/** 화면에서 글 하나를 보내고, 서버에 몇 개 저장됐는지 센다 */
+async function savedCount(page: Page, text: string) {
+  const list = (await (await page.request.get(`/api/chat/messages?roomId=${ROOM}`)).json()) as { id: string; content: string }[]
+  return list.filter((m) => m.content === text)
+}
+
+test("서버에 닿지 못한 글은 「보내지 못함」 으로 남고, 다시 보내면 한 번 저장된다 · 폴링은 멈추지 않는다", async ({ page }) => {
   await login(page, "팀장")
   await openRoom(page)
-  const text = `다시보내기 ${Date.now()}`
+  const text = `닿지 못함 ${Date.now()}`
 
-  // 첫 POST 는 서버까지 가서 저장되지만 응답이 화면에 닿지 않는다
   let cut = true
-  await page.route(
-    (url) => url.pathname.endsWith("/api/chat/messages"),
-    async (route) => {
-      if (route.request().method() !== "POST" || !cut) return route.continue()
-      cut = false
-      await route.fetch()
-      await route.abort("failed")
-    },
-  )
+  await page.route(isMessagesApi, async (route) => {
+    if (route.request().method() !== "POST" || !cut) return route.continue()
+    cut = false
+    await route.abort("failed")
+  })
   await page.locator("textarea").first().fill(text)
   await page.keyboard.press("Enter")
 
+  // 예전에는 「보내는 중」 이 영원히 남았다. 폴링이 돌아도(서버에 없으니) 실패 표시는 그대로다
   await expect(page.getByText("연결이 끊겨 보내지 못했습니다")).toBeVisible()
+  await page.waitForTimeout(4_000)
+  await expect(page.getByText("연결이 끊겨 보내지 못했습니다")).toBeVisible()
+  expect(await savedCount(page, text)).toHaveLength(0)
+
   await page.getByRole("button", { name: "다시 보내기" }).click()
   await expect(page.getByText("연결이 끊겨 보내지 못했습니다")).toHaveCount(0)
-
-  // 폴링이 두어 번 돈 뒤에도 하나
-  await page.waitForTimeout(7_000)
+  await page.waitForTimeout(4_000)
   await expect(bubbles(page, text)).toHaveCount(1)
-  const list = (await (await page.request.get(`/api/chat/messages?roomId=${ROOM}`)).json()) as { id: string; content: string }[]
-  const saved = list.filter((m) => m.content === text)
+  const saved = await savedCount(page, text)
   expect(saved).toHaveLength(1)
 
   // 폴링은 멈추지 않았다 — 화면 밖(API)에서 쓴 글이 들어온다. 예전에는 fetch 가 던지면 이 방 폴링이 멈춘 채 남았다
@@ -91,6 +96,39 @@ test("응답만 끊긴 글을 다시 보내면 한 번만 저장되고 한 번�
 
   await page.request.delete(`/api/chat/messages/${saved[0].id}`)
   await page.request.delete(`/api/chat/messages/${posted.id}`)
+})
+
+test("응답만 끊긴 글을 다시 보내도 두 번 저장되지 않는다", async ({ page }) => {
+  await login(page, "팀장")
+  await openRoom(page)
+  const text = `응답 끊김 ${Date.now()}`
+
+  // 첫 POST 는 서버에 저장되지만 응답이 화면에 닿지 않는다. 폴링도 막아 둔다 —
+  // 열어 두면 폴링이 진짜 글을 들여와 실패 말풍선을 스스로 걷는다(그것도 맞는 동작이다. 여기서는 다시 보내기를 본다)
+  let cut = true
+  let blockPolls = true
+  await page.route(isMessagesApi, async (route) => {
+    const req = route.request()
+    if (req.method() === "GET" && blockPolls) return route.abort("failed")
+    if (req.method() !== "POST" || !cut) return route.continue()
+    cut = false
+    await route.fetch()
+    await route.abort("failed")
+  })
+  await page.locator("textarea").first().fill(text)
+  await page.keyboard.press("Enter")
+
+  await expect(page.getByText("연결이 끊겨 보내지 못했습니다")).toBeVisible()
+  expect(await savedCount(page, text)).toHaveLength(1)
+  await page.getByRole("button", { name: "다시 보내기" }).click()
+  await expect(page.getByText("연결이 끊겨 보내지 못했습니다")).toHaveCount(0)
+
+  blockPolls = false
+  await page.waitForTimeout(7_000)
+  await expect(bubbles(page, text)).toHaveCount(1)
+  const saved = await savedCount(page, text)
+  expect(saved).toHaveLength(1)
+  await page.request.delete(`/api/chat/messages/${saved[0].id}`)
 })
 
 test("거부 — 남의 clientId 로 다시 보내면 그 글을 받아 가지 못한다", async ({ page, browser }) => {
