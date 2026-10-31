@@ -112,7 +112,8 @@ export async function PATCH(req: NextRequest, { params }: Props) {
     if (!(await roomAccessOk(message.roomId, session.user.id))) return NextResponse.json({ error: "방을 찾을 수 없습니다" }, { status: 404 })
     const edited = await prisma.chatMessage.update({
       where: { id: messageId },
-      data: { content, editedAt: new Date() },
+      // changedAt — 남의 화면 폴링이 이 글을 다시 받아 간다
+      data: { content, editedAt: new Date(), changedAt: new Date() },
       include: {
         author: { select: { id: true, name: true } },
         task: { select: { id: true, name: true, slug: true } },
@@ -138,7 +139,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
 
   const updated = await prisma.chatMessage.update({
     where: { id: messageId },
-    data: { content, editedAt: new Date(), taskId: nextTaskId },
+    data: { content, editedAt: new Date(), changedAt: new Date(), taskId: nextTaskId },
     include: {
       author: { select: { id: true, name: true } },
       task: { select: { id: true, name: true, slug: true } },
@@ -187,7 +188,8 @@ export async function DELETE(_req: NextRequest, { params }: Props) {
 
   await prisma.chatMessage.update({
     where: { id: messageId },
-    data: { deletedAt: new Date() },
+    // changedAt — 남의 화면에서도 본문이 걷히게. 없으면 지운 글이 새로고침 전까지 보인다
+    data: { deletedAt: new Date(), changedAt: new Date() },
   })
 
   // 색인에서도 뺀다 — 지운 글이 검색·RAG 에 남으면 지운 것이 아니다.

@@ -67,7 +67,8 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
 async function recentMessages(roomId: string) {
   const recent = await prisma.chatMessage.findMany({
     where: { roomId },
-    orderBy: { createdAt: "desc" },
+    // API 와 같은 순서 — 시각이 같으면 id. 이 페이지 맨 앞이 「이전 글」 커서가 된다
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: CHAT_PAGE_SIZE,
     include: {
       author: { select: { id: true, name: true } },
@@ -82,6 +83,7 @@ async function recentMessages(roomId: string) {
     files: m.deletedAt ? [] : m.files,
     createdAt: m.createdAt.toISOString(),
     editedAt: m.editedAt?.toISOString() ?? null,
+    changedAt: m.changedAt?.toISOString() ?? null,
     deletedAt: m.deletedAt?.toISOString() ?? null,
     replyTo: m.replyTo
       ? {

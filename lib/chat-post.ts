@@ -28,6 +28,8 @@ export interface PostMessageInput {
   fileIds?: string[]
   /** 답장 대상 메시지. 화면은 인용 한 줄로 그린다. */
   replyToId?: string | null
+  /** 화면이 만든 id — 다시 보내기 중복 막기(ChatMessage.clientId). 화면 밖에서는 비운다 */
+  clientId?: string | null
 }
 
 export interface PostMessageOptions {
@@ -94,6 +96,7 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
       content: trimmedContent,
       taskId: linkedTaskId,
       replyToId: input.replyToId ?? null,
+      clientId: input.clientId ?? null,
     },
     include: {
       author: { select: { id: true, name: true } },
@@ -133,9 +136,10 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
 
     if (task && restText.trim().length > 0) {
       // 메시지를 업무에 연결
+      // changedAt — 먼저 이 글을 읽어 간 화면에도 업무 표시가 붙게
       await prisma.chatMessage.update({
         where: { id: message.id },
-        data: { taskId: task.id },
+        data: { taskId: task.id, changedAt: new Date() },
       })
 
       // 파일도 업무에 연결
@@ -158,7 +162,7 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
         }
       }
     } else if (task) {
-      await prisma.chatMessage.update({ where: { id: message.id }, data: { taskId: task.id } })
+      await prisma.chatMessage.update({ where: { id: message.id }, data: { taskId: task.id, changedAt: new Date() } })
     }
   }
 

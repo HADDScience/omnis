@@ -41,6 +41,7 @@ export default async function TaskRoomPage({ params }: { params: Promise<{ taskI
     kind: m.kind,
     files: m.deletedAt ? [] : m.files,
     editedAt: m.editedAt?.toISOString() ?? null,
+    changedAt: m.changedAt?.toISOString() ?? null,
     deletedAt: m.deletedAt?.toISOString() ?? null,
     replyTo: m.replyTo
       ? {

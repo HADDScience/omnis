@@ -18,6 +18,12 @@ const omnisContent = z
   .max(OMNIS_MESSAGE_MAX, `${OMNIS_MESSAGE_MAX}자 이내로 입력해 주세요`)
 
 /**
+ * 화면이 글을 보낼 때 만든 id(crypto.randomUUID). 응답만 끊긴 글을 다시 보내면 서버가 처음 저장한 글을 돌려준다.
+ * 계획: mydocs/plans/2026-10-30-chat-quality.md
+ */
+export const ChatClientIdSchema = z.string().uuid("잘못된 clientId 입니다")
+
+/**
  * 참여자만 보는 방(옴니스 1:1 · 사람 1:1 · 단톡방)의 글에 붙이는 파일 — POST /api/files(·/nas) 에 scope=private 로 올려 받은 id.
  * 내 것 · 아직 안 붙은 것인지는 서버가 DB 로 본다(lib/file-access.ts checkAttachable). 여기서는 모양 · 개수 · 중복만
  */

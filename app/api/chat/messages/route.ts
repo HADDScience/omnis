@@ -6,7 +6,9 @@ import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
 import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
-import { AttachFileIdsSchema } from "@/lib/schemas/chat-room"
+import { AttachFileIdsSchema, ChatClientIdSchema } from "@/lib/schemas/chat-room"
+import { decideClientId, isUniqueViolation } from "@/lib/chat-client-id"
+import { changedSince, FIRST_CHANGE_LOOKBACK_MS, newerThan, olderThan, parseCursor, pollSince } from "@/lib/chat-cursor"
 
 // 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
 export const maxDuration = 60
@@ -139,27 +141,77 @@ export async function GET(req: NextRequest) {
   // after: 폴링(새 메시지) / before: 무한 스크롤(이전 메시지) / 둘 다 없음: 초기 로드(최신 페이지)
   const isPolling = !!after
   // take: 검색 결과 보기에서 아래로 이어 불러올 때 한 페이지만. 폴링은 넉넉히 200
+  const takeGiven = Number.isInteger(takeParam) && takeParam > 0 && takeParam <= 200
   const take = isPolling
-    ? Number.isInteger(takeParam) && takeParam > 0 && takeParam <= 200 ? takeParam : 200
+    ? takeGiven ? takeParam : 200
     : CHAT_PAGE_SIZE
 
+  // 커서는 `시각|id` — 시각만 보면 같은 시각의 글 · 늦게 커밋된 글이 빠진다(lib/chat-cursor.ts)
+  const afterCursor = parseCursor(after)
+  const beforeCursor = parseCursor(before)
+  if ((after && !afterCursor) || (before && !beforeCursor)) {
+    return NextResponse.json({ error: "커서가 날짜가 아닙니다" }, { status: 400 })
+  }
+
+  const direction = isPolling ? "asc" : "desc"
   const messages = await prisma.chatMessage.findMany({
     where: {
       roomId,
       ...(taskId ? { taskId } : {}),
-      ...(after ? { createdAt: { gt: new Date(after) } } : {}),
-      ...(before ? { createdAt: { lt: new Date(before) } } : {}),
+      // take 를 준 것은 검색 결과 보기의 다음 페이지다 — 겹쳐 읽지 않고 딱 이어 붙인다
+      ...(afterCursor ? (takeGiven ? newerThan(afterCursor) : pollSince(afterCursor)) : {}),
+      ...(beforeCursor ? olderThan(beforeCursor) : {}),
     },
-    // 폴링은 오름차순 누적, 그 외에는 최신순 한 페이지를 가져온 뒤 뒤집어 반환
-    orderBy: { createdAt: isPolling ? "asc" : "desc" },
+    // 폴링은 오름차순 누적, 그 외에는 최신순 한 페이지를 가져온 뒤 뒤집어 반환.
+    // 시각이 같으면 id 로 — 페이지 경계가 매번 같은 자리에 선다
+    orderBy: [{ createdAt: direction }, { id: direction }],
     take,
     include: MESSAGE_INCLUDE,
   })
 
   const shaped = messages.map(shape)
 
+  // 폴링이 changes=1 을 실으면 남이 고치거나 지운 글도 함께 — 새 글만 받으면 그 글들이 옛 모습으로 남는다.
+  // 받는 모양이 배열에서 객체로 바뀌므로 묻는 화면에만 준다(설치된 앱이 캐시한 옛 번들은 배열을 기대한다)
+  if (isPolling && !takeGiven && searchParams.get("changes") === "1") {
+    const checkedAt = new Date()
+    const sinceRaw = searchParams.get("changesSince")
+    const sinceParsed = sinceRaw ? new Date(sinceRaw) : null
+    const since =
+      sinceParsed && !Number.isNaN(sinceParsed.getTime()) ? sinceParsed : new Date(checkedAt.getTime() - FIRST_CHANGE_LOOKBACK_MS)
+    const changed = await prisma.chatMessage.findMany({
+      where: { roomId, ...(taskId ? { taskId } : {}), ...changedSince(since) },
+      orderBy: { changedAt: "asc" },
+      take: 200,
+      include: MESSAGE_INCLUDE,
+    })
+    return NextResponse.json({ messages: shaped, changed: changed.map(shape), checkedAt: checkedAt.toISOString() })
+  }
+
   // 초기 로드·이전 메시지는 desc로 가져왔으므로 화면 표시용 오름차순으로 정렬
   return NextResponse.json(isPolling ? shaped : shaped.reverse())
+}
+
+/**
+ * 같은 clientId 로 이미 저장된 글이 있으면 그 글을 돌려준다(응답만 끊긴 글의 다시 보내기). 없으면 null — 새로 저장한다.
+ * 알림 · 재구성은 처음 저장 때 돌았으니 다시 돌리지 않는다(lib/chat-client-id.ts)
+ */
+async function replayByClientId(clientId: string | undefined, userId: string, roomId: string) {
+  if (!clientId) return null
+  const prior = await prisma.chatMessage.findUnique({ where: { clientId }, include: MESSAGE_INCLUDE })
+  const decision = decideClientId(prior, { userId, roomId })
+  if (decision === "new") return null
+  if (decision === "conflict") return NextResponse.json({ error: "이미 쓰인 clientId 입니다" }, { status: 409 })
+  return NextResponse.json({ ...shape(prior!), _taskUpdate: null, _rebuild: null, _replayed: true }, { status: 200 })
+}
+
+/** 저장하다 같은 clientId 가 먼저 들어간 것을 알면(동시에 두 번 보냄) 먼저 들어간 글로 답한다 */
+async function onClientIdRace(err: unknown, clientId: string | undefined, userId: string, roomId: string) {
+  if (clientId && isUniqueViolation(err)) {
+    const replay = await replayByClientId(clientId, userId, roomId)
+    if (replay) return replay
+  }
+  throw err
 }
 
 export async function POST(req: NextRequest) {
@@ -174,6 +226,11 @@ export async function POST(req: NextRequest) {
   if (!roomId || !content?.trim()) {
     return NextResponse.json({ error: "roomId, content 필수" }, { status: 400 })
   }
+  // 화면이 만든 id — 없으면(MCP · 옛 화면) 예전처럼 매번 새로 저장한다
+  const parsedClientId = ChatClientIdSchema.optional().safeParse(body.clientId ?? undefined)
+  if (!parsedClientId.success) return NextResponse.json({ error: parsedClientId.error.issues[0]?.message }, { status: 400 })
+  const clientId = parsedClientId.data
+  const me = session.user.id
   // 전사방(팀 채팅 · 업무 스레드)은 postChatMessage, 사람끼리 방(1:1 · 단톡)은 postPeopleMessage.
   // 옴니스 방은 에이전트 API(/api/agent/rooms/…)로 쓴다 — 여기로 들어오면 업무 재구성 · 색인이 1:1 대화에 붙는다.
   // 없는 방은 postChatMessage 가 만든다(전사방)
@@ -188,7 +245,14 @@ export async function POST(req: NextRequest) {
     if (typeof content !== "string" || content.trim().length > PEOPLE_MESSAGE_MAX) {
       return NextResponse.json({ error: `${PEOPLE_MESSAGE_MAX}자 이내로 입력해 주세요` }, { status: 400 })
     }
-    const posted = await postPeopleMessage({ id: session.user.id, name: session.user.name ?? "" }, room, { content, replyToId, fileIds: files.data })
+    const replay = await replayByClientId(clientId, me, roomId)
+    if (replay) return replay
+    let posted: Awaited<ReturnType<typeof postPeopleMessage>>
+    try {
+      posted = await postPeopleMessage({ id: me, name: session.user.name ?? "" }, room, { content, replyToId, fileIds: files.data, clientId })
+    } catch (err) {
+      return onClientIdRace(err, clientId, me, roomId)
+    }
     if (!posted.ok) return NextResponse.json({ error: posted.error }, { status: posted.status })
     return NextResponse.json({ ...shapeReply(posted.message), _taskUpdate: null, _rebuild: null }, { status: 201 })
   }
@@ -201,18 +265,28 @@ export async function POST(req: NextRequest) {
     if (!target) return NextResponse.json({ error: "답장할 글을 찾을 수 없습니다" }, { status: 400 })
   }
 
-  const { message, taskUpdate, rebuild } = await postChatMessage(
-    {
-      user: { id: session.user.id, name: session.user.name ?? "" },
-      roomId,
-      content,
-      taskId,
-      fileIds,
-      replyToId,
-    },
-    // 글은 바로 돌려주고 AI 재구성은 응답 뒤에 — 화면은 GET /api/tasks/[taskId]/rebuild-status 로 끝을 안다
-    { deferRebuild: true },
-  )
+  const replay = await replayByClientId(clientId, me, roomId)
+  if (replay) return replay
+
+  let posted: Awaited<ReturnType<typeof postChatMessage>>
+  try {
+    posted = await postChatMessage(
+      {
+        user: { id: me, name: session.user.name ?? "" },
+        roomId,
+        content,
+        taskId,
+        fileIds,
+        replyToId,
+        clientId,
+      },
+      // 글은 바로 돌려주고 AI 재구성은 응답 뒤에 — 화면은 GET /api/tasks/[taskId]/rebuild-status 로 끝을 안다
+      { deferRebuild: true },
+    )
+  } catch (err) {
+    return onClientIdRace(err, clientId, me, roomId)
+  }
+  const { message, taskUpdate, rebuild } = posted
   if (rebuild) {
     after(async () => {
       await runTaskRebuild(rebuild)

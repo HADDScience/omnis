@@ -32,7 +32,8 @@ export default async function MainLayout({
   // 최신 메시지 한 페이지를 가져와 화면 표시용 오름차순으로 정렬
   const recentMessages = await prisma.chatMessage.findMany({
     where: { roomId: "default-room" },
-    orderBy: { createdAt: "desc" },
+    // API 와 같은 순서 — 시각이 같으면 id(lib/chat-cursor.ts)
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: CHAT_PAGE_SIZE,
     include: {
       author: { select: { id: true, name: true } },
