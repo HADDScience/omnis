@@ -11,8 +11,13 @@ export const prisma = new PrismaClient()
 export const DATA_DIR = process.env.KAKAO_DATA_DIR ?? `${process.env.HOME}/work/omnis-import`
 
 export interface RawMessage { t: string; u: string; m: string }
-export interface RawRow extends RawMessage { room: string }
-export interface RawSession { id: string; room: string; start: string; end: string; n: number; msgs: RawMessage[] }
+/** src 가 "mobile" 이면 휴대폰 「대화 내보내기」 txt 에서 온 줄이다 — 시각이 분 단위라 초는 :00 이다. */
+export interface RawRow extends RawMessage { room: string; src?: "mobile" }
+export interface RawSession {
+  id: string; room: string; start: string; end: string; n: number; msgs: RawMessage[]
+  /** 뒷부분 세션의 바로 앞 메시지 — 이미 처리한 대화, 맥락으로만 준다(import-tools/structure-tail.ts) */
+  before?: RawMessage[]
+}
 export interface Classified {
   id: string; label: string; topic: string; project: string | null
   actionable?: boolean; uncertain?: boolean
@@ -101,6 +106,48 @@ export function parseKakaoCsv(path: string): RawRow[] {
 
 export const rowKey = (r: RawRow) => `${r.room}|${r.t}|${r.u}|${r.m}`
 
+/** 휴대폰 txt 와 PC CSV 를 견줄 때의 키 — 휴대폰은 분 단위라 초를 버리고, 줄바꿈·공백 차이를 접는다. */
+export const minuteKey = (r: RawRow) => `${r.room}|${r.t.slice(0, 16)}|${r.u}|${r.m.replace(/\s+/g, " ").trim()}`
+
+// ─── 휴대폰 「대화 내보내기」 txt ───────────────────────────
+//
+// PC CSV 는 PC 앱이 동기화하지 못한 기록을 빠뜨린다(수원대 기준 71건 — 2026-08-28 하루치 등, 2026-10-06 실측).
+// 휴대폰 txt 는 빠짐이 없지만 시각이 분 단위이고 자리표시가 한국어다. CSV 의 말로 바꿔 둔다
+// (같은 사람·같은 분의 줄을 맞대어 본 실측: 사진 ⇄ Photo 803 · 사진 N장 ⇄ N photos 156 · 이모티콘 ⇄ Emoticon 22 · 동영상 ⇄ Video 20).
+
+const MOBILE_HEAD = /^(\d{4})\. (\d{1,2})\. (\d{1,2})\. (\d{1,2}):(\d{2}), (.+?) : ([\s\S]*)$/
+const MOBILE_SYSTEM = /^\d{4}\. \d{1,2}\. \d{1,2}\. \d{1,2}:\d{2}: /
+const MOBILE_DAY = /^\d{4}년 \d{1,2}월 \d{1,2}일 .요일$/
+
+function mobileToCsvWords(m: string): string {
+  const deleted = m.match(/^([\s\S]*?)\s*메시지가 삭제되었습니다\.?$/)
+  if (deleted) return `${mobileToCsvWords(deleted[1])} The message has been deleted.`.trim()
+  if (m === "사진") return "Photo"
+  const n = m.match(/^사진 (\d+)장$/)
+  if (n) return `${n[1]} photos`
+  if (m === "동영상") return "Video"
+  if (m.trim() === "이모티콘") return "Emoticon"
+  if (m.startsWith("파일: ")) return `File: ${m.slice(4)}`
+  return m
+}
+
+/** 휴대폰 txt 한 파일을 메시지 배열로. 방 이름은 파일에 없어 받아야 한다. 시스템 알림(초대·퇴장)은 넣지 않는다. */
+export function parseKakaoMobileTxt(path: string, room: string): RawRow[] {
+  const text = readFileSync(path, "utf8").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n")
+  const out: RawRow[] = []
+  let open = false
+  for (const line of text.split("\n").slice(1)) {
+    const h = line.match(MOBILE_HEAD)
+    if (h) {
+      const t = `${h[1]}-${h[2].padStart(2, "0")}-${h[3].padStart(2, "0")} ${h[4].padStart(2, "0")}:${h[5]}:00`
+      out.push({ room, t, u: h[6], m: h[7], src: "mobile" })
+      open = true
+    } else if (MOBILE_SYSTEM.test(line) || MOBILE_DAY.test(line) || line.startsWith("저장한 날짜")) open = false
+    else if (open) out[out.length - 1].m += "\n" + line
+  }
+  return out.map((r) => ({ ...r, m: mobileToCsvWords(r.m.replace(/\n+$/, "")) }))
+}
+
 /** 원본 메시지 마스터. 지금까지 받은 모든 CSV 의 합집합이다. */
 const RAW_PATH = `${DATA_DIR}/raw/messages.json`
 
@@ -112,19 +159,84 @@ export function loadRawMessages(): RawRow[] {
   return rows
 }
 
-/** 새 CSV 를 마스터에 합친다. 이미 있는 메시지는 건너뛴다. */
-export function mergeRawMessages(incoming: RawRow[]): { all: RawRow[]; added: number } {
+/** 견주기 전에 지우는 것 — 삭제 표시, 멘션(휴대폰은 프로필 이름 · PC 는 방 이름이라 다르게 찍힌다), 공백. */
+function forCompare(m: string): string {
+  return m
+    .replace(/\s*(The message has been deleted\.|메시지가 삭제되었습니다\.?)\s*$/, "")
+    .replace(/@\S+(?: \([^)]*\))?/g, "")
+    .replace(/\s+/g, "")
+}
+function bigrams(s: string): Map<string, number> {
+  const out = new Map<string, number>()
+  for (let i = 0; i < s.length - 1; i++) { const b = s.slice(i, i + 2); out.set(b, (out.get(b) ?? 0) + 1) }
+  return out
+}
+
+/**
+ * 휴대폰 줄과 PC 줄이 같은 메시지인가 — 같은 사람 · ±1분 안이라는 전제에서 본문만 본다.
+ * 같은 메시지인데 글자가 다른 경우(2026-10-06 실측): 멘션 표기, 한쪽에만 붙은 삭제 표시, 나중에 고친 글.
+ * 삭제 표시·멘션·공백을 걷어낸 뒤 같거나, 8자 이상이 한쪽에 통째로 들어 있거나, 글자쌍 겹침(Dice)이 0.6 이상이면 같다.
+ * `Photo` 와 글처럼 전혀 다른 것은 같지 않다 — PC 가 빠뜨린 사진 옆 글은 그대로 들어온다.
+ */
+const PLACEHOLDER = /^(Photo|\d+ photos|Video|Emoticon|File: [\s\S]*)$/
+
+export function sameMessage(a: string, b: string): boolean {
+  const x = forCompare(a), y = forCompare(b)
+  if (x === y) return true
+  // 자리표시는 글자가 짧고 서로 닮아(Photo ⇄ 3 photos 의 Dice 가 0.6) 비슷함으로 견주면 연달아 보낸 사진이 하나로 합쳐진다.
+  if (PLACEHOLDER.test(a.trim()) || PLACEHOLDER.test(b.trim())) return false
+  if (x.length >= 8 && y.length >= 8 && (x.includes(y) || y.includes(x))) return true
+  if (x.length < 4 || y.length < 4) return false
+  const A = bigrams(x), B = bigrams(y)
+  let common = 0
+  for (const [k, n] of A) common += Math.min(n, B.get(k) ?? 0)
+  return (2 * common) / (x.length - 1 + y.length - 1) >= 0.6
+}
+
+/**
+ * 새 CSV · 휴대폰 txt 를 마스터에 합친다. 이미 있는 메시지는 건너뛴다.
+ *
+ * 휴대폰 줄은 분 단위라 키(rowKey)가 PC 줄과 다르다. 그래서 같은 방·분·사람·본문(minuteKey)의 개수로 먼저 견주고,
+ * 남은 것은 같은 사람 · ±1분 안에서 sameMessage 로 한 번 더 견준다. 한 줄은 한 번만 짝으로 쓴다.
+ *   - 휴대폰 줄: 마스터에 짝이 있으면 넣지 않는다 → PC 에 빠진 줄만 들어간다
+ *   - PC 줄: 마스터의 휴대폰 줄 중 짝이 남아 있으면 그 줄로 보고 넣지 않는다
+ *     → 휴대폰으로 먼저 채운 줄이 나중 PC CSV 에 초까지 붙어 와도 두 번 들어가지 않는다
+ */
+export function mergeRawMessages(incoming: RawRow[]): { all: RawRow[]; added: number; sameAsMobile: number } {
   const all = loadRawMessages()
   const seen = new Set(all.map(rowKey))
-  let added = 0
+  // 같은 방·사람의 줄을 minuteKey 와 분 단위로 묶어 둔다. used 는 이미 짝으로 쓴 마스터 줄 — 한 줄은 한 번만 짝이 된다.
+  const byMinute = new Map<string, RawRow[]>()
+  const bucket = new Map<string, RawRow[]>()
+  const bucketKey = (r: RawRow, shiftMin = 0) => {
+    const t = new Date(`${r.t.slice(0, 16).replace(" ", "T")}:00+09:00`).getTime() + shiftMin * 60000
+    return `${r.room}|${r.u}|${t}`
+  }
+  for (const r of all) {
+    const mk = minuteKey(r); byMinute.set(mk, [...(byMinute.get(mk) ?? []), r])
+    const bk = bucketKey(r); bucket.set(bk, [...(bucket.get(bk) ?? []), r])
+  }
+  const used = new Set<RawRow>()
+  const claim = (r: RawRow, want: (x: RawRow) => boolean) => {
+    const exact = (byMinute.get(minuteKey(r)) ?? []).find((x) => !used.has(x) && want(x))
+    if (exact) { used.add(exact); return true }
+    for (const d of [0, -1, 1]) for (const x of bucket.get(bucketKey(r, d)) ?? []) {
+      if (!used.has(x) && want(x) && sameMessage(r.m, x.m)) { used.add(x); return true }
+    }
+    return false
+  }
+  let added = 0, sameAsMobile = 0
   for (const r of incoming) {
     const k = rowKey(r)
     if (seen.has(k)) continue
+    if (r.src === "mobile") {
+      if (claim(r, () => true)) continue
+    } else if (claim(r, (x) => x.src === "mobile")) { sameAsMobile++; continue }
     seen.add(k); all.push(r); added++
   }
   all.sort((a, b) => (a.room === b.room ? a.t.localeCompare(b.t) : a.room.localeCompare(b.room)))
   writeJson(RAW_PATH, all)
-  return { all, added }
+  return { all, added, sameAsMobile }
 }
 
 /** 한 시간 넘게 조용하면 세션이 끊긴 것으로 본다 (처음 분석 때 정한 기준). */
@@ -178,15 +290,45 @@ export const SPEAKER_TO_USER: Record<string, string> = {
 /**
  * 이식할 방.
  *
- * 1:1 대화("윤훈 상무님" 등)는 제외한다 — ChatRoom 에 멤버십·접근 통제가 없어서
- * (roomId 만 알면 누구나 읽는다) 넣는 순간 사적인 대화가 전 구성원에게 공개된다.
+ * 1:1 대화("윤훈 상무님" 등)는 넣지 않는다 — 옮길지 정하지 않았다.
  */
-export const ROOMS: Record<string, { id: string; name: string }> = {
-  // 두 방을 한 방으로 합친다(사용자 결정 2026-09-04).
-  // 같은 사람들이 두 방을 오가며 일했으므로 시간순 한 흐름으로 읽는 편이 맞다.
+export interface ImportRoom {
+  id: string
+  name: string
+  /** 전사방(COMPANY)이 아니면 단톡방(GROUP) — 참여자만 읽고, 사내 검색 색인 · 사진 설명에 넣지 않는다 */
+  kind: "COMPANY" | "GROUP"
+  /** 단톡방 참여자의 옴니스 정식 이름 */
+  members?: string[]
+}
+
+export const ROOMS: Record<string, ImportRoom> = {
   // id 가 default-room 인 것은 채팅 독이 그 방을 열기 때문이다.
-  "하드사이언스 인턴방": { id: "default-room", name: "하드사이언스" },
-  "HADD-수원대": { id: "default-room", name: "하드사이언스" },
+  "HADD-수원대": { id: "default-room", name: "하드사이언스", kind: "COMPANY" },
+  // 인턴방은 따로 둔다(사용자 결정 2026-10-30). 옴니스로 넘어오면 톡방이 나뉘므로 카톡 방을 그대로 옮긴다.
+  // 2026-09-04 부터 두 방을 전사방 한 흐름으로 합쳐 왔다 — 이미 들어간 글은 import-tools/split-intern-room.ts 가 옮긴다.
+  // 이미 만든 업무 카드와의 연결은 그대로 둔다(사용자 결정) — 업무 화면에서는 그 글이 계속 보인다.
+  "하드사이언스 인턴방": { id: "kakao-intern-room", name: "인턴방", kind: "GROUP", members: ["정우창", "노혜린", "김아리"] },
+}
+
+/** 방을 만들고 단톡방이면 참여자를 맞춘다. 멱등 — 이미 있으면 참여자만 채운다 */
+export async function ensureRooms(): Promise<void> {
+  for (const room of Object.values(ROOMS)) {
+    await prisma.chatRoom.upsert({ where: { id: room.id }, update: {}, create: { id: room.id, name: room.name, kind: room.kind } })
+    for (const name of room.members ?? []) {
+      const user = await prisma.user.findUnique({ where: { name }, select: { id: true } })
+      if (!user) throw new Error(`${room.name} 참여자 「${name}」 이 옴니스에 없다. 중단.`)
+      await prisma.chatRoomMember.upsert({ where: { roomId_userId: { roomId: room.id, userId: user.id } }, update: {}, create: { roomId: room.id, userId: user.id } })
+    }
+  }
+}
+
+/** 단톡방 목록은 lastMessageAt 으로 정렬한다 — 이식한 글의 마지막 시각으로 맞춘다 */
+export async function touchRooms(): Promise<void> {
+  for (const room of Object.values(ROOMS)) {
+    if (room.kind === "COMPANY") continue
+    const last = await prisma.chatMessage.findFirst({ where: { roomId: room.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } })
+    if (last) await prisma.chatRoom.update({ where: { id: room.id }, data: { lastMessageAt: last.createdAt } })
+  }
 }
 
 /** 지시자·수행자 구분. 담당자 추정에 쓴다. */
@@ -246,6 +388,9 @@ export function askClaude(prompt: string, opts: { model: string; timeoutMs?: num
     const env = { ...process.env }
     // 이 CLI 를 Claude Code 안에서 돌리면 CLAUDECODE 가 물려받아 중첩 실행을 막는다.
     delete env.CLAUDECODE
+    // .env 의 ANTHROPIC_API_KEY(앱용)가 넘어가면 CLI 가 로그인 대신 그 키로 과금한다 — 잔액이 떨어지면
+    // "Credit balance is too low" 로 분류·구조화가 멈췄다(2026-10-13). 이 CLI 는 claude.ai 로그인으로 돈다.
+    delete env.ANTHROPIC_API_KEY
     const child = execFile(
       "claude",
       ["-p", "--output-format", "json", "--model", opts.model],

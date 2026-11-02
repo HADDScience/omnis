@@ -14,6 +14,22 @@ npm run kakao -- <csv...> --target prod      # 프로덕션(Neon). 먼저 로컬
 옵션: `--no-structure` (카드 안 만듦) · `--no-embed` (색인 안 함) · `--workers N` (분류 동시 수, 기본 4) ·
 `--classify-model` (기본 sonnet) · `--structure-model` (기본 opus)
 
+## 계속 받기 — `kakao-sync.py`
+
+카톡 Mac 앱을 조작해 CSV 내보내기와 새 사진 받기를 하고 `kakao.ts` 를 부른다. 사람 손이 필요 없다.
+
+```bash
+python3 import-tools/kakao-sync.py --no-import           # 받기만 (처음 한 번은 기준점만 적는다)
+python3 import-tools/kakao-sync.py --target prod --when-idle 10   # 10분 넘게 입력이 없을 때만 돌고 프로덕션에 이식
+```
+
+- 사진은 서랍 「사진/동영상」 에서 **지난 실행 이후 늘어난 만큼** 위에서부터 받는다. 보관함 항목에는 날짜가 없어서
+  보관함 개수와 CSV 사진 자리표시 개수의 증가분을 최신순으로 짝짓는다. 둘이 어긋나면 받지 않고 기준점을 다시 잡는다.
+  상태는 `KAKAO_DATA_DIR/sync/state.json`, 받은 파일은 `sync/<방>/media/`.
+- 과거 사진(기준점 이전)은 받지 않는다. 보관함(인턴방 715)과 CSV 자리표시(798)가 만료·삭제로 어긋나 순서로 짝지을 수 없다.
+  과거분은 휴대폰 「대화 내보내기」 zip 으로 붙인다.
+- 체크박스 클릭만 실제 마우스를 쓴다. 그 사이 마우스가 움직이면 멈춘다. 실행 주체에 「손쉬운 사용」 권한이 있어야 한다.
+
 ## 단계
 
 | | 단계 | 무엇을 | 어떻게 |
@@ -21,11 +37,12 @@ npm run kakao -- <csv...> --target prod      # 프로덕션(Neon). 먼저 로컬
 | 1 | 수집 | CSV → 메시지 마스터에 합침 → 세션(1시간 공백 기준) | `steps/ingest.ts` |
 | 2 | 분류 | 새 세션을 업무·정보공유·잡담·빈껍데기로 | `claude -p` **병렬** — 세션끼리 독립 |
 | 3 | 메시지 | 전량 `ChatMessage` 로 (잡담도 — 맥락이 있어야 업무가 읽힌다) | `createMany skipDuplicates` |
-| 4 | 구조화 | 업무·실행가능 세션 → 업무 카드 + 체크리스트 + 메시지 연결 | `claude -p` **순차** 40개씩 |
+| 4 | 구조화 | 업무·실행가능 세션 → 업무 카드 + 체크리스트 + 메시지 연결. 세션 하나에서 업무 여럿, 카드에는 Claude 가 고른 메시지만 | `claude -p` **순차** 40개씩 |
 | 5 | 첨부 | `File: 이름` 은 이름으로, `Photo` 는 파일명의 시각으로 짝 맞춰 NAS 업로드 | `--media` 있을 때만 |
-| 6 | 임베딩 | 새 업무·메시지를 옴니스 AI 색인에 | Gemini 100건씩 묶어 호출 |
+| 6 | 사진 설명 | 이번 CSV 의 전사방 사진을 글로 설명. 실패는 건너뛰고 보고, 다음 실행에서 이어 한다 | `codex exec` → 한도면 `claude -p` (구독) |
+| 7 | 임베딩 | 색인이 없거나 바뀐 업무·메시지·사진을 옴니스 AI 색인에 | Gemini 100건씩 묶어 호출 |
 
-AI 는 2·4단계에서만 쓰고 **Claude** 다. 앱의 Gemini 는 무료 티어(하루 500호출)라
+AI 는 2·4·6단계에서 쓰고 구독(Claude · 사진은 Codex 먼저)이다. 앱의 Gemini 는 무료 티어(하루 500호출)라
 실서비스 몫으로 남겨 둔다. 이 CLI 는 `claude` CLI 가 설치된 곳에서 돈다.
 
 ### 왜 4단계는 순차인가
@@ -42,7 +59,7 @@ N 라운드는 1..N-1 이 만든 프로젝트·업무를 맥락으로 받는다.
 |---|---|
 | 메시지 | `ChatMessage.sourceId = kakao:<sha1(방|시각|작성자|본문)>` 유니크 |
 | 분류 | `KAKAO_DATA_DIR/final.json` 에 세션 id 가 있는가 |
-| 구조화 | `Task.sourceId = kakao-task:<세션id>` 유니크 |
+| 구조화 | `Task.sourceId = kakao-task:<세션id>` 유니크. 한 세션의 두 번째 업무부터 `#1`, `#2` … 구조화한 뒤 세션에 메시지가 늘면 늘어난 부분만 `<세션id>@<시작 번호>` 로 다시 구조화한다 |
 | 첨부 | 그 메시지에 같은 이름의 `File` 이 있는가 |
 | 임베딩 | `EmbeddingChunk` 에 있고 contentHash 가 같은가 |
 

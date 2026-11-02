@@ -170,6 +170,8 @@ async function buildChatMessageChunks(
   if (!msg) return null
   // 사내 지식은 전사방 글만 — 옴니스 1:1 · 단톡 글은 그 방 사람만 읽는다. 색인에 넣으면 남의 검색에 걸린다
   if (msg.room.kind !== "COMPANY") return null
+  // 지운 글은 본문이 남아 있어도 색인하지 않는다 — 백필이 다시 실으면 지운 말이 검색에 되살아난다.
+  if (msg.deletedAt) return null
 
   const text = msg.content.trim()
   // 시스템 메시지·플레이스홀더·짧은 잡담 제외
