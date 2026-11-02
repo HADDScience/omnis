@@ -13,7 +13,11 @@ export const DATA_DIR = process.env.KAKAO_DATA_DIR ?? `${process.env.HOME}/work/
 export interface RawMessage { t: string; u: string; m: string }
 /** src 가 "mobile" 이면 휴대폰 「대화 내보내기」 txt 에서 온 줄이다 — 시각이 분 단위라 초는 :00 이다. */
 export interface RawRow extends RawMessage { room: string; src?: "mobile" }
-export interface RawSession { id: string; room: string; start: string; end: string; n: number; msgs: RawMessage[] }
+export interface RawSession {
+  id: string; room: string; start: string; end: string; n: number; msgs: RawMessage[]
+  /** 뒷부분 세션의 바로 앞 메시지 — 이미 처리한 대화, 맥락으로만 준다(import-tools/structure-tail.ts) */
+  before?: RawMessage[]
+}
 export interface Classified {
   id: string; label: string; topic: string; project: string | null
   actionable?: boolean; uncertain?: boolean

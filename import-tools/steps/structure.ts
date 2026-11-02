@@ -10,6 +10,7 @@ import {
   prisma, DATA_DIR, ROOMS, SPEAKER_TO_USER, askClaude, loadClassified, messageSourceId, normalizeProjectName,
   parseJsonArray, parseKst, resolveUsers, pad2, type RawSession,
 } from "../kakao-common"
+import { pickMessages, tailSession } from "../structure-tail"
 
 const SIZE = 40
 const DIR = `${DATA_DIR}/structure`
@@ -157,11 +158,7 @@ export async function pendingForStructure(sessions: RawSession[], cache = loadDr
   const work = sessions.filter((s) => ROOMS[s.room] && classified.get(s.id)?.label === "업무" && classified.get(s.id)?.actionable === true)
   const tails = work
     .filter((s) => (seen.get(s.id) ?? 0) > 0 && s.msgs.length > seen.get(s.id)!)
-    .map((s) => {
-      const from = seen.get(s.id)!
-      const msgs = s.msgs.slice(from)
-      return { ...s, id: `${s.id}@${from}`, start: msgs[0].t, n: msgs.length, msgs }
-    })
+    .map((s) => tailSession(s, seen.get(s.id)!))
   const candidates = work.filter((s) => !seen.has(s.id) && !done.has(s.id))
   const linked = new Set(
     (await prisma.chatMessage.findMany({ where: { sourceId: { in: candidates.flatMap(sessionMessageIds) }, taskId: { not: null } }, select: { sourceId: true } }))
@@ -205,21 +202,10 @@ export async function buildPayload(round: number, totalRounds: number, chunk: Ra
     },
     sessions: chunk.map((s) => ({
       id: s.id, start: s.start,
+      ...(s.before?.length ? { before: s.before.map((m, k) => ({ i: k - s.before!.length, t: m.t.slice(5, 16), u: SPEAKER_TO_USER[m.u] ?? m.u, m: m.m })) } : {}),
       messages: s.msgs.map((m, i) => ({ i, t: m.t.slice(5, 16), u: SPEAKER_TO_USER[m.u] ?? m.u, m: m.m })),
     })),
   }
-}
-
-/**
- * 업무가 고른 메시지. 번호가 없으면 세션 전체(예전 캐시), 있으면 범위 안의 것만 시간순으로.
- * 세션 안에서 업무 이야기와 잡담·다른 일이 1~2분 간격으로 섞이므로 세션을 통째로 붙이면 안 된다.
- */
-function pickMessages(d: Draft, s: RawSession) {
-  if (!Array.isArray(d.messages)) return s.msgs
-  return [...new Set(d.messages)]
-    .filter((i) => Number.isInteger(i) && i >= 0 && i < s.msgs.length)
-    .sort((a, b) => a - b)
-    .map((i) => s.msgs[i])
 }
 
 async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
