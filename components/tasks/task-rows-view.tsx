@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { TaskCard, type TaskCardData } from "./task-card"
+import { AssignTaskMenu } from "./assign-task-menu"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Search01Icon, CheckListIcon } from "@hugeicons/core-free-icons"
 
@@ -13,6 +14,10 @@ import { Search01Icon, CheckListIcon } from "@hugeicons/core-free-icons"
 
 interface TaskRowsViewProps {
   tasks: TaskCardData[]
+  /** 담당 미배정 줄에 「담당 지정」 을 띄울 사람들. 없으면 단추를 그리지 않는다 */
+  members?: { id: string; name: string }[]
+  /** 받은 순서를 지킨다 — 담당 미배정 보기는 마감순으로 받는다 */
+  keepOrder?: boolean
 }
 
 const STATUS_ORDER: Record<string, number> = {
@@ -22,7 +27,7 @@ const STATUS_ORDER: Record<string, number> = {
   DONE: 3,
 }
 
-export function TaskRowsView({ tasks }: TaskRowsViewProps) {
+export function TaskRowsView({ tasks, members, keepOrder = false }: TaskRowsViewProps) {
   const [query, setQuery] = useState("")
 
   const filtered = useMemo(() => {
@@ -37,6 +42,7 @@ export function TaskRowsView({ tasks }: TaskRowsViewProps) {
             (t.productName ?? "").toLowerCase().includes(q),
         )
       : tasks
+    if (keepOrder) return list
     // 상태 우선순위 → 마감일 가까운 순
     return [...list].sort((a, b) => {
       const sa = STATUS_ORDER[a.status] ?? 9
@@ -46,7 +52,7 @@ export function TaskRowsView({ tasks }: TaskRowsViewProps) {
       const db = b.deadline ? new Date(b.deadline).getTime() : Infinity
       return da - db
     })
-  }, [tasks, query])
+  }, [tasks, query, keepOrder])
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -74,7 +80,10 @@ export function TaskRowsView({ tasks }: TaskRowsViewProps) {
       ) : (
         <div className="flex flex-col gap-1.5">
           {filtered.map((t) => (
-            <TaskCard key={t.id} task={t} variant="list" />
+            <div key={t.id} className="flex items-center gap-1.5">
+              <TaskCard task={t} variant="list" className="min-w-0 flex-1" />
+              {t.unassigned && members && <AssignTaskMenu taskId={t.id} taskName={t.name} members={members} />}
+            </div>
           ))}
         </div>
       )}

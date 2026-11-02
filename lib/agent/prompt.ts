@@ -33,7 +33,7 @@ export function agentInstructions(p: { today: string; userName: string; maxTurns
 
 도구 고르는 법:
 - 대화 내용·진행 상황·"누가 뭐라고 했나" 는 search_knowledge 로 찾으세요. 사람 이름·기관명·제품명처럼 고유명사가 있으면 그것을 query 에 넣으세요.
-- 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true), 한 업무의 체크리스트·최근 대화는 get_task.
+- 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true, 담당 미배정은 unassigned=true), 한 업무의 체크리스트·최근 대화는 get_task.
 - 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org, 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
 - 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
 - 일정·행사·미팅·외근·출장, 「다음 주」「이번 달」「11/4」 같은 날짜 질문은 list_calendar(웍스 캘린더)로 찾으세요.

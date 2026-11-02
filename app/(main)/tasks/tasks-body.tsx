@@ -12,6 +12,7 @@ import type { WorkspaceViewProps } from "./overview/workspace-view"
 import { TasksFilterMenu } from "./tasks-filter-menu"
 import { FilterLink, useTasksFilter } from "./filter-link"
 import { FILTER_LABEL } from "./filters"
+import { byDeadlineFirst } from "@/lib/task-unassigned"
 
 /** 업무 한 건 + 필터가 보는 값. 「오늘 마감」 은 서버 시계로 미리 잰다 */
 export interface FilterableTask {
@@ -58,13 +59,20 @@ export function TasksBody({ tasks, members, currentUserId, products, projects, t
             return t.dueToday
           case "stalled":
             return t.stalled
+          case "unassigned":
+            return t.card.unassigned === true
           default:
             return true
         }
       }),
     [tasks, filter, assignee, currentUserId]
   )
-  const cards = useMemo(() => filtered.map((t) => t.card), [filtered])
+  // 담당 미배정은 마감 지남 · 임박부터 — 묻힌 것 중 급한 것을 먼저 지정하게 한다
+  const unassignedView = filter === "unassigned"
+  const cards = useMemo(() => {
+    const list = filtered.map((t) => t.card)
+    return unassignedView ? list.sort(byDeadlineFirst) : list
+  }, [filtered, unassignedView])
   const boardTasks = useMemo<KanbanTask[]>(
     () =>
       cards.map((t) => ({
@@ -73,6 +81,7 @@ export function TasksBody({ tasks, members, currentUserId, products, projects, t
         name: t.name,
         status: t.status as KanbanTask["status"],
         ownerName: t.ownerName,
+        unassigned: t.unassigned,
         projectName: t.projectName,
         productName: t.productName,
         productColor: t.productColor,
@@ -90,7 +99,7 @@ export function TasksBody({ tasks, members, currentUserId, products, projects, t
   return (
     <TasksViews
       boardTasks={boardTasks}
-      listSlot={<TaskRowsView tasks={cards} />}
+      listSlot={<TaskRowsView tasks={cards} members={members} keepOrder={unassignedView} />}
       workspace={{ products, projects, tasks: workspaceTasks }}
       toolbarStart={
         <>
