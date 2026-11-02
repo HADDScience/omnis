@@ -1,5 +1,6 @@
 "use client"
 
+import { UNASSIGNED_LABEL } from "@/lib/task-unassigned"
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -37,6 +38,8 @@ export interface KanbanTask {
   name: string
   status: Status
   ownerName: string | null
+  /** 미완료인데 담당자가 없다 — lib/task-unassigned.ts */
+  unassigned?: boolean
   projectName: string | null
   /** 1-hop project.product (CLAUDE.md 규칙 21) */
   productName: string | null
@@ -130,6 +133,11 @@ function TaskCard({ task }: { task: KanbanTask }) {
       </Link>
       <div className="mt-1 truncate text-[10.5px] text-muted-foreground">#{task.slug}</div>
       <div className="mt-2 flex items-center gap-1.5">
+        {task.unassigned && (
+          <Badge variant="outline" className="h-5 shrink-0 border-destructive/40 px-1.5 text-[10px] text-destructive">
+            {UNASSIGNED_LABEL}
+          </Badge>
+        )}
         {task.ownerName && (
           <Avatar className="h-5 w-5 shrink-0">
             <AvatarFallback className="text-[9px]">{task.ownerName.charAt(0)}</AvatarFallback>

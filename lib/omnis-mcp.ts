@@ -12,6 +12,7 @@
 // 권한
 //  Omnis 계정이 살아 있으면 누구나 붙는다. 지식재산권 도구만 ip.members 로 한 번 더 건다.
 //  Prisma 는 DB 소유자로 붙으므로 이 파일이 곧 권한 경계다.
+import { listTasksWhere } from "@/lib/task-unassigned"
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
 
 import { prisma } from "@/lib/db"
@@ -149,7 +150,7 @@ export const OMNIS_TOOLS = [
   {
     name: "list_tasks",
     description:
-      "업무 목록. 상태·담당자·프로젝트·이름으로 거른다. mine=true 면 내가 담당인 것만, overdue=true 면 마감이 지난 미완료만. 결과는 최근 만든 순.",
+      "업무 목록. 상태·담당자·프로젝트·이름으로 거른다. mine=true 면 내가 담당인 것만, overdue=true 면 마감이 지난 미완료만, unassigned=true 면 담당자가 없는 미완료만(마감 빠른 순). 그 밖의 결과는 최근 만든 순.",
     inputSchema: {
       type: "object",
       properties: {
@@ -159,6 +160,7 @@ export const OMNIS_TOOLS = [
         query: { type: "string", description: "업무 이름·배경에 포함된 말" },
         mine: { type: "boolean" },
         overdue: { type: "boolean" },
+        unassigned: { type: "boolean", description: "담당 미배정(담당 0명 · 미완료)만. mine · assignee · status=DONE 과 함께 쓸 수 없다" },
         limit: { type: "integer", description: "기본 50, 최대 200" },
       },
     },
@@ -825,22 +827,31 @@ export async function runTool(
     }
 
     case "list_tasks": {
-      const where: Record<string, unknown> = { archived: false }
       const status = str(args.status)
-      if (status && (TASK_STATUS as readonly string[]).includes(status)) where.status = status
-      if (args.mine === true) where.assignees = { some: { userId: caller.userId } }
-      else if (str(args.assignee)) where.assignees = { some: { user: { name: { contains: str(args.assignee) } } } }
-      if (str(args.project)) where.project = { name: { contains: str(args.project), mode: "insensitive" } }
-      if (str(args.query)) {
-        where.OR = [
-          { name: { contains: str(args.query), mode: "insensitive" } },
-          { background: { contains: str(args.query), mode: "insensitive" } },
-        ]
-      }
-      if (args.overdue === true) { where.status = { not: "DONE" }; where.deadline = { lt: new Date() } }
+      const unassigned = args.unassigned === true
+      const built = listTasksWhere(
+        {
+          status: status && (TASK_STATUS as readonly string[]).includes(status) ? status : undefined,
+          mine: args.mine === true,
+          assignee: str(args.assignee) || undefined,
+          project: str(args.project) || undefined,
+          query: str(args.query) || undefined,
+          overdue: args.overdue === true,
+          unassigned,
+        },
+        caller.userId,
+      )
+      if ("error" in built) return built
+      const { where } = built
       const limit = clampInt(args.limit, 50, 200)
       const [rows, total] = await Promise.all([
-        prisma.task.findMany({ where, select: TASK_SELECT, orderBy: { createdAt: "desc" }, take: limit }),
+        prisma.task.findMany({
+          where,
+          select: TASK_SELECT,
+          // 담당 미배정은 급한 것부터 — 묻힌 업무를 찾는 조회다
+          orderBy: unassigned ? [{ deadline: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }] : { createdAt: "desc" },
+          take: limit,
+        }),
         prisma.task.count({ where }),
       ])
       if (rows.length === 0) return { text: "조건에 맞는 업무가 없습니다." }

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import { startOfMonth, startOfWeek } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Alert02Icon, ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { Alert02Icon, ArrowDown01Icon, ArrowRight01Icon, UserQuestion01Icon } from "@hugeicons/core-free-icons"
 import { Progress } from "@/components/ui/progress"
 import {
   DropdownMenu,
@@ -22,6 +22,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { UNASSIGNED_LABEL } from "@/lib/task-unassigned"
 import { cn } from "@/lib/utils"
 import { FilterLink, useTasksFilter } from "../filter-link"
 import { TasksOverviewSheet, type TasksOverviewSheetProps } from "./tasks-overview-sheet"
@@ -48,6 +49,7 @@ interface MemberChip {
 interface TasksStatusBandProps extends TasksOverviewSheetProps {
   tasksForProgress: ProgressTask[]
   stalledCount: number
+  unassignedCount: number
   members: MemberChip[]
 }
 
@@ -64,6 +66,7 @@ const CHIP =
 export function TasksStatusBand({
   tasksForProgress,
   stalledCount,
+  unassignedCount,
   members,
   ...sheet
 }: TasksStatusBandProps) {
@@ -91,6 +94,7 @@ export function TasksStatusBand({
   }, [period, tasksForProgress])
 
   const stalledActive = activeFilter === "stalled"
+  const unassignedActive = activeFilter === "unassigned"
 
   return (
     <div className="flex shrink-0 items-center gap-2 border-b bg-background px-4 py-1.5 [@media(pointer:coarse)]:py-0">
@@ -142,6 +146,7 @@ export function TasksStatusBand({
           title="확인 안 함 · 3일째 진행 중 · 완료 확인 대기"
           className={cn(
             CHIP,
+            "max-sm:-order-1",
             stalledCount > 0
               ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-900"
               : "bg-card text-muted-foreground hover:bg-muted",
@@ -151,6 +156,25 @@ export function TasksStatusBand({
           <HugeiconsIcon icon={Alert02Icon} size={13} aria-hidden />
           멈춤
           <span className="tabular-nums">{stalledCount}</span>
+        </FilterLink>
+
+        <FilterLink
+          href={unassignedActive ? "/tasks" : "/tasks?filter=unassigned"}
+          aria-current={unassignedActive ? "true" : undefined}
+          title="미완료인데 담당자가 없는 업무 — 알림도 담당자별 화면도 닿지 않습니다"
+          className={cn(
+            CHIP,
+            // 폰은 줄이 좁아 뒤에 두면 숫자가 잘린다 — 챙길 칩 둘을 진행률 앞으로 올린다. PC 순서는 그대로
+            "max-sm:-order-2",
+            unassignedCount > 0
+              ? "border-destructive/40 bg-destructive/5 text-destructive hover:bg-destructive/10"
+              : "bg-card text-muted-foreground hover:bg-muted",
+            unassignedActive && "ring-2 ring-destructive/40"
+          )}
+        >
+          <HugeiconsIcon icon={UserQuestion01Icon} size={13} aria-hidden />
+          {UNASSIGNED_LABEL}
+          <span className="tabular-nums">{unassignedCount}</span>
         </FilterLink>
 
         {members.map((m) => {
