@@ -7,7 +7,7 @@
 //   npm run kakao -- <csv...> --dry                          쓰지 않고 무엇을 할지만 본다
 //   npm run kakao -- <csv...> --target prod                  프로덕션(Neon)에 적용
 //
-// 단계: 수집 → 분류(Claude 병렬) → 메시지 → 구조화(Claude 순차) → 첨부 → 사진 설명(Claude 구독) → 임베딩
+// 단계: 수집 → 분류(Claude 병렬) → 메시지 → 구조화(Claude 순차) → 첨부 → 사진 설명(Codex·Claude 구독) → 임베딩
 // 모든 단계가 멱등이다. 같은 CSV 를 두 번 주면 두 번째는 아무것도 하지 않는다.
 // 중간에 끊기면 다시 돌리면 이어진다 — 각 단계가 "아직 안 된 것" 만 고르기 때문이다.
 //
@@ -93,7 +93,7 @@ async function main() {
   if (args.media) await attachMedia(sessions.filter((x) => x.room === mediaRoom), args.media, { dry: args.dry })
   else console.log("  --media 가 없어 건너뜀 (카톡 채팅방 서랍에서 저장한 폴더를 주면 붙는다)")
 
-  step(6, "사진 설명 — Claude 구독")
+  step(6, "사진 설명 — Codex·Claude 구독")
   const photoIds = await describeImportedPhotos(args.csv, { dry: args.dry, workers: args.workers })
 
   step(7, "임베딩 — 옴니스 AI 색인")

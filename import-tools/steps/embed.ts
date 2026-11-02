@@ -53,8 +53,17 @@ export async function embed(opts: { dry: boolean; photoIds?: string[] }) {
   })
   console.log(`\r  메시지 — 새로 ${m.embedded} · 그대로 ${m.unchanged} · 제거 ${m.removed}`)
 
-  const p = await syncEmbeddingsBatch("PHOTO", opts.photoIds ?? [], {
-    onProgress: (d, n) => process.stdout.write(`\r  사진 ${d}/${n}`),
-  })
-  console.log(`\r  사진 — 새로 ${p.embedded} · 그대로 ${p.unchanged} · 제거 ${p.removed}`)
+  // 사진도 설명이 있는데 색인이 없는 것만. 실패해도 이식은 끝난다 — 다음 실행에서 다시 고른다
+  const photoIds = opts.photoIds ?? []
+  const indexed = new Set((await prisma.embeddingChunk.findMany({ where: { source: "PHOTO", sourceId: { in: photoIds } }, select: { sourceId: true } })).map((c) => c.sourceId))
+  const described = await prisma.file.findMany({ where: { id: { in: photoIds }, describedAt: { not: null } }, select: { id: true } })
+  const photos = described.map((f) => f.id).filter((id) => reembedAll || !indexed.has(id))
+  try {
+    const p = await syncEmbeddingsBatch("PHOTO", photos, {
+      onProgress: (d, n) => process.stdout.write(`\r  사진 ${d}/${n}`),
+    })
+    console.log(`\r  사진 — 새로 ${p.embedded} · 그대로 ${p.unchanged} · 제거 ${p.removed}`)
+  } catch (e) {
+    console.log(`\r  ✗ 사진 색인 ${photos.length}장 실패 — ${(e as Error).message.split("\n")[0].slice(0, 160)}`)
+  }
 }

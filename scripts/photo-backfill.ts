@@ -116,7 +116,7 @@ async function main() {
 async function reindexMissing() {
   const { prisma } = await import("../lib/db")
   const { syncEmbeddingsBatch } = await import("../lib/embeddings")
-  const described = await prisma.file.findMany({ where: { describedAt: { not: null } }, select: { id: true } })
+  const described = await prisma.file.findMany({ where: { describedAt: { not: null }, message: { deletedAt: null, room: { kind: "COMPANY" } } }, select: { id: true } })
   const indexed = new Set((await prisma.embeddingChunk.findMany({ where: { source: "PHOTO" }, select: { sourceId: true } })).map((c) => c.sourceId))
   const missing = described.filter((f) => !indexed.has(f.id))
   if (missing.length === 0) return

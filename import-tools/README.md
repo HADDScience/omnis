@@ -39,9 +39,10 @@ python3 import-tools/kakao-sync.py --target prod --when-idle 10   # 10분 넘게
 | 3 | 메시지 | 전량 `ChatMessage` 로 (잡담도 — 맥락이 있어야 업무가 읽힌다) | `createMany skipDuplicates` |
 | 4 | 구조화 | 업무·실행가능 세션 → 업무 카드 + 체크리스트 + 메시지 연결. 세션 하나에서 업무 여럿, 카드에는 Claude 가 고른 메시지만 | `claude -p` **순차** 40개씩 |
 | 5 | 첨부 | `File: 이름` 은 이름으로, `Photo` 는 파일명의 시각으로 짝 맞춰 NAS 업로드 | `--media` 있을 때만 |
-| 6 | 임베딩 | 새 업무·메시지를 옴니스 AI 색인에 | Gemini 100건씩 묶어 호출 |
+| 6 | 사진 설명 | 이번 CSV 의 전사방 사진을 글로 설명. 실패는 건너뛰고 보고, 다음 실행에서 이어 한다 | `codex exec` → 한도면 `claude -p` (구독) |
+| 7 | 임베딩 | 색인이 없거나 바뀐 업무·메시지·사진을 옴니스 AI 색인에 | Gemini 100건씩 묶어 호출 |
 
-AI 는 2·4단계에서만 쓰고 **Claude** 다. 앱의 Gemini 는 무료 티어(하루 500호출)라
+AI 는 2·4·6단계에서 쓰고 구독(Claude · 사진은 Codex 먼저)이다. 앱의 Gemini 는 무료 티어(하루 500호출)라
 실서비스 몫으로 남겨 둔다. 이 CLI 는 `claude` CLI 가 설치된 곳에서 돈다.
 
 ### 왜 4단계는 순차인가
