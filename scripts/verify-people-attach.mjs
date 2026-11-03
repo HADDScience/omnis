@@ -49,7 +49,7 @@ let fileHref = null
   await page.screenshot({ path: `${OUT}/people-2-chip.png` })
   await page.getByLabel("메시지 입력").fill(text)
   const posted = page.waitForResponse((r) => r.url().endsWith("/api/chat/messages") && r.request().method() === "POST")
-  await page.getByRole("button", { name: "메시지 전송" }).click()
+  await page.getByRole("button", { name: "보내기" }).click()
   const res = await posted
   const body = await res.json()
   ok(res.status() === 201 && body.files?.length === 1, `보냈다 201 · 첨부 ${body.files?.length}`)

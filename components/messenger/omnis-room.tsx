@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowDown01Icon, ArrowUp01Icon, BubbleChatSparkIcon, Refresh01Icon } from "@hugeicons/core-free-icons"
+import { ArrowDown01Icon, BubbleChatSparkIcon, Refresh01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
@@ -17,7 +17,6 @@ import { cn } from "@/lib/utils"
 import type { OmnisRoomMessage } from "@/lib/omnis-room"
 import type { AgentCard as AgentCardData, AgentRoomState } from "@/lib/agent/service"
 import type { ToolUse } from "@/lib/agent/tool-trail"
-import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
 import { answeredAfter, mergeLatest, prependOlder, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
 import { isStuckToBottom, prependScrollDelta } from "@/lib/agent/scroll-follow"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
@@ -29,7 +28,8 @@ import { ToolTrail } from "./tool-trail"
 import { RoomHeader } from "./room-header"
 import { RoomMuteButton } from "./room-mute-button"
 import { useChatUserId, useRoomListReload } from "./messenger-shell"
-import { AttachButton, AttachChips, useOmnisAttachments, type PickedFile } from "./omnis-attach"
+import { AttachChips, ComposerPlus, RoomComposer, type PickedFile } from "@/components/chat/room-composer"
+import { useOmnisAttachments } from "./omnis-attach"
 import { IS_DEMO } from "@/lib/demo"
 
 const EXAMPLES = [
@@ -670,7 +670,6 @@ export function OmnisRoom({
         stopping={stopping}
         autoFocus={isNew}
         waitingCard={waitingCard}
-        compact={!!embedded}
         attach={IS_DEMO ? undefined : { items: attach.items, onFiles: attach.addFiles, onNas: attach.addNas, onRemove: attach.remove }}
       />
     </div>
@@ -837,7 +836,6 @@ export function Composer({
   stopping = false,
   autoFocus,
   waitingCard,
-  compact = false,
   attach,
 }: {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
@@ -851,9 +849,7 @@ export function Composer({
   stopping?: boolean
   autoFocus: boolean
   waitingCard: boolean
-  /** 오른쪽 패널 안 — 좁은 칸이라 여백을 줄인다 */
-  compact?: boolean
-  /** 알약 안 왼쪽 ＋(첨부)와 입력창 위 칩. 없으면(온보딩 시연 · 데모) 예전처럼 ＋ 가 없다 */
+  /** 알약 안 왼쪽 ＋(첨부)와 입력창 위 칩. 없으면(온보딩 시연 · 데모) ＋ 가 없다 */
   attach?: {
     items: PickedFile[]
     onFiles: (files: File[]) => void
@@ -861,105 +857,31 @@ export function Composer({
     onRemove: (key: string) => void
   }
 }) {
-  // 내용만큼 늘린다 — 6줄을 넘으면 안에서 민다
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-  }, [value, textareaRef])
-
-  const tooLong = value.length > OMNIS_MESSAGE_MAX
   const items = attach?.items ?? []
   const attachReady = items.length > 0 && items.every((i) => i.status === "done")
   // 파일만 붙여도 보낼 수 있다. 올리는 중 · 실패한 파일이 있으면 기다린다(칩에 상태가 보인다)
-  const canSend = !busy && (value.trim().length >= 2 || attachReady) && !tooLong && items.every((i) => i.status === "done")
-  const [dragging, setDragging] = useState(false)
+  const canSend = !busy && (value.trim().length >= 2 || attachReady) && value.length <= OMNIS_MESSAGE_MAX && items.every((i) => i.status === "done")
 
+  // 공통 입력창에 자동완성을 넘기지 않는다 — 여기서 친 `/업무` · `@이름` · `#업무` 는 옴니스에게 가는 그냥 글이다(업무 재구성으로 가지 않는다)
   return (
-    <div
-      className={cn("shrink-0 border-t bg-background pb-3 pt-2", compact ? "px-2.5" : "px-3 sm:px-6", dragging && "bg-primary/5")}
-      // 끌어 놓기 — 사람 방 입력창과 같다
-      onDragOver={attach ? (e) => { e.preventDefault(); setDragging(true) } : undefined}
-      onDragLeave={attach ? () => setDragging(false) : undefined}
-      onDrop={attach ? (e) => {
-        e.preventDefault()
-        setDragging(false)
-        const files = Array.from(e.dataTransfer.files)
-        if (files.length) attach.onFiles(files)
-      } : undefined}
-    >
-      <div className="mx-auto w-full max-w-[760px]">
-        {attach && <AttachChips items={items} onRemove={attach.onRemove} />}
-        {/* 한 줄일 때 글자와 보내기 버튼의 세로 가운데가 같게 — 입력칸 최소 높이 = 버튼 높이(PC 32px · 터치 44px),
-            남는 높이는 위아래 여백으로. 여러 줄로 늘면 버튼은 아래에 붙는다(items-end). 2026-10-29 폰에서 글자가 아래로 처졌다 */}
-        <div className={cn(
-          "flex items-end gap-2 rounded-[22px] border bg-card py-1 pr-1 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-[32px] in-data-[messenger]:py-1.5 in-data-[messenger]:pr-1.5",
-          // ＋ 가 있으면 왼쪽 안에 붙는다(사람 방 알약과 같은 자리) — 없으면 글자 앞 여백
-          attach ? "pl-1 in-data-[messenger]:pl-1.5" : "pl-3.5 in-data-[messenger]:pl-[22px]",
-        )}>
-          {attach && <AttachButton onFiles={attach.onFiles} onNas={attach.onNas} />}
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onPaste={attach ? (e) => {
-              // 붙여넣은 파일(스크린샷 등) — 사람 방 입력창과 같다
-              const files = Array.from(e.clipboardData?.files ?? [])
-              if (files.length) {
-                e.preventDefault()
-                attach.onFiles(files)
-              }
-            } : undefined}
-            onKeyDown={(e) => {
-              // PC 는 Enter 보내기 · Shift+Enter 줄바꿈, 폰은 Enter 가 줄바꿈이고 보내기는 버튼으로만(lib/enter-to-send.ts)
-              if (enterSends(e, isTouchTyping())) {
-                e.preventDefault()
-                if (canSend) onSend()
-              }
-            }}
-            rows={1}
-            enterKeyHint="enter"
-            autoFocus={autoFocus}
-            aria-label="옴니스에게 보낼 글"
-            placeholder={busy ? "옴니스가 답하는 중…" : "옴니스에게 물어보세요"}
-            className="max-h-40 min-h-[32px] flex-1 resize-none bg-transparent py-[5px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:py-[11px] [@media(pointer:coarse)]:text-[16px] in-data-[messenger]:max-h-48 in-data-[messenger]:min-h-[48px]! in-data-[messenger]:py-[11px]! in-data-[messenger]:text-[17px]! in-data-[messenger]:leading-[26px]!"
-          />
-          {/* 답하는 동안은 같은 자리 · 같은 크기의 중지 단추(■) — ChatGPT · Gemini 처럼. 입력칸은 그대로 써 둘 수 있다 */}
-          {busy && onStop ? (
-            <Button
-              size="icon"
-              onClick={onStop}
-              disabled={stopping}
-              aria-label="답변 중지"
-              title="답변 중지"
-              data-agent-stop
-              className="touch-target ai-rainbow-border size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]"
-            >
-              {stopping ? <Spinner /> : <span aria-hidden className="size-[10px] rounded-[2px] bg-current in-data-[messenger]:size-[15px]" />}
-            </Button>
-          ) : (
-            <Button
-              size="icon"
-              onClick={onSend}
-              disabled={!canSend}
-              aria-label="보내기"
-              title="보내기 (Enter)"
-              className="touch-target ai-rainbow-border size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]"
-            >
-              {busy ? <Spinner /> : <HugeiconsIcon icon={ArrowUp01Icon} size={16} aria-hidden className="in-data-[messenger]:h-[24px]! in-data-[messenger]:w-[24px]!" />}
-            </Button>
-          )}
-        </div>
-        <div className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
-          <span className={cn("hidden [@media(pointer:coarse)]:hidden!", !compact && "sm:inline")}>
-            {waitingCard ? "위 확인 카드를 눌러 주세요 · 새 글을 보내면 그 제안은 버려집니다" : "Enter 보내기 · Shift+Enter 줄바꿈 · 쓰기는 확인 카드를 거칩니다"}
-          </span>
-          <span className={cn("ml-auto tabular-nums", tooLong && "font-medium text-destructive")}>
-            {value.length > OMNIS_MESSAGE_MAX * 0.8 ? `${value.length}/${OMNIS_MESSAGE_MAX}` : ""}
-          </span>
-        </div>
-      </div>
-    </div>
+    <RoomComposer
+      textareaRef={textareaRef}
+      value={value}
+      onChange={onChange}
+      onSend={onSend}
+      canSend={canSend}
+      busy={busy}
+      onStop={onStop}
+      stopping={stopping}
+      autoFocus={autoFocus}
+      accent
+      ariaLabel="옴니스에게 보낼 글"
+      placeholder={busy ? "옴니스가 답하는 중…" : "옴니스에게 물어보세요"}
+      hint={waitingCard ? "위 확인 카드를 눌러 주세요 · 새 글을 보내면 그 제안은 버려집니다" : "Enter 보내기 · Shift+Enter 줄바꿈 · 쓰기는 확인 카드를 거칩니다"}
+      maxLength={OMNIS_MESSAGE_MAX}
+      onFiles={attach?.onFiles}
+      above={attach && <AttachChips items={items} onRemove={attach.onRemove} />}
+      plus={attach && <ComposerPlus files={{ onFiles: attach.onFiles, onNas: attach.onNas }} />}
+    />
   )
 }

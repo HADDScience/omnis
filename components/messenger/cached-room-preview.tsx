@@ -3,16 +3,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowUp01Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
+import { PlusSignIcon } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
+import { RoomComposer } from "@/components/chat/room-composer"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { roomKeyFromPath } from "@/lib/chat-list"
 import { LIST_CACHE_KEY, readCache, roomCacheKey, type CachedMessage } from "@/lib/chat-cache"
 import { peekHandoff, queuedIsFresh, rememberedRoom, roomFromList, writeHandoff } from "@/lib/chat-entry"
 import { tidyBody } from "@/lib/chat-layout"
-import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
+import { IS_DEMO } from "@/lib/demo"
 import type { RoomList, RoomListItem } from "@/lib/chat-rooms"
 import { cn } from "@/lib/utils"
 import { useChatUserId, useRoomSurfaceReady } from "./messenger-context"
@@ -168,8 +168,8 @@ function MessageSkeleton() {
 }
 
 /**
- * 방이 오기 전의 입력창. 모양은 메신저 안 입력줄(알약 하나 · 48px 단추)과 같게 둔다.
- * + 메뉴(첨부 · 명령)는 방 화면에서 연다 — 자리만 그려 갈아 끼울 때 칸이 밀리지 않게 한다.
+ * 방이 오기 전의 입력창 — 방 화면과 같은 공통 입력창(room-composer.tsx)이라 갈아 끼워도 칸이 밀리지 않는다.
+ * + 메뉴(첨부 · 명령)는 방 화면에서 연다 — 여기서는 자리만 그린다.
  */
 function EntryComposer({
   roomKey,
@@ -200,14 +200,6 @@ function EntryComposer({
     [],
   )
 
-  // 내용만큼 늘린다 — 방 화면 입력줄과 같은 상한
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${Math.min(el.scrollHeight, 192)}px`
-  }, [value])
-
   const omnis = kind === "omnis"
   // 옴니스는 2자 이상(omnis-room send 와 같은 규칙) — 그보다 짧으면 보내기 단추가 꺼진다
   const minLength = omnis ? 2 : 1
@@ -230,56 +222,36 @@ function EntryComposer({
   }
 
   return (
-    <div className="shrink-0 border-t bg-background px-3 pt-2 pb-3 sm:px-6">
-      <div
-        className={cn(
-          "mx-auto flex w-full max-w-[760px] items-end gap-2.5 rounded-[32px] border bg-card p-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong",
-          omnis && "pl-[22px]",
-        )}
-      >
-        {!omnis && (
+    <RoomComposer
+      textareaRef={ref}
+      value={value}
+      onChange={change}
+      onSend={send}
+      // 눌러 둔 글이 있거나 짧아도 Enter 는 send 까지 간다 — 거기서 「방을 여는 중」 을 알린다
+      canSend={canSend || queued !== null}
+      busy={queued !== null}
+      accent={omnis}
+      longPlaceholder={!omnis}
+      ariaLabel={omnis ? "옴니스에게 보낼 글" : "메시지 입력"}
+      placeholder={PLACEHOLDER[kind]}
+      // 방 화면 입력창의 자리와 같게 — 메뉴는 방 화면에서 연다(옴니스는 데모에 ＋ 가 없다)
+      plus={
+        omnis && IS_DEMO ? undefined : (
           <span aria-hidden className="flex size-[48px] shrink-0 items-center justify-center rounded-full text-muted-foreground/50">
             <HugeiconsIcon icon={PlusSignIcon} size={26} />
           </span>
-        )}
-        <textarea
-          ref={ref}
-          value={value}
-          onChange={(e) => change(e.target.value, e.target.selectionStart)}
-          onSelect={(e) => writeHandoff(roomKey, { caret: e.currentTarget.selectionStart })}
-          onFocus={() => writeHandoff(roomKey, { focused: true })}
-          onBlur={(e) => {
-            // 다음 화면 입력칸으로 포커스를 넘긴 것(relatedTarget 이 입력칸)은 놓은 것이 아니다
-            if (!leaving.current && !(e.relatedTarget instanceof HTMLTextAreaElement)) writeHandoff(roomKey, { focused: false })
-          }}
-          onKeyDown={(e) => {
-            // PC 는 Enter 보내기 · Shift+Enter 줄바꿈, 폰은 Enter 가 줄바꿈(lib/enter-to-send.ts)
-            if (enterSends(e, isTouchTyping())) {
-              e.preventDefault()
-              send()
-            }
-          }}
-          rows={1}
-          enterKeyHint="enter"
-          aria-label={omnis ? "옴니스에게 보낼 글" : "메시지 입력"}
-          placeholder={PLACEHOLDER[kind]}
-          data-entry-composer
-          className={cn(
-            "max-h-48 min-h-[48px] flex-1 resize-none bg-transparent py-[11px] text-[17px] leading-[26px] outline-none placeholder:text-muted-foreground",
-            !omnis && "px-1 placeholder:text-[15px]",
-          )}
-        />
-        <Button
-          size="icon"
-          onClick={send}
-          disabled={!canSend}
-          aria-label="보내기"
-          title="보내기 (Enter)"
-          className={cn("touch-target size-[48px] shrink-0 rounded-full", omnis && "ai-rainbow-border")}
-        >
-          {queued !== null ? <Spinner /> : <HugeiconsIcon icon={ArrowUp01Icon} size={24} aria-hidden className="size-[24px]" />}
-        </Button>
-      </div>
-    </div>
+        )
+      }
+      hint={omnis ? "Enter 보내기 · Shift+Enter 줄바꿈 · 쓰기는 확인 카드를 거칩니다" : "Enter 보내기 · Shift+Enter 줄바꿈"}
+      textareaProps={{
+        onSelect: (e) => writeHandoff(roomKey, { caret: e.currentTarget.selectionStart }),
+        onFocus: () => writeHandoff(roomKey, { focused: true }),
+        onBlur: (e) => {
+          // 다음 화면 입력칸으로 포커스를 넘긴 것(relatedTarget 이 입력칸)은 놓은 것이 아니다
+          if (!leaving.current && !(e.relatedTarget instanceof HTMLTextAreaElement)) writeHandoff(roomKey, { focused: false })
+        },
+        "data-entry-composer": true,
+      }}
+    />
   )
 }

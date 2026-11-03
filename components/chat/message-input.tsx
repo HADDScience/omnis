@@ -1,27 +1,18 @@
 "use client"
 
-import { useState, useRef, useCallback, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
-import { Badge } from "@/components/ui/badge"
+import { useMemo, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowUp01Icon, SentIcon, Attachment01Icon, Cancel01Icon, PlusSignIcon, Task01Icon, AtIcon, Folder01Icon } from "@hugeicons/core-free-icons"
-import { Spinner } from "@/components/ui/spinner"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { AtIcon, Attachment01Icon, Task01Icon } from "@hugeicons/core-free-icons"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { SLASH_COMMANDS } from "./slash-command-parser"
 import { IS_DEMO } from "@/lib/demo"
 import { toast } from "sonner"
 import { MAX_UPLOAD_BYTES } from "@/lib/constants"
 import { resolveHandoff } from "@/lib/chat-entry"
+import { composerTrigger, type ComposerTrigger } from "@/lib/composer-trigger"
 import { useComposerHandoff } from "@/hooks/use-composer-handoff"
 import { reportIncident } from "@/lib/report-client-error"
-import { NasFilePicker } from "./nas-file-picker"
+import { AttachChips, ComposerPlus, RoomComposer, type PickedFile } from "./room-composer"
 
 /** 자동완성 후보. `/`(명령) · `#`(업무) · `@`(사람·파일) 세 갈래가 같은 목록 UI를 쓴다. */
 interface MentionItem {
@@ -35,7 +26,7 @@ interface MentionItem {
 
 interface MessageInputProps {
   /**
-   * 실패하면 던진다 — 입력한 글과 첨부를 비우지 않고 남겨 둔다.
+   * 실패하면 던진다 — 입력한 글과 첨부를 입력창에 되돌린다.
    * nasPaths: 「NAS 파일 연결」 로 고른 파일의 NAS 경로. 올리지 않고 POST /api/files/nas 로 잇는다.
    */
   onSend: (content: string, files?: File[], nasPaths?: string[]) => Promise<void>
@@ -56,6 +47,15 @@ interface MessageInputProps {
   handoffKey?: string
 }
 
+/** 고른 첨부 하나 — 칩에 그릴 것과 보낼 때 넘길 것 */
+interface Attached {
+  item: PickedFile
+  /** 내 기기에서 고른 파일 — 보낼 때 올린다 */
+  raw?: File
+  /** 시놀로지에서 고른 파일 — 보낼 때 잇는다 */
+  nasPath?: string
+}
+
 /** # 자동완성에 보일 업무 — 진행 중인 것이 먼저, 완료된 업무는 뒤에 「완료」 표시와 함께 */
 const TASK_SUGGESTIONS = 8
 
@@ -67,12 +67,22 @@ const PREFIX: Record<MentionItem["type"], string> = {
   file: "@",
 }
 
+const NO_TASKS: NonNullable<MessageInputProps["tasks"]> = []
+const NO_FILES: NonNullable<MessageInputProps["files"]> = []
+const NO_USERS: NonNullable<MessageInputProps["users"]> = []
+
+let seq = 0
+
+/**
+ * 사람 · 전사 · 업무 방의 입력창 — 모양과 Enter 는 공통 입력창(room-composer.tsx), 여기는 이 방들에만 있는 것:
+ * `/명령` · `#업무` · `@사람` 자동완성과 보낼 때 올리는 첨부. 글은 보내는 즉시 비우고(말풍선이 먼저 뜬다) 실패하면 되돌린다.
+ */
 export function MessageInput({
   onSend,
   disabled,
-  tasks = [],
-  files = [],
-  users = [],
+  tasks = NO_TASKS,
+  files = NO_FILES,
+  users = NO_USERS,
   commands = true,
   attachments = true,
   taskMentions = true,
@@ -84,21 +94,11 @@ export function MessageInput({
   const [sending, setSending] = useState(false)
   /** 보내기 잠금 — sending 상태는 다음 그리기에야 보여, 같은 순간 버튼을 두 번 누르면 둘 다 지나갔다 */
   const sendingRef = useRef(false)
-  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
-  const [nasFiles, setNasFiles] = useState<{ path: string; name: string }[]>([])
+  const [attached, setAttached] = useState<Attached[]>([])
   const [nasPickerOpen, setNasPickerOpen] = useState(false)
-  const [uploadingIdx, setUploadingIdx] = useState<Set<number>>(new Set())
-  const [previews, setPreviews] = useState<Map<number, string>>(new Map())
-  const [dragging, setDragging] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const dropRef = useRef<HTMLDivElement>(null)
-  const [mentionQuery, setMentionQuery] = useState("")
-  const [mentionType, setMentionType] = useState<"task" | "user" | "command" | null>(null)
-  const [mentionItems, setMentionItems] = useState<MentionItem[]>([])
+  const [trigger, setTrigger] = useState<ComposerTrigger | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
-  const [mentionStart, setMentionStart] = useState(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const popoverRef = useRef<HTMLDivElement>(null)
 
   // loading 입력창에서 쓴 글을 받고, 눌러 둔 보내기는 바로 보낸다. 보내지 못하면 그 글을 입력칸에 되돌린다
   useComposerHandoff(handoffKey, textareaRef, (h) => {
@@ -123,91 +123,50 @@ export function MessageInput({
   // 데모에는 NAS 가 없어 파일을 받지 않는다
   const noFiles = IS_DEMO || !attachments
 
-  // 자동완성 후보 계산
-  useEffect(() => {
-    if (!mentionType) {
-      setMentionItems([])
-      return
+  const mentionItems = useMemo<MentionItem[]>(() => {
+    if (!trigger) return []
+    const query = trigger.query.toLowerCase()
+    if (trigger.kind === "command") {
+      return SLASH_COMMANDS.filter((c) => c.name.slice(1).toLowerCase().startsWith(query)).map((c) => ({
+        id: c.name.slice(1),
+        label: c.name,
+        hint: c.description,
+        type: "command" as const,
+      }))
     }
-
-    const query = mentionQuery.toLowerCase()
-
-    if (mentionType === "command") {
-      setMentionItems(
-        SLASH_COMMANDS.filter((c) => c.name.slice(1).toLowerCase().startsWith(query)).map((c) => ({
-          id: c.name.slice(1),
-          label: c.name,
-          hint: c.description,
-          type: "command" as const,
-        }))
-      )
-    } else if (mentionType === "task") {
+    if (trigger.kind === "task") {
       // 완료된 업무도 언급할 수 있어야 한다(지난 결과를 가리키는 일이 많다). 다만 진행 중인 것에 밀리지 않게
       // 자리를 나눈다 — 진행 중 최대 5개, 남는 자리에 완료.
       const matched = tasks.filter((t) => t.name.toLowerCase().includes(query) || t.slug.toLowerCase().includes(query))
       const active = matched.filter((t) => t.status !== "DONE").slice(0, 5)
       const done = matched.filter((t) => t.status === "DONE").slice(0, TASK_SUGGESTIONS - active.length)
-      setMentionItems(
-        [...active, ...done].map((t) => ({
-          id: t.slug,
-          label: t.name,
-          hint: t.status === "DONE" ? `완료 · #${t.slug}` : `#${t.slug}`,
-          type: "task" as const,
-        }))
-      )
-    } else {
-      // 사람이 먼저, 파일이 뒤에. 예전에는 파일만 나와서 @멘션이 사실상 없는 기능이었다.
-      const matchedUsers = users
-        .filter((u) => u.name.toLowerCase().includes(query))
-        .slice(0, 6)
-        .map((u) => ({ id: u.name, label: u.name, type: "user" as const }))
-      const matchedFiles = files
-        .filter((f) => f.name.toLowerCase().includes(query))
-        .slice(0, 3)
-        .map((f) => ({ id: f.name, label: f.name, type: "file" as const }))
-      setMentionItems([...matchedUsers, ...matchedFiles])
+      return [...active, ...done].map((t) => ({
+        id: t.slug,
+        label: t.name,
+        hint: t.status === "DONE" ? `완료 · #${t.slug}` : `#${t.slug}`,
+        type: "task" as const,
+      }))
     }
+    // 사람이 먼저, 파일이 뒤에. 예전에는 파일만 나와서 @멘션이 사실상 없는 기능이었다.
+    const matchedUsers = users
+      .filter((u) => u.name.toLowerCase().includes(query))
+      .slice(0, 6)
+      .map((u) => ({ id: u.name, label: u.name, type: "user" as const }))
+    const matchedFiles = files
+      .filter((f) => f.name.toLowerCase().includes(query))
+      .slice(0, 3)
+      .map((f) => ({ id: f.name, label: f.name, type: "file" as const }))
+    return [...matchedUsers, ...matchedFiles]
+  }, [trigger, tasks, files, users])
+
+  function openTrigger(next: ComposerTrigger | null) {
+    setTrigger(next)
     setMentionIndex(0)
-  }, [mentionQuery, mentionType, tasks, files, users])
+  }
 
-  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    const value = e.target.value
+  function handleChange(value: string, caret: number) {
     setContent(value)
-    syncAutocomplete(value, e.target.selectionStart)
-  }
-
-  /** 커서 앞 글자를 보고 어떤 자동완성을 띄울지 정한다. */
-  function syncAutocomplete(value: string, cursorPos: number) {
-    const textBeforeCursor = value.slice(0, cursorPos)
-
-    // 명령은 맨 앞에서만 — 문장 중간의 "/"는 명령이 아니라 그냥 슬래시다.
-    const slashMatch = commands ? textBeforeCursor.match(/^\/([^\s]*)$/) : null
-    const hashMatch = textBeforeCursor.match(/#([^\s#@]*)$/)
-    const atMatch = textBeforeCursor.match(/@([^\s#@]*)$/)
-
-    if (slashMatch) {
-      setMentionType("command")
-      setMentionQuery(slashMatch[1])
-      setMentionStart(0)
-    } else if (hashMatch) {
-      setMentionType("task")
-      setMentionQuery(hashMatch[1])
-      setMentionStart(cursorPos - hashMatch[0].length)
-    } else if (atMatch) {
-      setMentionType("user")
-      setMentionQuery(atMatch[1])
-      setMentionStart(cursorPos - atMatch[0].length)
-    } else {
-      setMentionType(null)
-      setMentionQuery("")
-      setMentionStart(-1)
-    }
-  }
-
-  function closeAutocomplete() {
-    setMentionType(null)
-    setMentionQuery("")
-    setMentionStart(-1)
+    openTrigger(composerTrigger(value.slice(0, caret), { commands }))
   }
 
   /** 커서를 특정 위치로 옮긴다. setContent 반영 이후여야 하므로 다음 프레임에 실행. */
@@ -221,12 +180,13 @@ export function MessageInput({
   }
 
   function insertMention(item: MentionItem) {
+    if (!trigger) return
     const prefix = PREFIX[item.type]
     const inserted = `${prefix}${item.id} `
-    const before = content.slice(0, mentionStart)
-    const after = content.slice(mentionStart + prefix.length + mentionQuery.length)
+    const before = content.slice(0, trigger.start)
+    const after = content.slice(trigger.start + prefix.length + trigger.query.length)
     setContent(before + inserted + after)
-    closeAutocomplete()
+    openTrigger(null)
     // 삽입한 자리 바로 뒤에 커서를 둔다 — 문장 중간에 넣어도 끝으로 튀지 않게.
     focusAt(before.length + inserted.length)
   }
@@ -235,11 +195,8 @@ export function MessageInput({
   function startMention(kind: "user" | "task") {
     const char = kind === "user" ? "@" : "#"
     const pos = textareaRef.current?.selectionStart ?? content.length
-    const next = content.slice(0, pos) + char + content.slice(pos)
-    setContent(next)
-    setMentionType(kind)
-    setMentionQuery("")
-    setMentionStart(pos)
+    setContent(content.slice(0, pos) + char + content.slice(pos))
+    openTrigger({ kind, query: "", start: pos })
     focusAt(pos + 1)
   }
 
@@ -247,11 +204,11 @@ export function MessageInput({
   function startTaskCommand() {
     const next = content.trimStart().startsWith("/업무") ? content : `/업무 ${content.trimStart()}`
     setContent(next)
-    closeAutocomplete()
+    openTrigger(null)
     focusAt(next.length)
   }
 
-  // 파일 추가 + 이미지 프리뷰 생성 + 로딩 표시
+  // 파일 추가 + 이미지 프리뷰 생성
   function addFiles(picked: File[]) {
     // 데모에는 NAS가 없어 파일을 받지 않는다 — 붙여넣기·드래그로 들어와도 조용히 무시한다.
     if (noFiles) return
@@ -274,374 +231,170 @@ export function MessageInput({
         })
       }
     }
-    const files = picked.filter((f) => f.size <= MAX_UPLOAD_BYTES)
-    if (files.length === 0) return
-    setAttachedFiles((prev) => {
-      const startIdx = prev.length
-      const newPreviews = new Map(previews)
-      const newUploading = new Set(uploadingIdx)
-      files.forEach((f, i) => {
-        if (f.type.startsWith("image/")) {
-          const url = URL.createObjectURL(f)
-          newPreviews.set(startIdx + i, url)
-        }
-        newUploading.add(startIdx + i)
-      })
-      setPreviews(newPreviews)
-      setUploadingIdx(newUploading)
-      // 로딩 시뮬레이션 (실제 업로드는 전송 시 수행)
-      setTimeout(() => {
-        setUploadingIdx((prev) => {
-          const next = new Set(prev)
-          files.forEach((_, i) => next.delete(startIdx + i))
-          return next
-        })
-      }, 800)
-      return [...prev, ...files]
+    const fresh = picked
+      .filter((f) => f.size <= MAX_UPLOAD_BYTES)
+      .map<Attached>((f) => ({
+        raw: f,
+        item: {
+          key: `file-${++seq}`,
+          name: f.name,
+          size: f.size,
+          mimeType: f.type || "application/octet-stream",
+          preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+          // 실제 업로드는 보낼 때 — 고르는 것만으로는 기다릴 일이 없다
+          status: "done",
+        },
+      }))
+    if (fresh.length > 0) setAttached((prev) => [...prev, ...fresh])
+  }
+
+  function addNas(entry: { path: string; name: string; size?: number }) {
+    setAttached((prev) =>
+      prev.some((a) => a.nasPath === entry.path)
+        ? prev
+        : [...prev, { nasPath: entry.path, item: { key: `nas-${++seq}`, name: entry.name, size: entry.size ?? 0, mimeType: "", status: "done" } }],
+    )
+  }
+
+  function removeAttached(key: string) {
+    setAttached((prev) => {
+      const gone = prev.find((a) => a.item.key === key)
+      if (gone?.item.preview) URL.revokeObjectURL(gone.item.preview)
+      return prev.filter((a) => a.item.key !== key)
     })
   }
 
-  function removeFile(index: number) {
-    const url = previews.get(index)
-    if (url) URL.revokeObjectURL(url)
-    setAttachedFiles((prev) => prev.filter((_, i) => i !== index))
-    setPreviews((prev) => {
-      const next = new Map<number, string>()
-      prev.forEach((v, k) => {
-        if (k < index) next.set(k, v)
-        else if (k > index) next.set(k - 1, v)
-      })
-      return next
-    })
-  }
-
-  // 붙여넣기 (Ctrl+V / Cmd+V)
-  function handlePaste(e: React.ClipboardEvent) {
-    const items = e.clipboardData?.items
-    if (!items) return
-    const files: File[] = []
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].kind === "file") {
-        const file = items[i].getAsFile()
-        if (file) files.push(file)
-      }
-    }
-    if (files.length > 0) {
-      e.preventDefault()
-      addFiles(files)
-    }
-  }
-
-  // 드래그앤드롭
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault()
-    e.stopPropagation()
-    if (noFiles) return
-    setDragging(true)
-  }
-
-  function handleDragLeave(e: React.DragEvent) {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragging(false)
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragging(false)
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) addFiles(files)
-  }
-
-  const handleSend = useCallback(async () => {
+  async function handleSend() {
     const trimmed = content.trim()
-    const attachedCount = attachedFiles.length + nasFiles.length
-    if (!trimmed && attachedCount === 0) return
-    if (sending || sendingRef.current) return
+    if ((!trimmed && attached.length === 0) || sendingRef.current) return
+    const sent = attached
+    const raws = sent.flatMap((a) => (a.raw ? [a.raw] : []))
+    const nasPaths = sent.flatMap((a) => (a.nasPath ? [a.nasPath] : []))
     sendingRef.current = true
     setSending(true)
+    // 말풍선이 바로 뜨므로 입력칸은 바로 비운다. 보내는 동안에도 다음 글을 쓸 수 있고 폰 키보드가 내려가지 않는다
+    setContent("")
+    setAttached([])
+    openTrigger(null)
     try {
-      await onSend(
-        trimmed || (attachedCount > 0 ? `[파일 ${attachedCount}개 첨부]` : ""),
-        attachedFiles.length > 0 ? attachedFiles : undefined,
-        nasFiles.length > 0 ? nasFiles.map((f) => f.path) : undefined,
-      )
-      setContent("")
-      previews.forEach((url) => URL.revokeObjectURL(url))
-      setPreviews(new Map())
-      setAttachedFiles([])
-      setNasFiles([])
-      textareaRef.current?.focus()
+      await onSend(trimmed || `[파일 ${sent.length}개 첨부]`, raws.length > 0 ? raws : undefined, nasPaths.length > 0 ? nasPaths : undefined)
+      sent.forEach((a) => a.item.preview && URL.revokeObjectURL(a.item.preview))
     } catch {
-      // 보내지 못했다 — 쓴 글과 첨부를 그대로 둔다. 알림은 onSend 쪽이 띄운다.
+      // 보내지 못했다 — 쓴 글과 첨부를 되돌린다(그 사이 쓴 글은 뒤에 잇는다). 알림은 onSend 쪽이 띄운다.
+      setContent((c) => (c ? `${trimmed}\n${c}` : trimmed))
+      setAttached((prev) => [...sent, ...prev])
     } finally {
       sendingRef.current = false
       setSending(false)
-    }
-  }, [content, sending, onSend, attachedFiles, nasFiles])
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // 한글 조합 중의 Enter · 방향키는 글자를 확정하는 키다 — 후보 고르기 · 보내기로 가로채지 않는다
-    if (e.nativeEvent.isComposing || e.keyCode === 229) return
-    // 멘션 팝오버가 열려있을 때
-    if (mentionType && mentionItems.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault()
-        setMentionIndex((i) => Math.min(i + 1, mentionItems.length - 1))
-        return
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault()
-        setMentionIndex((i) => Math.max(i - 1, 0))
-        return
-      }
-      if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault()
-        insertMention(mentionItems[mentionIndex])
-        return
-      }
-      if (e.key === "Escape") {
-        e.preventDefault()
-        closeAutocomplete()
-        return
-      }
-    }
-
-    // PC 는 Enter 보내기 · Shift+Enter 줄바꿈, 폰은 Enter 가 줄바꿈이고 보내기는 버튼으로만(lib/enter-to-send.ts)
-    if (enterSends(e, isTouchTyping())) {
-      e.preventDefault()
-      handleSend()
+      textareaRef.current?.focus()
     }
   }
 
+  /** 자동완성 목록이 열려 있으면 방향키 · Enter · Esc 는 목록의 것이다 */
+  function handleListKeys(e: React.KeyboardEvent<HTMLTextAreaElement>): boolean {
+    // 한글 조합 중의 Enter · 방향키는 글자를 확정하는 키다 — 후보 고르기 · 보내기로 가로채지 않는다
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return true
+    if (!trigger || mentionItems.length === 0) return false
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setMentionIndex((i) => Math.min(i + 1, mentionItems.length - 1))
+      return true
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setMentionIndex((i) => Math.max(i - 1, 0))
+      return true
+    }
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault()
+      insertMention(mentionItems[mentionIndex])
+      return true
+    }
+    if (e.key === "Escape") {
+      e.preventDefault()
+      openTrigger(null)
+      return true
+    }
+    return false
+  }
+
   return (
-    <div
-      ref={dropRef}
-      className={`relative p-3 pt-2 sm:p-4 sm:pt-2 in-data-[messenger]:px-3! in-data-[messenger]:sm:px-6! in-data-[messenger]:pt-2! in-data-[messenger]:pb-3! ${dragging ? "ring-2 ring-primary ring-inset rounded-lg bg-primary/5" : ""}`}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      {/* 드래그 오버레이 */}
-      {dragging && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-primary/10 pointer-events-none">
-          <span className="text-sm font-medium text-primary">파일을 여기에 놓으세요</span>
-        </div>
-      )}
-      {/* 자동완성 목록 — /명령 · #업무 · @사람/파일 이 같은 UI를 쓴다 */}
-      {mentionType && mentionItems.length > 0 && (
-        <div
-          ref={popoverRef}
-          className="absolute bottom-full left-4 right-4 z-20 mb-1 rounded-md border bg-popover p-1 shadow-md"
+    <RoomComposer
+      textareaRef={textareaRef}
+      value={content}
+      onChange={handleChange}
+      onSend={handleSend}
+      canSend={!sending && (content.trim().length > 0 || attached.length > 0)}
+      busy={sending}
+      placeholder={placeholder}
+      ariaLabel={ariaLabel}
+      longPlaceholder
+      disabled={disabled}
+      // 답장 줄과 함께 감싼 쪽(chat-panel · thread-composer)이 선을 긋는다
+      bordered={false}
+      hint="Enter 보내기 · Shift+Enter 줄바꿈"
+      onFiles={noFiles ? undefined : addFiles}
+      onKeyIntercept={handleListKeys}
+      above={<AttachChips items={attached.map((a) => a.item)} onRemove={removeAttached} />}
+      plus={
+        <ComposerPlus
+          disabled={disabled}
+          files={noFiles ? undefined : { onFiles: addFiles, onNas: addNas, nasOpen: nasPickerOpen, onNasOpenChange: setNasPickerOpen }}
         >
-          <div className="px-2 py-1 text-[10px] text-muted-foreground in-data-[messenger]:px-3 in-data-[messenger]:text-[12.5px]">
-            {mentionType === "command"
-              ? "명령어"
-              : mentionType === "task"
-                ? "업무 선택"
-                : "사람 · 파일 선택"}
-          </div>
-          {mentionItems.map((item, i) => (
-            <button
-              key={`${item.type}-${item.id}`}
-              type="button"
-              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-lg in-data-[messenger]:px-3 in-data-[messenger]:py-2.5 in-data-[messenger]:text-[16px] ${
-                i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-              }`}
-              onMouseDown={(e) => {
-                e.preventDefault()
-                insertMention(item)
-              }}
-            >
-              {item.type === "file" ? (
-                <HugeiconsIcon
-                  icon={Attachment01Icon}
-                  size={12}
-                  aria-hidden
-                  className="shrink-0 text-muted-foreground"
-                />
-              ) : item.type === "command" ? null : (
-                // 명령은 라벨("/업무")에 이미 슬래시가 들어 있어 접두사를 또 붙이지 않는다
-                <span className="w-3 shrink-0 text-center text-xs text-muted-foreground">
-                  {PREFIX[item.type]}
-                </span>
-              )}
-              <span className="truncate">{item.label}</span>
-              {item.hint && (
-                <span className="ml-auto truncate pl-2 text-[11px] text-muted-foreground in-data-[messenger]:text-[13px]">
-                  {item.hint}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* 첨부 파일 프리뷰 */}
-      {(attachedFiles.length > 0 || nasFiles.length > 0) && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {/* NAS 연결 — 올리지 않으므로 로딩이 없다 */}
-          {nasFiles.map((f) => (
-            <Badge key={f.path} variant="secondary" className="text-[10px] gap-1 pr-1 in-data-[messenger]:h-7 in-data-[messenger]:text-[13px]" title={f.path}>
-              <HugeiconsIcon icon={Folder01Icon} size={10} aria-hidden />
-              <span className="font-medium">시놀로지</span>
-              {f.name.length > 20 ? f.name.slice(0, 20) + "..." : f.name}
-              <button
-                type="button"
-                onClick={() => setNasFiles((prev) => prev.filter((x) => x.path !== f.path))}
-                className="ml-0.5 hover:bg-muted rounded"
-                aria-label={`${f.name} 연결 빼기`}
-              >
-                <HugeiconsIcon icon={Cancel01Icon} size={10} />
-              </button>
-            </Badge>
-          ))}
-          {attachedFiles.map((f, i) => {
-            const previewUrl = previews.get(i)
-            const isUploading = uploadingIdx.has(i)
-            return (
-              <div key={i} className="relative group">
-                {previewUrl ? (
-                  <div className="relative h-16 w-16 rounded-md overflow-hidden border">
-                    <img src={previewUrl} alt={f.name} className="h-full w-full object-cover" />
-                    {isUploading && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <Spinner className="text-white" />
-                      </div>
-                    )}
-                    {!isUploading && (
-                      <button
-                        onClick={() => removeFile(i)}
-                        className="absolute top-0 right-0 bg-black/60 rounded-bl p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <HugeiconsIcon icon={Cancel01Icon} size={10} className="text-white" />
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <Badge variant="secondary" className={`text-[10px] gap-1 pr-1 in-data-[messenger]:h-7 in-data-[messenger]:text-[13px] ${isUploading ? "animate-pulse" : ""}`}>
-                    {isUploading && <Spinner className="h-3 w-3" />}
-                    {f.name.length > 20 ? f.name.slice(0, 20) + "..." : f.name}
-                    {!isUploading && (
-                      <button onClick={() => removeFile(i)} className="ml-0.5 hover:bg-muted rounded">
-                        <HugeiconsIcon icon={Cancel01Icon} size={10} />
-                      </button>
-                    )}
-                  </Badge>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* 메신저 안: 옴니스 방 입력줄(omnis-room Composer)과 같은 알약 하나 — + 는 왼쪽 안, 보내기는 오른쪽 안 */}
-      <div className="flex items-end gap-2 in-data-[messenger]:mx-auto in-data-[messenger]:max-w-[760px] in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-[32px] in-data-[messenger]:border in-data-[messenger]:bg-card in-data-[messenger]:p-1.5 in-data-[messenger]:shadow-[0_2px_8px_rgba(0,0,0,0.04)] in-data-[messenger]:focus-within:border-border-strong">
-        {!noFiles && (
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files) {
-                addFiles(Array.from(e.target.files))
-                e.target.value = ""
-              }
-            }}
-          />
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="추가"
-                className="size-[40px] shrink-0 md:size-[30px] in-data-[messenger]:size-[48px]! in-data-[messenger]:rounded-full"
-                disabled={disabled || sending}
-              />
-            }
-          >
-            <HugeiconsIcon icon={PlusSignIcon} size={18} className="in-data-[messenger]:h-[26px]! in-data-[messenger]:w-[26px]!" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" className="w-52">
-            {!noFiles && (
-              <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-                <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
-                파일 업로드
-                <span className="ml-auto text-[10px] text-muted-foreground">4MB 이하</span>
-              </DropdownMenuItem>
-            )}
-            {!noFiles && (
-              <DropdownMenuItem onClick={() => setNasPickerOpen(true)}>
-                <HugeiconsIcon icon={Folder01Icon} size={14} aria-hidden />
-                시놀로지 파일 연결
-              </DropdownMenuItem>
-            )}
-            {commands && (
-              <DropdownMenuItem onClick={startTaskCommand}>
-                <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
-                업무 지시
-                <span className="ml-auto font-mono text-[10px] text-muted-foreground">/업무</span>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={() => startMention("user")}>
-              <HugeiconsIcon icon={AtIcon} size={14} aria-hidden />
-              사람 언급
-              <span className="ml-auto font-mono text-[10px] text-muted-foreground">@</span>
+          {commands && (
+            <DropdownMenuItem onClick={startTaskCommand}>
+              <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
+              업무 지시
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">/업무</span>
             </DropdownMenuItem>
-            {/* 사람끼리 방은 업무 목록을 받지 않는다(commands 와 함께 끈다) */}
-            {taskMentions && (
-              <DropdownMenuItem onClick={() => startMention("task")}>
-                <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
-                업무 언급
-                <span className="ml-auto font-mono text-[10px] text-muted-foreground">#</span>
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {/* md 미만은 text-base(16px) — iOS 가 그보다 작은 입력에 포커스하면 화면을 확대한다 */}
-        {/* 한 줄일 때 버튼과 세로 가운데가 맞게 입력칸 최소 높이 = 버튼 높이(폰 40px · PC 30px, px 로 — rem 은 배율을 탄다).
-            여러 줄로 늘면 버튼은 아래(items-end)에 붙는다 */}
-        <div className="min-w-0 flex-1">
-          <Textarea
-            ref={textareaRef}
-            value={content}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={placeholder}
-            aria-label={ariaLabel}
-            enterKeyHint="enter"
-            className="max-h-40 min-h-[40px] resize-none py-[7px] text-base leading-6 md:min-h-[30px] md:py-[5px] md:text-sm md:leading-[18px] in-data-[messenger]:max-h-48 in-data-[messenger]:min-h-[48px]! in-data-[messenger]:rounded-none in-data-[messenger]:border-0 in-data-[messenger]:bg-transparent! in-data-[messenger]:px-1 in-data-[messenger]:py-[11px]! in-data-[messenger]:text-[17px]! in-data-[messenger]:leading-[26px]! in-data-[messenger]:shadow-none in-data-[messenger]:focus-visible:border-transparent! in-data-[messenger]:focus-visible:ring-0! in-data-[messenger]:placeholder:text-[15px]"
-            rows={1}
-            disabled={disabled || sending}
-          />
-        </div>
-        <Button
-          size="icon"
-          aria-label="메시지 전송"
-          className="size-[40px] shrink-0 md:size-[30px] in-data-[messenger]:size-[48px]! in-data-[messenger]:rounded-full"
-          onClick={handleSend}
-          disabled={(!content.trim() && attachedFiles.length === 0 && nasFiles.length === 0) || sending}
-        >
-          <HugeiconsIcon icon={SentIcon} size={18} className="in-data-[messenger]:hidden" />
-          <HugeiconsIcon icon={ArrowUp01Icon} size={16} aria-hidden className="hidden in-data-[messenger]:block in-data-[messenger]:h-[24px]! in-data-[messenger]:w-[24px]!" />
-        </Button>
-      </div>
-      {!noFiles && (
-        <NasFilePicker
-          open={nasPickerOpen}
-          onOpenChange={setNasPickerOpen}
-          onPick={(entry) =>
-            setNasFiles((prev) =>
-              prev.some((f) => f.path === entry.path) ? prev : [...prev, { path: entry.path, name: entry.name }],
-            )
-          }
-        />
-      )}
-    </div>
+          )}
+          <DropdownMenuItem onClick={() => startMention("user")}>
+            <HugeiconsIcon icon={AtIcon} size={14} aria-hidden />
+            사람 언급
+            <span className="ml-auto font-mono text-[10px] text-muted-foreground">@</span>
+          </DropdownMenuItem>
+          {/* 사람끼리 방은 업무 목록을 받지 않는다(commands 와 함께 끈다) */}
+          {taskMentions && (
+            <DropdownMenuItem onClick={() => startMention("task")}>
+              <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
+              업무 언급
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">#</span>
+            </DropdownMenuItem>
+          )}
+        </ComposerPlus>
+      }
+      overlay={
+        // 자동완성 목록 — /명령 · #업무 · @사람/파일 이 같은 UI를 쓴다
+        trigger && mentionItems.length > 0 ? (
+          <div data-composer-autocomplete className="absolute right-4 bottom-full left-4 z-20 mb-1 rounded-md border bg-popover p-1 shadow-md">
+            <div className="px-2 py-1 text-[10px] text-muted-foreground in-data-[messenger]:px-3 in-data-[messenger]:text-[12.5px]">
+              {trigger.kind === "command" ? "명령어" : trigger.kind === "task" ? "업무 선택" : "사람 · 파일 선택"}
+            </div>
+            {mentionItems.map((item, i) => (
+              <button
+                key={`${item.type}-${item.id}`}
+                type="button"
+                className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-lg in-data-[messenger]:px-3 in-data-[messenger]:py-2.5 in-data-[messenger]:text-[16px] ${
+                  i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                }`}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  insertMention(item)
+                }}
+              >
+                {item.type === "file" ? (
+                  <HugeiconsIcon icon={Attachment01Icon} size={12} aria-hidden className="shrink-0 text-muted-foreground" />
+                ) : item.type === "command" ? null : (
+                  // 명령은 라벨("/업무")에 이미 슬래시가 들어 있어 접두사를 또 붙이지 않는다
+                  <span className="w-3 shrink-0 text-center text-xs text-muted-foreground">{PREFIX[item.type]}</span>
+                )}
+                <span className="truncate">{item.label}</span>
+                {item.hint && <span className="ml-auto truncate pl-2 text-[11px] text-muted-foreground in-data-[messenger]:text-[13px]">{item.hint}</span>}
+              </button>
+            ))}
+          </div>
+        ) : null
+      }
+    />
   )
 }
