@@ -97,6 +97,15 @@ export function RoomComposer({
 
   const tooLong = maxLength !== undefined && value.length > maxLength
 
+  /**
+   * 보내고 나서도 입력칸에 머문다 — 이어서 쓴다. PC 는 언제나 되돌린다.
+   * 폰은 쓰던 중이면 단추의 onMouseDown 이 포커스를 지켜 키보드가 그대로고, 내려 둔 키보드를 여기서 올리지는 않는다.
+   */
+  function sendAndStay() {
+    onSend()
+    if (!isTouchTyping()) textareaRef.current?.focus()
+  }
+
   return (
     <div
       className={cn(
@@ -164,7 +173,7 @@ export function RoomComposer({
               // PC 는 Enter 보내기 · Shift+Enter 줄바꿈, 폰은 Enter 가 줄바꿈이고 보내기는 단추로만(lib/enter-to-send.ts)
               if (enterSends(e, isTouchTyping())) {
                 e.preventDefault()
-                if (canSend) onSend()
+                if (canSend) sendAndStay()
               }
             }}
             rows={1}
@@ -194,7 +203,9 @@ export function RoomComposer({
           ) : (
             <Button
               size="icon"
-              onClick={() => onSend()}
+              onClick={sendAndStay}
+              // 누르는 순간 입력칸이 포커스를 잃지 않게 한다 — 폰 키보드가 내려갔다 올라오지 않는다
+              onMouseDown={(e) => e.preventDefault()}
               disabled={!canSend || disabled}
               aria-label="보내기"
               title="보내기 (Enter)"

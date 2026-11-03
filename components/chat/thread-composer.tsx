@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { MessageInput } from "@/components/chat/message-input"
 import { apiUrl } from "@/lib/base-path"
 import { reportIncident } from "@/lib/report-client-error"
+import { createSerialQueue } from "@/lib/serial-queue"
 
 /** 자동완성 후보 — 스레드 목록이 한 번 불러와 목록(멘션 링크)과 입력창이 같이 쓴다 */
 export interface ThreadRefs {
@@ -21,13 +22,15 @@ interface ThreadComposerProps extends Partial<ThreadRefs> {
   roomId?: string
   /** 메시지 작성 후 호출. 없으면 router.refresh()만 호출 */
   onSent?: () => void
-  /** 보내기 누른 즉시 글을 알린다(목록에 「보내는 중」 줄). 실패하면 null */
-  onPending?: (content: string | null) => void
+  /** 보내기 누른 즉시 글을 알린다(목록에 「보내는 중」 줄). 글마다 key 가 다르고, 실패하면 그 key 에 null */
+  onPending?: (key: number, content: string | null) => void
   /** 서버가 AI 재구성을 응답 뒤로 미뤘다 — 이 메시지의 재구성이 끝날 때까지 목록에 「갱신 중」 */
   onQueued?: (messageId: string) => void
   /** 답장 대상 — 목록에서 고른 글. 보내면 비운다 */
   replyTo?: { id: string; authorName: string; content: string } | null
   onClearReply?: () => void
+  /** 보내지 못했다 — 답장 대상을 되돌린다 */
+  onRestoreReply?: (reply: { id: string; authorName: string; content: string }) => void
   /** 메신저 업무방 키(task:) — loading 입력창에 쓴 글을 이어받는다(lib/chat-entry.ts) */
   handoffKey?: string
 }
@@ -51,17 +54,29 @@ export function ThreadComposer({
   onQueued,
   replyTo,
   onClearReply,
+  onRestoreReply,
   tasks = [],
   users = [],
   files = [],
   handoffKey,
 }: ThreadComposerProps) {
   const router = useRouter()
-  const [sending, setSending] = useState(false)
+  const [sending, setSending] = useState(0)
+  /** 사진을 올리는 동안 다음 글을 보내도 쓴 순서대로 서버에 닿는다 */
+  const queue = useRef(createSerialQueue())
+  const pendingSeq = useRef(0)
 
-  async function send(content: string, attached?: File[], nasPaths?: string[]) {
-    setSending(true)
-    onPending?.(content)
+  function send(content: string, attached?: File[], nasPaths?: string[]): Promise<void> {
+    // 글과 답장 대상은 누른 순간의 것이다 — 줄에서 기다리는 동안 다음 글이 답장을 물려받지 않는다
+    const key = ++pendingSeq.current
+    const reply = replyTo
+    setSending((n) => n + 1)
+    onPending?.(key, content)
+    onClearReply?.()
+    return queue.current.run(() => deliver(key, content, reply, attached, nasPaths)).finally(() => setSending((n) => n - 1))
+  }
+
+  async function deliver(key: number, content: string, reply: ThreadComposerProps["replyTo"], attached?: File[], nasPaths?: string[]) {
     try {
       // NAS 에 먼저 올리고 받은 id 를 메시지에 붙인다 — 채팅 패널과 같은 순서
       const fileIds: string[] = []
@@ -97,7 +112,7 @@ export function ThreadComposer({
       const res = await fetch(apiUrl("/api/chat/messages"), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ roomId, content, taskId, fileIds, replyToId: replyTo?.id }),
+        body: JSON.stringify({ roomId, content, taskId, fileIds, replyToId: reply?.id }),
       })
       if (res.status === 401) throw new SessionExpired()
       if (!res.ok) {
@@ -107,11 +122,11 @@ export function ThreadComposer({
       }
       const saved = (await res.json().catch(() => null)) as { id?: string; _rebuild?: string | null } | null
       if (saved?.id && saved._rebuild === "queued") onQueued?.(saved.id)
-      onClearReply?.()
       onSent?.()
       router.refresh()
     } catch (e) {
-      onPending?.(null)
+      onPending?.(key, null)
+      if (reply) onRestoreReply?.(reply)
       if (e instanceof SessionExpired) {
         toast.error("세션이 만료되었습니다. 다시 로그인해주세요.", {
           action: { label: "로그인", onClick: () => { window.location.href = apiUrl("/login") } },
@@ -120,8 +135,6 @@ export function ThreadComposer({
         toast.error(e instanceof Error ? e.message : "메시지 전송 실패")
       }
       throw e
-    } finally {
-      setSending(false)
     }
   }
 
@@ -129,7 +142,7 @@ export function ThreadComposer({
     <div
       className="relative shrink-0 border-t bg-background"
       data-thread-composer
-      data-sending={sending ? "true" : "false"}
+      data-sending={sending > 0 ? "true" : "false"}
     >
       {/* 무엇에 답하는 중인지 입력창 바로 위에 둔다 — 채팅 패널과 같은 모양 */}
       {replyTo && (

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { AtIcon, Attachment01Icon, Task01Icon } from "@hugeicons/core-free-icons"
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { MAX_UPLOAD_BYTES } from "@/lib/constants"
 import { resolveHandoff } from "@/lib/chat-entry"
 import { composerTrigger, type ComposerTrigger } from "@/lib/composer-trigger"
+import { isTouchTyping } from "@/lib/enter-to-send"
 import { useComposerHandoff } from "@/hooks/use-composer-handoff"
 import { reportIncident } from "@/lib/report-client-error"
 import { AttachChips, ComposerPlus, RoomComposer, type PickedFile } from "./room-composer"
@@ -91,9 +92,13 @@ export function MessageInput({
   handoffKey,
 }: MessageInputProps) {
   const [content, setContent] = useState("")
-  const [sending, setSending] = useState(false)
-  /** 보내기 잠금 — sending 상태는 다음 그리기에야 보여, 같은 순간 버튼을 두 번 누르면 둘 다 지나갔다 */
-  const sendingRef = useRef(false)
+  /** 같은 순간 두 번 — 입력칸이 비는 것은 다음 그리기에야 보여, 표시 없이는 같은 글이 두 번 나간다. 그릴 때마다 푼다 */
+  const justSent = useRef(false)
+  useEffect(() => {
+    justSent.current = false
+  })
+  /** 되돌아온 글 — 실패가 잇따라도 먼저 쓴 글이 위에 오게, 그 뒤에 잇는다 */
+  const returned = useRef("")
   const [attached, setAttached] = useState<Attached[]>([])
   const [nasPickerOpen, setNasPickerOpen] = useState(false)
   const [trigger, setTrigger] = useState<ComposerTrigger | null>(null)
@@ -103,23 +108,31 @@ export function MessageInput({
   // loading 입력창에서 쓴 글을 받고, 눌러 둔 보내기는 바로 보낸다. 보내지 못하면 그 글을 입력칸에 되돌린다
   useComposerHandoff(handoffKey, textareaRef, (h) => {
     const { send: queued, text } = resolveHandoff(h, Date.now())
-    const putBack = (q: string) => setContent((c) => (c ? `${q}\n${c}` : q))
     setContent(text)
     if (queued === null) return
     if (disabled) {
       putBack(queued)
       return
     }
-    sendingRef.current = true
-    setSending(true)
     onSend(queued)
       .catch(() => putBack(queued))
       .finally(() => {
-        sendingRef.current = false
-        setSending(false)
         if (h.focused) requestAnimationFrame(() => textareaRef.current?.focus())
       })
   })
+
+  /** 보내지 못한 글을 입력칸 맨 앞으로 — 그 사이 쓴 글은 뒤에 남는다. 실패가 잇따르면 먼저 쓴 글이 위다 */
+  function putBack(text: string) {
+    if (!text) return
+    setContent((c) => {
+      const prefix = returned.current && c.startsWith(returned.current) ? returned.current : ""
+      const rest = c.slice(prefix.length).replace(/^\n/, "")
+      const head = prefix ? `${prefix}\n${text}` : text
+      returned.current = head
+      return rest ? `${head}\n${rest}` : head
+    })
+  }
+
   // 데모에는 NAS 가 없어 파일을 받지 않는다
   const noFiles = IS_DEMO || !attachments
 
@@ -266,13 +279,13 @@ export function MessageInput({
 
   async function handleSend() {
     const trimmed = content.trim()
-    if ((!trimmed && attached.length === 0) || sendingRef.current) return
+    if ((!trimmed && attached.length === 0) || justSent.current) return
+    justSent.current = true
+    returned.current = ""
     const sent = attached
     const raws = sent.flatMap((a) => (a.raw ? [a.raw] : []))
     const nasPaths = sent.flatMap((a) => (a.nasPath ? [a.nasPath] : []))
-    sendingRef.current = true
-    setSending(true)
-    // 말풍선이 바로 뜨므로 입력칸은 바로 비운다. 보내는 동안에도 다음 글을 쓸 수 있고 폰 키보드가 내려가지 않는다
+    // 말풍선이 바로 뜨므로 입력칸은 바로 비운다. 사진을 올리는 동안에도 다음 글을 쓰고 보낼 수 있다 — 순서는 onSend 쪽 줄이 지킨다
     setContent("")
     setAttached([])
     openTrigger(null)
@@ -280,13 +293,11 @@ export function MessageInput({
       await onSend(trimmed || `[파일 ${sent.length}개 첨부]`, raws.length > 0 ? raws : undefined, nasPaths.length > 0 ? nasPaths : undefined)
       sent.forEach((a) => a.item.preview && URL.revokeObjectURL(a.item.preview))
     } catch {
-      // 보내지 못했다 — 쓴 글과 첨부를 되돌린다(그 사이 쓴 글은 뒤에 잇는다). 알림은 onSend 쪽이 띄운다.
-      setContent((c) => (c ? `${trimmed}\n${c}` : trimmed))
+      // 보내지 못했다 — 쓴 글과 첨부를 되돌린다. 알림은 onSend 쪽이 띄운다.
+      putBack(trimmed)
       setAttached((prev) => [...sent, ...prev])
-    } finally {
-      sendingRef.current = false
-      setSending(false)
-      textareaRef.current?.focus()
+      // 폰은 내려 둔 키보드를 다시 올리지 않는다
+      if (!isTouchTyping()) textareaRef.current?.focus()
     }
   }
 
@@ -324,8 +335,7 @@ export function MessageInput({
       value={content}
       onChange={handleChange}
       onSend={handleSend}
-      canSend={!sending && (content.trim().length > 0 || attached.length > 0)}
-      busy={sending}
+      canSend={content.trim().length > 0 || attached.length > 0}
       placeholder={placeholder}
       ariaLabel={ariaLabel}
       longPlaceholder

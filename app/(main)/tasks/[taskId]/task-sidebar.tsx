@@ -167,8 +167,19 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
 
   // 보내기 누른 글을 서버 응답(AI 재구성까지 8~13초) 전에 바로 보여 준다.
   // 목록 길이를 같이 적어 두고, 새 메시지가 붙어 길이가 바뀌면 저절로 사라진다.
-  const [pending, setPending] = useState<{ content: string; count: number } | null>(null)
-  const showPending = pending && pending.count === threadMessages.length ? pending : null
+  // 보내는 중인 글들 — 쓴 순서대로. count 는 앞의 글까지 다 들어왔을 때의 글 수이고, 그 글이 들어오면 수가 넘어 사라진다
+  const [pending, setPending] = useState<{ key: number; content: string; count: number }[]>([])
+  const showPending = pending.filter((p) => threadMessages.length <= p.count)
+  const trackPending = (key: number, content: string | null) =>
+    setPending((prev) => {
+      if (content === null) {
+        const at = prev.findIndex((p) => p.key === key)
+        if (at < 0) return prev
+        return prev.filter((p) => p.key !== key).map((p, i) => (i >= at ? { ...p, count: p.count - 1 } : p))
+      }
+      const alive = prev.filter((p) => threadMessages.length <= p.count)
+      return [...alive, { key, content, count: threadMessages.length + alive.length }]
+    })
   // 이 시각 뒤에 생긴 메시지만 떠오르게 한다
   const [mountedAt] = useState(() => Date.now())
 
@@ -195,7 +206,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
   useEffect(() => {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [threadMessages.length, showPending, rebuildWait])
+  }, [threadMessages.length, showPending.length, rebuildWait])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -370,12 +381,12 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
                   </div>
                 )
               })}
-              {showPending && (
-                <div className={`-mx-3 mt-2.5 flex gap-2.5 px-3 pb-1 pt-1 ${MESSAGE_ENTER}`} aria-live="polite">
+              {showPending.map((p) => (
+                <div key={p.key} className={`-mx-3 mt-2.5 flex gap-2.5 px-3 pb-1 pt-1 ${MESSAGE_ENTER}`} aria-live="polite">
                   <span className="w-[28px] shrink-0 in-data-[messenger]:w-[38px]" />
                   <div className="min-w-0 flex-1">
                     <div className="whitespace-pre-wrap break-keep text-[13px] leading-[1.6] text-foreground/60 in-data-[messenger]:text-[17px] [overflow-wrap:anywhere]">
-                      {tidyBody(showPending.content)}
+                      {tidyBody(p.content)}
                     </div>
                     <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground in-data-[messenger]:text-[13px]">
                       <Spinner className="h-3 w-3" />
@@ -383,8 +394,8 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
                     </div>
                   </div>
                 </div>
-              )}
-              {rebuildWait && !showPending && (
+              ))}
+              {rebuildWait && showPending.length === 0 && (
                 <div
                   role="status"
                   aria-live="polite"
@@ -406,10 +417,11 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
             tasks={refs.tasks}
             users={refs.users}
             files={refs.files}
-            onPending={(content) => setPending(content ? { content, count: threadMessages.length } : null)}
+            onPending={trackPending}
             onQueued={setRebuildWait}
             replyTo={replyTarget}
             onClearReply={() => setReplyTarget(null)}
+            onRestoreReply={(reply) => setReplyTarget((cur) => cur ?? reply)}
             handoffKey={roomKey}
           />
         </TabsContent>

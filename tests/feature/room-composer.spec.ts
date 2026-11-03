@@ -115,31 +115,147 @@ test("자동완성 — 전사방은 / # @ 를 받고, 옴니스 방은 그냥 �
   await expect(box(page)).toHaveValue("/업무 @사원1 #가벽 견적")
 })
 
-test("보내는 동안 입력칸을 막지 않고 두 번 보내지 않는다, 실패하면 글이 돌아온다(업무 스레드)", async ({ page }) => {
+test("보내는 동안 다음 글을 보내도 쓴 순서대로 닿고, 실패한 글만 돌아온다(업무 스레드)", async ({ page }) => {
   await quickLogin(page, "팀장")
   await page.goto(await taskRoom(page))
   await box(page).waitFor({ timeout: 30_000 })
-  const text = `실패 시험 ${Date.now()}`
-  let posts = 0
+  const first = `첫 글 ${Date.now()}`
+  const second = `둘째 글 ${Date.now()}`
+  const posts: string[] = []
   let release = () => {}
   const gate = new Promise<void>((resolve) => (release = resolve))
   await page.route("**/api/chat/messages", async (route) => {
     if (route.request().method() !== "POST") return route.continue()
-    posts++
-    await gate
-    await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "시험 실패" }) })
+    const { content } = JSON.parse(route.request().postData() ?? "{}") as { content: string }
+    posts.push(content)
+    if (content === first) {
+      await gate
+      return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "시험 실패" }) })
+    }
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: `m-${Date.now()}` }) })
   })
-  await box(page).fill(text)
+  await box(page).fill(first)
   await box(page).press("Enter")
   await expect(box(page)).toHaveValue("")
   await expect(box(page)).toBeEnabled()
+  await box(page).fill(second)
+  await box(page).press("Enter")
+  await expect(box(page)).toHaveValue("")
+  // 앞 글이 끝나기 전에는 뒤 글이 서버로 가지 않는다 — 두 글 다 「보내는 중」 으로 보인다
+  await expect(page.getByText("보내는 중…")).toHaveCount(2)
+  expect(posts).toEqual([first])
   await box(page).fill("이어 쓴 글")
-  await box(page).press("Enter") // 보내는 중 — 무시되고 글이 남는다
-  await expect(box(page)).toHaveValue("이어 쓴 글")
-  expect(posts).toBe(1)
   release()
-  await expect(box(page)).toHaveValue(`${text}\n이어 쓴 글`)
-  expect(posts).toBe(1)
+  await expect.poll(() => posts).toEqual([first, second])
+  await expect(page.getByText("시험 실패").first()).toBeVisible()
+  // 실패한 첫 글만 입력칸 맨 앞으로 돌아오고, 그 사이 쓴 글은 뒤에 남는다
+  await expect(box(page)).toHaveValue(`${first}\n이어 쓴 글`)
+})
+
+test("같은 순간 두 번 눌러도 한 번만 보내고, 실패한 글은 말풍선에 표시되며 뒤 글을 막지 않는다(전사방)", async ({ page }) => {
+  await quickLogin(page, "팀장")
+  await page.goto(COMPANY)
+  await box(page).waitFor({ timeout: 30_000 })
+  const failing = `실패할 글 ${Date.now()}`
+  const next = `뒤 글 ${Date.now()}`
+  const posts: string[] = []
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => (release = resolve))
+  await page.route("**/api/chat/messages", async (route) => {
+    if (route.request().method() !== "POST") return route.continue()
+    const { content } = JSON.parse(route.request().postData() ?? "{}") as { content: string }
+    posts.push(content)
+    if (content !== failing) return route.continue()
+    await gate
+    return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "시험 실패" }) })
+  })
+  await box(page).fill(failing)
+  await page.evaluate(() => {
+    const send = document.querySelector('[data-composer-pill] button[aria-label="보내기"]') as HTMLButtonElement
+    send.click()
+    send.click()
+  })
+  await expect(box(page)).toHaveValue("")
+  await box(page).fill(next)
+  await box(page).press("Enter")
+  await expect(page.getByText(next).first()).toBeVisible()
+  expect(posts).toEqual([failing])
+  release()
+  await expect.poll(() => posts).toEqual([failing, next])
+  await expect(page.getByText("시험 실패").first()).toBeVisible()
+  // 화면에서도 쓴 순서 그대로다
+  const order = await page.evaluate(([a, b]) => {
+    const text = document.body.innerText
+    return text.lastIndexOf(a) < text.lastIndexOf(b)
+  }, [failing, next])
+  expect(order).toBe(true)
+})
+
+async function roomUrls(page: Page) {
+  return { 전사: COMPANY, 사람: await peopleRoom(page), 업무: await taskRoom(page), 옴니스: "/chat/new" }
+}
+
+/** 옴니스 방은 모델을 부르지 않게 거절로 끝낸다 — 입력창이 포커스를 지키는지만 본다 */
+async function refuseAgent(page: Page) {
+  await page.route("**/api/agent/rooms**", async (route) => {
+    if (route.request().method() !== "POST") return route.continue()
+    return route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ error: "시험" }) })
+  })
+}
+
+const focused = (page: Page) => box(page).evaluate((el) => document.activeElement === el)
+
+test("데스크톱 — 보낸 뒤 입력칸에 그대로 있다(네 방 공통, Enter · 단추)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await quickLogin(page, "팀장")
+  await refuseAgent(page)
+  for (const [name, url] of Object.entries(await roomUrls(page))) {
+    await page.goto(url)
+    await box(page).waitFor({ timeout: 30_000 })
+    await box(page).fill(`포커스 시험 Enter ${name} ${Date.now()}`)
+    await box(page).press("Enter")
+    await expect.poll(() => focused(page), `${name} Enter`).toBe(true)
+    await box(page).fill(`포커스 시험 단추 ${name} ${Date.now()}`)
+    await page.locator(`${PILL} button[aria-label="보내기"]`).first().click()
+    await expect.poll(() => focused(page), `${name} 단추`).toBe(true)
+  }
+})
+
+test.describe("폰", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+
+  test("쓰던 중 단추를 누르면 입력칸에 남고, 내려 둔 키보드는 올리지 않는다(네 방 공통)", async ({ page }) => {
+    await quickLogin(page, "팀장")
+    await refuseAgent(page)
+    for (const [name, url] of Object.entries(await roomUrls(page))) {
+      await page.goto(url)
+      await box(page).waitFor({ timeout: 30_000 })
+      expect(await page.evaluate(() => window.matchMedia("(pointer: coarse)").matches)).toBe(true)
+      const send = page.locator(`${PILL} button[aria-label="보내기"]`).first()
+      await box(page).tap()
+      await box(page).fill(`폰 쓰던 중 ${name} ${Date.now()}`)
+      await send.tap()
+      await page.waitForTimeout(300)
+      expect(await focused(page), `${name} 쓰던 중`).toBe(true)
+      // 옴니스 방은 답이 끝나야 단추가 돌아온다
+      await box(page).fill(`폰 키보드 내림 ${name} ${Date.now()}`)
+      await box(page).evaluate((el) => (el as HTMLTextAreaElement).blur())
+      await expect.poll(() => send.isEnabled()).toBe(true)
+      await send.tap()
+      await page.waitForTimeout(300)
+      expect(await focused(page), `${name} 내려 둔 키보드`).toBe(false)
+    }
+  })
+
+  test("폰의 Enter 는 줄바꿈이다", async ({ page }) => {
+    await quickLogin(page, "팀장")
+    await page.goto(COMPANY)
+    await box(page).waitFor({ timeout: 30_000 })
+    await box(page).tap()
+    await box(page).fill("한 줄")
+    await box(page).press("Enter")
+    await expect(box(page)).toHaveValue(/한 줄/)
+  })
 })
 
 test("방을 여는 동안 쓴 글을 방 화면 입력창이 이어받고, 입력창 자리가 밀리지 않는다", async ({ page }) => {
