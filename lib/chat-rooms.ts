@@ -6,7 +6,7 @@
 //   TASK     업무방 — 표가 없다. taskId 로 묶인 글을 목록이 방처럼 보여 준다(id 는 업무 id)
 //   OMNIS_DM 옴니스 1:1 — 만든 사람만
 //   GROUP    단톡방 — 사람끼리. 참여자만(lib/chat-people.ts)
-//   DM       사람끼리 1:1 — 두 사람만. 같은 두 사람의 방은 하나(dmKey)
+//   DM       사람끼리 1:1 — 두 사람만. 같은 두 사람의 방은 하나(dmKey). 나와의 대화도 이 종류다(dmKey 나:나, 참여자 나뿐)
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
@@ -242,7 +242,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       orderBy: [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
       take: 100,
       select: {
-        id: true, kind: true, name: true, createdAt: true, lastMessageAt: true,
+        id: true, kind: true, name: true, dmKey: true, createdAt: true, lastMessageAt: true,
         // 1:1 이름(상대 이름)을 정하려고 — 사람끼리 1:1 만 쓴다
         members: { where: { room: { kind: "DM" } }, select: { user: { select: { id: true, name: true } } } },
         messages: {

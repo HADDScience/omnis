@@ -11,7 +11,7 @@ import { createNotification } from "@/lib/notifications"
 import { queueChatPush } from "@/lib/chat-push"
 import { roomKeyOf } from "@/lib/chat-list"
 import { checkAttachable } from "@/lib/file-access"
-import { defaultGroupName, dmKeyOf, mentionedMembers, peopleRoomTitle, planPeopleRoom } from "@/lib/chat-people-rules"
+import { defaultGroupName, dmKeyOf, isSelfDmKey, mentionedMembers, peopleRoomTitle, planPeopleRoom, SELF_ROOM_TITLE, selfDmKeyOf } from "@/lib/chat-people-rules"
 
 export type PeopleResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string }
 const fail = (status: number, error: string) => ({ ok: false as const, status, error })
@@ -84,9 +84,38 @@ export async function openPeopleRoom(
   return { ok: true, value: { roomId: room.id, kind: "GROUP", existing: false } }
 }
 
+/**
+ * 「나와의 대화」 를 연다(없으면 만든다). 참여자는 나뿐이라 방 · 글 · 첨부의 접근 규칙은 다른 1:1 과 같은 코드를 탄다.
+ * 사람마다 하나 — dmKey 유일 제약이 지킨다. 남의 방을 여는 길은 없다(열쇠를 로그인한 사람 id 로만 만든다)
+ */
+export async function openSelfRoom(me: { id: string }): Promise<{ roomId: string; kind: "DM"; existing: boolean }> {
+  const dmKey = selfDmKeyOf(me.id)
+  const reopen = async (id: string) => {
+    await prisma.chatRoomPref.updateMany({ where: { userId: me.id, roomKey: `room:${id}`, hiddenAt: { not: null } }, data: { hiddenAt: null } })
+    return { roomId: id, kind: "DM" as const, existing: true }
+  }
+  const found = await prisma.chatRoom.findUnique({ where: { dmKey }, select: { id: true } })
+  if (found) return reopen(found.id)
+  try {
+    const room = await prisma.chatRoom.create({
+      data: { kind: "DM", dmKey, name: SELF_ROOM_TITLE, createdById: me.id, members: { create: [{ userId: me.id, lastReadAt: new Date() }] } },
+      select: { id: true },
+    })
+    return { roomId: room.id, kind: "DM", existing: false }
+  } catch (e) {
+    if ((e as { code?: string } | null)?.code === "P2002") {
+      const again = await prisma.chatRoom.findUnique({ where: { dmKey }, select: { id: true } })
+      if (again) return reopen(again.id)
+    }
+    throw e
+  }
+}
+
 export interface PeopleRoomView {
   id: string
   kind: "DM" | "GROUP"
+  /** 나와의 대화 — 참여자가 나뿐인 방. 알림 끄기 · 두 사람 안내를 보이지 않는다 */
+  self: boolean
   /** 보는 사람 기준 이름 — 1:1 은 상대 이름 */
   title: string
   /** 저장된 이름(단톡방 이름 바꾸기의 기본값) */
@@ -99,13 +128,13 @@ export async function loadPeopleRoom(roomId: string, userId: string): Promise<Pe
   const room = await prisma.chatRoom.findFirst({
     where: { id: roomId, kind: { in: [...PEOPLE_KINDS] }, members: { some: { userId } } },
     select: {
-      id: true, kind: true, name: true,
+      id: true, kind: true, name: true, dmKey: true,
       members: { orderBy: { joinedAt: "asc" }, select: { user: { select: { id: true, name: true } } } },
     },
   })
   if (!room || (room.kind !== "DM" && room.kind !== "GROUP")) return null
   const members = room.members.map((m) => m.user)
-  return { id: room.id, kind: room.kind, name: room.name, title: peopleRoomTitle(room, members, userId), members }
+  return { id: room.id, kind: room.kind, self: isSelfDmKey(room.dmKey), name: room.name, title: peopleRoomTitle(room, members, userId), members }
 }
 
 /** 단톡방 이름 바꾸기 — 참여자 누구나. 1:1 은 이름이 상대 이름이라 바꾸지 않는다 */

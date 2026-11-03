@@ -83,6 +83,7 @@ test("자동완성 — 전사방은 / # @ 를 받고, 옴니스 방은 그냥 �
   await quickLogin(page, "팀장")
   await page.goto(COMPANY)
   await box(page).waitFor({ timeout: 30_000 })
+  await hydrated(page)
   await box(page).fill("/")
   await expect(page.locator(LIST)).toContainText("명령어")
   await box(page).fill("@")
@@ -104,6 +105,7 @@ test("자동완성 — 전사방은 / # @ 를 받고, 옴니스 방은 그냥 �
   })
   await page.goto("/chat/new")
   await box(page).waitFor({ timeout: 30_000 })
+  await hydrated(page)
   for (const text of ["/", "/업", "#", "@", "@사원"]) {
     await box(page).fill(text)
     await expect(page.locator(LIST)).toHaveCount(0)

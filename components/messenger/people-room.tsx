@@ -62,10 +62,11 @@ export function PeopleRoom({
     <div className="flex min-h-0 flex-1 flex-col">
       <RoomHeader
         title={room.title}
-        subtitle={group ? `단톡방 · ${room.members.length}명 · 참여자만 보여요` : "1:1 대화 · 두 사람만 보여요"}
+        subtitle={room.self ? "나만 보는 방이에요 · 메모와 파일을 남겨 두세요" : group ? `단톡방 · ${room.members.length}명 · 참여자만 보여요` : "1:1 대화 · 두 사람만 보여요"}
         actions={
           <>
-            <RoomMuteButton roomKey={`room:${room.id}`} initialMuted={muted} />
+            {/* 나와의 대화에는 받을 알림이 없다 */}
+            {!room.self && <RoomMuteButton roomKey={`room:${room.id}`} initialMuted={muted} />}
             <Button
               variant="ghost"
               size="icon-sm"
