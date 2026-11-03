@@ -25,7 +25,7 @@ export async function embed(opts: { dry: boolean; photoIds?: string[] }) {
     // 청크 형식이 바뀌어(예: 시각 추가) 이미 색인된 것도 다시 실어야 하면 KAKAO_REEMBED_ALL=1 로 전량을 해시 비교한다.
     prisma.$queryRaw<{ id: string }[]>`
       SELECT m."id" FROM "ChatMessage" m JOIN "ChatRoom" r ON r."id" = m."roomId"
-      WHERE m."sourceId" LIKE 'kakao:%' AND m."kind" = 'NORMAL' AND m."deletedAt" IS NULL AND r."kind" = 'COMPANY'
+      WHERE m."sourceId" LIKE 'kakao:%' AND m."kind" = 'NORMAL' AND m."deletedAt" IS NULL AND r."kind" = 'COMPANY' AND m."externalSpeakerId" IS NULL
         AND length(trim(m."content")) >= ${CHAT_MIN_LENGTH}
         AND m."content" NOT LIKE '\\_\\_%' AND m."content" NOT LIKE '🤖%'
         AND (${reembedAll} OR NOT EXISTS (SELECT 1 FROM "EmbeddingChunk" e WHERE e."source" = 'CHAT_MESSAGE' AND e."sourceId" = m."id"))

@@ -11,6 +11,7 @@ import {
   parseJsonArray, parseKst, resolveUsers, pad2, type RawSession,
 } from "../kakao-common"
 import { pickMessages, tailSession } from "../structure-tail"
+import { structureEnabled } from "../rooms-config"
 
 const SIZE = 40
 const DIR = `${DATA_DIR}/structure`
@@ -155,7 +156,7 @@ export async function pendingForStructure(sessions: RawSession[], cache = loadDr
     (await prisma.task.findMany({ where: { sourceId: { startsWith: "kakao-task:" } }, select: { sourceId: true } }))
       .map((t) => t.sourceId!.slice("kakao-task:".length).replace(/#\d+$/, "")),
   )
-  const work = sessions.filter((s) => ROOMS[s.room] && classified.get(s.id)?.label === "업무" && classified.get(s.id)?.actionable === true)
+  const work = sessions.filter((s) => ROOMS[s.room] && structureEnabled(ROOMS[s.room]) && classified.get(s.id)?.label === "업무" && classified.get(s.id)?.actionable === true)
   const tails = work
     .filter((s) => (seen.get(s.id) ?? 0) > 0 && s.msgs.length > seen.get(s.id)!)
     .map((s) => tailSession(s, seen.get(s.id)!))

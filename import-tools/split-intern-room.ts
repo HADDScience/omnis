@@ -18,8 +18,10 @@ const where = prod ? pointAtProd() : (process.env.DATABASE_URL ?? "(.env)").repl
 async function main() {
   const { prisma, ROOMS, ensureRooms, touchRooms, loadSessions, messageSourceId } = await import("./kakao-common")
   if (!prod && !process.env.DATABASE_URL?.includes("localhost")) throw new Error("로컬 대상인데 DATABASE_URL 이 localhost 가 아니다. 중단.")
-  const KAKAO_ROOM = "하드사이언스 인턴방"
+  const KAKAO_ROOM = args[args.indexOf("--kakao-room") + 1]
+  if (!args.includes("--kakao-room") || !ROOMS[KAKAO_ROOM]) throw new Error("--kakao-room 으로 import-config.json 의 카톡 방을 주세요. 중단.")
   const room = ROOMS[KAKAO_ROOM]
+  if (!room.id) throw new Error("옮길 방의 id 가 없다. 중단.")
   if (room.kind !== "GROUP") throw new Error("인턴방이 단톡방으로 설정돼 있지 않다. 중단.")
 
   const sourceIds = loadSessions().filter((s) => s.room === KAKAO_ROOM).flatMap((s) => s.msgs.map((m) => messageSourceId(s.room, m)))
