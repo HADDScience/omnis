@@ -58,6 +58,8 @@ for (const room of rooms) {
   await page.goto(`${BASE}${room.url}`, { waitUntil: "domcontentloaded" })
   const box = page.locator(`${PILL} textarea`).first()
   await box.waitFor({ timeout: 60_000 })
+  // 서버가 그린 입력칸이 먼저 보인다 — React 가 붙은 뒤에 쓴다(그 전의 Enter 는 그냥 줄바꿈이다)
+  await until(() => box.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), 60_000)
   const posts = []
   const uploads = []
   let holdUpload = 5_000
@@ -70,6 +72,8 @@ for (const room of rooms) {
     if (route.request().method() !== "POST") return route.continue()
     if (failUpload) {
       uploads.push(500)
+      // 바로 실패하면 뒤 글을 쓰기도 전에 글이 돌아온다 — 뒤 글을 보낸 다음에 실패하게 둔다
+      await new Promise((r) => setTimeout(r, 2_000))
       return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "시험 업로드 실패" }) })
     }
     await new Promise((r) => setTimeout(r, holdUpload))
@@ -133,7 +137,7 @@ for (const room of rooms) {
   ok(await until(async () => (await box.inputValue()) === failText), "실패한 글이 입력칸으로 돌아온다")
   ok(await until(() => page.locator("[data-composer-attachments]").first().isVisible()), "실패한 사진이 첨부 칩으로 돌아온다")
   ok(await until(() => page.getByText("시험 업로드 실패").first().isVisible()), "실패 이유가 보인다")
-  ok((await page.getByText(failText).count()) === 0 || (await box.inputValue()) === failText, "실패한 글의 말풍선이 남지 않는다")
+  ok(await until(async () => (await page.locator(`[data-message-id] :text("${failText}")`).count()) === 0), "실패한 글의 말풍선이 남지 않는다")
   if (OUT) await page.screenshot({ path: path.join(OUT, `queue-${room.name}-실패.png`) })
 
   // 다시 보내면 한 번 저장된다
