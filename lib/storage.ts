@@ -130,13 +130,33 @@ async function ensureParents(absolutePath: string) {
 // 첨부파일(SYNOLOGY_WEBDAV_BASE_PATH) 밖에 두어야 하는 것 — 서명·직인처럼 권한이 좁은 폴더 — 이 쓴다.
 // 첨부파일은 아래 putObject/getObject/deleteObject(키)를 쓴다.
 
+/** 응답 없이 연결이 끊겼는가 — NAS 나 회선이 끊은 것이다. 우리 한도 초과(시놀로지가 …초 안에)는 여기 들지 않는다 */
+export function isConnectionDropped(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  return (e as NodeJS.ErrnoException).code === "ECONNRESET" || e.message === "socket hang up"
+}
+
+/**
+ * 연결이 끊긴 일은 한 번만 다시 해 본다(2026-11-03 운영 첨부 HTTP 500 — socket hang up 한 건, 몇 분 뒤 업로드는 성공했다).
+ * 같은 경로에 같은 내용을 다시 쓰는 PUT 이라 앞의 시도가 닿았어도 결과가 같다.
+ */
+export async function retryOnDrop<T>(attempt: () => Promise<T>): Promise<T> {
+  try {
+    return await attempt()
+  } catch (e) {
+    if (!isConnectionDropped(e)) throw e
+    return attempt()
+  }
+}
+
 export async function putAt(absolutePath: string, body: Buffer, contentType: string): Promise<void> {
-  let res = await dav("PUT", davUrl(absolutePath), body, contentType)
+  const put = () => retryOnDrop(() => dav("PUT", davUrl(absolutePath), body, contentType))
+  let res = await put()
   if (res.status === 409) {
     // 상위 디렉터리가 없다. 만들고 한 번만 다시 시도한다.
     drain(res)
     await ensureParents(absolutePath)
-    res = await dav("PUT", davUrl(absolutePath), body, contentType)
+    res = await put()
   }
   drain(res)
   if (res.status < 200 || res.status >= 300) {
