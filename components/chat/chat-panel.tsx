@@ -7,6 +7,7 @@ import { MessageInput } from "@/components/chat/message-input"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
+import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { createSerialQueue } from "@/lib/serial-queue"
 import { reportIncident } from "@/lib/report-client-error"
 import { ChatSearch } from "@/components/chat/chat-search"
@@ -161,6 +162,11 @@ export function ChatPanel({
   // 남이 고치거나 지운 글을 마지막으로 물어본 서버 시각 — 화면 시계가 아니라 서버가 돌려준 값을 쓴다
   const changesCheckedAt = useRef<string | null>(null)
 
+  // 이 방에서 본 글 — 폴링은 커서보다 조금 앞부터 겹쳐 읽으므로 응답에 글이 있어도 새 글이 아닐 수 있다.
+  // 진짜 새 글일 때만 왼쪽 목록을 다시 읽는다
+  const nudgeRoomList = useRoomListNudge()
+  const [seenIds] = useState(() => new Set(initialMessages.map((m) => m.id)))
+
   const fetchMessages = useCallback(async () => {
     if (sendsInFlight.current > 0 || jumpedRef.current) return
     try {
@@ -177,6 +183,11 @@ export function ChatPanel({
       const body = await res.json()
       // 폴링(changes=1)은 { messages, changed, checkedAt }, 첫 읽기는 배열
       const newMsgs: Message[] = Array.isArray(body) ? body : body.messages
+      const unseen = newMsgs.filter((m) => !seenIds.has(m.id))
+      if (unseen.length > 0) {
+        for (const m of unseen) seenIds.add(m.id)
+        nudgeRoomList()
+      }
       if (!Array.isArray(body)) {
         changesCheckedAt.current = body.checkedAt
         if (body.changed.length > 0) setMessages((prev) => applyChanges(prev, body.changed as Message[]))
@@ -198,7 +209,7 @@ export function ChatPanel({
     } catch {
       /* ignore */
     }
-  }, [roomId, filterTaskId])
+  }, [roomId, filterTaskId, seenIds, nudgeRoomList])
 
   // 무한 스크롤 — 현재 가장 오래된 메시지보다 이전 메시지 한 페이지를 앞에 붙임
   const loadOlder = useCallback(async () => {
@@ -419,6 +430,8 @@ export function ChatPanel({
       }
       failedPayloads.current.delete(tempId)
       const newMsg = await res.json()
+      seenIds.add(newMsg.id)
+      nudgeRoomList()
       // 보내는 중 말풍선을 그 자리에서 확정한다 — 다시 떠오르지 않게 표시. 폴링이 먼저 들여왔으면 말풍선만 걷는다
       setMessages((prev) =>
         prev.some((m) => m.id === newMsg.id)
@@ -438,7 +451,7 @@ export function ChatPanel({
         setProcessing(null)
       }
     },
-    [people, stopSending, fetchMessages, onTaskUpdated, waitForRebuild],
+    [people, stopSending, fetchMessages, onTaskUpdated, waitForRebuild, seenIds, nudgeRoomList],
   )
 
   /** 보내지 못한 글을 같은 clientId 로 다시 보낸다 */

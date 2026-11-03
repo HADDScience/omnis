@@ -1,5 +1,6 @@
 "use client"
 
+import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -120,6 +121,16 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
   const threadMessages = messages
   const rows = layoutMessages(threadMessages.map((m) => ({ ...m, isEvent: eventKindOf(m) !== null })))
   const router = useRouter()
+
+  // 업무방은 글 목록을 서버가 다시 그려 준다(보낸 뒤 router.refresh) — 새 글이 생겼을 때만 왼쪽 목록을 맞춘다
+  const nudgeRoomList = useRoomListNudge()
+  const [seenIds] = useState(() => new Set(messages.map((m) => m.id)))
+  useEffect(() => {
+    const unseen = messages.filter((m) => !seenIds.has(m.id))
+    if (unseen.length === 0) return
+    for (const m of unseen) seenIds.add(m.id)
+    nudgeRoomList()
+  }, [messages, seenIds, nudgeRoomList])
 
   // 메신저 업무방 — 사람 글만 최근 30개를 기기에 저장한다(채팅 패널과 같은 범위). 사건 줄은 넣지 않는다
   useEffect(() => {
