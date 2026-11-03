@@ -21,7 +21,9 @@ async function ready(page: Page, url: string) {
 test("키 하나(d · c · ㅊ · f)로는 아무것도 바뀌지 않고, 조합키로만 동작한다", async ({ page }) => {
   await ready(page, "/tasks")
   const dark = await isDark(page)
-  for (const key of ["d", "c", "ㅊ", "f"]) await page.keyboard.press(key)
+  for (const key of ["d", "c", "f"]) await page.keyboard.press(key)
+  // 한글 입력 상태의 C 자리 — 자판으로 칠 수 없어 키 이벤트를 직접 보낸다
+  await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "ㅊ", code: "KeyC", bubbles: true })))
   await page.waitForTimeout(300)
   expect(await isDark(page)).toBe(dark)
   await expect(panelInput(page)).toHaveCount(0)
