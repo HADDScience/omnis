@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { ChatPanel } from "@/components/chat/chat-panel"
 import { TaskCmdModal } from "@/components/chat/task-cmd-modal"
 import { TaskThread } from "@/app/(main)/tasks/[taskId]/task-sidebar"
+import { useShortcut } from "@/hooks/use-shortcuts"
 import { useRightPanel } from "./right-panel-context"
 import { PanelOmnis } from "./panel-omnis"
 import { cn } from "@/lib/utils"
@@ -46,7 +47,7 @@ type View = "task" | "all" | "omnis"
  *
  * 그래서 **덮어서** 연다. 닫혀 있을 때 폭은 0 이다 — 접힌 레일조차 두지 않는다.
  * 스레드 하나 때문에 모든 화면이 좁아질 이유가 없다. 여는 곳은 오른쪽 아래의 둥근 유리 단추(PanelDock) ·
- * C 키 · ⌘⇧F · ?taskId= 링크다(2026-10-29, 제목줄의 「채팅 열기」 는 지웠다).
+ * 단축키(⌥⇧C · ⌘⇧F, 설정에서 바꾼다) · ?taskId= 링크다(2026-10-29, 제목줄의 「채팅 열기」 는 지웠다).
  *
  * 업무 상세에서 열면 전체 채팅이 아니라 **그 업무 스레드**가 먼저 뜬다.
  */
@@ -67,22 +68,15 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
     if (!open || view !== "all") setSearchOpen(false)
   }, [open, view])
 
-  // ⌘⇧F (윈도우는 Ctrl+Shift+F) — 어디서든 패널을 열고 전체 채팅 검색 줄로 간다. 이미 열려 있으면 검색칸을 다시 고른다.
+  // ⌘⇧F (윈도우는 Ctrl+Shift+F, 설정에서 바꿀 수 있다) — 어디서든 패널을 열고 전체 채팅 검색 줄로 간다. 이미 열려 있으면 검색칸을 다시 고른다.
   // 입력칸 안에서도 받는다 — 글을 쓰다가 바로 찾는 게 단축키의 쓸모다
   const [searchFocus, setSearchFocus] = useState(0)
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return
-      if (e.code !== "KeyF" && e.key.toLowerCase() !== "f") return
-      e.preventDefault()
-      setOpen(true)
-      setView("all")
-      setSearchOpen(true)
-      setSearchFocus((n) => n + 1)
-    }
-    window.addEventListener("keydown", handleKey)
-    return () => window.removeEventListener("keydown", handleKey)
-  }, [setOpen])
+  useShortcut("panelSearch", () => {
+    setOpen(true)
+    setView("all")
+    setSearchOpen(true)
+    setSearchFocus((n) => n + 1)
+  })
 
   // 업무 화면으로 들어오면 그 업무 스레드로, 떠나면 전체로 되돌린다
   useEffect(() => {
