@@ -4,11 +4,11 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react"
+import { useShortcut } from "@/hooks/use-shortcuts"
 
 interface CommandPaletteContextValue {
   isOpen: boolean
@@ -26,16 +26,7 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => setIsOpen(false), [])
   const toggle = useCallback(() => setIsOpen((v) => !v), [])
 
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
-        e.preventDefault()
-        toggle()
-      }
-    }
-    window.addEventListener("keydown", handleKey)
-    return () => window.removeEventListener("keydown", handleKey)
-  }, [toggle])
+  useShortcut("commandPalette", toggle)
 
   const value = useMemo(() => ({ isOpen, open, close, toggle }), [isOpen, open, close, toggle])
 

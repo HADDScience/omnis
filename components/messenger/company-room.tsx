@@ -59,6 +59,8 @@ export function CompanyRoom({
       <div className="flex min-h-0 flex-1 flex-col">
         <ChatPanel
           roomId={roomId}
+          // 방을 여는 동안 쓴 글을 이어받는다 — 사람 방 · 업무 방과 같다(lib/chat-entry.ts)
+          handoffKey={`room:${roomId}`}
           initialMessages={initialMessages}
           currentUserId={currentUserId}
           onTaskUpdated={() => router.refresh()}

@@ -228,7 +228,7 @@ if (want("input")) {
   await shot(page, "U-375-input-omnis-multiline")
 
   await open(page, "/chat/default-room")
-  a = await align('textarea[aria-label="메시지 입력"]', 'button[aria-label="메시지 전송"]')
+  a = await align('textarea[aria-label="메시지 입력"]', 'button[aria-label="보내기"]')
   check("전사방 — 한 줄일 때 세로 가운데(±1px)", a && Math.abs(a.textMid - a.btnMid) <= 1, a)
   await shot(page, "U-375-input-company")
   const dm = await page.evaluate(async (base) => {
@@ -238,7 +238,7 @@ if (want("input")) {
   }, BASE)
   if (dm) {
     await open(page, `/chat/${dm}`)
-    a = await align('textarea[aria-label="메시지 입력"]', 'button[aria-label="메시지 전송"]')
+    a = await align('textarea[aria-label="메시지 입력"]', 'button[aria-label="보내기"]')
     check("사람 방 — 한 줄일 때 세로 가운데(±1px)", a && Math.abs(a.textMid - a.btnMid) <= 1, a)
     await shot(page, "U-375-input-people")
   }
@@ -373,7 +373,7 @@ if (want("speed")) {
   await input.fill(text)
   const posts = []
   page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/api/chat/messages")) posts.push(r.url()) })
-  await page.getByRole("button", { name: "메시지 전송" }).evaluate((b) => { b.click(); b.click() })
+  await page.getByRole("button", { name: "보내기" }).evaluate((b) => { b.click(); b.click() })
   await page.waitForTimeout(2500)
   check("보내기를 같은 순간 두 번 눌러도 요청은 한 번", posts.length === 1, { posts: posts.length, before })
   await page.close()

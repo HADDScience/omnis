@@ -1,35 +1,16 @@
 "use client"
 
-// 옴니스 방 입력창의 ＋(첨부) — 사람 방 입력창(components/chat/message-input.tsx)과 같은 메뉴 · 상한 · 시놀로지 연결.
+// 옴니스 방의 첨부 — ＋ 메뉴와 칩은 공통 입력창(components/chat/room-composer.tsx), 상한 · 시놀로지 연결도 사람 방과 같다.
 // 다른 점: 고르는 즉시 올린다(scope=private — 올린 사람만, 질문에 붙은 뒤에는 방 주인만 본다, lib/file-access.ts).
 // 질문을 보낼 때는 올린 파일의 id 만 넘긴다(POST /api/agent/rooms… { fileIds }).
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { Alert02Icon, Attachment01Icon, Cancel01Icon, Folder01Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
-import { Button } from "@/components/ui/button"
-import { Spinner } from "@/components/ui/spinner"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { NasFilePicker } from "@/components/chat/nas-file-picker"
 import type { FileInfo } from "@/components/chat/message-list"
+import type { PickedFile } from "@/components/chat/room-composer"
 import { apiUrl } from "@/lib/base-path"
 import { MAX_UPLOAD_BYTES } from "@/lib/constants"
 import { ATTACH_MAX } from "@/lib/file-access"
 import { reportIncident } from "@/lib/report-client-error"
-import { cn } from "@/lib/utils"
-
-export interface PickedFile {
-  key: string
-  name: string
-  size: number
-  mimeType: string
-  /** 이미지 미리보기(내 기기에서 고른 것만) */
-  preview?: string
-  status: "uploading" | "done" | "error"
-  error?: string
-  /** 올린 뒤 받은 파일 — 질문에 이 id 를 붙인다 */
-  file?: FileInfo
-}
 
 let seq = 0
 
@@ -130,106 +111,4 @@ export function useOmnisAttachments() {
     failed: items.some((i) => i.status === "error"),
     ready: items.filter((i) => i.status === "done").map((i) => i.file!),
   }
-}
-
-/** 알약 안 왼쪽 ＋ — 사람 방 입력창과 같은 크기(메신저 48px · 패널 32px)와 같은 메뉴 */
-export function AttachButton({ onFiles, onNas, disabled }: { onFiles: (files: File[]) => void; onNas: (entry: { path: string; name: string; size?: number }) => void; disabled?: boolean }) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [nasOpen, setNasOpen] = useState(false)
-  return (
-    <>
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        className="hidden"
-        data-omnis-file-input
-        onChange={(e) => {
-          if (e.target.files) {
-            onFiles(Array.from(e.target.files))
-            e.target.value = ""
-          }
-        }}
-      />
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="추가"
-              className="touch-target size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]!"
-              disabled={disabled}
-            />
-          }
-        >
-          <HugeiconsIcon icon={PlusSignIcon} size={18} className="in-data-[messenger]:h-[26px]! in-data-[messenger]:w-[26px]!" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" className="w-52">
-          <DropdownMenuItem onClick={() => inputRef.current?.click()}>
-            <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
-            파일 업로드
-            <span className="ml-auto text-[10px] text-muted-foreground">4MB 이하</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setNasOpen(true)}>
-            <HugeiconsIcon icon={Folder01Icon} size={14} aria-hidden />
-            시놀로지 파일 연결
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <NasFilePicker open={nasOpen} onOpenChange={setNasOpen} onPick={(entry) => onNas({ path: entry.path, name: entry.name, size: entry.size ?? undefined })} />
-    </>
-  )
-}
-
-/** 입력창 위 칩 — 이미지는 작은 미리보기, 나머지는 이름. 올리는 중 · 실패를 보이고 ✕ 로 뺀다 */
-export function AttachChips({ items, onRemove }: { items: PickedFile[]; onRemove: (key: string) => void }) {
-  if (items.length === 0) return null
-  return (
-    <div className="mb-2 flex flex-wrap gap-1.5 px-1 in-data-[messenger]:gap-2" data-omnis-attachments>
-      {items.map((i) => (
-        <div
-          key={i.key}
-          data-attach-status={i.status}
-          title={i.status === "error" ? i.error : i.name}
-          className={cn(
-            "flex max-w-[220px] items-center gap-1.5 rounded-full border bg-card py-0.5 pr-0.5 pl-1 text-[11.5px] in-data-[messenger]:max-w-[260px] in-data-[messenger]:gap-2 in-data-[messenger]:py-1 in-data-[messenger]:pl-1.5 in-data-[messenger]:text-[14px]",
-            i.status === "error" && "border-destructive/50 text-destructive",
-          )}
-        >
-          {i.preview ? (
-            <span className="relative size-6 shrink-0 overflow-hidden rounded-full in-data-[messenger]:size-8">
-              {/* eslint-disable-next-line @next/next/no-img-element -- 내 기기의 blob 미리보기 */}
-              <img src={i.preview} alt="" className="size-full object-cover" />
-            </span>
-          ) : (
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground in-data-[messenger]:size-8">
-              <HugeiconsIcon icon={i.mimeType === "" ? Folder01Icon : Attachment01Icon} size={13} aria-hidden />
-            </span>
-          )}
-          <span className="min-w-0 truncate">{i.name}</span>
-          {i.status === "uploading" && (
-            <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
-              <Spinner className="size-3" />
-              <span className="sr-only sm:not-sr-only">올리는 중</span>
-            </span>
-          )}
-          {i.status === "error" && (
-            <span className="flex shrink-0 items-center gap-0.5">
-              <HugeiconsIcon icon={Alert02Icon} size={13} aria-hidden />
-              실패
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => onRemove(i.key)}
-            aria-label={`${i.name} 빼기`}
-            className="touch-target flex size-6 shrink-0 items-center justify-center rounded-full hover:bg-muted in-data-[messenger]:size-8"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={12} aria-hidden />
-          </button>
-        </div>
-      ))}
-    </div>
-  )
 }

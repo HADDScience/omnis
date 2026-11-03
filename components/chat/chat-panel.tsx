@@ -7,6 +7,7 @@ import { MessageInput } from "@/components/chat/message-input"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
+import { createSerialQueue } from "@/lib/serial-queue"
 import { reportIncident } from "@/lib/report-client-error"
 import { ChatSearch } from "@/components/chat/chat-search"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
@@ -87,6 +88,8 @@ type SendPayload = {
 /** 첨부 단계에서 멈췄다는 표시 — 이 오류는 MessageInput 까지 그대로 던진다(쓴 글 · 첨부를 남긴다) */
 class SendStopped extends Error {}
 
+let tempSeq = 0
+
 /**
  * 폴링으로 진짜 글이 들어왔으면 그 글의 보내는 중 · 실패 말풍선을 걷는다.
  * 응답만 끊긴 글은 서버에 저장돼 있어서, 이것이 없으면 실패 말풍선과 진짜 글이 둘 다 보인다
@@ -122,7 +125,10 @@ export function ChatPanel({
   const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map()) // msgId → 0~100
   // 답장 대상 — 입력창 위에 한 줄로 물고 있다가 보낼 때 함께 넘긴다
   const [replyTo, setReplyTo] = useState<{ id: string; authorName: string; content: string } | null>(null)
-  const pausePolling = useRef(false)
+  /** 보내는 중인 글 수 — 하나라도 있으면 폴링을 쉰다(줄에서 기다리는 글까지) */
+  const sendsInFlight = useRef(0)
+  /** 사진을 올리는 동안 다음 글을 보내도 쓴 순서대로 서버에 닿는다 */
+  const sendQueue = useRef(createSerialQueue())
   // 검색 결과 보기 — 최신이 아닌 자리를 보고 있다. 폴링을 멈추고, 아래로 스크롤하면 뒤를 이어 붙인다
   const [jumped, setJumped] = useState(false)
   const jumpedRef = useRef(false)
@@ -156,7 +162,7 @@ export function ChatPanel({
   const changesCheckedAt = useRef<string | null>(null)
 
   const fetchMessages = useCallback(async () => {
-    if (pausePolling.current || jumpedRef.current) return
+    if (sendsInFlight.current > 0 || jumpedRef.current) return
     try {
       const params = new URLSearchParams({ roomId })
       if (lastFetchedAt.current) {
@@ -441,11 +447,11 @@ export function ChatPanel({
       const payload = failedPayloads.current.get(tempId)
       if (!payload) return
       setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _failed: undefined } : m)))
-      pausePolling.current = true
+      sendsInFlight.current++
       try {
-        await deliver(tempId, payload, false)
+        await sendQueue.current.run(() => deliver(tempId, payload, false))
       } finally {
-        pausePolling.current = false
+        sendsInFlight.current--
       }
     },
     [deliver],
@@ -473,98 +479,107 @@ export function ChatPanel({
         setMessages([])
         setHasMoreOlder(true)
       }
-      pausePolling.current = true
+      // 임시 메시지 즉시 표시 (파일은 아직 업로드 전). 올리고 보내는 일은 줄을 서서 쓴 순서대로 한다 — 앞 글을 기다리는 동안에도 말풍선은 이미 보인다
+      const tempId = `temp-${Date.now()}-${++tempSeq}`
+      const clientId = crypto.randomUUID()
+      const tempFiles = (files || []).map((f, i) => ({
+        id: `uploading-${i}`,
+        name: f.name,
+        path: f.type.startsWith("image/") ? URL.createObjectURL(f) : "",
+        size: f.size,
+        mimeType: f.type,
+        _uploading: true,
+      }))
+      const tempMsg = {
+        id: tempId,
+        content,
+        createdAt: new Date().toISOString(),
+        isTaskInstruction: false,
+        author: { id: "me", name: "" },
+        task: null,
+        files: tempFiles,
+        _clientId: clientId,
+      }
+      setMessages((prev) => [...prev, tempMsg])
+      // 답장 대상은 누른 순간의 것이다 — 줄에서 기다리는 동안 다음 글이 물려받지 않게 바로 비운다. 보내지 못하면 되돌린다
+      const reply = replyTo
+      setReplyTo(null)
+      const mentionMatch = content.match(/#([a-z0-9가-힣-]+)/i)
+      const mentionSlug = mentionMatch?.[1] || null
+      const hasAction = mentionSlug && content.length > (mentionMatch?.[0]?.length || 0) + 2
+
+      sendsInFlight.current++
       // 어떤 길로 끝나든(첨부 실패 · 네트워크 오류 포함) 폴링을 다시 켠다 — 예전에는 fetch 가 던지면 그 방 폴링이 멈춘 채 남았다
       try {
-        const mentionMatch = content.match(/#([a-z0-9가-힣-]+)/i)
-        const mentionSlug = mentionMatch?.[1] || null
-        const hasAction = mentionSlug && content.length > (mentionMatch?.[0]?.length || 0) + 2
-
-        // 임시 메시지 즉시 표시 (파일은 아직 업로드 전)
-        const tempId = `temp-${Date.now()}`
-        const clientId = crypto.randomUUID()
-        const tempFiles = (files || []).map((f, i) => ({
-          id: `uploading-${i}`,
-          name: f.name,
-          path: f.type.startsWith("image/") ? URL.createObjectURL(f) : "",
-          size: f.size,
-          mimeType: f.type,
-          _uploading: true,
-        }))
-        const tempMsg = {
-          id: tempId,
-          content,
-          createdAt: new Date().toISOString(),
-          isTaskInstruction: false,
-          author: { id: "me", name: "" },
-          task: null,
-          files: tempFiles,
-          _clientId: clientId,
-        }
-        setMessages((prev) => [...prev, tempMsg])
-
-        // 파일 업로드 (진행률 업데이트)
-        const uploadedFiles: { id: string; name: string; mimeType: string; size: number; path: string }[] = []
-        try {
-          if (files && files.length > 0) {
-            for (let i = 0; i < files.length; i++) {
-              setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 30))
-              const form = new FormData()
-              form.append("file", files[i])
-              // 사람끼리 방 — 참여자만 보는 파일로 올린다(붙기 전에는 나만, 붙은 뒤에는 그 방 참여자만, lib/file-access.ts)
-              if (people) form.append("scope", "private")
-              const fRes = await fetch(apiUrl("/api/files"), { method: "POST", body: form })
-              if (!fRes.ok) {
-                // 예전에는 실패한 파일을 건너뛰고 글만 보냈다 — 첨부가 빠진 줄 모른 채 "보냈다"가 됐다(2026-09-17).
-                // 글을 보내지 않고 멈춘다. 던지면 MessageInput 이 쓴 글과 첨부를 남겨 둔다(스레드 입력창과 같은 약속).
-                const err = await fRes.json().catch(() => ({}))
-                reportIncident({ kind: "upload_failed", message: err?.error ?? "파일 업로드 실패", status: fRes.status, size: files[i].size, fileName: files[i].name })
-                stopSending(tempId, err?.error ?? `「${files[i].name}」 을 올리지 못했습니다`)
+        await sendQueue.current.run(async () => {
+          // 파일 업로드 (진행률 업데이트)
+          const uploadedFiles: { id: string; name: string; mimeType: string; size: number; path: string }[] = []
+          try {
+            if (files && files.length > 0) {
+              for (let i = 0; i < files.length; i++) {
+                setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 30))
+                const form = new FormData()
+                form.append("file", files[i])
+                // 사람끼리 방 — 참여자만 보는 파일로 올린다(붙기 전에는 나만, 붙은 뒤에는 그 방 참여자만, lib/file-access.ts)
+                if (people) form.append("scope", "private")
+                const fRes = await fetch(apiUrl("/api/files"), { method: "POST", body: form })
+                if (!fRes.ok) {
+                  // 예전에는 실패한 파일을 건너뛰고 글만 보냈다 — 첨부가 빠진 줄 모른 채 "보냈다"가 됐다(2026-09-17).
+                  // 글을 보내지 않고 멈춘다. 던지면 MessageInput 이 쓴 글과 첨부를 남겨 둔다(스레드 입력창과 같은 약속).
+                  const err = await fRes.json().catch(() => ({}))
+                  reportIncident({ kind: "upload_failed", message: err?.error ?? "파일 업로드 실패", status: fRes.status, size: files[i].size, fileName: files[i].name })
+                  stopSending(tempId, err?.error ?? `「${files[i].name}」 을 올리지 못했습니다`)
+                }
+                const uploaded = await fRes.json()
+                uploadedFiles.push(uploaded)
+                setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 100))
               }
-              const uploaded = await fRes.json()
-              uploadedFiles.push(uploaded)
-              setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 100))
             }
+
+            // NAS 에 있는 파일은 올리지 않고 잇는다(2026-09-17)
+            for (const path of nasPaths ?? []) {
+              const lRes = await fetch(apiUrl("/api/files/nas"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(people ? { path, scope: "private" } : { path }),
+              })
+              if (!lRes.ok) {
+                const err = await lRes.json().catch(() => ({}))
+                reportIncident({ kind: "upload_failed", message: err?.error ?? "NAS 파일 연결 실패", status: lRes.status, fileName: path })
+                stopSending(tempId, err?.error ?? "시놀로지 파일을 연결하지 못했습니다")
+              }
+              uploadedFiles.push(await lRes.json())
+            }
+          } catch (err) {
+            if (err instanceof SendStopped) throw err
+            // 올리는 중에 연결이 끊겼다 — 글은 보내지 않고 입력창에 남긴다
+            reportIncident({ kind: "upload_failed", message: "네트워크 오류로 첨부 실패" })
+            stopSending(tempId, "연결이 끊겨 파일을 올리지 못했습니다")
           }
 
-          // NAS 에 있는 파일은 올리지 않고 잇는다(2026-09-17)
-          for (const path of nasPaths ?? []) {
-            const lRes = await fetch(apiUrl("/api/files/nas"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(people ? { path, scope: "private" } : { path }),
-            })
-            if (!lRes.ok) {
-              const err = await lRes.json().catch(() => ({}))
-              reportIncident({ kind: "upload_failed", message: err?.error ?? "NAS 파일 연결 실패", status: lRes.status, fileName: path })
-              stopSending(tempId, err?.error ?? "시놀로지 파일을 연결하지 못했습니다")
-            }
-            uploadedFiles.push(await lRes.json())
-          }
-        } catch (err) {
-          if (err instanceof SendStopped) throw err
-          // 올리는 중에 연결이 끊겼다 — 글은 보내지 않고 입력창에 남긴다
-          reportIncident({ kind: "upload_failed", message: "네트워크 오류로 첨부 실패" })
-          stopSending(tempId, "연결이 끊겨 파일을 올리지 못했습니다")
-        }
+          // 처리 중 상태 표시
+          if (hasAction) setProcessing(mentionSlug)
 
-        // 처리 중 상태 표시
-        if (hasAction) setProcessing(mentionSlug)
-
-        const payload: SendPayload = {
-          roomId,
-          content,
-          taskId: filterTaskId ?? undefined,
-          fileIds: uploadedFiles.map((f) => f.id),
-          fileNames: uploadedFiles.map((f) => f.name),
-          replyToId: replyTo?.id,
-          clientId,
-        }
-        setReplyTo(null)
-        await deliver(tempId, payload, true)
+          await deliver(
+            tempId,
+            {
+              roomId,
+              content,
+              taskId: filterTaskId ?? undefined,
+              fileIds: uploadedFiles.map((f) => f.id),
+              fileNames: uploadedFiles.map((f) => f.name),
+              replyToId: reply?.id,
+              clientId,
+            },
+            true,
+          )
+        })
+      } catch (err) {
+        if (reply) setReplyTo((cur) => cur ?? reply)
+        throw err
       } finally {
         setUploadProgress(new Map())
-        pausePolling.current = false
+        sendsInFlight.current--
       }
     },
     [roomId, filterTaskId, onSlashTaskCommand, replyTo, stopSending, endJump, people, deliver]
