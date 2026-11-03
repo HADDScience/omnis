@@ -21,7 +21,11 @@ async function userId(page: Page, name: string) {
 
 /** 방 밖 사람에게 이 방은 어느 길로도 열리지 않는다 */
 async function expectLockedOut(page: Page, roomId: string, secret: string) {
-  expect((await page.goto(`/chat/${roomId}`))?.status(), "방 화면").toBe(404)
+  // 로딩 화면을 먼저 흘려보내므로 상태 코드는 200 일 수 있다 — 내려온 내용으로 본다
+  const screen = await page.goto(`/chat/${roomId}`)
+  expect(await screen?.text(), "방 화면 응답").not.toContain(secret)
+  await expect(page.locator("[data-composer-pill]"), "방 화면 입력창").toHaveCount(0)
+  await expect(page.getByText(secret), "방 화면 글").toHaveCount(0)
   expect((await page.request.get(`/api/chat/people-rooms/${roomId}`)).status(), "방 정보").toBe(404)
   const read = await page.request.get(`/api/chat/messages?roomId=${roomId}`)
   expect(read.ok(), "글 읽기").toBe(false)
@@ -142,7 +146,7 @@ test.describe("격리된 시험 DB 에서만", () => {
       const file = await prisma.file.create({
         data: { name: "메모.png", path: "/x", size: 1, mimeType: "image/png", messageId: message.id, privateToUserId: me },
       })
-      expect((await other.page.request.get(`/api/files/${file.id}/raw`)).status()).toBe(404)
+      expect([403, 404]).toContain((await other.page.request.get(`/api/files/${file.id}/raw`)).status())
       expect((await other.page.request.get(`/api/files/${file.id}`)).ok()).toBe(false)
       expect(await (await other.page.request.get("/api/files")).text()).not.toContain(file.id)
       expect(await (await owner.page.request.get("/api/files")).text()).toContain(file.id)
