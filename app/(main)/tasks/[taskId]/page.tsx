@@ -1,3 +1,4 @@
+import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
 import { prisma } from "@/lib/db"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
@@ -32,7 +33,7 @@ export default async function TaskDetailPage({ params }: Props) {
       },
     }),
     prisma.chatMessage.findMany({
-      where: { taskId },
+      where: { taskId, ...NOT_EXTERNAL_WHERE },
       orderBy: { createdAt: "asc" },
       include: {
         author: { select: { id: true, name: true } },

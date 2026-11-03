@@ -240,6 +240,9 @@ model ChatMessage {
   /// 옴니스 글의 작성자는 시스템 계정(lib/system-user.ts, id "system")이다
   omnisQueryId      String?       @unique
   omnisQuery        OmnisQuery?   @relation(fields: [omnisQueryId], references: [id])
+  /// 옴니스 계정이 없는 사람의 글(카톡 이식 · 참여자 전용 방만). 이때 authorId 는 시스템 계정이다 — lib/external-speaker.ts
+  externalSpeakerId String?
+  externalSpeaker   ExternalSpeaker? @relation(fields: [externalSpeakerId], references: [id], onDelete: Restrict)
 
   files    File[]
   mentions ChatMention[]
@@ -248,6 +251,7 @@ model ChatMessage {
   @@index([roomId, changedAt])
   @@index([taskId])
   @@index([replyToId])
+  @@index([externalSpeakerId])
 }
 
 enum MessageKind {
@@ -612,6 +616,15 @@ model ActivityLog {
 }
 
 // ─── 파일 ────────────────────────────────────────────────
+
+/// 옴니스 계정이 없는 카톡 발화자. 이름 · 소속 · 직급만 저장한다 — 로그인 · 멘션 · 담당 · 알림 대상이 아니다.
+model ExternalSpeaker {
+  id       String        @id
+  name     String
+  org      String?
+  title    String?
+  messages ChatMessage[]
+}
 
 model File {
   id        String       @id @default(uuid())

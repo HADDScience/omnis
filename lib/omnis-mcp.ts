@@ -12,6 +12,7 @@
 // 권한
 //  Omnis 계정이 살아 있으면 누구나 붙는다. 지식재산권 도구만 ip.members 로 한 번 더 건다.
 //  Prisma 는 DB 소유자로 붙으므로 이 파일이 곧 권한 경계다.
+import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
 import { listTasksWhere } from "@/lib/task-unassigned"
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
 
@@ -872,7 +873,7 @@ export async function runTool(
       if (!t) return { error: "업무가 없습니다." }
       const n = clampInt(args.messages, 20, 100)
       const msgs = await prisma.chatMessage.findMany({
-        where: { taskId: t.id, kind: "NORMAL" },
+        where: { taskId: t.id, kind: "NORMAL", ...NOT_EXTERNAL_WHERE },
         select: { createdAt: true, content: true, author: { select: { name: true } }, files: { select: { id: true, name: true } } },
         orderBy: { createdAt: "desc" }, take: n,
       })

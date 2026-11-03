@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
+import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
 import { loadAgentRoom } from "@/lib/agent/service"
 import { OmnisRoom } from "@/components/messenger/omnis-room"
 import { CompanyRoom } from "@/components/messenger/company-room"
@@ -72,13 +73,15 @@ async function recentMessages(roomId: string) {
     take: CHAT_PAGE_SIZE,
     include: {
       author: { select: { id: true, name: true } },
+      externalSpeaker: EXTERNAL_SPEAKER_SELECT,
       task: { select: { id: true, name: true, slug: true } },
       files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
-      replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
+      replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT } },
     },
   })
-  return recent.reverse().map((m) => ({
+  return recent.reverse().map(({ externalSpeaker, ...m }) => ({
     ...m,
+    author: displayAuthor(m.author, externalSpeaker),
     content: m.deletedAt ? CHAT_DELETED_TEXT : m.content,
     files: m.deletedAt ? [] : m.files,
     createdAt: m.createdAt.toISOString(),
@@ -88,7 +91,7 @@ async function recentMessages(roomId: string) {
     replyTo: m.replyTo
       ? {
           id: m.replyTo.id,
-          authorName: m.replyTo.author.name,
+          authorName: displayAuthor({ id: "", name: m.replyTo.author.name }, m.replyTo.externalSpeaker).name,
           content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
         }
       : null,

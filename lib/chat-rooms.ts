@@ -10,6 +10,7 @@
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { EXTERNAL_SPEAKER_SELECT, externalSpeakerLabel } from "@/lib/external-speaker"
 import { filterRooms, hiddenFromList, normalizeQuery, parseRoomKey, READ_BASELINE_KEY, roomKeyOf, type ChatFolderView } from "@/lib/chat-list"
 import { ensureReadBaseline, listFolders } from "@/lib/chat-prefs"
 import { peopleRoomTitle } from "@/lib/chat-people-rules"
@@ -248,7 +249,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { content: true, kind: true, authorId: true, author: { select: { name: true } } },
+          select: { content: true, kind: true, authorId: true, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT },
         },
       },
     }),
@@ -281,7 +282,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       kind: r.kind,
       name: peopleRoomTitle(r, r.members.map((m) => m.user), userId),
       lastAt: (r.lastMessageAt ?? r.createdAt).toISOString(),
-      preview: last ? `${authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
+      preview: last ? `${last.externalSpeaker ? externalSpeakerLabel(last.externalSpeaker) : authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
       unread: 0,
       favorite: false,
       muted: false,

@@ -170,6 +170,8 @@ async function buildChatMessageChunks(
   if (!msg) return null
   // 사내 지식은 전사방 글만 — 옴니스 1:1 · 단톡 글은 그 방 사람만 읽는다. 색인에 넣으면 남의 검색에 걸린다
   if (msg.room.kind !== "COMPANY") return null
+  // 외부 발화자 글은 참여자 전용 방에만 들어온다. 방 종류가 바뀌어도 색인되지 않게 따로 막는다
+  if (msg.externalSpeakerId) return null
   // 지운 글은 본문이 남아 있어도 색인하지 않는다 — 백필이 다시 실으면 지운 말이 검색에 되살아난다.
   if (msg.deletedAt) return null
 
@@ -631,6 +633,7 @@ export async function withFollowUps(chunks: RetrievedChunk[]): Promise<Retrieved
           createdAt: { gt: h.createdAt, lt: new Date(h.createdAt.getTime() + FOLLOW_UP_DAYS * 86_400_000) },
           kind: "NORMAL",
           deletedAt: null,
+          externalSpeakerId: null,
         },
         orderBy: { createdAt: "asc" },
         take: FOLLOW_UP_MAX * 2,

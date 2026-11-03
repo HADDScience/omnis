@@ -192,7 +192,7 @@ export async function loadNeighborhood(key: string, opts: { isAdmin: boolean }):
       if (t.product) b.link(N.product(t.product), "제품")
       // 채팅 조각은 이 업무 스레드의 메시지만 — 업무를 열 수 있는 사람은 이미 보는 내용이다
       const messageIds = (
-        await prisma.chatMessage.findMany({ where: { taskId: id }, select: { id: true }, orderBy: { createdAt: "desc" }, take: 300 })
+        await prisma.chatMessage.findMany({ where: { taskId: id, externalSpeakerId: null }, select: { id: true }, orderBy: { createdAt: "desc" }, take: 300 })
       ).map((m) => m.id)
       const [own, chat, total] = await Promise.all([
         chunksOf("TASK", id),
