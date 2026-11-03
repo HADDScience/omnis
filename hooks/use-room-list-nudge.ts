@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useMemo } from "react"
 import { useRoomListReload } from "@/components/messenger/messenger-context"
 import { trailingDebounce } from "@/lib/trailing-debounce"
 
@@ -14,11 +14,7 @@ const NUDGE_MS = 1500
  */
 export function useRoomListNudge(): () => void {
   const reload = useRoomListReload()
-  const latest = useRef(reload)
-  useEffect(() => {
-    latest.current = reload
-  }, [reload])
-  const [debounced] = useState(() => trailingDebounce(() => latest.current(), NUDGE_MS))
+  const debounced = useMemo(() => trailingDebounce(reload, NUDGE_MS), [reload])
   useEffect(() => () => debounced.flush(), [debounced])
-  return useCallback(() => debounced.call(), [debounced])
+  return debounced.call
 }

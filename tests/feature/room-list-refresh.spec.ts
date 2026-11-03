@@ -120,10 +120,12 @@ test.describe("격리된 시험 DB 에서만", () => {
       const roomId = `omnis-list-${Date.now()}`
       await prisma.chatRoom.create({ data: { id: roomId, name: "목록 시험", kind: "OMNIS_DM", createdById: me.id, members: { create: [{ userId: me.id }] } } })
       let accept = false
+      let posts = 0
       await page.route(`**/api/agent/rooms/${roomId}`, async (route) => {
         if (route.request().method() !== "POST") return route.continue()
+        posts++
         if (!accept) return route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ error: "시험" }) })
-        return route.fulfill({ status: 200, headers: { "x-question-id": "q-test", "content-type": "text/plain" }, body: "" })
+        return route.fulfill({ status: 200, headers: { "x-question-id": "q-test", "content-type": "text/event-stream" }, body: "data: [DONE]\n\n" })
       })
       const seen = watch(page)
       await open(page, `/chat/${roomId}`)
@@ -135,6 +137,7 @@ test.describe("격리된 시험 DB 에서만", () => {
       accept = true
       await box(page).fill("받아 줄 글입니다")
       await box(page).press("Enter")
+      await expect.poll(() => posts, { timeout: 8_000, message: "두 번째 글이 서버로 갔다" }).toBe(2)
       await expect.poll(() => seen.rooms, { timeout: 8_000 }).toBeGreaterThanOrEqual(1)
     } finally {
       await prisma.$disconnect()
