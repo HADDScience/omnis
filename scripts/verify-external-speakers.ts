@@ -41,6 +41,7 @@ async function main() {
   const { displayAuthor, EXTERNAL_SPEAKER_SELECT, NOT_EXTERNAL_WHERE } = await import("../lib/external-speaker")
   const { syncEmbeddings, withFollowUps } = await import("../lib/embeddings")
   const { findVisibleFile } = await import("../lib/file-access-server")
+  const { PUBLIC_FILE_WHERE, visibleFileWhere } = await import("../lib/file-access")
   const { importedFilePrivateTo } = await import("../import-tools/rooms-config")
 
   const user = (name: string) => prisma.user.upsert({ where: { name }, update: {}, create: { name, passwordHash: "!" }, select: { id: true } })
@@ -131,10 +132,17 @@ async function main() {
   await prisma.chatMessage.update({ where: { id: extMsg.id }, data: { taskId: null } })
 
   console.log("첨부")
-  const fresh = (await prisma.chatMessage.findUnique({ where: { id: extMsg.id }, select: { authorId: true, taskId: true, room: { select: { kind: true } } } }))!
+  const fresh = (await prisma.chatMessage.findUnique({ where: { id: extMsg.id }, select: { authorId: true, room: { select: { kind: true } } } }))!
   const file = await prisma.file.create({ data: { name: "시험.png", path: "/x", size: 1, mimeType: "image/png", messageId: extMsg.id, privateToUserId: importedFilePrivateTo(fresh) } })
   check("참여자는 첨부를 봄", (await findVisibleFile(file.id, b.id)) !== null)
   check("비참여자는 첨부를 못 봄", (await findVisibleFile(file.id, c.id)) === null)
+  // 카드 화면 · get_task 의 조건 — 글이 카드에 연결돼도 첨부 이름은 참여자에게만 나온다
+  await prisma.chatMessage.update({ where: { id: extMsg.id }, data: { taskId: task.id } })
+  const cardFiles = async (userId: string) => (await prisma.chatMessage.findUniqueOrThrow({ where: { id: extMsg.id }, select: { files: { where: visibleFileWhere(userId), select: { id: true } } } })).files.length
+  check("카드에 연결된 글의 첨부 — 참여자 목록에는 나옴", (await cardFiles(b.id)) === 1)
+  check("카드에 연결된 글의 첨부 — 비참여자 목록에는 안 나옴", (await cardFiles(c.id)) === 0)
+  check("재구성에 넘기는 조건에서 빠짐", (await prisma.file.count({ where: { id: file.id, ...PUBLIC_FILE_WHERE } })) === 0)
+  await prisma.chatMessage.update({ where: { id: extMsg.id }, data: { taskId: null } })
 
   console.log("멱등")
   const n = await prisma.chatMessage.count({ where: { sourceId: { startsWith: "kakao:" } } })

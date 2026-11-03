@@ -102,7 +102,7 @@ npx tsx import-tools/seed-projects-from-nas.ts # 프로젝트 = NAS 과제 폴�
 | `GROUP` | `members` 만 | 기본으로 안 함. `structure: true` 면 카드를 만드는데, 카드 내용은 전원이 본다 |
 | `DM` | `dm` 두 사람. `dmKey` 로 앱의 1:1 과 같은 방 | 안 함 |
 
-방에 접근 통제가 있다(`lib/chat-rooms.ts` `roomAccess`). 참여자 전용 방의 첨부는 `privateToUserId` 를 달고 올라간다.
+방에 접근 통제가 있다(`lib/chat-rooms.ts` `roomAccess`). 참여자 전용 방의 첨부는 `privateToUserId` 를 달고 올라간다. 글이 업무 카드에 연결돼도 같아서, 비참여자의 카드 화면 · `get_task` 에는 첨부가 나오지 않는다.
 
 새 사람이 방에 들어오면 계정이 있으면 `speakers`, 없으면 `externals` 에 넣는다. 둘 다 없으면 그 사람 메시지는 **들어가지 않고 경고로 남는다**
 (조용히 다른 사람에게 붙이지 않는다). `externals` 는 참여자 전용 방에만 들어간다. 상대 계정이 없는 1:1 은 `DM` 이 될 수 없으므로 내 계정만 참여자인 `GROUP` 으로 둔다.

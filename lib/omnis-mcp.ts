@@ -40,7 +40,7 @@ import { recordTaskEvents } from "@/lib/task-events"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { assignmentTargets } from "@/lib/notify-rules"
 import * as XLSX from "xlsx"
-import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
+import { PUBLIC_FILE_WHERE, visibleFileWhere } from "@/lib/file-access"
 import { listCalendarText } from "@/lib/calendar/agent-tool"
 import { findVisibleFile } from "@/lib/file-access-server"
 import {
@@ -874,7 +874,7 @@ export async function runTool(
       const n = clampInt(args.messages, 20, 100)
       const msgs = await prisma.chatMessage.findMany({
         where: { taskId: t.id, kind: "NORMAL", ...NOT_EXTERNAL_WHERE },
-        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { select: { id: true, name: true } } },
+        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true } } },
         orderBy: { createdAt: "desc" }, take: n,
       })
       // 파일 ID 를 함께 보여준다 — read_file 이 ID 로 읽는다.

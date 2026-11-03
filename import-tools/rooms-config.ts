@@ -90,10 +90,10 @@ export function speakerTarget(room: ImportRoom, display: string, config: Pick<Im
 
 /**
  * 이식 파일의 File.privateToUserId — lib/file-access.ts 규칙.
- * 참여자 전용 방의 글이면 작성자. 업무 카드에 연결된 글의 파일은 카드 화면에 보여야 하므로 공개로 둔다.
+ * 참여자 전용 방의 글이면 작성자. 업무 카드에 연결된 글이어도 같다 — 글은 카드에 보여도 첨부는 그 방 사람만 본다.
  */
-export function importedFilePrivateTo(msg: { authorId: string; taskId: string | null; room: { kind: string } }): string | null {
-  return msg.room.kind !== "COMPANY" && !msg.taskId ? msg.authorId : null
+export function importedFilePrivateTo(msg: { authorId: string; room: { kind: string } }): string | null {
+  return msg.room.kind !== "COMPANY" ? msg.authorId : null
 }
 
 /** 사본을 찾을 방 — 기본은 자기 방만. 다른 방의 같은 말과 짝이 맞으면 원본이 빠진다 */

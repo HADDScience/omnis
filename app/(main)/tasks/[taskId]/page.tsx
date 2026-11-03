@@ -1,4 +1,6 @@
+import { auth } from "@/lib/auth"
 import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
+import { visibleFileWhere } from "@/lib/file-access"
 import { prisma } from "@/lib/db"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
@@ -14,6 +16,8 @@ interface Props {
 }
 
 export default async function TaskDetailPage({ params }: Props) {
+  const session = await auth()
+  if (!session?.user?.id) notFound()
   const { taskId } = await params
 
   const [task, feedbackMessages, files, projects, users] = await Promise.all([
@@ -37,7 +41,8 @@ export default async function TaskDetailPage({ params }: Props) {
       orderBy: { createdAt: "asc" },
       include: {
         author: { select: { id: true, name: true } },
-        files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
+        // 참여자 전용 방의 글이 카드에 연결돼도 첨부는 그 방 사람에게만(lib/file-access.ts)
+        files: { where: visibleFileWhere(session.user.id), select: { id: true, name: true, path: true, size: true, mimeType: true } },
         replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
       },
     }),

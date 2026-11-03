@@ -226,7 +226,8 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
         orderBy: { createdAt: "asc" },
         include: {
           author: { select: { name: true } },
-          files: { select: { name: true } },
+          // 카드는 전원이 본다 — 참여자 전용 첨부의 이름을 재구성에 넘기지 않는다
+          files: { where: PUBLIC_FILE_WHERE, select: { name: true } },
         },
       })
 

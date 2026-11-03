@@ -46,9 +46,10 @@ test("이식 파일 — 참여자 전용 방 글이면 비참여자가 못 본�
   assert.equal(canSeeFile(row, "u2"), false)
 })
 
-test("이식 파일 — 전사방 · 카드에 연결된 글의 파일은 공개", () => {
-  assert.equal(importedFilePrivateTo({ authorId: "u", taskId: null, room: { kind: "COMPANY" } }), null)
-  assert.equal(importedFilePrivateTo({ authorId: "u", taskId: "t", room: { kind: "GROUP" } }), null)
+test("이식 파일 — 전사방은 공개, 참여자 전용 방은 카드에 연결된 글도 작성자 표시", () => {
+  assert.equal(importedFilePrivateTo({ authorId: "u", room: { kind: "COMPANY" } }), null)
+  assert.equal(importedFilePrivateTo({ authorId: "u", room: { kind: "GROUP" } }), "u")
+  assert.equal(importedFilePrivateTo({ authorId: "u", room: { kind: "DM" } }), "u")
 })
 
 test("사본은 자기 방에서만 찾고, 지정한 방만 더한다", () => {
