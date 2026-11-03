@@ -18,12 +18,12 @@ import { pointAtProd } from "./prod-env"
 
 interface Args {
   csv: string[]; mobile: { path: string; room: string }[]; media: string | null; mediaRoom: string | null; dry: boolean; target: "local" | "prod"
-  noEmbed: boolean; noStructure: boolean; workers: number; classifyModel: string; structureModel: string
+  autoRooms: boolean; noEmbed: boolean; noStructure: boolean; workers: number; classifyModel: string; structureModel: string
 }
 
 function parseArgs(argv: string[]): Args {
   const a: Args = {
-    csv: [], mobile: [], media: null, mediaRoom: null, dry: false, target: "local", noEmbed: false, noStructure: false,
+    csv: [], mobile: [], media: null, mediaRoom: null, dry: false, autoRooms: false, target: "local", noEmbed: false, noStructure: false,
     workers: 4, classifyModel: "sonnet", structureModel: "opus",
   }
   for (let i = 0; i < argv.length; i++) {
@@ -33,6 +33,7 @@ function parseArgs(argv: string[]): Args {
     else if (v === "--media") a.media = argv[++i]
     else if (v === "--media-room") a.mediaRoom = argv[++i]
     else if (v === "--dry") a.dry = true
+    else if (v === "--auto-rooms") a.autoRooms = true
     else if (v === "--target") a.target = argv[++i] === "prod" ? "prod" : "local"
     else if (v === "--no-embed") a.noEmbed = true
     else if (v === "--no-structure") a.noStructure = true
@@ -62,6 +63,7 @@ async function main() {
 
   // 환경변수를 정한 뒤에 불러야 Prisma 가 그 주소로 붙는다.
   const { prisma } = await import("./kakao-common")
+  const { registerAutoRooms } = await import("./steps/auto-rooms")
   const { ingest } = await import("./steps/ingest")
   const { classify } = await import("./steps/classify")
   const { importMessages } = await import("./steps/messages")
@@ -73,6 +75,8 @@ async function main() {
   const t0 = Date.now()
   const step = (n: number, title: string) => console.log(`\n${n}/7 ${title}`)
 
+  const registered = args.autoRooms ? await registerAutoRooms(args.csv, { dry: args.dry }) : []
+
   step(1, "수집 — CSV 읽기 · 세션 자르기")
   const { sessions, rooms } = ingest(args.csv, args.mobile)
 
@@ -80,7 +84,7 @@ async function main() {
   const c = await classify(sessions, { model: args.classifyModel, workers: args.workers, dry: args.dry })
 
   step(3, "메시지 — 옴니스 채팅으로")
-  await importMessages(sessions, { dry: args.dry })
+  const imported = await importMessages(sessions, { dry: args.dry })
 
   step(4, "구조화 — 업무 카드")
   if (args.noStructure) console.log("  --no-structure 로 건너뜀")
@@ -105,6 +109,13 @@ async function main() {
     prisma.task.count({ where: { sourceId: { startsWith: "kakao-task:" } } }),
   ])
   console.log(`\n끝 — ${Math.round((Date.now() - t0) / 1000)}초 · 이식된 메시지 ${msgs}건 · 업무 카드 ${tasks}건 (이번에 +${s.created})`)
+  // kakao-sync.py 의 실행 보고가 읽는다
+  console.log("@@kakao-report " + JSON.stringify({
+    inserted: imported.inserted, pending: imported.pending,
+    newRoom: registered.some((r) => r.newRoom),
+    newExternals: registered.flatMap((r) => r.newExternals),
+    newMembers: registered.flatMap((r) => r.newMembers),
+  }))
   await prisma.$disconnect()
 }
 

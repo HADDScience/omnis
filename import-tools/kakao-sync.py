@@ -5,6 +5,11 @@
 #   python3 import-tools/kakao-sync.py --target prod         프로덕션에 이식
 #   python3 import-tools/kakao-sync.py --when-idle 10        10분 넘게 입력이 없고 화면이 잠기지 않았을 때만
 #   python3 import-tools/kakao-sync.py --no-import           받기만 하고 이식은 하지 않는다
+#   python3 import-tools/kakao-sync.py --dry                 카톡에서 받고, 이식은 임시 폴더에서 건식으로만
+#   python3 import-tools/kakao-sync.py --from-csv DIR --target prod   카톡을 건드리지 않고 그 폴더의 CSV 로 건식만
+#
+# 방은 import-config.json 의 syncFolder(카톡 채팅 폴더)에서 실행마다 읽는다 — 폴더에 있는 방은 전부 옮긴다. 처음 보는 방은
+# kakao.ts --auto-rooms 가 참여자 전용으로 등록한다(rooms-config.ts registerRoom). 한 방이 실패해도 나머지는 진행한다.
 #
 # 사진은 「채팅방 서랍 → 사진/동영상」 에서 받는다. 보관함은 최신순이고 항목에 날짜가 없다.
 # 그래서 지난 실행 때의 보관함 개수와 CSV 사진 자리표시 개수를 state.json 에 적어 두고,
@@ -15,9 +20,10 @@
 # 휴대폰 zip 꼴(20261008_103758_1.png) 이름을 다시 붙인다. 번호(-1, -2 …)는 보관함 순서가 아니라
 # 체크한 순서를 따른다(같은 날 실측) — 그래서 위에서부터 차례로 체크한다.
 #
-# 체크박스만은 접근성 동작이 듣지 않아 실제 마우스를 쓴다. 그 사이 사람이 마우스를 움직이면 멈춘다.
+# 체크박스 · 폴더 탭 · 방 열기는 접근성 동작이 듣지 않아 실제 마우스를 쓴다(방을 선택하고 Return 은 열리지 않는 방이
+# 있었다, 2026-11-03 실측). 그 사이 사람이 마우스를 움직이면 멈춘다.
 # 실행 주체(터미널 또는 python)에 「손쉬운 사용」 권한과 ~/Downloads 접근 권한이 있어야 한다.
-import argparse, csv, hashlib, json, os, re, shutil, subprocess, sys, time, unicodedata
+import argparse, csv, hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile, time, unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -26,6 +32,9 @@ from ApplicationServices import (
     AXIsProcessTrusted, AXUIElementCopyAttributeValue, AXUIElementCreateApplication, AXUIElementPerformAction,
     AXUIElementSetAttributeValue, AXValueGetValue, kAXValueCGPointType, kAXValueCGSizeType,
 )
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from kakao_folder import FolderError, check_folder, csv_name_for, csv_room, duplicates, parse_report, room_key, summary
 
 BUNDLE = "com.kakao.KakaoTalkMac"
 REPO = Path(__file__).resolve().parents[1]
@@ -40,13 +49,31 @@ class Abort(Exception):
     pass
 
 
-def configured_rooms():
-    """--room 없이 돌 때 받을 방 — 저장소가 공개라 방 이름은 KAKAO_DATA_DIR/import-config.json 에 둔다."""
+class limit:
+    """단계 제한시간 — 넘으면 Abort 로 그 방을 건너뛴다. 큰 방 내보내기도 2분이면 끝난다(9,498건 35초 실측)."""
+    def __init__(self, what, seconds):
+        self.what, self.seconds = what, int(seconds)
+
+    def __enter__(self):
+        def fire(*_):
+            raise Abort(f"{self.what} {self.seconds}초 초과")
+        self.prev = signal.signal(signal.SIGALRM, fire)
+        signal.alarm(self.seconds)
+
+    def __exit__(self, *_):
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, self.prev)
+
+
+def read_config():
+    """저장소가 공개라 방 이름은 KAKAO_DATA_DIR/import-config.json 에 둔다."""
     path = DATA_ROOT / "import-config.json"
-    if not path.exists():
-        return []
-    rooms = json.loads(path.read_text(encoding="utf-8")).get("rooms", {})
-    return [name for name, room in rooms.items() if room.get("sync")]
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def configured_rooms():
+    """syncFolder 가 없을 때 받을 방."""
+    return [name for name, room in read_config().get("rooms", {}).items() if room.get("sync")]
 
 
 def log(*a):
@@ -166,41 +193,100 @@ class Mouse:
         time.sleep(0.05)
         self._post(Quartz.kCGEventLeftMouseUp, x, y)
 
+    def double_click(self, x, y, hover=0.3):
+        self.move(x, y)
+        time.sleep(hover)
+        self._guard()
+        for n in (1, 2):
+            for kind in (Quartz.kCGEventLeftMouseDown, Quartz.kCGEventLeftMouseUp):
+                e = Quartz.CGEventCreateMouseEvent(None, kind, (x, y), Quartz.kCGMouseButtonLeft)
+                Quartz.CGEventSetIntegerValueField(e, Quartz.kCGMouseEventClickState, n)
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
+                time.sleep(0.04)
+            time.sleep(0.08)
+
 
 # ── 채팅방 · CSV ────────────────────────────────────────
 
+TITLES = {}  # 목록 이름 → 창 제목. 이름 없는 단체방은 둘이 다르다
+
+
 def room_window(room):
-    return window(lambda w: nfc(attr(w, "AXTitle") or "") == room)
+    title = TITLES.get(room, room)
+    return window(lambda w: nfc(attr(w, "AXTitle") or "") == title)
 
 
-def open_room(room):
-    """방 창을 연다. 이미 열려 있었으면 False (닫지 않고 둔다)."""
+def main_window():
+    return window(lambda w: attr(w, "AXIdentifier") == "Main Window")
+
+
+def chat_table():
+    main = main_window()
+    return next((k for k in kids(main) if attr(k, "AXIdentifier") == "_NS:101"), None) or next(k for k in kids(main) if attr(k, "AXRole") == "AXScrollArea")
+
+
+def row_names():
+    """[(목록 이름, 행)] — 행마다 접근성을 읽어 느리다(750행 38초 실측). 폴더 탭에서만 부른다."""
+    out = []
+    for r in kids(kids(chat_table())[0]):
+        cell = (kids(r) or [None])[0]
+        for t in kids(cell):
+            if attr(t, "AXIdentifier") == "_NS:40":
+                out.append((nfc(attr(t, "AXValue") or ""), r))
+    return out
+
+
+def scroll_chat(value):
+    bar = next((k for k in kids(chat_table()) if attr(k, "AXRole") == "AXScrollBar"), None)
+    if bar is not None:
+        AXUIElementSetAttributeValue(bar, "AXValue", value)
+        time.sleep(0.4)
+
+
+def folder_rooms(folder, mouse):
+    """폴더 탭을 눌러 그 폴더의 방 이름을 돌려준다. 탭을 못 찾으면 전체 목록을 잘못 읽지 않게 멈춘다."""
+    main = main_window()
+    area = next((k for k in kids(main) if attr(k, "AXIdentifier") == "_NS:28"), None)
+    groups = kids((kids(kids(area)[0]) or [None])[0]) if area is not None else []
+    tab = next((g for g in groups if any((attr(t, "AXValue") or "").startswith(f"{folder} folder") for t in kids(g))), None)
+    if tab is None:
+        raise FolderError(f"「{folder}」 폴더 탭을 찾지 못했다")
+    activate()
+    AXUIElementPerformAction(main, "AXRaise")
+    x, y, w, h = geo(tab)
+    mouse.click(x + w / 2, y + h / 2, hover=0.3)
+    time.sleep(1.5)
+    scroll_chat(0.0)
+    return [n for n, _ in row_names()]
+
+
+def open_room(room, mouse):
+    """방 창을 연다. 이미 열려 있었으면 False (닫지 않고 둔다). 행을 화면에 보이게 굴린 뒤 더블클릭한다."""
     if room_window(room):
         opened = False
     else:
-        main = window(lambda w: attr(w, "AXIdentifier") == "Main Window")
-        area = next((k for k in kids(main) if attr(k, "AXRole") == "AXScrollArea"), None)
-        table = kids(area)[0] if area else None
-        row = None
-        for r in kids(table):
-            cell = (kids(r) or [None])[0]
-            if any(nfc(attr(t, "AXValue") or "") == room for t in kids(cell) if attr(t, "AXIdentifier") == "_NS:40"):
-                row = r
+        main = main_window()
+        rows = [r for n, r in row_names() if n == room]
+        if len(rows) != 1:
+            raise Abort(f"채팅 목록에서 방을 {len(rows)}개 찾음: {room}")
+        area = chat_table()
+        ax, ay, aw, ah = geo(area)
+        inside = lambda: ay <= geo(rows[0])[1] and geo(rows[0])[1] + geo(rows[0])[3] <= ay + ah
+        for value in (None, 0.0, 0.25, 0.5, 0.75, 1.0):
+            if value is not None:
+                scroll_chat(value)
+            if inside():
                 break
-        if row is None:
-            raise Abort(f"채팅 목록에 방이 없음: {room} (채팅 탭을 열어 두세요)")
-        AXUIElementSetAttributeValue(row, "AXSelected", True)
+        if not inside():
+            raise Abort(f"행을 화면에 보이게 하지 못함: {room}")
+        before = {nfc(attr(w, "AXTitle") or "") for w in windows()}
         activate()
         AXUIElementPerformAction(main, "AXRaise")
-        AXUIElementSetAttributeValue(main, "AXMain", True)
-        # Return 은 포커스 창으로 간다. 채팅방 창이면 입력칸의 글이 전송되므로, 메인 창일 때만 보낸다.
-        wait_for(lambda: attr(attr(ax_app(), "AXFocusedWindow"), "AXIdentifier") == "Main Window", "메인 창 포커스")
         time.sleep(0.3)
-        pid = kakao().processIdentifier()
-        for down in (True, False):
-            Quartz.CGEventPostToPid(pid, Quartz.CGEventCreateKeyboardEvent(None, 36, down))
-            time.sleep(0.05)
-        wait_for(lambda: room_window(room), f"{room} 창")
+        x, y, w, h = geo(rows[0])
+        mouse.double_click(x + w / 2, y + h / 2)
+        new = wait_for(lambda: next((z for z in windows() if attr(z, "AXIdentifier") == "_NS:441" and nfc(attr(z, "AXTitle") or "") not in before), None), f"{room} 창")
+        TITLES[room] = nfc(attr(new, "AXTitle") or "")
         opened = True
     focus_room(room)
     return opened
@@ -220,6 +306,14 @@ def close(w):
         press(b)
 
 
+def close_quietly(w):
+    """정리 중의 실패가 진짜 원인을 가리지 않게 한다."""
+    try:
+        close(w)
+    except Exception as e:
+        log(f"  창 닫기 실패: {e!r}")
+
+
 def sheet_of(w, pred=lambda s: True):
     return next((k for k in kids(w) if attr(k, "AXRole") == "AXSheet" and pred(k)), None)
 
@@ -236,7 +330,7 @@ def find(el, **want):
     return None
 
 
-def export_csv(room, dest: Path) -> Path:
+def export_csv(room, dest: Path, key=None) -> Path:
     focus_room(room)
     menu("Chats", "Chatroom Settings")
     dlg = wait_for(lambda: window(lambda w: child(w, Value="Chatroom Settings") is not None), "채팅방 설정 창")
@@ -267,7 +361,7 @@ def export_csv(room, dest: Path) -> Path:
     dest.mkdir(parents=True, exist_ok=True)
     for old in dest.glob("*.csv"):
         old.unlink()
-    out = dest / nfc(src.name)
+    out = dest / csv_name_for(key or room, nfc(src.name))
     shutil.move(src, out)
     return out
 
@@ -397,39 +491,45 @@ def download_top(w, skip, units, mouse: Mouse):
 
 # ── 한 방 ───────────────────────────────────────────────
 
-def sync_room(room, state, mouse, args):
-    st = state.get(room)
-    room_dir = DATA / room
-    opened = open_room(room)
+def sync_room(room, key, state, mouse, args):
+    """room: 채팅 목록 이름 · key: 설정 · 상태 · 폴더의 방 키. 둘은 이름 없는 단체방에서만 다르다."""
+    st = state.get(key)
+    room_dir = DATA / key
+    step = args.step_timeout
+    with limit("방 열기", step):
+        opened = open_room(room, mouse)
     try:
-        csv_path = export_csv(room, room_dir / "csv")
+        with limit("CSV 내보내기", step * 2):
+            csv_path = export_csv(room, room_dir / "csv", key)
         ph = placeholders(csv_path)
-        w = open_archive(room)
+        with limit("보관함 열기", step):
+            w = open_archive(room)
         try:
             count = archive_count(w)
             seen = sum(u[2] for u in ph)  # state 의 seen 은 장 수
-            log(f"{room}: 보관함 {count}칸 · CSV 사진 자리표시 {len(ph)}줄 {seen}장")
+            log(f"{key}: 보관함 {count}칸 · CSV 사진 자리표시 {len(ph)}줄 {seen}장")
             if st is None or args.rebase:
-                state[room] = {"count": count, "seen": seen}
-                log(f"{room}: 기준점만 적었다 — 다음 실행부터 새 사진을 받는다")
+                state[key] = {**(st or {}), "count": count, "seen": seen}
+                log(f"{key}: 기준점만 적었다 — 다음 실행부터 새 사진을 받는다")
                 return csv_path, 0
             new_ph = after_seen(ph, st["seen"])
             k = len(new_ph) if new_ph is not None else -1
             d = count - st["count"]
             if d < k or k < 0:
-                state[room] = {"count": count, "seen": seen}
-                log(f"⚠ {room}: 보관함 +{d}칸 · 자리표시 +{k}줄 — 짝이 안 맞아 이번 것은 건너뛰고 기준점을 다시 잡는다")
+                state[key] = {**(st or {}), "count": count, "seen": seen}
+                log(f"⚠ {key}: 보관함 +{d}칸 · 자리표시 +{k}줄 — 짝이 안 맞아 이번 것은 건너뛰고 기준점을 다시 잡는다")
                 for t, v, n in new_ph or []:
                     log(f"    손으로 확인할 것: {t} {'영상' if v else f'사진 {n}장'}")
                 return csv_path, 0
             if k == 0:
-                state[room] = {"count": st["count"], "seen": seen}
+                state[key] = {**(st or {}), "count": st["count"], "seen": seen}
                 return csv_path, 0
             extra = d - k  # CSV 를 내보낸 뒤 올라온 것 — 맨 위에 있다. 다음 실행에서 받는다.
             units = new_ph[::-1]  # 보관함 i 번째(최신순) ↔ 새 자리표시의 뒤에서 i 번째
-            files = download_top(w, extra, units, mouse)
+            with limit("사진 받기", max(step, 600)):
+                files = download_top(w, extra, units, mouse)
         finally:
-            close(w)
+            close_quietly(w)
         media = room_dir / "media"
         media.mkdir(parents=True, exist_ok=True)
         for (t, is_video, _), fs in zip(units, files):
@@ -443,25 +543,84 @@ def sync_room(room, state, mouse, args):
                 stamp_n[base] = stamp_n.get(base, 0) + 1
                 shutil.move(f, media / f"{base}_{stamp_n[base]}{f.suffix.lower()}")
         got = sum(len(fs) for fs in files)
-        state[room] = {"count": count - extra, "seen": seen}
-        log(f"{room}: 새 사진·영상 {got}장({k}칸) 받음" + (f" (내보낸 뒤 올라온 {extra}칸은 다음에)" if extra else ""))
+        state[key] = {**(st or {}), "count": count - extra, "seen": seen}
+        log(f"{key}: 새 사진·영상 {got}장({k}칸) 받음" + (f" (내보낸 뒤 올라온 {extra}칸은 다음에)" if extra else ""))
         return csv_path, got
     finally:
         if opened and room_window(room):
-            close(room_window(room))
+            close_quietly(room_window(room))
 
 
-def run_import(room, csv_path, args):
-    media = DATA / room / "media"
-    cmd = ["npx", "tsx", "import-tools/kakao.ts", str(csv_path)]
+def run_import(key, csv_path, args, data_dir=None):
+    """kakao.ts 를 돌려 보고 줄을 돌려준다. 출력은 그대로 흘려보낸다."""
+    media = DATA / key / "media"
+    cmd = ["npx", "tsx", "import-tools/kakao.ts", str(csv_path), "--auto-rooms"]
     if media.exists() and any(media.iterdir()):
-        cmd += ["--media", str(media), "--media-room", room]
+        cmd += ["--media", str(media), "--media-room", key]
     if args.target == "prod":
         cmd += ["--target", "prod"]
+    if data_dir:
+        cmd += ["--dry"]
     log("이식:", " ".join(cmd[3:]))
-    r = subprocess.run(cmd, cwd=REPO)
-    if r.returncode != 0:
-        raise Abort(f"kakao.ts 실패 ({r.returncode})")
+    env = {**os.environ, "KAKAO_DATA_DIR": str(data_dir)} if data_dir else None
+    p = subprocess.Popen(cmd, cwd=REPO, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    lines = []
+    for line in p.stdout:
+        print(line, end="", flush=True)
+        lines.append(line.rstrip("\n"))
+    if p.wait() != 0:
+        raise Abort(f"kakao.ts 실패 ({p.returncode})")
+    return parse_report(lines) or {}
+
+
+def dry_copy():
+    """kakao.ts --dry 도 마스터와 세션 파일을 쓴다 — 방마다 임시 사본에서 돌려 진짜 마스터와 다른 방 건수를 건드리지 않는다."""
+    tmp = Path(tempfile.mkdtemp(prefix="kakao-dry-"))
+    (tmp / "raw").mkdir()
+    for name in ("raw/messages.json", "final.json", "sessions.json", "classified.json", "import-config.json"):
+        if (DATA_ROOT / name).exists():
+            shutil.copy2(DATA_ROOT / name, tmp / name)
+    if (DATA_ROOT / "structure").exists():
+        shutil.copytree(DATA_ROOT / "structure", tmp / "structure")
+    if (DATA_ROOT / "exclude.json").exists():
+        (tmp / "exclude.json").symlink_to(DATA_ROOT / "exclude.json")
+    return tmp
+
+
+def import_rooms(todo, state, state_path, args, dry):
+    """todo: [(방 키, CSV, 받은 사진 수)]. 한 방이 실패해도 나머지를 넣는다."""
+    results, failed = [], {}
+    for key, csv_path, got in todo:
+        digest = hashlib.sha256(csv_path.read_bytes()).hexdigest()
+        if not dry and state.get(key, {}).get("importedCsv") == digest and got == 0:
+            log(f"{key}: 지난번과 같은 CSV — 이식 건너뜀")
+            results.append({"room": key, "skipped": True})
+            continue
+        tmp = dry_copy() if dry else None
+        try:
+            results.append({"room": key, **run_import(key, csv_path, args, tmp)})
+            if not dry:
+                state.setdefault(key, {})["importedCsv"] = digest
+                state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+        except Exception as e:
+            failed[key] = str(e)[:200]
+            log(f"✗ {key}: {e}")
+        finally:
+            if tmp:
+                shutil.rmtree(tmp, ignore_errors=True)
+    return results, failed
+
+
+def from_csv(args):
+    """카톡을 건드리지 않고 폴더의 CSV 로 건식만 — 코드 · 설정 점검용. 방마다 가장 최근 파일만 쓴다."""
+    latest = {}
+    for path in sorted(Path(args.from_csv).expanduser().rglob("KakaoTalk_Chat_*.csv"), key=lambda p: csv_room(p.name)[1] or ""):
+        room = csv_room(path.name)[0]
+        if room:
+            latest[room] = path
+    results, failed = import_rooms([(k, p, 0) for k, p in latest.items()], {}, None, args, True)
+    print(summary(results, failed, [], True))
+    sys.exit(1 if failed else 0)
 
 
 def idle_seconds():
@@ -479,13 +638,18 @@ def main():
     ap.add_argument("--target", choices=["local", "prod"], default="local")
     ap.add_argument("--when-idle", type=float, default=0, metavar="분")
     ap.add_argument("--no-import", action="store_true")
+    ap.add_argument("--dry", action="store_true", help="이식은 임시 폴더에서 건식으로만. 카톡에서 받는 것은 그대로 한다")
+    ap.add_argument("--from-csv", metavar="DIR", help="카톡을 건드리지 않고 이 폴더의 CSV 로 건식만")
     ap.add_argument("--rebase", action="store_true", help="받지 않고 기준점만 지금으로 다시 잡는다")
-    ap.add_argument("--room", action="append", help="이 방만 (여러 번 줄 수 있다)")
+    ap.add_argument("--room", action="append", help="폴더 대신 이 방만 (여러 번 줄 수 있다)")
+    ap.add_argument("--folder", help="카톡 채팅 폴더. 기본은 import-config.json 의 syncFolder")
+    ap.add_argument("--step-timeout", type=float, default=90, metavar="초", help="단계 제한시간 (기본 90초)")
+    ap.add_argument("--max-rooms", type=int, default=50, help="폴더에 이보다 많으면 폴더가 아닌 것으로 보고 멈춘다")
+    ap.add_argument("--max-new-rooms", type=int, default=10, help="새 방이 이보다 많으면 멈춘다")
     args = ap.parse_args()
-    rooms = args.room or configured_rooms()
-    if not rooms:
-        sys.exit("받을 방이 없다 — --room 을 주거나 KAKAO_DATA_DIR/import-config.json 의 방에 sync: true 를 두세요")
 
+    if args.from_csv:
+        return from_csv(args)
     if args.when_idle:
         if screen_locked():
             return log("화면이 잠겨 있어 건너뜀")
@@ -494,21 +658,48 @@ def main():
     if not AXIsProcessTrusted():
         sys.exit("손쉬운 사용 권한이 없다 — 시스템 설정 > 개인정보 보호 및 보안 > 손쉬운 사용 에서 이 실행 주체를 켜세요")
 
+    config = read_config()
+    folder = args.folder or config.get("syncFolder")
     DATA.mkdir(parents=True, exist_ok=True)
     state_path = DATA / "state.json"
     state = json.loads(state_path.read_text()) if state_path.exists() else {}
     front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
     mouse = Mouse()
     start_pos = mouse.pos()
-    results, failed = [], False
+    todo, failed, not_started = [], {}, []
+    stopped = False
     try:
-        for room in rooms:
+        if args.room:
+            rooms = [nfc(r) for r in args.room]
+        elif folder:
+            if not config.get("me"):
+                sys.exit("import-config.json 에 me(내 계정 이름)가 없다 — 새 방의 참여자를 정할 수 없다")
             try:
-                results.append((room, *sync_room(room, state, mouse, args)))
+                with limit("폴더 목록 읽기", args.step_timeout):
+                    rooms = check_folder(folder_rooms(folder, mouse), config.get("rooms", {}), folder, args.max_rooms, args.max_new_rooms)
+            except (FolderError, Abort) as e:
+                sys.exit(f"멈춤 — {e}. 아무 방도 건드리지 않았다")
+            log(f"「{folder}」 폴더 {len(rooms)}개 방")
+        else:
+            rooms = configured_rooms()
+        if not rooms:
+            sys.exit("받을 방이 없다 — syncFolder 또는 sync: true 를 두거나 --room 을 주세요")
+        dup = duplicates(rooms)
+        for i, room in enumerate(rooms):
+            if room in dup:
+                failed[room] = "이름이 같은 방이 둘 이상이라 가를 수 없다"
+                log(f"✗ {room}: {failed[room]}")
+                continue
+            key = room_key(room, config.get("rooms", {}))
+            try:
+                csv_path, got = sync_room(room, key, state, mouse, args)
+                todo.append((key, csv_path, got))
             except Exception as e:
-                failed = True
-                log(f"✗ {room}: {e!r}" if not isinstance(e, Abort) else f"✗ {room}: {e}")
+                failed[key] = str(e)[:200]
+                log(f"✗ {key}: {e!r}" if not isinstance(e, Abort) else f"✗ {key}: {e}")
                 if "마우스" in str(e):
+                    not_started = [r for r in rooms[i + 1:]]
+                    stopped = True
                     break
             finally:
                 state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
@@ -518,20 +709,13 @@ def main():
         if mouse.expect is not None and not failed:
             Quartz.CGWarpMouseCursorPosition(start_pos)
 
+    results = []
     if not args.no_import:
-        for room, csv_path, got in results:
-            digest = hashlib.sha256(csv_path.read_bytes()).hexdigest()
-            prev = state.get(room, {}).get("importedCsv")
-            if prev == digest and got == 0:
-                log(f"{room}: 지난번과 같은 CSV — 이식 건너뜀")
-                continue
-            try:
-                run_import(room, csv_path, args)
-                state[room]["importedCsv"] = digest
-                state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
-            except Abort as e:
-                failed = True
-                log(f"✗ {room}: {e}")
+        results, import_failed = import_rooms(todo, state, state_path, args, args.dry)
+        failed.update(import_failed)
+    print(summary(results, failed, not_started, args.dry), flush=True)
+    if stopped:
+        log("사람이 마우스를 움직여 멈췄다. 받은 방까지만 이식했다")
     sys.exit(1 if failed else 0)
 
 
