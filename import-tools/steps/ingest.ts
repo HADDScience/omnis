@@ -23,7 +23,7 @@ export function ingest(csvPaths: string[], mobiles: { path: string; room: string
     console.log(`  휴대폰 txt ${room}: ${rows.length}건 (${rows[0]?.t.slice(0, 10)} ~ ${rows.at(-1)?.t.slice(0, 10)})`)
   }
   for (const [room, n] of rooms) {
-    const mark = ROOMS[room] ? "" : "  ← 이식 대상 아님 (1:1 대화는 넣지 않는다)"
+    const mark = ROOMS[room] ? "" : "  ← 이식 대상 아님 (import-config.json 에 없는 방)"
     console.log(`  ${room}: ${n}건${mark}`)
   }
   const { all, added, sameAsMobile } = mergeRawMessages(incoming)

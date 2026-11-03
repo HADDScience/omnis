@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
+import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
 import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
 import { AttachFileIdsSchema, ChatClientIdSchema } from "@/lib/schemas/chat-room"
 import { decideClientId, isUniqueViolation } from "@/lib/chat-client-id"
@@ -15,6 +16,7 @@ export const maxDuration = 60
 
 const MESSAGE_INCLUDE = {
   author: { select: { id: true, name: true } },
+  externalSpeaker: EXTERNAL_SPEAKER_SELECT,
   // TASK_CREATED 메시지가 생성된 업무의 프리뷰 카드를 그릴 수 있도록 핵심 필드 포함
   task: {
     select: {
@@ -29,21 +31,22 @@ const MESSAGE_INCLUDE = {
     },
   },
   files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
-  replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
+  replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT } },
 } satisfies Prisma.ChatMessageInclude
 
 type MessageRow = Prisma.ChatMessageGetPayload<{ include: typeof MESSAGE_INCLUDE }>
 
 // 지운 글은 자리만 남긴다 — 본문과 첨부는 내려보내지 않는다(행은 DB 에 그대로 있다)
-function shape(m: MessageRow) {
+function shape({ externalSpeaker, ...m }: MessageRow) {
   return {
     ...m,
+    author: displayAuthor(m.author, externalSpeaker),
     content: m.deletedAt ? CHAT_DELETED_TEXT : m.content,
     files: m.deletedAt ? [] : m.files,
     replyTo: m.replyTo
       ? {
           id: m.replyTo.id,
-          authorName: m.replyTo.author.name,
+          authorName: displayAuthor({ id: "", name: m.replyTo.author.name }, m.replyTo.externalSpeaker).name,
           content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
         }
       : null,

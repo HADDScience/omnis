@@ -28,9 +28,9 @@ from ApplicationServices import (
 )
 
 BUNDLE = "com.kakao.KakaoTalkMac"
-ROOMS = ["하드사이언스 인턴방", "HADD-수원대"]
 REPO = Path(__file__).resolve().parents[1]
-DATA = Path(os.environ.get("KAKAO_DATA_DIR", Path.home() / "work/omnis-import")) / "sync"
+DATA_ROOT = Path(os.environ.get("KAKAO_DATA_DIR", Path.home() / "work/omnis-import"))
+DATA = DATA_ROOT / "sync"
 DOWNLOADS = Path.home() / "Downloads"
 VIDEO_EXT = {".mp4", ".mov", ".m4v"}
 nfc = lambda s: unicodedata.normalize("NFC", s)
@@ -38,6 +38,15 @@ nfc = lambda s: unicodedata.normalize("NFC", s)
 
 class Abort(Exception):
     pass
+
+
+def configured_rooms():
+    """--room 없이 돌 때 받을 방 — 저장소가 공개라 방 이름은 KAKAO_DATA_DIR/import-config.json 에 둔다."""
+    path = DATA_ROOT / "import-config.json"
+    if not path.exists():
+        return []
+    rooms = json.loads(path.read_text(encoding="utf-8")).get("rooms", {})
+    return [name for name, room in rooms.items() if room.get("sync")]
 
 
 def log(*a):
@@ -473,6 +482,9 @@ def main():
     ap.add_argument("--rebase", action="store_true", help="받지 않고 기준점만 지금으로 다시 잡는다")
     ap.add_argument("--room", action="append", help="이 방만 (여러 번 줄 수 있다)")
     args = ap.parse_args()
+    rooms = args.room or configured_rooms()
+    if not rooms:
+        sys.exit("받을 방이 없다 — --room 을 주거나 KAKAO_DATA_DIR/import-config.json 의 방에 sync: true 를 두세요")
 
     if args.when_idle:
         if screen_locked():
@@ -490,7 +502,7 @@ def main():
     start_pos = mouse.pos()
     results, failed = [], False
     try:
-        for room in args.room or ROOMS:
+        for room in rooms:
             try:
                 results.append((room, *sync_room(room, state, mouse, args)))
             except Exception as e:

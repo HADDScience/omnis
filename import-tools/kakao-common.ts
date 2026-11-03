@@ -4,6 +4,8 @@ import { execFile } from "child_process"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import { basename, dirname } from "path"
 import { PrismaClient } from "../generated/prisma"
+import { dmKeyOf } from "../lib/chat-people-rules"
+import { loadImportConfig, plannedDmRoomId, type ImportRoom } from "./rooms-config"
 
 export const prisma = new PrismaClient()
 
@@ -111,7 +113,7 @@ export const minuteKey = (r: RawRow) => `${r.room}|${r.t.slice(0, 16)}|${r.u}|${
 
 // ─── 휴대폰 「대화 내보내기」 txt ───────────────────────────
 //
-// PC CSV 는 PC 앱이 동기화하지 못한 기록을 빠뜨린다(수원대 기준 71건 — 2026-08-28 하루치 등, 2026-10-06 실측).
+// PC CSV 는 PC 앱이 동기화하지 못한 기록을 빠뜨린다(한 방 기준 71건 — 하루치가 통째로 빠진 경우 등, 2026-10-06 실측).
 // 휴대폰 txt 는 빠짐이 없지만 시각이 분 단위이고 자리표시가 한국어다. CSV 의 말로 바꿔 둔다
 // (같은 사람·같은 분의 줄을 맞대어 본 실측: 사진 ⇄ Photo 803 · 사진 N장 ⇄ N photos 156 · 이모티콘 ⇄ Emoticon 22 · 동영상 ⇄ Video 20).
 
@@ -272,67 +274,60 @@ export function saveSessions(sessions: RawSession[]): void {
 
 // ─── 사람·방 ──────────────────────────────────────────────
 
-/**
- * 카톡 표시명 → 옴니스 계정 이름.
- * 값이 null 이면 이식 대상이 아니다(현재는 없음 — 전원 매핑됨).
- */
-export const SPEAKER_TO_USER: Record<string, string> = {
-  "김아리 박사님": "김아리",
-  "허채정 하드사이언스 대표님": "허채정",
-  "정우창": "정우창",
-  "노혜린 하드사이언스 과장님": "노혜린",
-  "박소정": "박소정",
-  "주용석(데과21)": "주용석",
-  "Yuhooi": "윤훈",
-  "주진호": "주진호",
+/** 방 · 사람 매핑은 저장소 밖 KAKAO_DATA_DIR/import-config.json — import-tools/rooms-config.ts */
+export const IMPORT_CONFIG = loadImportConfig(`${DATA_DIR}/import-config.json`)
+export const ROOMS = IMPORT_CONFIG.rooms
+export const SPEAKER_TO_USER = IMPORT_CONFIG.speakers
+export type { ImportRoom }
+
+async function userIdByName(name: string): Promise<string> {
+  const user = await prisma.user.findUnique({ where: { name }, select: { id: true } })
+  if (!user) throw new Error(`옴니스에 「${name}」 계정이 없다. 중단.`)
+  return user.id
 }
 
-/**
- * 이식할 방.
- *
- * 1:1 대화("윤훈 상무님" 등)는 넣지 않는다 — 옮길지 정하지 않았다.
- */
-export interface ImportRoom {
-  id: string
-  name: string
-  /** 전사방(COMPANY)이 아니면 단톡방(GROUP) — 참여자만 읽고, 사내 검색 색인 · 사진 설명에 넣지 않는다 */
-  kind: "COMPANY" | "GROUP"
-  /** 단톡방 참여자의 옴니스 정식 이름 */
-  members?: string[]
+/** 카톡 방 → 옴니스 방 id. 읽기만 한다 — 아직 없는 1:1 은 ensureRooms 가 만들 id 를 돌려준다 */
+export async function resolveRoomIds(): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  for (const [key, room] of Object.entries(ROOMS)) {
+    if (room.kind !== "DM") { out.set(key, room.id!); continue }
+    const dmKey = dmKeyOf(await userIdByName(room.dm![0]), await userIdByName(room.dm![1]))
+    const found = await prisma.chatRoom.findUnique({ where: { dmKey }, select: { id: true } })
+    out.set(key, found?.id ?? plannedDmRoomId(dmKey))
+  }
+  return out
 }
 
-export const ROOMS: Record<string, ImportRoom> = {
-  // id 가 default-room 인 것은 채팅 독이 그 방을 열기 때문이다.
-  "HADD-수원대": { id: "default-room", name: "하드사이언스", kind: "COMPANY" },
-  // 인턴방은 따로 둔다(사용자 결정 2026-10-30). 옴니스로 넘어오면 톡방이 나뉘므로 카톡 방을 그대로 옮긴다.
-  // 2026-09-04 부터 두 방을 전사방 한 흐름으로 합쳐 왔다 — 이미 들어간 글은 import-tools/split-intern-room.ts 가 옮긴다.
-  // 이미 만든 업무 카드와의 연결은 그대로 둔다(사용자 결정) — 업무 화면에서는 그 글이 계속 보인다.
-  "하드사이언스 인턴방": { id: "kakao-intern-room", name: "인턴방", kind: "GROUP", members: ["정우창", "노혜린", "김아리"] },
-}
-
-/** 방을 만들고 단톡방이면 참여자를 맞춘다. 멱등 — 이미 있으면 참여자만 채운다 */
+/** 방을 만들고 단톡방이면 참여자를 맞춘다. 멱등 — 1:1 은 앱에서 이미 연 방이 있으면 그 방에 넣는다 */
 export async function ensureRooms(): Promise<void> {
   for (const room of Object.values(ROOMS)) {
-    await prisma.chatRoom.upsert({ where: { id: room.id }, update: {}, create: { id: room.id, name: room.name, kind: room.kind } })
+    if (room.kind === "DM") {
+      const ids = [await userIdByName(room.dm![0]), await userIdByName(room.dm![1])]
+      const dmKey = dmKeyOf(ids[0], ids[1])
+      await prisma.chatRoom.upsert({
+        where: { dmKey }, update: {},
+        create: { id: plannedDmRoomId(dmKey), name: room.dm!.join(", "), kind: "DM", dmKey, members: { create: ids.map((userId) => ({ userId })) } },
+      })
+      continue
+    }
+    await prisma.chatRoom.upsert({ where: { id: room.id! }, update: {}, create: { id: room.id!, name: room.name, kind: room.kind } })
     for (const name of room.members ?? []) {
-      const user = await prisma.user.findUnique({ where: { name }, select: { id: true } })
-      if (!user) throw new Error(`${room.name} 참여자 「${name}」 이 옴니스에 없다. 중단.`)
-      await prisma.chatRoomMember.upsert({ where: { roomId_userId: { roomId: room.id, userId: user.id } }, update: {}, create: { roomId: room.id, userId: user.id } })
+      const userId = await userIdByName(name)
+      await prisma.chatRoomMember.upsert({ where: { roomId_userId: { roomId: room.id!, userId } }, update: {}, create: { roomId: room.id!, userId } })
     }
   }
 }
 
 /** 단톡방 목록은 lastMessageAt 으로 정렬한다 — 이식한 글의 마지막 시각으로 맞춘다 */
 export async function touchRooms(): Promise<void> {
-  for (const room of Object.values(ROOMS)) {
+  const ids = await resolveRoomIds()
+  for (const [key, room] of Object.entries(ROOMS)) {
     if (room.kind === "COMPANY") continue
-    const last = await prisma.chatMessage.findFirst({ where: { roomId: room.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } })
-    if (last) await prisma.chatRoom.update({ where: { id: room.id }, data: { lastMessageAt: last.createdAt } })
+    const roomId = ids.get(key)!
+    const last = await prisma.chatMessage.findFirst({ where: { roomId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } })
+    if (last) await prisma.chatRoom.update({ where: { id: roomId }, data: { lastMessageAt: last.createdAt } })
   }
 }
-
-/** 지시자·수행자 구분. 담당자 추정에 쓴다. */
-export const WORKERS = new Set(["정우창", "박소정", "주용석(데과21)", "주진호", "Yuhooi"])
 
 /**
  * 메시지 멱등성 키.

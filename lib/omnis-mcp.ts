@@ -12,6 +12,7 @@
 // 권한
 //  Omnis 계정이 살아 있으면 누구나 붙는다. 지식재산권 도구만 ip.members 로 한 번 더 건다.
 //  Prisma 는 DB 소유자로 붙으므로 이 파일이 곧 권한 경계다.
+import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
 import { listTasksWhere } from "@/lib/task-unassigned"
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
 
@@ -39,7 +40,7 @@ import { recordTaskEvents } from "@/lib/task-events"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { assignmentTargets } from "@/lib/notify-rules"
 import * as XLSX from "xlsx"
-import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
+import { PUBLIC_FILE_WHERE, visibleFileWhere } from "@/lib/file-access"
 import { listCalendarText } from "@/lib/calendar/agent-tool"
 import { findVisibleFile } from "@/lib/file-access-server"
 import {
@@ -872,8 +873,8 @@ export async function runTool(
       if (!t) return { error: "업무가 없습니다." }
       const n = clampInt(args.messages, 20, 100)
       const msgs = await prisma.chatMessage.findMany({
-        where: { taskId: t.id, kind: "NORMAL" },
-        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { select: { id: true, name: true } } },
+        where: { taskId: t.id, kind: "NORMAL", ...NOT_EXTERNAL_WHERE },
+        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true } } },
         orderBy: { createdAt: "desc" }, take: n,
       })
       // 파일 ID 를 함께 보여준다 — read_file 이 ID 로 읽는다.
