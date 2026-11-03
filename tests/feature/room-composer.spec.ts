@@ -164,6 +164,7 @@ test("방을 여는 동안 쓴 글을 방 화면 입력창이 이어받고, 입�
 
 test("오른쪽 패널에서도 같은 입력창으로 보낸다", async ({ page }) => {
   await quickLogin(page, "팀장")
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/tasks")
   await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
   const input = page.getByPlaceholder("메시지 입력...  / 명령 · @ 사람 · # 업무")
@@ -171,7 +172,10 @@ test("오른쪽 패널에서도 같은 입력창으로 보낸다", async ({ page
   const panelGeometry = await geometry(page)
   // 패널은 메신저 밖 — 작은 크기
   expect(panelGeometry.sendSize).toBeLessThan(40)
-  if (process.env.COMPOSER_SHOTS) await page.screenshot({ path: path.join(process.env.COMPOSER_SHOTS, "1440-패널.png") })
+  if (process.env.COMPOSER_SHOTS) {
+    await page.waitForTimeout(800) // 패널이 다 열린 뒤
+    await page.screenshot({ path: path.join(process.env.COMPOSER_SHOTS, "1440-패널.png") })
+  }
   const text = `패널 글 ${Date.now()}`
   await input.fill(text)
   await page.getByRole("button", { name: "보내기" }).last().click()

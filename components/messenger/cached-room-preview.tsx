@@ -50,7 +50,7 @@ function composerKind(room: RoomListItem | null, roomKey: string): ComposerKind 
 /** 방 화면 입력창과 같은 문구 — 갈아 끼울 때 글자가 바뀌지 않게(omnis-room Composer · chat-panel · thread-composer) */
 const PLACEHOLDER: Record<ComposerKind, string> = {
   omnis: "옴니스에게 물어보세요",
-  task: "답장 · @ 사람 · # 업무 · 파일은 끌어다 놓기",
+  task: "답장 · @ 사람 · # 업무",
   company: "메시지 입력...  / 명령 · @ 사람 · # 업무",
   people: "메시지 입력...  @ 사람",
   unknown: "메시지 입력",

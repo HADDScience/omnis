@@ -154,7 +154,7 @@ export function ThreadComposer({
         commands={false}
         ariaLabel="이 업무 스레드에 답장"
         // 슬러그를 넣으면 긴 업무명에서 두 줄로 넘친다 — 이 업무로 간다는 것은 탭 이름이 이미 말한다
-        placeholder="답장 · @ 사람 · # 업무 · 파일은 끌어다 놓기"
+        placeholder="답장 · @ 사람 · # 업무"
         handoffKey={handoffKey}
       />
     </div>
