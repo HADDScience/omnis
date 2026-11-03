@@ -10,6 +10,16 @@ export function dmKeyOf(a: string, b: string): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`
 }
 
+/** 「나와의 대화」 — 나 혼자인 1:1. 열쇠가 나:나 라 사람마다 하나뿐이고, 상대가 없으니 참여자도 나뿐이다 */
+export const SELF_ROOM_TITLE = "나와의 대화"
+export const selfDmKeyOf = (me: string) => dmKeyOf(me, me)
+/** 참여자 수로 가르지 않는다 — 계정을 지운 상대의 1:1 도 참여자가 한 명 남는다 */
+export function isSelfDmKey(dmKey: string | null | undefined): boolean {
+  if (!dmKey) return false
+  const [a, b] = dmKey.split(":")
+  return a === b
+}
+
 /** 단톡방 이름 최대 길이 */
 export const PEOPLE_ROOM_NAME_MAX = 40
 /** 한 번에 고르는 사람 수 상한(나 빼고) */
@@ -51,10 +61,11 @@ export function planPeopleRoom(me: string, picked: string[], activeIds: Readonly
 
 /** 목록 · 머리에 보일 방 이름. 1:1 은 저장한 이름 대신 상대 이름이다(보는 사람마다 다르다) */
 export function peopleRoomTitle(
-  room: { kind: string; name: string },
+  room: { kind: string; name: string; dmKey?: string | null },
   members: { id: string; name: string }[],
   me: string,
 ): string {
+  if (room.kind === "DM" && isSelfDmKey(room.dmKey)) return SELF_ROOM_TITLE
   if (room.kind === "DM") return members.find((m) => m.id !== me)?.name ?? (room.name || "1:1 대화")
   return room.name
 }

@@ -3,7 +3,7 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { defaultGroupName, dmKeyOf, mentionedMembers, peopleRoomTitle, planPeopleRoom, PEOPLE_PICK_MAX, PEOPLE_ROOM_NAME_MAX } from "./chat-people-rules"
+import { defaultGroupName, dmKeyOf, isSelfDmKey, SELF_ROOM_TITLE, selfDmKeyOf, mentionedMembers, peopleRoomTitle, planPeopleRoom, PEOPLE_PICK_MAX, PEOPLE_ROOM_NAME_MAX } from "./chat-people-rules"
 
 const active = new Set(["me", "a", "b", "c"])
 
@@ -41,6 +41,21 @@ test("1:1 이름은 보는 사람마다 상대 이름 · 단톡방은 저장한 
   assert.equal(peopleRoomTitle({ kind: "DM", name: "정우창, 김아리" }, members, "me"), "김아리")
   assert.equal(peopleRoomTitle({ kind: "DM", name: "정우창, 김아리" }, members, "a"), "정우창")
   assert.equal(peopleRoomTitle({ kind: "GROUP", name: "견적팀" }, members, "me"), "견적팀")
+})
+
+test("나와의 대화 — 열쇠가 나:나 이고, 다른 사람의 1:1 로 읽히지 않는다", () => {
+  assert.equal(isSelfDmKey(selfDmKeyOf("me")), true)
+  assert.equal(isSelfDmKey(dmKeyOf("me", "a")), false)
+  assert.equal(isSelfDmKey(null), false)
+  assert.notEqual(selfDmKeyOf("me"), selfDmKeyOf("a"))
+  const me = [{ id: "me", name: "정우창" }]
+  assert.equal(peopleRoomTitle({ kind: "DM", name: "x", dmKey: selfDmKeyOf("me") }, me, "me"), SELF_ROOM_TITLE)
+  // 상대 계정이 지워져 참여자가 나만 남은 1:1 은 나와의 대화가 아니다
+  assert.equal(peopleRoomTitle({ kind: "DM", name: "정우창, 김아리", dmKey: dmKeyOf("me", "gone") }, me, "me"), "정우창, 김아리")
+})
+
+test("나를 골라도 1:1 · 단톡방 계획에 들어가지 않는다 — 나와의 대화는 따로 연다", () => {
+  assert.deepEqual(planPeopleRoom("me", ["me"], active), { error: "대화할 사람을 한 명 이상 골라 주세요" })
 })
 
 test("멘션 알림은 그 방 참여자에게만 — 방 밖 사람 · 나 자신은 받지 않는다", () => {
