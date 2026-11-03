@@ -32,7 +32,7 @@ async function taskRoom(page: Page) {
   return `/chat/task/${tasks[0].id}`
 }
 
-async function geometry(page: Page) {
+async function geometry(page: Page, pillSelector = PILL) {
   return page.evaluate((pill) => {
     const el = document.querySelector(pill) as HTMLElement
     const r = el.getBoundingClientRect()
@@ -46,7 +46,7 @@ async function geometry(page: Page) {
       textLeft: Math.round(ta.getBoundingClientRect().left - r.left),
       sendSize: Math.round(send.getBoundingClientRect().width),
     }
-  }, PILL)
+  }, pillSelector)
 }
 
 for (const [label, viewport] of [
@@ -70,7 +70,8 @@ for (const [label, viewport] of [
     expect(seen.업무).toEqual(seen.전사)
     // 데모에는 첨부가 없어 옴니스 방에 ＋ 가 없다 — 글자가 시작하는 자리만 다르다
     expect({ ...seen.옴니스, textLeft: 0 }).toEqual({ ...seen.전사, textLeft: 0 })
-    expect(seen.전사.sendSize).toBe(48)
+    // 화면 전체 배율(--ui-zoom)을 타므로 정확한 px 대신 메신저 크기(48px 이상)인지 본다
+    expect(seen.전사.sendSize).toBeGreaterThanOrEqual(48)
     expect(seen.전사.textSize).toBe("17px")
   })
 }
@@ -154,7 +155,8 @@ test("방을 여는 동안 쓴 글을 방 화면 입력창이 이어받고, 입�
   const entry = page.locator("[data-entry-composer]")
   await entry.waitFor({ timeout: 15_000 })
   await entry.fill("방이 오기 전에 쓴 글")
-  const before = await geometry(page)
+  // /chat 가운데 칸의 새 대화 입력창이 덮개 아래 남아 있다 — 입장 입력창의 알약을 집어 잰다
+  const before = await geometry(page, `${PILL}:has([data-entry-composer])`)
   await expect(entry).toHaveCount(0, { timeout: 30_000 })
   await expect(box(page)).toHaveValue("방이 오기 전에 쓴 글")
   expect(await geometry(page)).toEqual(before)
@@ -168,7 +170,7 @@ test("오른쪽 패널에서도 같은 입력창으로 보낸다", async ({ page
   await expect(input).toBeVisible()
   const panelGeometry = await geometry(page)
   // 패널은 메신저 밖 — 작은 크기
-  expect(panelGeometry.sendSize).toBe(32)
+  expect(panelGeometry.sendSize).toBeLessThan(40)
   if (process.env.COMPOSER_SHOTS) await page.screenshot({ path: path.join(process.env.COMPOSER_SHOTS, "1440-패널.png") })
   const text = `패널 글 ${Date.now()}`
   await input.fill(text)
