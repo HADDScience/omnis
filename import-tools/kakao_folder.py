@@ -1,0 +1,91 @@
+# kakao-sync.py 의 판단만 모은 곳 — 카톡 · AppKit 없이 시험한다(import-tools/test_kakao_folder.py).
+import hashlib, json, re, unicodedata
+
+REPORT_PREFIX = "@@kakao-report "
+nfc = lambda s: unicodedata.normalize("NFC", s)
+
+
+class FolderError(Exception):
+    """폴더 목록을 믿을 수 없다 — 한 방도 건드리지 않고 멈춘다."""
+
+
+def safe_key(name):
+    """방 키 — CSV 파일 이름과 폴더 이름에 들어간다. 길면 잘라 해시를 붙인다."""
+    key = nfc(name).replace("/", "_").strip()
+    if len(key.encode()) <= 160:
+        return key
+    return key.encode()[:140].decode(errors="ignore").rstrip() + "-" + hashlib.sha1(key.encode()).hexdigest()[:8]
+
+
+def room_key(list_name, rooms):
+    """채팅 목록 이름 → 설정의 방 키. 이름 없는 단체방은 CSV 이름이 모두 같으므로 목록 이름으로 가른다."""
+    name = nfc(list_name)
+    for key, room in rooms.items():
+        if room.get("listName") and nfc(room["listName"]) == name:
+            return key
+    return name if name in rooms else safe_key(name)
+
+
+def csv_room(path_name):
+    m = re.match(r"^KakaoTalk_Chat_(.+)_(\d{4}(?:-\d{2}){5})\.csv$", nfc(path_name))
+    return (m.group(1), m.group(2)) if m else (None, None)
+
+
+def csv_name_for(key, path_name):
+    """kakao.ts 는 파일 이름에서 방을 읽는다. 방 키와 다르면 그 키로 이름을 고친다."""
+    room, stamp = csv_room(path_name)
+    if room is None:
+        raise ValueError(f"카톡 CSV 이름이 아니다: {path_name}")
+    return nfc(path_name) if room == key else f"KakaoTalk_Chat_{key}_{stamp}.csv"
+
+
+def check_folder(names, rooms, folder, max_rooms, max_new):
+    """폴더를 잘못 읽으면 사적인 방까지 운영에 들어간다. 조금이라도 이상하면 전부 멈춘다."""
+    names = [nfc(n) for n in names]
+    if not names:
+        raise FolderError(f"「{folder}」 폴더에 방이 없다 — 폴더 탭을 못 열었을 수 있다")
+    if len(names) > max_rooms:
+        raise FolderError(f"방이 {len(names)}개라 「{folder}」 폴더가 아닌 듯하다 (상한 {max_rooms}, --max-rooms)")
+    keys = [room_key(n, rooms) for n in names]
+    known = [k for k in keys if k in rooms]
+    if rooms and not known:
+        raise FolderError(f"목록에 아는 방이 하나도 없어 「{folder}」 폴더가 아닌 듯하다")
+    new = [k for k in keys if k not in rooms]
+    if len(new) > max_new:
+        raise FolderError(f"새 방이 {len(new)}개다 (상한 {max_new}, --max-new-rooms). 폴더를 확인한 뒤 상한을 올려 돌린다")
+    return names
+
+
+def duplicates(names):
+    """이름이 같은 방은 어느 쪽인지 가를 수 없으므로 처리하지 않는다."""
+    seen, dup = set(), set()
+    for n in map(nfc, names):
+        (dup if n in seen else seen).add(n)
+    return dup
+
+
+def parse_report(lines):
+    for line in reversed(list(lines)):
+        if line.startswith(REPORT_PREFIX):
+            return json.loads(line[len(REPORT_PREFIX):])
+    return None
+
+
+def summary(results, failed, not_started, dry):
+    """실행 보고 — results: [{room, inserted, pending, newRoom, newExternals, newMembers, skipped}]"""
+    verb = "넣을 글" if dry else "넣은 글"
+    out = [f"── 실행 보고{' (건식)' if dry else ''} ──"]
+    for r in results:
+        n = "같은 CSV — 건너뜀" if r.get("skipped") else f"{verb} {r.get('pending' if dry else 'inserted', 0)}건"
+        out.append(f"  {r['room']}: {n}")
+    new_rooms = [r["room"] for r in results if r.get("newRoom")]
+    externals = sorted({e for r in results for e in r.get("newExternals", [])})
+    members = [f"{r['room']} + {', '.join(r['newMembers'])}" for r in results if r.get("newMembers")]
+    out.append(f"  새 방 {len(new_rooms)}: {', '.join(new_rooms) or '없음'}")
+    out.append(f"  새 외부 발화자 {len(externals)}: {', '.join(externals) or '없음'}")
+    if members:
+        out.append(f"  참여자 추가: {' · '.join(members)}")
+    out.append(f"  실패 방 {len(failed)}: {' · '.join(f'{k} ({v})' for k, v in failed.items()) or '없음'}")
+    if not_started:
+        out.append(f"  시작 못 한 방 {len(not_started)}: {', '.join(not_started)}")
+    return "\n".join(out)

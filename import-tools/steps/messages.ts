@@ -7,7 +7,7 @@ import { matchHandCopies } from "../hand-copies"
 import { copyRoomIds, externalSpeakerIdOf, speakerTarget, type ExternalDef } from "../rooms-config"
 import { SYSTEM_USER_ID, getSystemUserId } from "../../lib/system-user"
 
-export async function importMessages(sessions: RawSession[], opts: { dry: boolean }): Promise<{ inserted: number; total: number }> {
+export async function importMessages(sessions: RawSession[], opts: { dry: boolean }): Promise<{ inserted: number; total: number; pending: number }> {
   const userBySpeaker = await resolveUsers()
   const roomIds = await resolveRoomIds()
 
@@ -66,7 +66,7 @@ export async function importMessages(sessions: RawSession[], opts: { dry: boolea
 
   const existing = await prisma.chatMessage.count({ where: { sourceId: { in: list.map((r) => r.sourceId) } } })
   console.log(`  대상 ${list.length}건 · 이미 있음 ${existing}건 · 새로 넣을 것 ${list.length - existing}건`)
-  if (opts.dry) return { inserted: 0, total: existing }
+  if (opts.dry) return { inserted: 0, total: existing, pending: list.length - existing }
 
   await ensureRooms()
   if (externals.size > 0) {
@@ -87,5 +87,5 @@ export async function importMessages(sessions: RawSession[], opts: { dry: boolea
   await touchRooms()
   const total = await prisma.chatMessage.count({ where: { sourceId: { startsWith: "kakao:" } } })
   console.log(`  새로 넣은 메시지 ${inserted}건 · 이식된 메시지 총 ${total}건`)
-  return { inserted, total }
+  return { inserted, total, pending: list.length - existing }
 }

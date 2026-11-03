@@ -5,13 +5,18 @@
 //     "<카톡 방 이름>": { "id": "...", "name": "옴니스 방 이름", "kind": "COMPANY" | "GROUP", "members": ["계정 이름"], "sync": true },
 //     "<1:1 카톡 방 이름>": { "name": "표시용", "kind": "DM", "dm": ["계정 이름", "계정 이름"] }
 //   },
+//   "me": "내 계정 이름",
+//   "syncFolder": "<카톡 채팅 폴더 이름>",
 //   "speakers": { "<카톡 표시명>": "계정 이름" },
 //   "externals": { "<카톡 표시명>": { "name": "이름", "org": "소속", "title": "직급" } }
 // }
 //
 // structure: 분류 · 구조화 · 카드 연결을 하는가. 기본은 전사방만 true — 업무 카드는 전원이 보므로 참여자 전용 방은 켜지 않는다.
 // copiesFrom: 손으로 옮긴 사본을 자기 방 말고 어느 방에서도 찾을지(방 id). 나뉘기 전에 사본이 다른 방에 들어간 방만 쓴다.
-// sync: kakao-sync.py 가 --room 없이 돌 때 받는 방.
+// sync: syncFolder 가 없을 때 kakao-sync.py 가 --room 없이 받는 방.
+// syncFolder: kakao-sync.py 가 실행마다 이 폴더의 방을 전부 옮긴다. 처음 보는 방은 registerRoom 이 설정에 더한다.
+// auto: registerRoom 이 관리하는 방 — 새 발화자가 나오면 참여자 · 외부 발화자로 더한다. 없으면 설정을 건드리지 않는다.
+// listName: 채팅 목록의 이름이 방 키와 다를 때. 이름 없는 단체방은 CSV 이름이 모두 같아 이것으로 가른다.
 // prisma 없음 — 단위 시험이 DB 없이 돈다.
 import { createHash } from "crypto"
 import { existsSync, readFileSync } from "fs"
@@ -30,6 +35,8 @@ export interface ImportRoom {
   structure?: boolean
   copiesFrom?: string[]
   sync?: boolean
+  auto?: boolean
+  listName?: string
 }
 
 export interface ExternalDef { name: string; org?: string | null; title?: string | null }
@@ -38,6 +45,8 @@ export interface ImportConfig {
   rooms: Record<string, ImportRoom>
   speakers: Record<string, string>
   externals: Record<string, ExternalDef>
+  me?: string
+  syncFolder?: string
 }
 
 export const EMPTY_CONFIG: ImportConfig = { rooms: {}, speakers: {}, externals: {} }
@@ -62,7 +71,7 @@ export function parseImportConfig(raw: unknown): ImportConfig {
     if (!e.name?.trim()) throw new Error(`외부 발화자 ${key}: name 이 없다`)
     if (speakers[key]) throw new Error(`${key}: 계정(speakers)과 외부 발화자(externals)에 함께 있다`)
   }
-  return { rooms, speakers, externals }
+  return { rooms, speakers, externals, me: c.me, syncFolder: c.syncFolder }
 }
 
 /** 파일이 없으면 빈 설정 — 옮길 방이 없다는 뜻이고, 저장소만 받은 사람도 시험을 돌릴 수 있다 */
@@ -98,3 +107,68 @@ export function importedFilePrivateTo(msg: { authorId: string; room: { kind: str
 
 /** 사본을 찾을 방 — 기본은 자기 방만. 다른 방의 같은 말과 짝이 맞으면 원본이 빠진다 */
 export const copyRoomIds = (roomId: string, room: ImportRoom) => [roomId, ...(room.copiesFrom ?? [])]
+
+export const autoRoomId = (key: string) => `kakao-auto-${createHash("sha1").update(key).digest("hex").slice(0, 16)}`
+
+/** 카톡 표시명 → 계정 이름. 외부 발화자로 정한 사람은 계정으로 보지 않는다. 등록된 매핑 → 이름이 같은 계정 → 첫 낱말이 계정 이름(「이름 직함」). 없으면 null */
+export function accountOf(display: string, config: Pick<ImportConfig, "speakers" | "externals">, accounts: string[]): string | null {
+  if (config.externals[display]) return null
+  const mapped = config.speakers[display]
+  if (mapped) return mapped
+  if (accounts.includes(display)) return display
+  const first = display.trim().split(/\s+/)[0]
+  return accounts.includes(first) ? first : null
+}
+
+export interface RegisterResult {
+  newRoom: boolean
+  newExternals: string[]
+  newMembers: string[]
+}
+
+/**
+ * 처음 보는 방을 CSV 발화자로 등록한다. config 를 그 자리에서 고친다.
+ * 참여자 전용 — 분류 · 카드를 켜지 않고(structure 없음) 전사방으로 만들지 않는다. 손으로 정한 방(auto 없음)은 건드리지 않는다.
+ * 1:1 은 방 이름이 상대 표시명이고 발화자가 나와 그 사람뿐이며 상대 계정이 있을 때만이다 — 틀리면 단톡방 글이 1:1 에 섞인다.
+ * 그 밖에는 모두 단톡방이다. 나는 말이 없어도 참여자다.
+ */
+export function registerRoom(config: ImportConfig, key: string, displays: string[], accounts: string[]): RegisterResult {
+  const room = config.rooms[key]
+  const out: RegisterResult = { newRoom: false, newExternals: [], newMembers: [] }
+  if (room && !room.auto) return out
+  if (!config.me) throw new Error("import-config.json 에 me(내 계정 이름)가 없다")
+  const me = config.me
+
+  const who = displays.map((display) => ({ display, account: accountOf(display, config, accounts) }))
+  for (const { display, account } of who) {
+    if (account) {
+      if (!config.speakers[display]) config.speakers[display] = account
+    } else if (!config.externals[display]) {
+      config.externals[display] = { name: display, org: null, title: null }
+      out.newExternals.push(display)
+    }
+  }
+  const accountsHere = [...new Set(who.flatMap((w) => (w.account ? [w.account] : [])))]
+
+  if (room) {
+    if (room.kind === "GROUP") {
+      out.newMembers = accountsHere.filter((a) => !room.members?.includes(a))
+      if (out.newMembers.length > 0) room.members = [...(room.members ?? []), ...out.newMembers]
+    }
+    return out
+  }
+
+  out.newRoom = true
+  const others = who.filter((w) => w.account !== me)
+  const peer = others.length === 1 && others[0].display === key ? others[0].account : null
+  if (peer) {
+    config.rooms[key] = { name: peer, kind: "DM", dm: [me, peer], auto: true }
+    return out
+  }
+  const members = [...new Set([me, ...accountsHere])]
+  // 이름 없는 단체방의 목록 이름은 표시명을 쉼표로 이은 것이다 — 참여자 이름으로 부른다
+  const unnamed = key.includes(", ")
+  const names = [...members, ...who.filter((w) => !w.account).map((w) => w.display)].sort((a, b) => a.localeCompare(b, "ko"))
+  config.rooms[key] = { id: autoRoomId(key), name: unnamed ? names.join(", ") : key, kind: "GROUP", members, auto: true }
+  return out
+}

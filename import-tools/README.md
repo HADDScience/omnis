@@ -16,12 +16,24 @@ npm run kakao -- <csv...> --target prod      # 프로덕션(Neon). 먼저 로컬
 
 ## 계속 받기 — `kakao-sync.py`
 
-카톡 Mac 앱을 조작해 CSV 내보내기와 새 사진 받기를 하고 `kakao.ts` 를 부른다. 사람 손이 필요 없다.
+카톡 Mac 앱을 조작해 CSV 내보내기와 새 사진 받기를 하고 `kakao.ts` 를 부른다. 사람 손이 필요 없다. 자동 실행은 넣지 않았다 — 사람이 돌린다.
 
 ```bash
-python3 import-tools/kakao-sync.py --no-import           # 받기만 (처음 한 번은 기준점만 적는다)
-python3 import-tools/kakao-sync.py --target prod --when-idle 10   # 10분 넘게 입력이 없을 때만 돌고 프로덕션에 이식
+python3 import-tools/kakao-sync.py --target prod              # 폴더의 방을 전부 받아 프로덕션에 이식
+python3 import-tools/kakao-sync.py --target prod --dry        # 받되 이식은 임시 폴더에서 건식으로만
+python3 import-tools/kakao-sync.py --target prod --from-csv DIR   # 카톡을 건드리지 않고 그 폴더의 CSV 로 건식만
+python3 import-tools/kakao-sync.py --no-import                # 받기만
+python3 import-tools/kakao-sync.py --room <방>                # 폴더 대신 이 방만
 ```
+
+- **어느 방인가:** `import-config.json` 의 `syncFolder`(또는 `--folder`). 실행마다 폴더 탭을 눌러 목록을 읽고 전부 처리한다. 방 이름을 미리 등록하지 않는다.
+- **안전장치:** 폴더를 잘못 읽으면 사적인 방까지 운영에 들어가므로, 탭을 못 찾거나 · 목록이 비었거나 · 방이 `--max-rooms`(50)를 넘거나 · 아는 방이 하나도 없거나 · 새 방이 `--max-new-rooms`(10)를 넘으면 한 방도 건드리지 않고 멈춘다.
+- **처음 보는 방:** 전부 참여자 전용, 글 제외 없음, 분류 · 카드 없음. 참여자는 CSV 발화자 + `me`. 계정 없는 발화자는 외부 발화자로 이름만 저장한다.
+  1:1 은 방 이름이 상대 표시명이고 발화자가 나와 그 사람뿐이며 상대 계정이 있을 때만이다. 그 밖에는 단톡방이다(`rooms-config.ts` `registerRoom`).
+- **손으로 정한 방:** `auto` 가 없는 방의 설정은 바꾸지 않는다. 제외 줄 · 권한 규칙도 그대로다.
+- **방 하나가 실패해도** 건너뛰고 나머지를 진행한다. 단계마다 제한시간(`--step-timeout`, 90초)을 건다. 사람이 마우스를 움직이면 거기서 받기를 멈추고 받은 방까지만 이식한다.
+- **실행 보고:** 방별 글 수, 새 방, 새 외부 발화자, 참여자 추가, 실패 방, 시작 못 한 방을 끝에 찍는다.
+- **파일 탭 실물은 받지 않는다.** 사진 · 영상은 아래 규칙대로 기준점 뒤의 것만 받는다. 처음 보는 방은 기준점만 적는다.
 
 - 사진은 서랍 「사진/동영상」 에서 **지난 실행 이후 늘어난 만큼** 위에서부터 받는다. 보관함 항목에는 날짜가 없어서
   보관함 개수와 CSV 사진 자리표시 개수의 증가분을 최신순으로 짝짓는다. 둘이 어긋나면 받지 않고 기준점을 다시 잡는다.
