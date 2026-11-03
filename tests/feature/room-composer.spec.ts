@@ -14,6 +14,9 @@ const COMPANY = "/chat/default-room"
 const PILL = "[data-composer-pill]"
 const LIST = "[data-composer-autocomplete]"
 const box = (page: Page) => page.locator(`${PILL} textarea`).first()
+/** React 가 붙은 뒤에 쓴다 — 빌드한 서버는 그 전에 칠 만큼 빨리 입력칸을 보여 준다 */
+const hydrated = (page: Page) =>
+  expect.poll(() => box(page).evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), { timeout: 30_000 }).toBe(true)
 
 /** 사원1 과의 1:1 — 없으면 만든다 */
 async function peopleRoom(page: Page) {
@@ -119,6 +122,7 @@ test("보내는 동안 다음 글을 보내도 쓴 순서대로 닿고, 실패�
   await quickLogin(page, "팀장")
   await page.goto(await taskRoom(page))
   await box(page).waitFor({ timeout: 30_000 })
+  await hydrated(page)
   const first = `첫 글 ${Date.now()}`
   const second = `둘째 글 ${Date.now()}`
   const posts: string[] = []
@@ -156,6 +160,7 @@ test("같은 순간 두 번 눌러도 한 번만 보내고, 실패한 글은 말
   await quickLogin(page, "팀장")
   await page.goto(COMPANY)
   await box(page).waitFor({ timeout: 30_000 })
+  await hydrated(page)
   const failing = `실패할 글 ${Date.now()}`
   const next = `뒤 글 ${Date.now()}`
   const posts: string[] = []
@@ -212,6 +217,7 @@ test("데스크톱 — 보낸 뒤 입력칸에 그대로 있다(네 방 공통, 
   for (const [name, url] of Object.entries(await roomUrls(page))) {
     await page.goto(url)
     await box(page).waitFor({ timeout: 30_000 })
+    await hydrated(page)
     await box(page).fill(`포커스 시험 Enter ${name} ${Date.now()}`)
     await box(page).press("Enter")
     await expect.poll(() => focused(page), `${name} Enter`).toBe(true)
@@ -230,6 +236,7 @@ test.describe("폰", () => {
     for (const [name, url] of Object.entries(await roomUrls(page))) {
       await page.goto(url)
       await box(page).waitFor({ timeout: 30_000 })
+      await hydrated(page)
       expect(await page.evaluate(() => window.matchMedia("(pointer: coarse)").matches)).toBe(true)
       const send = page.locator(`${PILL} button[aria-label="보내기"]`).first()
       await box(page).tap()
