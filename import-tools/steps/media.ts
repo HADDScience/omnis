@@ -23,6 +23,7 @@ import { randomUUID } from "crypto"
 import { readdirSync, readFileSync, statSync } from "fs"
 import { extname, join } from "path"
 import { prisma, ROOMS, messageSourceId, parseKst, type RawSession } from "../kakao-common"
+import { importedFilePrivateTo } from "../rooms-config"
 import { loadExclude } from "../redaction"
 import { putObject, objectKeyFor } from "../../lib/storage"
 
@@ -147,7 +148,8 @@ export async function attachMedia(sessions: RawSession[], dir: string, opts: { d
     const mimeType = mimeOf(name)
     // NAS에 먼저 올리고, 성공한 뒤에만 DB에 기록한다 (앱의 업로드 경로와 같은 순서).
     await putObject(objectKeyFor(id, name), body, mimeType)
-    await prisma.file.create({ data: { id, name, path: `/api/files/${id}/raw`, size: file.size, mimeType, messageId } })
+    const msg = await prisma.chatMessage.findUniqueOrThrow({ where: { id: messageId }, select: { authorId: true, room: { select: { kind: true } } } })
+    await prisma.file.create({ data: { id, name, path: `/api/files/${id}/raw`, size: file.size, mimeType, messageId, privateToUserId: importedFilePrivateTo(msg) } })
     attached++
     process.stdout.write(`\r  올리는 중 ${attached}/${plan.length}`)
   }

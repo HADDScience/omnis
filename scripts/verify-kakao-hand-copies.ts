@@ -52,7 +52,7 @@ const { unmatched } = matchHandCopies([k("a", "u1", "네", "2026-09-23T14:00")],
 check("같은 사본이 두 번이면 하나는 짝 없음으로 보고", unmatched.map((u) => u.id).join(",") === "y")
 
 console.log("제외 목록")
-const room = "하드사이언스 인턴방"
+const room = "예시 방"
 const m1 = { t: "2026-09-16 13:24:00", u: "직원A", m: "맥은 어떤 칩이에요?" }
 const m2 = { t: "2026-09-16 13:25:00", u: "직원A", m: "이 줄은 빼 주세요" }
 const m3 = { t: "2026-09-30 14:34:00", u: "직원A", m: "주말에 여행 갈 예정이에요" }
@@ -66,7 +66,7 @@ check("목록의 줄만 빠지고 같은 세션의 다른 줄은 남음", r1.ses
 check("줄이 빠져도 세션 id 는 그대로", r1.sessions[0]?.id === "s1" && r1.sessions[0].start === m1.t)
 check("다 빠진 세션은 버림", r1.sessions.length === 1 && r1.dropped === 2)
 check("같은 방·시각이라도 본문이 다르면 빼지 않음", dropExcluded(sessions, ex({ ...m2, m: m2.m + "!" })).dropped === 0)
-check("다른 방의 같은 말은 빼지 않음", dropExcluded([{ ...sessions[0], room: "HADD-수원대" }], ex(m2)).dropped === 0)
+check("다른 방의 같은 말은 빼지 않음", dropExcluded([{ ...sessions[0], room: "다른 예시 방" }], ex(m2)).dropped === 0)
 check("목록이 비면 그대로", dropExcluded(sessions, []).dropped === 0)
 
 console.log("휴대폰 txt")

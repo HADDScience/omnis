@@ -12,6 +12,7 @@ import { recordTaskEvents } from "@/lib/task-events"
 import { assignmentTargets } from "@/lib/notify-rules"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
+import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import type { Prisma, Priority } from "@/generated/prisma/client"
 
 export async function GET(req: NextRequest) {
@@ -278,7 +279,8 @@ export async function POST(req: NextRequest) {
   // 업무 지시에 사용된 메시지들 마킹 + 첨부 파일 연결
   if (messageIds?.length) {
     await prisma.chatMessage.updateMany({
-      where: { id: { in: messageIds } },
+      // 참여자만 보는 방의 글은 업무에 잇지 않는다 — 업무 카드는 전원이 본다
+      where: { id: { in: messageIds }, ...PUBLIC_MESSAGE_WHERE },
       data: { isTaskInstruction: true, taskId: task.id, changedAt: new Date() },
     })
 

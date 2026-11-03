@@ -8,6 +8,7 @@ import {
   DATA_DIR, ROOMS, askClaude, loadClassified, parseJsonArray, runParallel, saveClassified, pad2,
   type Classified, type RawSession,
 } from "../kakao-common"
+import { structureEnabled } from "../rooms-config"
 
 const BATCH = 30
 const LABELS = new Set(["업무", "정보공유", "잡담", "빈껍데기"])
@@ -32,7 +33,8 @@ function projectVocab(classified: Map<string, Classified>): string {
  */
 export function pendingSessions(sessions: RawSession[], classified: Map<string, Classified>): RawSession[] {
   return sessions.filter((s) => {
-    if (!ROOMS[s.room]) return false
+    // 참여자 전용 방은 기본으로 분류하지 않는다 — 대화가 Claude 로 나가지 않고 카드도 생기지 않는다
+    if (!ROOMS[s.room] || !structureEnabled(ROOMS[s.room])) return false
     const c = classified.get(s.id)
     if (!c) return true
     return c.label !== "업무" && c.messages != null && s.n > c.messages
