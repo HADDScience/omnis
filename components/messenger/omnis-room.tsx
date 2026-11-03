@@ -28,6 +28,7 @@ import { ToolTrail } from "./tool-trail"
 import { RoomHeader } from "./room-header"
 import { RoomMuteButton } from "./room-mute-button"
 import { useChatUserId, useRoomListReload } from "./messenger-shell"
+import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { AttachChips, ComposerPlus, RoomComposer, type PickedFile } from "@/components/chat/room-composer"
 import { useOmnisAttachments } from "./omnis-attach"
 import { IS_DEMO } from "@/lib/demo"
@@ -77,6 +78,7 @@ export function OmnisRoom({
   muted?: boolean
 }) {
   const reloadList = useRoomListReload()
+  const nudgeRoomList = useRoomListNudge()
   const [roomId, setRoomId] = useState(initialRoomId)
   const [messages, setMessages] = useState(initialMessages)
   const [cards, setCards] = useState(initialCards)
@@ -357,6 +359,8 @@ export function OmnisRoom({
         const qid = h.get("x-question-id")
         if (qid) {
           questionId = qid
+          // 서버가 내 글을 받았다 — 답을 기다리지 않고 목록의 미리보기 · 순서를 맞춘다. 끝나면 답까지 한 번 더 읽는다
+          nudgeRoomList()
           setPending({ content: shown, questionId: qid, files })
           // 서버가 질문을 받았다 — 첨부는 그 질문에 붙었다. 거절(429 · 409)이면 칩을 그대로 둔다
           if (files?.length) attach.clear()
