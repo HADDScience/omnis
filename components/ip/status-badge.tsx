@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils"
 import { staleLevel } from "@/lib/ip/date"
 
 /**
- * 단계 → 색 톤. 상표/특허를 합친 통합 파이프라인 전체를 덮는다.
- * 값 자체는 ip.status_options 에서 오므로, 여기 없는 단계는 회색으로 떨어진다.
+ * 상태·사건 → 색 톤. 대장은 상태 5개(ip.status_options)를, 진행 기록은 사건(ip.event_options)을 보여 준다.
+ * 여기 없는 값은 회색으로 떨어진다.
  */
 const EMERALD =
   "bg-emerald-500/12 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300"
@@ -19,6 +19,9 @@ const VIOLET =
 const MUTED = "bg-muted text-muted-foreground"
 
 const STATUS_TONE: Record<string, string> = {
+  출원전: SKY,
+  거절: RED,
+  포기: MUTED,
   아이디어: VIOLET,
   검토요청: SKY,
   검토의견: AMBER,
@@ -40,6 +43,8 @@ export function StatusBadge({
   status: string
   className?: string
 }) {
+  // 상태만 옮긴 진행 기록은 사건이 비어 있다. 빈 배지를 그리지 않는다.
+  if (!status) return null
   return (
     <Badge
       className={cn(

@@ -75,7 +75,7 @@ export function TaskDialog({
 
 function TaskDetail({ entry }: { entry: ProgressEntry }) {
   const today = useToday()
-  const { trademarks, patents, stages, refresh } = useData()
+  const { trademarks, patents, statusOptions, refresh } = useData()
   const { canWrite } = useAuth()
 
   const kind = entry.entityKind
@@ -96,11 +96,11 @@ function TaskDetail({ entry }: { entry: ProgressEntry }) {
 
   const pipeline = useMemo(
     () =>
-      stages
+      statusOptions
         .filter((s) => s.kind === kind)
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((s) => s.value),
-    [stages, kind]
+    [statusOptions, kind]
   )
 
   // 값이 있는 칸만 표로, 빈 칸은 이름만 한 줄로 — 「—」 줄이 절반이면 읽을 것이 묻힌다

@@ -18,7 +18,7 @@ import { useToday } from "@/hooks/ip/use-today"
 import { detect, issuesById, type Issue } from "@/lib/ip/detect"
 import { loadStageOrder, saveStageOrder, type StageOrder } from "@/lib/ip/db"
 import { daysBetween, formatDate } from "@/lib/ip/date"
-import { DEFAULT_STAGE_ORDER, sortByDefault } from "@/lib/ip/stage-order"
+import { sortByDefault } from "@/lib/ip/stage-order"
 import { cn } from "@/lib/utils"
 import type { NextTurn, ProgressEntry } from "@/lib/ip/types"
 
@@ -59,7 +59,7 @@ function summarize(row: Row, last: ProgressEntry | undefined): string {
       : last.direction === "송신"
         ? `${last.counterpart}에 보냄`
         : ""
-  const what = last.note.trim() || `${last.stage} 단계로 기록`
+  const what = last.note.trim() || (last.stage ? `${last.stage} 기록` : "진행 기록")
   return `${formatDate(last.date).slice(2)} ${who ? `${who} — ` : ""}${what}`
 }
 
@@ -67,7 +67,7 @@ export function OverviewView() {
   const today = useToday()
   const router = useRouter()
   const { member } = useAuth()
-  const { trademarks, patents, progress, stages } = useData()
+  const { trademarks, patents, progress, statusOptions } = useData()
 
   const [kind, setKind] = useState<"all" | Kind>("all")
   const [view, setView] = useState<View>("all")
@@ -136,26 +136,25 @@ export function OverviewView() {
   }, [progress])
 
   const issues = useMemo(
-    () => detect(trademarks, patents, today),
-    [trademarks, patents, today]
+    () => detect(trademarks, patents, today, progress),
+    [trademarks, patents, today, progress]
   )
   const byId = useMemo(() => issuesById(issues), [issues])
 
-  /** 기본 차례. 단계표에 없는 옛 값도 표에 나오면 자리를 줘야 한다. */
+  /** 기본 차례. 상태표에 없는 값도 표에 나오면 자리를 줘야 한다. */
   const defaultOrder = useMemo(() => {
     const weight = new Map<string, number>()
-    for (const s of stages) {
+    for (const s of statusOptions) {
       weight.set(s.value, Math.max(weight.get(s.value) ?? 0, s.sortOrder))
     }
     return sortByDefault(
       [
-        ...DEFAULT_STAGE_ORDER,
         ...weight.keys(),
         ...rows.map((r) => r.status),
       ],
       (v) => weight.get(v) ?? 0
     )
-  }, [stages, rows])
+  }, [statusOptions, rows])
 
   const stageRank = useMemo(() => {
     const mine = (stageOrder.overview ?? []).filter((v) =>

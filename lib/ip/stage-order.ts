@@ -2,7 +2,7 @@
  * 목록의 기본 줄 차례. 현황(첫 화면)과 IP 화면이 같은 기본을 쓴다.
  *
  * 등록 > 출원 > 검토 > 거절·포기·중단, 묶음 안에서는 더 나아간 단계가 먼저.
- * ip.status_options 의 단계를 전부 적어 둔다. 여기 없는 단계가 새로 생기면
+ * 상태 5개(ip.status_options)와 옛 단계 값을 적어 둔다. 여기 없는 값이 새로 생기면
  * groupOf 로 묶음을 정해 그 묶음 끝에 붙인다. 사람마다 바꾼 차례는
  * 「단계 순서 설정」으로 계정에 저장되고, 이 기본보다 앞선다.
  */
@@ -17,15 +17,18 @@ export const DEFAULT_STAGE_ORDER = [
   "검토의견",
   "검토요청",
   "아이디어",
+  "출원전",
   "거절확정",
+  "거절",
   "포기·중단",
+  "포기",
 ]
 
 /** 단계 묶음. 앞에 있을수록 먼저 온다. */
 export function groupOf(stage: string): number {
   if (stage === "등록" || stage === "등록완료") return 0
   if (/거절|포기|중단/.test(stage)) return 3
-  if (/검토|아이디어/.test(stage)) return 2
+  if (/검토|아이디어|출원전/.test(stage)) return 2
   return 1
 }
 
