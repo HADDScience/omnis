@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { uiSurveyAnswerSchema } from "@/lib/ui-metrics/rules"
+import { UI_SURVEY_ENABLED, uiSurveyAnswerSchema } from "@/lib/ui-metrics/rules"
 import { surveyTargetFor, uiMetricsServerEnabled } from "@/lib/ui-metrics/server"
 
 export const runtime = "nodejs"
@@ -12,7 +12,7 @@ export async function GET() {
   const session = await auth()
   const userId = session?.user?.id
   if (!userId) return NextResponse.json({ error: "인증 필요" }, { status: 401 })
-  if (!uiMetricsServerEnabled()) return NextResponse.json({ sha: null })
+  if (!uiMetricsServerEnabled() || !UI_SURVEY_ENABLED) return NextResponse.json({ sha: null })
   return NextResponse.json({ sha: await surveyTargetFor(userId) })
 }
 

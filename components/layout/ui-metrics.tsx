@@ -11,7 +11,7 @@ import { useOnboarding } from "@/components/onboarding/onboarding-provider"
 import { apiUrl } from "@/lib/base-path"
 import { flushUiEvents, noteUiPath, uiMetricsEnabled } from "@/lib/ui-metrics/client"
 import { UI_METRICS_NOTICE } from "@/lib/ui-metrics/notice"
-import { kstDayKey, SURVEY_COMMENT_MAX } from "@/lib/ui-metrics/rules"
+import { kstDayKey, SURVEY_COMMENT_MAX, UI_SURVEY_ENABLED } from "@/lib/ui-metrics/rules"
 
 /** 첫 화면과 앱 설치 권유(AppNudge)가 먼저 자리 잡은 뒤에 묻는다 */
 const SURVEY_DELAY_MS = 4_000
@@ -41,7 +41,7 @@ function isWriting(): boolean {
 }
 
 /**
- * 사용 기록의 화면 쪽 — 경로 알리기 · 탭 숨길 때 보내기 · 처음 한 번 안내 · 배포 다음 날 한 문항.
+ * 사용 기록의 화면 쪽 — 경로 알리기 · 탭 숨길 때 보내기 · 처음 한 번 안내 · 배포 다음 날 한 문항(지금은 꺼 둠, UI_SURVEY_ENABLED).
  *
  * 폴링이 아니다. 설문은 접속할 때와 탭으로 돌아올 때 「오늘 아직 안 물었으면」 한 번만 서버에 묻는다.
  * 설계: mydocs/plans/2026-11-04-ui-metrics.md
@@ -83,7 +83,7 @@ export function UiMetrics({ userId }: { userId: string }) {
   }, [touring, router])
 
   useEffect(() => {
-    if (!uiMetricsEnabled || touring) return
+    if (!UI_SURVEY_ENABLED || !uiMetricsEnabled || touring) return
     const key = surveyCheckedKey(userId)
     async function check() {
       if (checking.current || document.visibilityState !== "visible") return
