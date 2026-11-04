@@ -1,5 +1,5 @@
 /**
- * UI 변경 측정 — 권한 · 내용 비수집 · 묶음 전송 · 설문 한 번 · 90일 정리. 계획: mydocs/plans/2026-11-04-ui-metrics.md
+ * UI 변경 측정 — 권한 · 내용 비수집 · 묶음 전송 · 설문 꺼짐 · 90일 정리. 계획: mydocs/plans/2026-11-04-ui-metrics.md
  * NEXT_PUBLIC_UI_METRICS=1 로 뜬 서버에서만 돈다(e2e-local · CI).
  */
 import { expect, test, type Page } from "@playwright/test"
@@ -148,7 +148,7 @@ test.describe("내용 비수집", () => {
   })
 })
 
-test.describe("배포 다음 날 설문", () => {
+test.describe("설문 — 꺼 둔 동안", () => {
   const seed = async (user: string, sha: string) => {
     const id = await userId(user)
     await prisma.uiSurveyResponse.deleteMany({ where: { userId: id } })
@@ -161,54 +161,33 @@ test.describe("배포 다음 날 설문", () => {
     await prisma.uiEvent.deleteMany({ where: { userId: id } })
   }
 
-  test("답하면 다시 묻지 않는다 — 다른 기기(저장소가 빈 브라우저)에서도", async ({ page, browser }) => {
+  test("물을 배포가 있어도 뜨지 않고, 화면은 서버에 묻지도 않으며, 서버도 물을 배포를 주지 않는다", async ({ page }) => {
     const id = await seed("사원1", "feed222")
     try {
+      let asked = 0
+      page.on("request", (r) => {
+        if (r.method() === "GET" && new URL(r.url()).pathname.endsWith(SURVEY)) asked++
+      })
       await login(page, "사원1")
-      const dialog = page.locator("[data-ui-survey]")
-      await expect(dialog).toBeVisible({ timeout: 20_000 })
-      await expect(dialog.getByText("이번 변경 후 하던 일이 더 쉬워졌나요?")).toBeVisible()
-      await expect(dialog.getByRole("button", { name: "보내기" })).toBeDisabled()
-      await dialog.getByRole("radio", { name: "4" }).click()
-      await dialog.getByLabel("한 줄 의견").fill("메뉴 찾기가 쉬워졌어요")
-      await dialog.getByRole("button", { name: "보내기" }).click()
-      await expect(dialog).toBeHidden()
-      await expect.poll(() => prisma.uiSurveyResponse.count({ where: { userId: id, commitSha: "feed222", score: 4 } })).toBe(1)
-
-      await page.reload()
       await page.waitForTimeout(6_000)
-      await expect(dialog).toBeHidden()
-
-      const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
-      const phone = await ctx.newPage()
-      await login(phone, "사원1")
-      expect(await (await phone.request.get(SURVEY)).json()).toEqual({ sha: null })
-      await phone.waitForTimeout(6_000)
-      await expect(phone.locator("[data-ui-survey]")).toBeHidden()
-      await ctx.close()
+      await expect(page.locator("[data-ui-survey]")).toHaveCount(0)
+      expect(asked).toBe(0)
+      // 열어 둔 탭의 옛 빌드는 이 응답만 보고 띄운다
+      expect(await (await page.request.get(SURVEY)).json()).toEqual({ sha: null })
     } finally {
       await cleanup(id)
     }
   })
 
-  test("닫아도 다시 묻지 않고, 폰에서도 뜨고 닫힌다", async ({ browser }) => {
+  test("기록 수집은 그대로이고, 답 API 도 남아 있어 먼저 남은 것을 덮지 않는다", async ({ page }) => {
     const id = await seed("사원2", "feed333")
     try {
-      const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
-      const phone = await ctx.newPage()
-      await login(phone, "사원2")
-      const dialog = phone.locator("[data-ui-survey]")
-      await expect(dialog).toBeVisible({ timeout: 20_000 })
-      const size = await dialog.getByRole("radio", { name: "1" }).boundingBox()
-      expect(size?.height).toBeGreaterThanOrEqual(44)
-      await dialog.getByRole("button", { name: "닫기", exact: true }).first().click()
-      await expect(dialog).toBeHidden()
-      await expect.poll(() => prisma.uiSurveyResponse.findFirst({ where: { userId: id, commitSha: "feed333" }, select: { score: true } })).toEqual({ score: null })
-      expect(await (await phone.request.get(SURVEY)).json()).toEqual({ sha: null })
-      // 같은 배포에 다시 보내도 처음 것을 덮지 않는다
-      await phone.request.post(SURVEY, { data: { sha: "feed333", score: 5 } })
+      await login(page, "사원2")
+      expect((await page.request.post(EVENTS, { data: { sha: "feed333", events: [{ name: "menu_open", path: "/" }] } })).status()).toBe(204)
+      expect(await prisma.uiEvent.count({ where: { userId: id, commitSha: "feed333" } })).toBe(2)
+      expect((await page.request.post(SURVEY, { data: { sha: "feed333", score: null } })).status()).toBe(204)
+      expect((await page.request.post(SURVEY, { data: { sha: "feed333", score: 5 } })).status()).toBe(204)
       expect(await prisma.uiSurveyResponse.count({ where: { userId: id, commitSha: "feed333", score: null } })).toBe(1)
-      await ctx.close()
     } finally {
       await cleanup(id)
     }
@@ -247,6 +226,7 @@ test("수집 안내 문구가 마이 > 시스템에 있다", async ({ page }) =>
   await expect(notice).toContainText("모으는 것")
   await expect(notice).toContainText("대화 내용, 파일 이름, 방 이름")
   await expect(notice).toContainText("개인 평가에 쓰지 않습니다")
+  await expect(notice).not.toContainText("점수")
   await expect(notice.getByRole("link", { name: "배포별 측정 보기" })).toHaveCount(0)
 })
 

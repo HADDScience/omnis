@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { distanceFromBottom } from "@/lib/agent/scroll-follow"
-import { isKeyboardOpen, isTextEntry, PHONE_TOUCH_QUERY, rememberBaseline } from "@/lib/keyboard-viewport"
+import { isKeyboardOpen, isTextEntry, rememberBaseline, TOUCH_SCREEN_QUERY } from "@/lib/keyboard-viewport"
 
 /** 키보드가 가리지 않는 높이로 맞춘 동안의 값. 셸과 nav 여백이 이 변수로 높이를 잰다 */
 const DOCK_VARS = ["--app-vh", "--nav-offset-bottom", "--safe-bottom"] as const
@@ -18,7 +18,7 @@ function keepingBottom(change: () => void) {
 }
 
 /**
- * 폰 키보드가 열렸는가. 앱 셸에서 한 번만 쓴다.
+ * 화면 키보드가 열렸는가(폰 · 태블릿). 앱 셸에서 한 번만 쓴다.
  *
  * 포커스가 메신저 입력창(`[data-composer]`)에 있으면 입력창을 키보드 바로 위에 붙인다 — 셸을 보이는 높이로 줄이고,
  * nav 자리와 홈 인디케이터 여백을 걷는다. 다른 입력 칸은 브라우저가 칸을 찾아 올려 주는 동작을 그대로 둔다.
@@ -30,7 +30,7 @@ export function useKeyboardOpen() {
     const vv = window.visualViewport
     if (!vv) return
     const root = document.documentElement
-    const phone = window.matchMedia(PHONE_TOUCH_QUERY)
+    const touch = window.matchMedia(TOUCH_SCREEN_QUERY)
     const baselines = new Map<number, number>()
     let dockedHeight: number | null = null
     let focusTimer: ReturnType<typeof setTimeout> | undefined
@@ -44,7 +44,8 @@ export function useKeyboardOpen() {
           for (const name of DOCK_VARS) root.style.removeProperty(name)
         } else {
           root.setAttribute("data-keyboard-docked", "")
-          root.style.setProperty("--app-vh", `${height}px`)
+          // 안드로이드 태블릿은 md 이상이라 html zoom 이 걸려 있다 — 평소 --app-vh 처럼 배율을 나눈다
+          root.style.setProperty("--app-vh", `calc(${height}px / var(--ui-zoom))`)
           root.style.setProperty("--nav-offset-bottom", "0px")
           // 키보드가 홈 인디케이터를 덮는다. 그 여백을 남기면 입력창과 키보드 사이가 뜬다
           root.style.setProperty("--safe-bottom", "0px")
@@ -58,7 +59,7 @@ export function useKeyboardOpen() {
       const width = Math.round(vv.width * vv.scale)
       const active = document.activeElement as HTMLElement | null
       const next = isKeyboardOpen({
-        phone: phone.matches,
+        touch: touch.matches,
         textEntryFocused: isTextEntry(active as HTMLInputElement | null),
         baseline: rememberBaseline(baselines, width, Math.max(height, window.innerHeight)),
         height,

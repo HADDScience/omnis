@@ -35,6 +35,11 @@ export const ATTACH_RETRY_WINDOW_MS = 10 * 60_000
 /** 배포 뒤 이만큼 지나면 묻지 않는다. 오래 비운 사람에게 옛 배포를 묻지 않게 */
 export const SURVEY_WINDOW_DAYS = 7
 export const SURVEY_COMMENT_MAX = 140
+/**
+ * 설문을 띄우는가. 어떻게 물을지 더 정하기로 해 꺼 두었다(2026-11-04 작업지시자). 사용 기록 수집과 표 · API 는 그대로다.
+ * 화면과 서버가 함께 본다 — 열어 둔 탭의 옛 빌드는 화면 쪽 값을 모르므로 서버가 물을 배포를 돌려주지 않아야 뜨지 않는다.
+ */
+export const UI_SURVEY_ENABLED = false as boolean
 /** 배포 커밋이 없는 빌드(로컬). 설문 대상이 아니다 */
 export const DEV_SHA = "dev"
 
