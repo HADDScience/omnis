@@ -129,6 +129,19 @@ test.describe("폰", () => {
     expect(KEYBOARD_TOP - (await pillBottom(page))).toBeLessThanOrEqual(8)
   })
 
+  test("키보드가 열린 채 ＋ 를 누르면 키보드를 내리고 시트를 올린다", async ({ page }) => {
+    await mockViewport(page)
+    await quickLogin(page, "팀장")
+    await open(page, COMPANY)
+    await box(page).tap()
+    await keyboard(page, KEYBOARD_TOP)
+    await expect.poll(() => docked(page)).toBe(true)
+    await page.locator(`${PILL} button[aria-label="추가"]`).first().tap()
+    await expect(page.locator("[data-composer-plus-sheet]")).toBeVisible()
+    expect(await box(page).evaluate((el) => document.activeElement === el)).toBe(false)
+    await expect.poll(() => docked(page)).toBe(false)
+  })
+
   test("읽던 자리를 지킨다 — 입력창 바로 위 글이 그대로다", async ({ page }) => {
     await mockViewport(page)
     await quickLogin(page, "팀장")

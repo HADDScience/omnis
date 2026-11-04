@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { AtIcon, Attachment01Icon, Task01Icon } from "@hugeicons/core-free-icons"
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { SLASH_COMMANDS } from "./slash-command-parser"
 import { IS_DEMO } from "@/lib/demo"
 import { toast } from "sonner"
@@ -184,6 +183,8 @@ export function MessageInput({
 
   /** 커서를 특정 위치로 옮긴다. setContent 반영 이후여야 하므로 다음 프레임에 실행. */
   function focusAt(pos: number) {
+    // iOS 는 탭 동작 안에서 준 포커스에만 키보드를 연다 — 먼저 주고, 글자가 그려진 뒤 커서를 놓는다
+    textareaRef.current?.focus()
     requestAnimationFrame(() => {
       const ta = textareaRef.current
       if (!ta) return
@@ -350,28 +351,13 @@ export function MessageInput({
         <ComposerPlus
           disabled={disabled}
           files={noFiles ? undefined : { onFiles: addFiles, onNas: addNas, nasOpen: nasPickerOpen, onNasOpenChange: setNasPickerOpen }}
-        >
-          {commands && (
-            <DropdownMenuItem onClick={startTaskCommand}>
-              <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
-              업무 지시
-              <span className="ml-auto font-mono text-[10px] text-muted-foreground">/업무</span>
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuItem onClick={() => startMention("user")}>
-            <HugeiconsIcon icon={AtIcon} size={14} aria-hidden />
-            사람 언급
-            <span className="ml-auto font-mono text-[10px] text-muted-foreground">@</span>
-          </DropdownMenuItem>
-          {/* 사람끼리 방은 업무 목록을 받지 않는다(commands 와 함께 끈다) */}
-          {taskMentions && (
-            <DropdownMenuItem onClick={() => startMention("task")}>
-              <HugeiconsIcon icon={Task01Icon} size={14} aria-hidden />
-              업무 언급
-              <span className="ml-auto font-mono text-[10px] text-muted-foreground">#</span>
-            </DropdownMenuItem>
-          )}
-        </ComposerPlus>
+          actions={[
+            ...(commands ? [{ key: "task-command", icon: Task01Icon, label: "업무 지시", shortcut: "/업무", onSelect: startTaskCommand }] : []),
+            { key: "mention-user", icon: AtIcon, label: "사람 언급", shortcut: "@", onSelect: () => startMention("user") },
+            // 사람끼리 방은 업무 목록을 받지 않는다(commands 와 함께 끈다)
+            ...(taskMentions ? [{ key: "mention-task", icon: Task01Icon, label: "업무 언급", shortcut: "#", onSelect: () => startMention("task") }] : []),
+          ]}
+        />
       }
       overlay={
         // 자동완성 목록 — /명령 · #업무 · @사람/파일 이 같은 UI를 쓴다

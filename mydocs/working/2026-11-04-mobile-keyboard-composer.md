@@ -28,3 +28,20 @@ last_verified: 2026-11-04
 
 - `lib/keyboard-viewport.test.ts`, `tests/feature/mobile-keyboard.spec.ts`(`visualViewport` 모의)
 - 실제 아이폰에서는 확인하지 못했다. 특히 iOS 가 화면을 미는 동작을 `window.scrollTo(0, 0)` 로 되돌리는 부분과 키보드가 올라오는 동안의 움직임은 모의로 재현되지 않는다
+
+# 폰의 ＋ 메뉴를 바텀시트로
+
+- 터치 폰 폭에서 ＋ 는 `ComposerPlusSheet`(`components/ui/drawer.tsx`, vaul)를 연다. 손잡이 · 어두운 바탕 누르기 · 아래로 밀기로 닫는다. 키보드가 열려 있으면 입력칸 포커스를 풀어 내린 뒤 연다. PC 와 터치가 아닌 좁은 창은 기존 메뉴다
+- 항목은 메뉴와 같은 목록(`ComposerPlusAction`)이다. 시트에만 「사진」 이 더 있고, 이것은 파일 고르기를 `accept="image/*"` 로 좁힌 것이다. 데모는 지금처럼 첨부 항목이 없다
+- 항목은 시트를 닫은 같은 탭 동작 안에서 부른다 — 파일 고르기 창과 키보드는 사용자 동작 안에서만 열린다. `focusAt` 도 그래서 포커스를 먼저 준다
+- `capture` 를 주지 않는다. [MDN capture](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/capture) 대로 주면 촬영을 지시하게 되어 보관함을 고를 수 없다. [MDN input file](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file) 은 `accept="image/*"` 에서 많은 모바일 기기가 촬영도 고르게 한다고 적는다
+
+## 최근 사진 가로 목록을 만들지 않은 이유
+
+웹이 파일을 받는 길은 사용자가 고른 파일(`input.files`)이다. 사진 보관함을 목록으로 읽는 웹 API 를 찾지 못했다. 네이티브 앱의 권한 모델과 다르다.
+
+## 시험
+
+- `tests/feature/composer-plus-sheet.spec.ts`(데모 빌드 — 열기 · 닫기 · 언급 항목 · PC 메뉴)
+- `scripts/verify-composer-plus-sheet.mjs`(일반 빌드 — 네 방 항목, 사진 · 파일 · 시놀로지, 첨부 유지). 데모 빌드에 첨부가 없어 CI 에는 들어가지 않는다
+- 실제 아이폰에서 고르기 창의 메뉴 구성 · 밀기 감각 · 키보드 내림과 시트가 겹치는 순간은 확인하지 못했다

@@ -47,8 +47,8 @@ async function askWithFile(file, tag) {
   ok(p.plus && p.box && p.plus.x < p.box.x, "＋ 는 알약 안 왼쪽")
 
   await page.getByRole("button", { name: "추가" }).click()
-  await page.getByRole("menuitem", { name: /파일 업로드/ }).waitFor()
-  ok(await page.getByRole("menuitem", { name: /시놀로지 파일 연결/ }).isVisible(), "메뉴: 파일 업로드 · 시놀로지 파일 연결(사람 방과 같다)")
+  await page.locator("[data-composer-plus-sheet]").getByRole("button", { name: /파일 업로드/ }).waitFor()
+  ok(await page.locator("[data-composer-plus-sheet]").getByRole("button", { name: /시놀로지 파일 연결/ }).isVisible(), "시트: 파일 업로드 · 시놀로지 파일 연결(사람 방과 같다)")
   await page.screenshot({ path: `${OUT}/${tag}-1-menu.png` })
   await page.keyboard.press("Escape")
 

@@ -268,6 +268,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 **입력칸**
 - 한 줄일 때 글자와 보내기 단추의 세로 가운데가 같아야 한다 — 입력칸 최소 높이 = 단추 높이, 남는 높이는 위아래 여백. 높이는 px(rem 은 81.25% 배율을 탄다). 여러 줄로 늘면 단추는 아래(`items-end`)에 붙는다
+- ＋ 메뉴: PC 는 메뉴, 터치 폰은 바텀시트(`components/chat/composer-plus-sheet.tsx`). 항목 목록은 하나(`ComposerPlusAction`)이고 시트에만 「사진」(`accept="image/*"`)이 있다
 - Enter: PC(물리 키보드) 보내기 · Shift+Enter 줄바꿈. 폰(`(pointer: coarse)`)은 Enter 가 줄바꿈이고 보내기는 단추로만. 한글 조합 중(isComposing · keyCode 229)의 Enter 는 어디서도 보내거나 후보를 고르지 않는다 — `lib/enter-to-send.ts` 하나로 판정한다
 - 보내기 · [확인] 은 ref 로 잠근다 — 상태는 다음 그리기에야 보여 같은 순간 두 번 누르면 둘 다 지나간다
 
