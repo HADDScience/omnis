@@ -9,6 +9,7 @@ import {
   type ShortcutAction,
   type ShortcutMap,
 } from "@/lib/shortcuts"
+import { trackUi } from "@/lib/ui-metrics/client"
 
 // 단축키는 이 기기의 설정이다 — 테마처럼 localStorage 에 둔다. 맥과 윈도우에서 손에 맞는 키가 달라 DB 에 두지 않는다.
 const STORAGE_KEY = "omnis:shortcuts:v1"
@@ -87,6 +88,7 @@ export function useShortcut(action: ShortcutAction, handler: () => void) {
       if (!matchesCombo(e, combo)) return
       if (!inInput && isTypingTarget(e.target)) return
       e.preventDefault()
+      trackUi(`shortcut.${action}`)
       latest.current()
     }
     window.addEventListener("keydown", onKeyDown)

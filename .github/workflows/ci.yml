@@ -76,6 +76,8 @@ jobs:
       GEMINI_API_KEY: ci-placeholder
       # 데모 시드로 채운 DB 라 데모 화면이 맞다. auth.spec 의 빠른 로그인 검사가 이 값을 본다.
       NEXT_PUBLIC_IS_DEMO: "true"
+      # 사용 기록은 운영에서만 켜지지만 시험은 켜고 돈다(tests/feature/ui-metrics.spec.ts)
+      NEXT_PUBLIC_UI_METRICS: "1"
       E2E_PASSWORD: demo1234
       BASE_URL: http://localhost:3000
 
