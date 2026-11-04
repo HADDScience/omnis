@@ -1,6 +1,7 @@
 "use client"
 
 // 큰 첨부 진행 표시 — 화면을 옮겨도 남는다. 폰에는 화면을 켜 두라는 한 줄을 함께 띄운다.
+// 방 헤더 아래에 둔다. 헤더를 덮으면 올리는 동안 다른 방으로 나가는 뒤로 가기를 막는다.
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
@@ -17,7 +18,7 @@ import {
 import { largeUploadClientEnabled } from "@/lib/large-upload/rules"
 
 function StatusRow({ children }: { children: React.ReactNode }) {
-  return <div className="glass flex min-w-0 items-center gap-2 rounded-2xl px-3 py-1.5 text-xs shadow-sm">{children}</div>
+  return <div className="flex min-w-0 items-center gap-2 rounded-2xl border bg-background/95 px-3 py-1.5 text-xs shadow-sm">{children}</div>
 }
 
 function Status() {
@@ -35,7 +36,7 @@ function Status() {
   return (
     <div
       data-large-upload-status
-      className="pointer-events-none fixed inset-x-3 top-[calc(var(--demo-banner-height,0px)+var(--safe-top,0px)+0.5rem)] z-[var(--z-banner)] mx-auto flex max-w-sm flex-col gap-1.5 md:top-[calc(var(--demo-banner-height,0px)+7.5rem)]"
+      className="pointer-events-none fixed inset-x-3 top-[calc(var(--demo-banner-height,0px)+var(--safe-top,0px)+4.5rem)] z-[var(--z-banner)] mx-auto flex max-w-sm flex-col gap-1.5 md:top-[calc(var(--demo-banner-height,0px)+7.5rem)]"
     >
       {uploads.map((u) => (
         <div key={u.id} className="pointer-events-auto">
