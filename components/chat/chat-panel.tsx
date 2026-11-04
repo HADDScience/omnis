@@ -7,9 +7,13 @@ import { MessageInput } from "@/components/chat/message-input"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
+import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
+import { createSerialQueue } from "@/lib/serial-queue"
 import { reportIncident } from "@/lib/report-client-error"
+import { noteAttachAttempt, noteUiSend } from "@/lib/ui-metrics/client"
 import { ChatSearch } from "@/components/chat/chat-search"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
+import { applyChanges, encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
 
 interface Message {
   id: string
@@ -20,10 +24,18 @@ interface Message {
   task?: { id: string; name: string; slug: string } | null
   /** 고친 시각 · 지운 시각 · 답장 대상 (2026-09-16) */
   editedAt?: string | null
+  /** 화면에 보이는 것이 바뀐 시각 — 폴링이 같은 변경을 두 번 끼우지 않게 비교한다(2026-10-30) */
+  changedAt?: string | null
   deletedAt?: string | null
   replyTo?: { id: string; authorName: string; content: string } | null
   files?: { id: string; name: string; path: string; size: number; mimeType: string }[]
   _settled?: boolean
+  /** 서버가 돌려준 화면 id — 응답이 끊긴 말풍선과 폴링으로 들어온 진짜 글을 잇는다 */
+  clientId?: string | null
+  /** 보내는 중 말풍선의 화면 id */
+  _clientId?: string
+  /** 보내지 못한 말풍선 — 까닭. 다시 보내기 · 지우기를 띄운다 */
+  _failed?: string
 }
 
 interface User {
@@ -49,12 +61,47 @@ interface ChatPanelProps {
    * 이 방 글은 업무에 붙지 않고(서버가 업무 연결을 하지 않는다) 파일 목록은 방을 가리지 않아서다
    */
   people?: { members: User[] }
+  /** 메신저 방 키 — loading 입력창에 쓴 글을 이어받는다(lib/chat-entry.ts). 오른쪽 패널은 비운다 */
+  handoffKey?: string
 }
 
 // 사람끼리 방은 업무 · 파일 후보가 없다. MessageInput 의 기본값([])은 그릴 때마다 새 배열이라
 // 후보 계산 effect 가 setState 를 되풀이해 무한 갱신이 났다(대화상자를 열면 터졌다) — 같은 배열을 넘긴다
 const NO_TASKS: { id: string; name: string; slug: string; status?: string }[] = []
 const NO_FILES: { id: string; name: string; path: string; mimeType: string }[] = []
+
+/** 커서로 쓰는 두 칸 — 시각만 들고 있으면 같은 시각의 글이 빠진다(lib/chat-cursor.ts) */
+type CursorEdge = { createdAt: string; id: string }
+const edgeOf = (m: { createdAt: string; id: string }): CursorEdge => ({ createdAt: m.createdAt, id: m.id })
+/** 아직 서버 id 가 없는 보내는 중 말풍선 */
+const isLocal = (m: { id: string }) => m.id.startsWith("temp-")
+
+/** 다시 보내기에 쓰는 요청 본문 — 같은 clientId 로 보내야 서버가 두 번 저장하지 않는다 */
+type SendPayload = {
+  roomId: string
+  content: string
+  taskId?: string
+  fileIds: string[]
+  fileNames: string[]
+  replyToId?: string
+  clientId: string
+}
+
+/** 첨부 단계에서 멈췄다는 표시 — 이 오류는 MessageInput 까지 그대로 던진다(쓴 글 · 첨부를 남긴다) */
+class SendStopped extends Error {}
+
+let tempSeq = 0
+
+/**
+ * 폴링으로 진짜 글이 들어왔으면 그 글의 보내는 중 · 실패 말풍선을 걷는다.
+ * 응답만 끊긴 글은 서버에 저장돼 있어서, 이것이 없으면 실패 말풍선과 진짜 글이 둘 다 보인다
+ */
+function dropEchoed(list: Message[]): Message[] {
+  const echoed = new Set(list.flatMap((m) => (!isLocal(m) && m.clientId ? [m.clientId] : [])))
+  if (echoed.size === 0) return list
+  const next = list.filter((m) => !(isLocal(m) && m._clientId && echoed.has(m._clientId)))
+  return next.length === list.length ? list : next
+}
 
 export function ChatPanel({
   roomId,
@@ -67,6 +114,7 @@ export function ChatPanel({
   onSearchOpenChange,
   searchFocus = 0,
   people,
+  handoffKey,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
@@ -79,13 +127,16 @@ export function ChatPanel({
   const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map()) // msgId → 0~100
   // 답장 대상 — 입력창 위에 한 줄로 물고 있다가 보낼 때 함께 넘긴다
   const [replyTo, setReplyTo] = useState<{ id: string; authorName: string; content: string } | null>(null)
-  const pausePolling = useRef(false)
+  /** 보내는 중인 글 수 — 하나라도 있으면 폴링을 쉰다(줄에서 기다리는 글까지) */
+  const sendsInFlight = useRef(0)
+  /** 사진을 올리는 동안 다음 글을 보내도 쓴 순서대로 서버에 닿는다 */
+  const sendQueue = useRef(createSerialQueue())
   // 검색 결과 보기 — 최신이 아닌 자리를 보고 있다. 폴링을 멈추고, 아래로 스크롤하면 뒤를 이어 붙인다
   const [jumped, setJumped] = useState(false)
   const jumpedRef = useRef(false)
   const [hasMoreNewer, setHasMoreNewer] = useState(false)
   const [loadingNewer, setLoadingNewer] = useState(false)
-  const [highlight, setHighlight] = useState<{ id: string; n: number } | null>(null)
+  const [highlight, setHighlight] = useState<{ id: string; n: number; typing?: boolean } | null>(null)
 
   // 기기에 저장 — 다음에 이 방을 열 때 서버를 기다리지 않고 바로 그린다(lib/chat-cache.ts). 최근 30개 · 본문만.
   // 업무로 거른 목록 · 검색 점프 중의 목록은 「이 방의 최근 글」 이 아니라 저장하지 않는다
@@ -104,50 +155,71 @@ export function ChatPanel({
     )
   }, [messages, roomId, currentUserId, filterTaskId, jumped])
 
-  const lastFetchedAt = useRef(
-    initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : ""
+  // 마지막으로 받은 글. 비어 있으면 다음 읽기가 최신 한 페이지로 갈아 끼운다
+  const lastFetchedAt = useRef<CursorEdge | null>(
+    initialMessages.length > 0 ? edgeOf(initialMessages[initialMessages.length - 1]) : null
   )
 
+  // 남이 고치거나 지운 글을 마지막으로 물어본 서버 시각 — 화면 시계가 아니라 서버가 돌려준 값을 쓴다
+  const changesCheckedAt = useRef<string | null>(null)
+
+  // 이 방에서 본 글 — 폴링은 커서보다 조금 앞부터 겹쳐 읽으므로 응답에 글이 있어도 새 글이 아닐 수 있다.
+  // 진짜 새 글일 때만 왼쪽 목록을 다시 읽는다
+  const nudgeRoomList = useRoomListNudge()
+  const [seenIds] = useState(() => new Set(initialMessages.map((m) => m.id)))
+
   const fetchMessages = useCallback(async () => {
-    if (pausePolling.current || jumpedRef.current) return
+    if (sendsInFlight.current > 0 || jumpedRef.current) return
     try {
       const params = new URLSearchParams({ roomId })
-      if (lastFetchedAt.current) params.set("after", lastFetchedAt.current)
+      if (lastFetchedAt.current) {
+        params.set("after", encodeCursor(lastFetchedAt.current))
+        params.set("changes", "1")
+        if (changesCheckedAt.current) params.set("changesSince", changesCheckedAt.current)
+      }
       if (filterTaskId) params.set("taskId", filterTaskId)
 
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
       if (!res.ok) return
-      const newMsgs = await res.json()
+      const body = await res.json()
+      // 폴링(changes=1)은 { messages, changed, checkedAt }, 첫 읽기는 배열
+      const newMsgs: Message[] = Array.isArray(body) ? body : body.messages
+      const unseen = newMsgs.filter((m) => !seenIds.has(m.id))
+      if (unseen.length > 0) {
+        for (const m of unseen) seenIds.add(m.id)
+        nudgeRoomList()
+      }
+      if (!Array.isArray(body)) {
+        changesCheckedAt.current = body.checkedAt
+        if (body.changed.length > 0) setMessages((prev) => applyChanges(prev, body.changed as Message[]))
+      }
 
       if (!lastFetchedAt.current) {
-        // 초기 로드: 최신 페이지로 교체
-        setMessages(newMsgs)
+        // 초기 로드: 최신 페이지로 교체. 보내는 중 · 보내지 못한 말풍선은 남긴다 — 빈 방에서 보낸 글은 커서가 없어
+        // 다음 폴링이 이 길로 와서, 예전에는 실패 말풍선까지 지워 다시 보낼 길이 사라졌다
+        setMessages((prev) => dropEchoed([...newMsgs, ...prev.filter(isLocal)]))
         if (newMsgs.length > 0) {
-          lastFetchedAt.current = newMsgs[newMsgs.length - 1].createdAt
+          lastFetchedAt.current = edgeOf(newMsgs[newMsgs.length - 1])
         }
         setHasMoreOlder(newMsgs.length >= CHAT_PAGE_SIZE)
       } else if (newMsgs.length > 0) {
-        // 이후: 새 메시지만 추가
-        setMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.id))
-          const unique = newMsgs.filter((m: { id: string }) => !existingIds.has(m.id))
-          return unique.length > 0 ? [...prev, ...unique] : prev
-        })
-        lastFetchedAt.current = newMsgs[newMsgs.length - 1].createdAt
+        // 이후: 새 메시지만 추가. 서버는 커서보다 조금 앞부터 겹쳐 준다 — 늦게 커밋된 글은 제자리에 끼운다
+        setMessages((prev) => dropEchoed(mergeIncoming(prev, newMsgs, isLocal)))
+        lastFetchedAt.current = laterOf(lastFetchedAt.current, edgeOf(newMsgs[newMsgs.length - 1]))
       }
     } catch {
       /* ignore */
     }
-  }, [roomId, filterTaskId])
+  }, [roomId, filterTaskId, seenIds, nudgeRoomList])
 
   // 무한 스크롤 — 현재 가장 오래된 메시지보다 이전 메시지 한 페이지를 앞에 붙임
   const loadOlder = useCallback(async () => {
     if (loadingOlder || !hasMoreOlder) return
-    const oldest = messages[0]
+    const oldest = messages.find((m) => !isLocal(m))
     if (!oldest) return
     setLoadingOlder(true)
     try {
-      const params = new URLSearchParams({ roomId, before: oldest.createdAt })
+      const params = new URLSearchParams({ roomId, before: encodeCursor(oldest) })
       if (filterTaskId) params.set("taskId", filterTaskId)
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
       if (!res.ok) return
@@ -178,7 +250,7 @@ export function ChatPanel({
 
   useEffect(() => {
     endJump()
-    lastFetchedAt.current = ""
+    lastFetchedAt.current = null
     setMessages([])
     setHasMoreOlder(true)
     fetchMessages()
@@ -188,7 +260,7 @@ export function ChatPanel({
   const backToLatest = useCallback(() => {
     endJump()
     setHighlight(null)
-    lastFetchedAt.current = ""
+    lastFetchedAt.current = null
     setMessages([])
     setHasMoreOlder(true)
     fetchMessages()
@@ -203,7 +275,7 @@ export function ChatPanel({
 
   /** 주변 불러오기(around=id 또는 at=시각)로 목록을 갈아 끼우고 대상을 강조한다 */
   const loadAround = useCallback(
-    async (query: { around: string } | { at: string }) => {
+    async (query: { around: string } | { at: string }, typing = false) => {
       const params = new URLSearchParams({ roomId, ...query })
       if (filterTaskId) params.set("taskId", filterTaskId)
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`)).catch(() => null)
@@ -219,19 +291,19 @@ export function ChatPanel({
       setHasMoreNewer(data.hasMoreNewer)
       setHasMoreOlder(data.hasMoreOlder)
       setMessages(data.messages)
-      if (data.messages.length > 0) lastFetchedAt.current = data.messages[data.messages.length - 1].createdAt
-      setHighlight((prev) => ({ id: data.targetId, n: (prev?.n ?? 0) + 1 }))
+      if (data.messages.length > 0) lastFetchedAt.current = edgeOf(data.messages[data.messages.length - 1])
+      setHighlight((prev) => ({ id: data.targetId, n: (prev?.n ?? 0) + 1, typing }))
     },
     [roomId, filterTaskId],
   )
 
   const jumpTo = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, typing = false) => {
       if (messagesRef.current.some((m) => m.id === messageId)) {
-        setHighlight((prev) => ({ id: messageId, n: (prev?.n ?? 0) + 1 }))
+        setHighlight((prev) => ({ id: messageId, n: (prev?.n ?? 0) + 1, typing }))
         return
       }
-      await loadAround({ around: messageId })
+      await loadAround({ around: messageId }, typing)
     },
     [loadAround],
   )
@@ -253,7 +325,7 @@ export function ChatPanel({
     if (loadingNewer || !hasMoreNewer || !lastFetchedAt.current) return
     setLoadingNewer(true)
     try {
-      const params = new URLSearchParams({ roomId, after: lastFetchedAt.current, take: String(CHAT_PAGE_SIZE) })
+      const params = new URLSearchParams({ roomId, after: encodeCursor(lastFetchedAt.current), take: String(CHAT_PAGE_SIZE) })
       if (filterTaskId) params.set("taskId", filterTaskId)
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
       if (!res.ok) return
@@ -264,7 +336,7 @@ export function ChatPanel({
           const fresh = newer.filter((m) => !ids.has(m.id))
           return fresh.length > 0 ? [...prev, ...fresh] : prev
         })
-        lastFetchedAt.current = newer[newer.length - 1].createdAt
+        lastFetchedAt.current = edgeOf(newer[newer.length - 1])
       }
       if (newer.length < CHAT_PAGE_SIZE) endJump()
     } catch {
@@ -320,10 +392,89 @@ export function ChatPanel({
   /** 첨부가 막혀 보내기를 멈춘다 — 임시 말풍선을 거두고 알린 뒤 던진다. 던지면 MessageInput 이 글과 첨부를 남긴다 */
   const stopSending = useCallback((tempId: string, message: string): never => {
     setMessages((prev) => prev.filter((m) => m.id !== tempId))
-    setUploadProgress(new Map())
-    pausePolling.current = false
     toast.error(message)
-    throw new Error(message)
+    throw new SendStopped(message)
+  }, [])
+
+  // 보내지 못한 글의 요청 본문 — 다시 보내기가 같은 clientId 로 보낸다
+  const failedPayloads = useRef(new Map<string, SendPayload>())
+
+  /**
+   * 글을 서버에 보내고 말풍선을 확정한다. 실패하면 말풍선을 「보내지 못함」 으로 바꾼다 — 예전에는 「보내는 중」 으로 영원히 남았다.
+   * `fromInput` 이면 사람 방의 첨부 거절은 말풍선을 걷고 던진다(입력창이 쓴 글 · 첨부를 되돌려 놓는다)
+   */
+  const deliver = useCallback(
+    async (tempId: string, payload: SendPayload, fromInput: boolean) => {
+      const fail = (reason: string) => {
+        failedPayloads.current.set(tempId, payload)
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _failed: reason } : m)))
+        setProcessing(null)
+      }
+      const res = await fetch(apiUrl("/api/chat/messages"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => null)
+      if (!res) {
+        // 서버에 닿았는지 모른다 — 다시 보내도 clientId 가 같아 두 번 저장되지 않는다
+        reportIncident({ kind: "send_failed", message: "네트워크 오류로 메시지 전송 실패" })
+        fail("연결이 끊겨 보내지 못했습니다")
+        return
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        reportIncident({ kind: "send_failed", message: err?.error ?? "메시지 전송 실패", status: res.status })
+        // 사람 방은 첨부를 서버가 거절할 수 있다(남의 파일 · 이미 붙은 파일) — 말풍선을 걷고 쓴 글 · 첨부를 남긴다
+        if (people && fromInput && res.status < 500) stopSending(tempId, err?.error ?? "보내지 못했습니다")
+        fail(err?.error ?? "보내지 못했습니다")
+        return
+      }
+      failedPayloads.current.delete(tempId)
+      const newMsg = await res.json()
+      seenIds.add(newMsg.id)
+      nudgeRoomList()
+      // 보내는 중 말풍선을 그 자리에서 확정한다 — 다시 떠오르지 않게 표시. 폴링이 먼저 들여왔으면 말풍선만 걷는다
+      setMessages((prev) =>
+        prev.some((m) => m.id === newMsg.id)
+          ? prev.filter((m) => m.id !== tempId)
+          : prev.map((m) => (m.id === tempId ? { ...newMsg, _settled: true } : m)),
+      )
+
+      if (newMsg._taskUpdate) {
+        fetchMessages()
+        fetchTasks()
+        onTaskUpdated?.()
+      }
+      if (newMsg._rebuild === "queued" && newMsg.task?.id) {
+        setProcessing(newMsg.task.slug)
+        void waitForRebuild(newMsg.task.id, newMsg.id)
+      } else {
+        setProcessing(null)
+      }
+    },
+    [people, stopSending, fetchMessages, onTaskUpdated, waitForRebuild, seenIds, nudgeRoomList],
+  )
+
+  /** 보내지 못한 글을 같은 clientId 로 다시 보낸다 */
+  const resend = useCallback(
+    async (tempId: string) => {
+      const payload = failedPayloads.current.get(tempId)
+      if (!payload) return
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _failed: undefined } : m)))
+      sendsInFlight.current++
+      try {
+        await sendQueue.current.run(() => deliver(tempId, payload, false))
+      } finally {
+        sendsInFlight.current--
+      }
+    },
+    [deliver],
+  )
+
+  /** 보내지 못한 글을 거둔다 — 서버에 닿았던 글이면 폴링이 진짜 글로 다시 들여온다 */
+  const discardFailed = useCallback((tempId: string) => {
+    failedPayloads.current.delete(tempId)
+    setMessages((prev) => prev.filter((m) => m.id !== tempId))
   }, [])
 
   const handleSend = useCallback(
@@ -333,23 +484,20 @@ export function ChatPanel({
         onSlashTaskCommand(content.trim())
         return
       }
+      noteUiSend()
+      if (files?.length || nasPaths?.length) noteAttachAttempt()
       // 옛 자리를 보다가 보내면 새 글이 엉뚱한 자리에 붙는다 — 최신 목록으로 돌아가서 보낸다.
       // 폴링은 보내는 동안 멈춰 있다가, 끝나면 lastFetchedAt 이 비어 있어 최신 한 페이지로 갈아 끼운다
       if (jumpedRef.current) {
         endJump()
         setHighlight(null)
-        lastFetchedAt.current = ""
+        lastFetchedAt.current = null
         setMessages([])
         setHasMoreOlder(true)
       }
-      pausePolling.current = true
-
-      const mentionMatch = content.match(/#([a-z0-9가-힣-]+)/i)
-      const mentionSlug = mentionMatch?.[1] || null
-      const hasAction = mentionSlug && content.length > (mentionMatch?.[0]?.length || 0) + 2
-
-      // 임시 메시지 즉시 표시 (파일은 아직 업로드 전)
-      const tempId = `temp-${Date.now()}`
+      // 임시 메시지 즉시 표시 (파일은 아직 업로드 전). 올리고 보내는 일은 줄을 서서 쓴 순서대로 한다 — 앞 글을 기다리는 동안에도 말풍선은 이미 보인다
+      const tempId = `temp-${Date.now()}-${++tempSeq}`
+      const clientId = crypto.randomUUID()
       const tempFiles = (files || []).map((f, i) => ({
         id: `uploading-${i}`,
         name: f.name,
@@ -366,90 +514,91 @@ export function ChatPanel({
         author: { id: "me", name: "" },
         task: null,
         files: tempFiles,
+        _clientId: clientId,
       }
       setMessages((prev) => [...prev, tempMsg])
-
-      // 파일 업로드 (진행률 업데이트)
-      const uploadedFiles: { id: string; name: string; mimeType: string; size: number; path: string }[] = []
-      if (files && files.length > 0) {
-        for (let i = 0; i < files.length; i++) {
-          setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 30))
-          const form = new FormData()
-          form.append("file", files[i])
-          const fRes = await fetch(apiUrl("/api/files"), { method: "POST", body: form })
-          if (!fRes.ok) {
-            // 예전에는 실패한 파일을 건너뛰고 글만 보냈다 — 첨부가 빠진 줄 모른 채 "보냈다"가 됐다(2026-09-17).
-            // 글을 보내지 않고 멈춘다. 던지면 MessageInput 이 쓴 글과 첨부를 남겨 둔다(스레드 입력창과 같은 약속).
-            const err = await fRes.json().catch(() => ({}))
-            reportIncident({ kind: "upload_failed", message: err?.error ?? "파일 업로드 실패", status: fRes.status, size: files[i].size, fileName: files[i].name })
-            stopSending(tempId, err?.error ?? `「${files[i].name}」 을 올리지 못했습니다`)
-          }
-          const uploaded = await fRes.json()
-          uploadedFiles.push(uploaded)
-          setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 100))
-        }
-      }
-
-      // NAS 에 있는 파일은 올리지 않고 잇는다(2026-09-17)
-      for (const path of nasPaths ?? []) {
-        const lRes = await fetch(apiUrl("/api/files/nas"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path }),
-        })
-        if (!lRes.ok) {
-          const err = await lRes.json().catch(() => ({}))
-          reportIncident({ kind: "upload_failed", message: err?.error ?? "NAS 파일 연결 실패", status: lRes.status, fileName: path })
-          stopSending(tempId, err?.error ?? "시놀로지 파일을 연결하지 못했습니다")
-        }
-        uploadedFiles.push(await lRes.json())
-      }
-
-      // 처리 중 상태 표시
-      if (hasAction) setProcessing(mentionSlug)
-
-      const res = await fetch(apiUrl("/api/chat/messages"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roomId,
-          content,
-          taskId: filterTaskId ?? undefined,
-          fileIds: uploadedFiles.map((f) => f.id),
-          fileNames: uploadedFiles.map((f) => f.name),
-          replyToId: replyTo?.id,
-        }),
-      })
+      // 답장 대상은 누른 순간의 것이다 — 줄에서 기다리는 동안 다음 글이 물려받지 않게 바로 비운다. 보내지 못하면 되돌린다
+      const reply = replyTo
       setReplyTo(null)
+      const mentionMatch = content.match(/#([a-z0-9가-힣-]+)/i)
+      const mentionSlug = mentionMatch?.[1] || null
+      const hasAction = mentionSlug && content.length > (mentionMatch?.[0]?.length || 0) + 2
 
-      let queued = false
-      if (!res.ok) {
-        // 화면 동작은 그대로 두고(보내는 중 말풍선이 남는다) 알리기만 한다
-        const err = await res.json().catch(() => ({}))
-        reportIncident({ kind: "send_failed", message: err?.error ?? "메시지 전송 실패", status: res.status })
+      sendsInFlight.current++
+      // 어떤 길로 끝나든(첨부 실패 · 네트워크 오류 포함) 폴링을 다시 켠다 — 예전에는 fetch 가 던지면 그 방 폴링이 멈춘 채 남았다
+      try {
+        await sendQueue.current.run(async () => {
+          // 파일 업로드 (진행률 업데이트)
+          const uploadedFiles: { id: string; name: string; mimeType: string; size: number; path: string }[] = []
+          try {
+            if (files && files.length > 0) {
+              for (let i = 0; i < files.length; i++) {
+                setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 30))
+                const form = new FormData()
+                form.append("file", files[i])
+                // 사람끼리 방 — 참여자만 보는 파일로 올린다(붙기 전에는 나만, 붙은 뒤에는 그 방 참여자만, lib/file-access.ts)
+                if (people) form.append("scope", "private")
+                const fRes = await fetch(apiUrl("/api/files"), { method: "POST", body: form })
+                if (!fRes.ok) {
+                  // 예전에는 실패한 파일을 건너뛰고 글만 보냈다 — 첨부가 빠진 줄 모른 채 "보냈다"가 됐다(2026-09-17).
+                  // 글을 보내지 않고 멈춘다. 던지면 MessageInput 이 쓴 글과 첨부를 남겨 둔다(스레드 입력창과 같은 약속).
+                  const err = await fRes.json().catch(() => ({}))
+                  reportIncident({ kind: "upload_failed", message: err?.error ?? "파일 업로드 실패", status: fRes.status, size: files[i].size, fileName: files[i].name })
+                  stopSending(tempId, err?.error ?? `「${files[i].name}」 을 올리지 못했습니다`)
+                }
+                const uploaded = await fRes.json()
+                uploadedFiles.push(uploaded)
+                setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 100))
+              }
+            }
+
+            // NAS 에 있는 파일은 올리지 않고 잇는다(2026-09-17)
+            for (const path of nasPaths ?? []) {
+              const lRes = await fetch(apiUrl("/api/files/nas"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(people ? { path, scope: "private" } : { path }),
+              })
+              if (!lRes.ok) {
+                const err = await lRes.json().catch(() => ({}))
+                reportIncident({ kind: "upload_failed", message: err?.error ?? "NAS 파일 연결 실패", status: lRes.status, fileName: path })
+                stopSending(tempId, err?.error ?? "시놀로지 파일을 연결하지 못했습니다")
+              }
+              uploadedFiles.push(await lRes.json())
+            }
+          } catch (err) {
+            if (err instanceof SendStopped) throw err
+            // 올리는 중에 연결이 끊겼다 — 글은 보내지 않고 입력창에 남긴다
+            reportIncident({ kind: "upload_failed", message: "네트워크 오류로 첨부 실패" })
+            stopSending(tempId, "연결이 끊겨 파일을 올리지 못했습니다")
+          }
+
+          // 처리 중 상태 표시
+          if (hasAction) setProcessing(mentionSlug)
+
+          await deliver(
+            tempId,
+            {
+              roomId,
+              content,
+              taskId: filterTaskId ?? undefined,
+              fileIds: uploadedFiles.map((f) => f.id),
+              fileNames: uploadedFiles.map((f) => f.name),
+              replyToId: reply?.id,
+              clientId,
+            },
+            true,
+          )
+        })
+      } catch (err) {
+        if (reply) setReplyTo((cur) => cur ?? reply)
+        throw err
+      } finally {
+        setUploadProgress(new Map())
+        sendsInFlight.current--
       }
-      if (res.ok) {
-        const newMsg = await res.json()
-        // 보내는 중 말풍선을 그 자리에서 확정한다 — 다시 떠오르지 않게 표시
-        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...newMsg, _settled: true } : m)))
-
-        if (newMsg._taskUpdate) {
-          fetchMessages()
-          fetchTasks()
-          onTaskUpdated?.()
-        }
-        if (newMsg._rebuild === "queued" && newMsg.task?.id) {
-          queued = true
-          setProcessing(newMsg.task.slug)
-          void waitForRebuild(newMsg.task.id, newMsg.id)
-        }
-      }
-
-      setUploadProgress(new Map())
-      if (!queued) setProcessing(null)
-      pausePolling.current = false
     },
-    [roomId, filterTaskId, fetchMessages, onSlashTaskCommand, onTaskUpdated, waitForRebuild, replyTo, stopSending, endJump]
+    [roomId, filterTaskId, onSlashTaskCommand, replyTo, stopSending, endJump, people, deliver]
   )
 
   /**
@@ -521,7 +670,7 @@ export function ChatPanel({
           users={users}
           focusSignal={searchFocus}
           onClose={() => onSearchOpenChange?.(false)}
-          onGo={(id) => void jumpTo(id)}
+          onGo={(id, typing) => void jumpTo(id, typing)}
           onGoDate={(at) => void loadAround({ at })}
           onSearchTextChange={setSearchText}
         />
@@ -537,6 +686,8 @@ export function ChatPanel({
         onReply={setReplyTo}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onResend={resend}
+        onDiscardFailed={discardFailed}
         highlight={highlight}
         jumped={jumped}
         onLoadNewer={loadNewer}
@@ -548,14 +699,14 @@ export function ChatPanel({
       <div className="shrink-0 border-t">
         {/* 무엇에 답하는 중인지 입력창 바로 위에 둔다 — 보내고 나면 사라진다 */}
         {replyTo && (
-          <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground in-data-[messenger]:px-4 in-data-[messenger]:py-2.5 in-data-[messenger]:text-[14px]">
             <span className="shrink-0 font-medium">{replyTo.authorName}에게 답장</span>
             <span className="min-w-0 flex-1 truncate">{replyTo.content}</span>
             <button
               type="button"
               aria-label="답장 취소"
               onClick={() => setReplyTo(null)}
-              className="shrink-0 rounded px-1 hover:bg-muted"
+              className="shrink-0 rounded px-1 in-data-[messenger]:px-2.5 in-data-[messenger]:py-1 hover:bg-muted"
             >
               ✕
             </button>
@@ -568,11 +719,12 @@ export function ChatPanel({
             tasks={NO_TASKS}
             files={NO_FILES}
             commands={false}
-            attachments={false}
+            taskMentions={false}
             placeholder="메시지 입력...  @ 사람"
+            handoffKey={handoffKey}
           />
         ) : (
-          <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} />
+          <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} handoffKey={handoffKey} />
         )}
       </div>
 

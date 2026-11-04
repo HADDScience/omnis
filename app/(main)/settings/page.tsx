@@ -2,12 +2,17 @@ import { Header } from "@/components/layout/header"
 import { InstallAppCard } from "@/components/layout/install-app-card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SettingsTabs } from "@/components/settings/settings-tabs"
+import { UI_METRICS_NOTICE_ANCHOR } from "@/lib/settings-tab"
 import { AiUsage } from "@/components/settings/ai-usage"
 import { LinkedAccounts } from "@/components/settings/linked-accounts"
 import { MyShortcuts } from "@/components/settings/my-shortcuts"
 import { PushNotifications } from "@/components/settings/push-notifications"
+import { NotificationKinds } from "@/components/settings/notification-kinds"
 import { auth } from "@/lib/auth"
+import { UI_METRICS_NOTICE } from "@/lib/ui-metrics/notice"
+import Link from "next/link"
 
 export const dynamic = "force-dynamic"
 
@@ -44,15 +49,16 @@ export default async function SettingsPage() {
 
         <MyShortcuts />
 
-        <Tabs defaultValue="push">
+        <SettingsTabs>
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="push">기기 알림</TabsTrigger>
             <TabsTrigger value="accounts">연결된 계정</TabsTrigger>
             <TabsTrigger value="ai">AI 사용량</TabsTrigger>
             <TabsTrigger value="system">시스템</TabsTrigger>
           </TabsList>
-          <TabsContent value="push" className="mt-3">
+          <TabsContent value="push" className="mt-3 flex flex-col gap-4">
             <PushNotifications />
+            <NotificationKinds />
           </TabsContent>
           <TabsContent value="accounts" className="mt-3">
             <LinkedAccounts />
@@ -71,8 +77,24 @@ export default async function SettingsPage() {
                 </p>
               </CardContent>
             </Card>
+            <Card id={UI_METRICS_NOTICE_ANCHOR} className="mt-4" data-ui-metrics-notice>
+              <CardHeader>
+                <CardTitle className="text-base">{UI_METRICS_NOTICE.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+                <p>모으는 것: {UI_METRICS_NOTICE.collected}</p>
+                <p>모으지 않는 것: {UI_METRICS_NOTICE.notCollected}</p>
+                <p>{UI_METRICS_NOTICE.usage}</p>
+                <p>{UI_METRICS_NOTICE.retention}</p>
+                {role === "ADMIN" && (
+                  <Link href="/settings/ui-metrics" className="touch-target w-fit font-medium text-foreground underline underline-offset-4">
+                    배포별 측정 보기
+                  </Link>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
-        </Tabs>
+        </SettingsTabs>
       </div>
     </>
   )

@@ -10,6 +10,7 @@ import { writeActivity } from "@/lib/api"
 import { proposeFromTaskSafe } from "@/lib/card-proposals"
 import { proposeRecordsFromTaskSafe } from "@/lib/record-proposals"
 import { recordTaskEvents } from "@/lib/task-events"
+import { assignmentTargets } from "@/lib/notify-rules"
 import type { TaskEventVia } from "@/lib/schemas/task-event"
 import type { Prisma, Priority, TaskStatus } from "@/generated/prisma/client"
 
@@ -122,7 +123,7 @@ export async function updateTask(
   // 새로 담당이 된 사람에게만 알린다 — 빠진 사람에게 "당신은 빠졌다"를 보내지 않는다.
   // 생성 때와 같은 accept_task 알림이라, 받은 사람이 수락할 때까지 남는다.
   if (assigneeIds !== undefined) {
-    const added = nextAssigneeIds.filter((id) => !previousAssigneeIds.includes(id) && id !== userId)
+    const added = assignmentTargets({ previous: previousAssigneeIds, next: nextAssigneeIds, actorId: userId, systemUserId: SYSTEM_USER_ID })
     if (added.length > 0) {
       const actor = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
       for (const id of added) {

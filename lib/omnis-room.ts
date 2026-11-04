@@ -15,6 +15,8 @@ export interface OmnisRoomMessage {
   createdAt: string
   fromOmnis: boolean
   sources: AskSource[]
+  /** 이 글에 붙은 파일 — 내 질문에 붙인 첨부(옴니스 방 첨부) · 옴니스가 만든 파일(4단계 결과물). 방 주인만 본다(lib/file-access.ts). 없으면 비거나 생략 */
+  files?: { id: string; name: string; path: string; size: number; mimeType: string }[]
 }
 
 /** 방 이름 — 첫 질문 앞부분. ChatGPT 의 세션 제목처럼 목록에서 방을 알아보는 데 쓴다 */

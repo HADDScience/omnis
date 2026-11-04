@@ -67,8 +67,6 @@ const EXAMPLES = [
   "진행 중인 업무를 요약해줘",
 ]
 
-const IP_PLATFORM_URL = "https://haddscience.github.io/ip-platform/"
-
 /**
  * 출처를 열 주소. 열 곳이 없으면 null 을 준다.
  *
@@ -86,8 +84,10 @@ function sourceHref(s: Source): string | null {
     case "CHAT_MESSAGE":
       return "/chat/default-room"
     case "IP_CASE":
-      // 지식재산권은 아직 옴니스 안에 상세 화면이 없다. 외부 플랫폼으로 보낸다.
-      return IP_PLATFORM_URL
+      return "/ip/register"
+    case "PHOTO":
+      // 사진 자체를 새 탭으로 연다 — 찾던 것이 사진이다
+      return apiUrl(`/api/files/${s.sourceId}/raw`)
     default:
       // 위 case 가 하나라도 빠지면 여기서 컴파일이 깨진다 — 흰 화면 대신
       // 빌드가 먼저 막힌다. 런타임에 모르는 값이 와도 null 이라 안전하다.
@@ -157,7 +157,7 @@ function Citation({ num, source }: { num: string; source?: Source }) {
         className={
           href ? "omnis-citation omnis-citation--link" : "omnis-citation"
         }
-        onClick={href ? () => router.push(href) : undefined}
+        onClick={href ? () => (source.source === "PHOTO" ? window.open(href, "_blank", "noopener") : router.push(href)) : undefined}
         // 출처를 가리키면 그 화면을 미리 받아 둔다 — router.push 는 링크처럼 저절로 미리 받지 않는다
         onPointerEnter={href ? () => router.prefetch(href) : undefined}
         onFocus={href ? () => router.prefetch(href) : undefined}
@@ -539,16 +539,16 @@ export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: 
 
       {/* 참고 자료 — 하단에 접힌 상태로 제공 */}
       {qa.sources.length > 0 && (
-        <details className="group mt-3 border-t pt-2.5">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <details className="group mt-3 border-t pt-2.5 in-data-[messenger]:mt-4 in-data-[messenger]:pt-3">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10.5px] in-data-[messenger]:min-h-9 in-data-[messenger]:gap-2 in-data-[messenger]:text-[13.5px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
             <HugeiconsIcon
               icon={ArrowDown01Icon}
               size={12}
-              className="-rotate-90 transition-transform group-open:rotate-0"
+              className="-rotate-90 transition-transform in-data-[messenger]:size-[16px] group-open:rotate-0"
             />
             참고한 자료 {qa.sources.length}건
           </summary>
-          <div className="mt-2 flex flex-col gap-1.5">
+          <div className="mt-2 flex flex-col gap-1.5 in-data-[messenger]:gap-2">
             {qa.sources.map((s, i) => (
               <SourceRow key={s.id} index={i} source={s} />
             ))}
@@ -562,23 +562,35 @@ export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: 
 /** 출처 한 줄. 열 곳이 없으면 링크가 아니라 그냥 줄로 그린다. */
 function SourceRow({ index, source }: { index: number; source: Source }) {
   const href = sourceHref(source)
-  const external = href?.startsWith("http") ?? false
+  const photo = source.source === "PHOTO"
+  // 사진은 화면이 아니라 파일이라 새 탭으로 연다
+  const external = (href?.startsWith("http") ?? false) || photo
   const body = (
     <>
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[9px] font-semibold text-primary">
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[9px] font-semibold text-primary in-data-[messenger]:size-[22px] in-data-[messenger]:text-[12px]">
         {index + 1}
       </span>
-      <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+      {photo && (
+        // 줄인 썸네일(?w=) — 원본은 평균 1.4MB 라 목록에 그대로 띄우지 않는다
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={apiUrl(`/api/files/${source.sourceId}/raw?w=96`)}
+          alt=""
+          loading="lazy"
+          className="h-8 w-8 shrink-0 rounded object-cover in-data-[messenger]:size-11"
+        />
+      )}
+      <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
         {source.sourceLabel}
       </span>
       <span className="flex-1 truncate font-medium">{source.title}</span>
-      <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+      <span className="shrink-0 font-mono text-[10px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
         {source.similarity}%
       </span>
     </>
   )
   const base =
-    "flex items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-[12px]"
+    "flex items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-[12px] in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-lg in-data-[messenger]:px-3.5 in-data-[messenger]:py-2.5 in-data-[messenger]:text-[14.5px]"
 
   if (!href) {
     return <div className={base}>{body}</div>

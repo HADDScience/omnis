@@ -10,11 +10,13 @@ import {
   Building03Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  CheckmarkCircle02Icon,
   Cancel01Icon,
   Delete02Icon,
   FolderLibraryIcon,
   Logout03Icon,
-  PencilEdit02Icon,
+  Notification03Icon,
+  NotificationOff03Icon,
   Search01Icon,
   StarIcon,
   Task01Icon,
@@ -70,6 +72,8 @@ import {
   roomRemoval,
   roomsInChip,
   sortByRecent,
+  groupTaskRooms,
+  type TaskGroupStatus,
   unreadLabel,
   unreadRoomCount,
   type ChatFolderView,
@@ -79,9 +83,11 @@ import {
 import type { RoomList as RoomListData, RoomListItem } from "@/lib/chat-rooms"
 import { chatPrefs } from "./chat-prefs-client"
 import { LIST_CACHE_KEY, readCache, writeCache } from "@/lib/chat-cache"
+import { rememberRoomList } from "@/lib/chat-entry"
 import { FolderManager } from "./folder-manager"
 import { SwipeRow, type SwipeSide } from "./swipe-row"
 import { AuthorAvatar } from "@/components/chat/message-parts"
+import { useStartRoomEntry } from "./messenger-context"
 
 /** 전사방 · 업무방은 다른 사람이 글을 쓴다 — 목록을 열어 둔 동안 이 간격으로 다시 읽는다 */
 const POLL_MS = 30_000
@@ -118,6 +124,7 @@ function patchRoom(d: RoomListData, key: string, patch: Partial<RoomListItem>): 
 }
 
 const chipStorageKey = (userId: string) => `omnis.chat.chip.${userId}`
+const taskGroupsStorageKey = (userId: string) => `omnis.chat.task-groups-open.${userId}`
 
 /**
  * 메신저 왼쪽 목록 — 칩 한 줄(전체 · 옴니스 · 안읽음 · 즐겨찾기 · 내 폴더 · 폴더 관리) · 검색칸 · 방 목록.
@@ -157,6 +164,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
       const next = (await res.json()) as RoomListData
       setData(next)
       setError(null)
+      rememberRoomList(next)
       void writeCache(userId, LIST_CACHE_KEY, next)
     } catch (err) {
       setError(err instanceof Error ? err.message : "목록을 불러오지 못했습니다")
@@ -315,6 +323,23 @@ export function RoomList({ version, userId }: { version: number; userId: string 
 
   // ─── 지우기 · 숨기기 · 나가기 ───
   const router = useRouter()
+
+  /** 이 방의 채팅 푸시 끄기 · 켜기. 지금 연 방이면 머리줄도 새 값으로 다시 그린다 */
+  const toggleMuted = useCallback(
+    async (room: RoomListItem) => {
+      const next = !room.muted
+      setData((d) => (d ? patchRoom(d, room.key, { muted: next }) : d))
+      setSearch((s) => (s?.data ? { ...s, data: patchRoom(s.data, room.key, { muted: next }) } : s))
+      try {
+        await chatPrefs.setMuted(room.key, next)
+        if (room.key === activeKey) router.refresh()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "알림 설정을 바꾸지 못했습니다")
+      }
+      void load()
+    },
+    [load, activeKey, router],
+  )
   /** 열린 줄(밀어 둔 줄) — 한 번에 하나 */
   const [swiped, setSwiped] = useState<{ key: string; side: SwipeSide } | null>(null)
   /** 확인 창(규칙 11) — 누른 줄과 그 동작 */
@@ -355,7 +380,46 @@ export function RoomList({ version, userId }: { version: number; userId: string 
   const unreadRooms = unreadRoomCount(rooms.map(withActiveRead))
   const loading = searching ? !search?.data && !search?.error : data === null && !error
   const currentFolder = chip.startsWith("folder:") ? folders.find((f) => `folder:${f.id}` === chip) : undefined
-  const showNewChat = !searching && (chip === "all" || chip === "omnis")
+  // 업무방은 상태별 접는 묶음으로(groupTaskRooms). 기본은 모두 접힘. 검색 결과는 찾은 그대로 한 목록이다
+  const { open: openRooms, groups: taskGroups } = searching ? { open: visible, groups: [] } : groupTaskRooms(visible)
+  const [openGroups, setOpenGroups] = useState<TaskGroupStatus[]>([])
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(taskGroupsStorageKey(userId)) ?? "[]")
+      if (Array.isArray(saved)) setOpenGroups(saved.filter((s): s is TaskGroupStatus => typeof s === "string"))
+    } catch {
+      // 저장소를 못 읽으면 모두 접은 채로 시작한다
+    }
+  }, [userId])
+  const toggleGroup = useCallback(
+    (status: TaskGroupStatus) => {
+      setOpenGroups((prev) => {
+        const next = prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
+        try {
+          window.localStorage.setItem(taskGroupsStorageKey(userId), JSON.stringify(next))
+        } catch {
+          // 펼침 상태는 이번 세션에만 남는다
+        }
+        return next
+      })
+    },
+    [userId],
+  )
+  const renderRow = (r: RoomListItem) => (
+    <RoomRow
+      key={r.key}
+      room={r}
+      active={r.key === activeKey}
+      folders={folders}
+      swiped={swiped?.key === r.key ? swiped.side : null}
+      onSwipe={(side) => setSwiped(side ? { key: r.key, side } : null)}
+      onFavorite={() => void toggleFavorite(r)}
+      onMute={() => void toggleMuted(r)}
+      onFolder={(f) => void toggleFolder(r, f)}
+      onNewFolder={() => setManager({ open: true })}
+      onRemove={(removal) => setConfirm({ room: r, removal })}
+    />
+  )
 
   // 폰에서 처음 그릴 때 검색칸을 위로 밀어 둔다. 목록은 방을 옮겨 다녀도 그대로라(MessengerShell) 한 번이면 된다.
   // isMdUp 은 첫 그림에서 아직 false 라 여기서는 매체 질의를 직접 본다
@@ -367,7 +431,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center border-b pt-2.5 pb-2">
+      <div className="flex shrink-0 items-center border-b pt-3 pb-2.5">
         <div className="min-w-0 flex-1">
           <ChipBar
             chip={chip}
@@ -380,7 +444,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
         </div>
         {!isMdUp && (
           // 다른 화면 제목줄의 알림 종과 같은 유리 원(.glass, header.tsx) — 아이콘은 원 한가운데
-          <div className="glass mr-3 flex size-10 shrink-0 items-center justify-center rounded-full [@media(pointer:coarse)]:size-[44px] [&_button]:size-full! [&_button]:rounded-full">
+          <div className="glass mr-3 flex size-12 shrink-0 items-center justify-center rounded-full [@media(pointer:coarse)]:size-[50px] [&_button]:size-full! [&_button]:rounded-full">
             <NotificationBell />
           </div>
         )}
@@ -390,7 +454,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
       <nav
         ref={listRef}
         aria-label="채팅방"
-        className="min-h-0 flex-1 overflow-y-auto max-md:snap-y max-md:snap-proximity overscroll-contain pb-20"
+        className="min-h-0 flex-1 overflow-y-auto max-md:snap-y max-md:snap-proximity overscroll-contain pb-28"
       >
         <div ref={searchRef} className="snap-start pt-2">
           <SearchBox value={query} onChange={setQuery} />
@@ -401,13 +465,12 @@ export function RoomList({ version, userId }: { version: number; userId: string 
           {searching && search?.error && <ErrorBox message={search.error} onRetry={() => setSearchTry((n) => n + 1)} />}
 
           {searching && (
-            <p className="px-4 pb-1.5 text-[11px] text-muted-foreground" aria-live="polite">
+            <p className="px-4 pb-2 text-[13px] text-muted-foreground" aria-live="polite">
               {search?.data ? `전체에서 찾은 방 ${visible.length}개` : "찾는 중…"}
             </p>
           )}
 
           <div className="flex flex-col gap-0.5">
-            {showNewChat && <NewChatRow active={pathname === "/chat/new"} />}
             {loading ? (
               <RowSkeletons count={6} />
             ) : visible.length === 0 ? (
@@ -421,20 +484,22 @@ export function RoomList({ version, userId }: { version: number; userId: string 
                 }
               />
             ) : (
-              visible.map((r) => (
-                <RoomRow
-                  key={r.key}
-                  room={r}
-                  active={r.key === activeKey}
-                  folders={folders}
-                  swiped={swiped?.key === r.key ? swiped.side : null}
-                  onSwipe={(side) => setSwiped(side ? { key: r.key, side } : null)}
-                  onFavorite={() => void toggleFavorite(r)}
-                  onFolder={(f) => void toggleFolder(r, f)}
-                  onNewFolder={() => setManager({ open: true })}
-                  onRemove={(removal) => setConfirm({ room: r, removal })}
-                />
-              ))
+              <>
+                {openRooms.map(renderRow)}
+                {taskGroups.map((g, i) => (
+                  <TaskStatusGroup
+                    key={g.status}
+                    status={g.status}
+                    rooms={g.rooms}
+                    first={i === 0}
+                    // 지금 연 방이 든 묶음은 펼쳐 둔다 — 연 방이 목록에서 안 보이면 어디 있는지 모른다
+                    open={openGroups.includes(g.status) || g.rooms.some((r) => r.key === activeKey)}
+                    onToggle={() => toggleGroup(g.status)}
+                  >
+                    {g.rooms.map(renderRow)}
+                  </TaskStatusGroup>
+                ))}
+              </>
             )}
           </div>
         </div>
@@ -470,12 +535,12 @@ export function RoomList({ version, userId }: { version: number; userId: string 
 
 function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div role="search" className="relative mx-3 mb-2">
+    <div role="search" className="relative mx-3 mb-2.5">
       <HugeiconsIcon
         icon={Search01Icon}
-        size={14}
+        size={18}
         aria-hidden
-        className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground"
+        className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted-foreground"
       />
       <Input
         type="search"
@@ -489,16 +554,16 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
         }}
         placeholder="방 · 업무 · 마지막 글 검색"
         aria-label="채팅방 검색"
-        className="touch-target h-8 pr-8 pl-8 text-[12.5px] [&::-webkit-search-cancel-button]:hidden"
+        className="touch-target h-[50px] rounded-xl pr-12 pl-12 text-[16px] md:text-[16px] [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
         <button
           type="button"
           onClick={() => onChange("")}
           aria-label="검색어 지우기"
-          className="touch-target absolute top-1/2 right-0 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="touch-target absolute top-1/2 right-0 flex size-[50px] -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
-          <HugeiconsIcon icon={Cancel01Icon} size={13} aria-hidden />
+          <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden />
         </button>
       )}
     </div>
@@ -508,7 +573,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
 // justify-center: 터치 기기에서 .touch-target 이 칸을 44px 로 넓히면 아이콘만 든 칩(폴더 관리)의 아이콘이
 // 왼쪽에 붙어 원 가운데에서 벗어났다(2026-10-29 작업지시자 스크린샷)
 const CHIP =
-  "touch-target inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-full border px-3 text-[12px] font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+  "touch-target inline-flex h-[36px] [@media(pointer:coarse)]:h-[48px] shrink-0 items-center justify-center gap-1.5 rounded-full border px-4 text-[14.5px] font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 const CHIP_ON = "border-foreground bg-foreground text-background"
 const CHIP_OFF = "border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground"
 
@@ -612,7 +677,7 @@ function ChipBar({
               {c.badge ? (
                 <span
                   aria-label={`안 읽은 방 ${c.badge}개`}
-                  className="rounded-full bg-primary px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground tabular-nums"
+                  className="rounded-full bg-primary px-2 text-[12px] leading-5 font-semibold text-primary-foreground tabular-nums"
                 >
                   {unreadLabel(c.badge)}
                 </span>
@@ -624,8 +689,8 @@ function ChipBar({
         {edge.left && <ScrollNudge side="left" onClick={() => scrollBy(-1)} />}
         {edge.right && <ScrollNudge side="right" onClick={() => scrollBy(1)} />}
       </div>
-      <button type="button" onClick={onManage} aria-label="폴더 관리" title="폴더 관리" className={cn(CHIP, CHIP_OFF, "px-2")}>
-        <HugeiconsIcon icon={FolderLibraryIcon} size={14} aria-hidden />
+      <button type="button" onClick={onManage} aria-label="폴더 관리" title="폴더 관리" className={cn(CHIP, CHIP_OFF, "px-3")}>
+        <HugeiconsIcon icon={FolderLibraryIcon} size={18} aria-hidden />
         <span className="sr-only">폴더 관리</span>
       </button>
     </div>
@@ -645,11 +710,11 @@ function ScrollNudge({ side, onClick }: { side: "left" | "right"; onClick: () =>
       onClick={onClick}
       aria-label={side === "left" ? "앞 칩 보기" : "뒤 칩 더 보기"}
       className={cn(
-        "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none pointer-coarse:hidden",
+        "absolute top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none pointer-coarse:hidden",
         side === "left" ? "left-1" : "right-0",
       )}
     >
-      <HugeiconsIcon icon={side === "left" ? ArrowLeft01Icon : ArrowRight01Icon} size={12} aria-hidden />
+      <HugeiconsIcon icon={side === "left" ? ArrowLeft01Icon : ArrowRight01Icon} size={16} aria-hidden />
     </button>
   )
 }
@@ -657,30 +722,15 @@ function ScrollNudge({ side, onClick }: { side: "left" | "right"; onClick: () =>
 // ─── 줄 ────────────────────────────────────────────────
 
 // 터치 기기에서 44px — .touch-target 은 px 고정이라 rem 배율(81.25%)을 타지 않는다(ux-rules 30)
+// 줄 높이 88px = 아이콘 52px + 위아래 18px. 폰에서 Gemini · 카톡 목록처럼 한 줄이 손가락 크기가 되게 키웠다(2026-10-30 작업지시자).
+// 크기는 모두 px — size-8 같은 rem 유틸리티는 html 81.25% 를 타 의도한 크기가 안 나온다
 const ROW =
-  "touch-target flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-const ROW_WRAP = "group/row mx-2 flex items-center rounded-lg hover:bg-muted/60"
+  "touch-target flex min-w-0 flex-1 items-center gap-3.5 rounded-xl px-3 py-[18px] text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 const ROW_ACTIVE = "bg-muted hover:bg-muted"
-
-function NewChatRow({ active }: { active: boolean }) {
-  return (
-    <div className={cn(ROW_WRAP, active && ROW_ACTIVE)}>
-      <Link href="/chat/new" aria-current={active ? "page" : undefined} className={ROW}>
-        <RoomIcon className="bg-primary/10 text-primary">
-          <HugeiconsIcon icon={PencilEdit02Icon} size={16} aria-hidden />
-        </RoomIcon>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-medium">새 대화</span>
-          <span className="block truncate text-[11.5px] text-muted-foreground">옴니스에게 회사 일을 물어보세요</span>
-        </span>
-      </Link>
-    </div>
-  )
-}
 
 function RoomIcon({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <span aria-hidden className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", className)}>
+    <span aria-hidden className={cn("flex size-[52px] shrink-0 items-center justify-center rounded-full", className)}>
       {children}
     </span>
   )
@@ -690,37 +740,39 @@ function kindIcon(kind: RoomListItem["kind"]) {
   if (kind === "OMNIS_DM")
     return (
       <RoomIcon className="ai-rainbow-border bg-primary/10 text-primary">
-        <HugeiconsIcon icon={BubbleChatSparkIcon} size={16} />
+        <HugeiconsIcon icon={BubbleChatSparkIcon} size={26} />
       </RoomIcon>
     )
   if (kind === "COMPANY")
     return (
       <RoomIcon className="bg-sky-500/10 text-sky-700 dark:text-sky-300">
-        <HugeiconsIcon icon={Building03Icon} size={16} />
+        <HugeiconsIcon icon={Building03Icon} size={26} />
       </RoomIcon>
     )
   if (kind === "TASK")
     return (
       <RoomIcon className="bg-amber-500/10 text-amber-700 dark:text-amber-300">
-        <HugeiconsIcon icon={Task01Icon} size={16} />
+        <HugeiconsIcon icon={Task01Icon} size={26} />
       </RoomIcon>
     )
   return (
     <RoomIcon className="bg-muted text-muted-foreground">
-      <HugeiconsIcon icon={UserGroupIcon} size={16} />
+      <HugeiconsIcon icon={UserGroupIcon} size={26} />
     </RoomIcon>
   )
 }
 
 /** 목록 한 줄 머리 — 사람끼리 1:1 은 상대 아바타(이름 색 · 두 글자), 나머지는 방 종류 아이콘 */
 function roomIcon(room: RoomListItem) {
-  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={32} />
+  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={52} />
   return kindIcon(room.kind)
 }
 
 interface RowActions {
   folders: ChatFolderView[]
   onFavorite: () => void
+  /** 이 방의 채팅 푸시 끄기 · 켜기 */
+  onMute: () => void
   onFolder: (f: ChatFolderView) => void
   onNewFolder: () => void
   /** 지우기 · 숨기기 · 나가기 — 확인 창을 연다. 동작이 없는 방(전사방 · 업무방)은 부르지 않는다 */
@@ -728,13 +780,13 @@ interface RowActions {
 }
 
 const REMOVAL_LABEL: Record<RoomRemoval, string> = { delete: "삭제", hide: "숨기기", leave: "나가기" }
-/** 밀었을 때 드러나는 칸 폭(px) — 오른쪽 한 칸 · 왼쪽 두 칸 */
-const RIGHT_W = 76
-const LEFT_W = 136
+/** 밀었을 때 드러나는 칸 폭(px) — 오른쪽 한 칸 · 왼쪽 세 칸(즐겨찾기 · 알림 · 폴더) */
+const RIGHT_W = 100
+const LEFT_W = 276
 
 /**
  * 목록 한 줄. ⋯ 더보기 단추는 없다(2026-10-29 작업지시자) — 대신
- *   꾹 누르기(PC 는 우클릭 · 키보드는 Shift+F10) = 메뉴 · 오른쪽→왼쪽 밀기 = 삭제/숨기기/나가기 · 왼쪽→오른쪽 밀기 = 즐겨찾기 · 폴더.
+ *   꾹 누르기(PC 는 우클릭 · 키보드는 Shift+F10) = 메뉴 · 오른쪽→왼쪽 밀기 = 삭제/숨기기/나가기 · 왼쪽→오른쪽 밀기 = 즐겨찾기 · 알림 · 폴더.
  * 메뉴와 밀기는 같은 동작을 부른다(RoomMenuBody · onRemove). 꾹 누르기는 base-ui ContextMenu 가 터치에서 0.5초로 연다
  */
 function RoomRow({
@@ -744,16 +796,16 @@ function RoomRow({
   onSwipe,
   ...actions
 }: { room: RoomListItem; active: boolean; swiped: SwipeSide | null; onSwipe: (side: SwipeSide | null) => void } & RowActions) {
-  const unread = room.unread > 0
   const removal = roomRemoval(room.kind)
   const manual = actions.folders.filter((f) => !f.rule)
+  const startEntry = useStartRoomEntry()
   return (
     <ContextMenu>
-      <ContextMenuTrigger className="mx-2 rounded-lg">
+      <ContextMenuTrigger className="mx-2 rounded-xl">
         <SwipeRow
           open={swiped}
           onOpenChange={onSwipe}
-          className="rounded-lg"
+          className="rounded-xl"
           leftWidth={LEFT_W}
           rightWidth={removal ? RIGHT_W : 0}
           left={
@@ -765,17 +817,30 @@ function RoomRow({
                   actions.onFavorite()
                   onSwipe(null)
                 }}
-                className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-amber-500 text-[11px] font-medium text-white"
+                className="flex flex-1 flex-col items-center justify-center gap-1 bg-amber-500 text-[13.5px] font-medium text-white"
               >
-                <HugeiconsIcon icon={StarIcon} size={16} aria-hidden className={room.favorite ? "fill-white" : undefined} />
+                <HugeiconsIcon icon={StarIcon} size={24} aria-hidden className={room.favorite ? "fill-white" : undefined} />
                 {room.favorite ? "즐겨찾기 끄기" : "즐겨찾기"}
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                data-mute-room={room.muted ? "on" : "off"}
+                onClick={() => {
+                  actions.onMute()
+                  onSwipe(null)
+                }}
+                className="flex flex-1 flex-col items-center justify-center gap-1 bg-slate-600 text-[13.5px] font-medium text-white"
+              >
+                <HugeiconsIcon icon={room.muted ? Notification03Icon : NotificationOff03Icon} size={24} aria-hidden />
+                {room.muted ? "알림 켜기" : "알림 끄기"}
               </button>
               <DropdownMenu>
                 <DropdownMenuTrigger
                   tabIndex={-1}
-                  className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-sky-600 text-[11px] font-medium text-white"
+                  className="flex flex-1 flex-col items-center justify-center gap-1 bg-sky-600 text-[13.5px] font-medium text-white"
                 >
-                  <HugeiconsIcon icon={FolderLibraryIcon} size={16} aria-hidden />
+                  <HugeiconsIcon icon={FolderLibraryIcon} size={24} aria-hidden />
                   폴더
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-52">
@@ -808,20 +873,25 @@ function RoomRow({
                 tabIndex={-1}
                 data-remove-room={removal}
                 onClick={() => actions.onRemove(removal)}
-                className="flex flex-1 flex-col items-center justify-center gap-0.5 bg-destructive text-[11.5px] font-semibold text-white"
+                className="flex flex-1 flex-col items-center justify-center gap-1 bg-destructive text-[14px] font-semibold text-white"
               >
-                <HugeiconsIcon icon={removal === "leave" ? Logout03Icon : Delete02Icon} size={16} aria-hidden />
+                <HugeiconsIcon icon={removal === "leave" ? Logout03Icon : Delete02Icon} size={24} aria-hidden />
                 {REMOVAL_LABEL[removal]}
               </button>
             ) : undefined
           }
         >
-          <div className={cn("rounded-lg hover:bg-muted/60 has-data-[pending]:bg-muted", active && ROW_ACTIVE)}>
+          <div className={cn("rounded-xl hover:bg-muted/60 has-data-[pending]:bg-muted", active && ROW_ACTIVE)}>
             <Link
               href={roomHref(room)}
               aria-current={active ? "page" : undefined}
               draggable={false}
               aria-keyshortcuts="Shift+F10"
+              onClick={(e) => {
+                // 새 탭 · 새 창으로 여는 누르기는 이 화면을 바꾸지 않는다
+                if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                startEntry(room.key)
+              }}
               onKeyDown={(e) => {
                 // 키보드로 메뉴 — 메뉴 키 · Shift+F10. 브라우저마다 contextmenu 를 내지 않는 경우가 있어 직접 연다
                 if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
@@ -834,41 +904,7 @@ function RoomRow({
               }}
               className={ROW}
             >
-              {roomIcon(room)}
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-1.5">
-                  <span className={cn("min-w-0 flex-1 truncate text-[13px]", unread ? "font-semibold" : "font-medium")}>
-                    {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
-                    {room.name}
-                  </span>
-                  {room.favorite && (
-                    <HugeiconsIcon
-                      icon={StarIcon}
-                      size={11}
-                      aria-label="즐겨찾기"
-                      className="shrink-0 self-center fill-amber-400 text-amber-500"
-                    />
-                  )}
-                  <time dateTime={room.lastAt} className="shrink-0 text-[10.5px] text-muted-foreground tabular-nums">
-                    {listTime(room.lastAt)}
-                  </time>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  {room.status && (
-                    <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">
-                      {TASK_STATUS_LABELS[room.status] ?? room.status}
-                    </span>
-                  )}
-                  <span className={cn("min-w-0 flex-1 truncate text-[11.5px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
-                    {room.preview ?? "아직 글이 없어요"}
-                  </span>
-                  {unread && (
-                    <Badge className="h-4 min-w-4 shrink-0 px-1 text-[10px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
-                      {unreadLabel(room.unread)}
-                    </Badge>
-                  )}
-                </span>
-              </span>
+              <RoomRowContent room={room} />
               {/* 누르는 즉시 줄이 눌린 색 — 방 화면이 오기 전에도 받은 것이 보인다 */}
               <LinkPendingMark />
             </Link>
@@ -879,6 +915,72 @@ function RoomRow({
         <RoomMenuBody room={room} {...actions} ui={CONTEXT_UI} />
       </ContextMenuContent>
     </ContextMenu>
+  )
+}
+
+/** 목록 한 줄의 보이는 부분 — 아이콘 · 이름 · 시각 · 미리보기 · 안 읽음. RoomRow 와 랜딩 시연(RoomRowPreview)이 함께 쓴다 */
+function RoomRowContent({ room }: { room: RoomListItem }) {
+  const unread = room.unread > 0
+  return (
+    <>
+      {roomIcon(room)}
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-2">
+          <span className={cn("min-w-0 flex-1 truncate text-[16.5px]", unread ? "font-semibold" : "font-medium")}>
+            {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
+            {room.name}
+          </span>
+          {room.favorite && (
+            <HugeiconsIcon
+              icon={StarIcon}
+              size={15}
+              aria-label="즐겨찾기"
+              className="shrink-0 self-center fill-amber-400 text-amber-500"
+            />
+          )}
+          {room.muted && (
+            <HugeiconsIcon
+              icon={NotificationOff03Icon}
+              size={15}
+              aria-label="알림 꺼짐"
+              className="shrink-0 self-center text-muted-foreground"
+            />
+          )}
+          <time dateTime={room.lastAt} className="shrink-0 text-[12.5px] text-muted-foreground tabular-nums">
+            {listTime(room.lastAt)}
+          </time>
+        </span>
+        <span className="mt-0.5 flex items-center gap-2">
+          {room.status && (
+            <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-[12px] text-muted-foreground">
+              {TASK_STATUS_LABELS[room.status] ?? room.status}
+            </span>
+          )}
+          <span className={cn("min-w-0 flex-1 truncate text-[14.5px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
+            {room.preview ?? "아직 글이 없어요"}
+          </span>
+          {unread && (
+            <Badge className="h-[22px] min-w-[22px] shrink-0 px-1.5 text-[12px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
+              {unreadLabel(room.unread)}
+            </Badge>
+          )}
+        </span>
+      </span>
+    </>
+  )
+}
+
+/**
+ * 동작 없이 모양만 있는 목록 한 줄 — 랜딩의 업무 시연(components/landing/motion/workflow-film.tsx)이 실제 목록과
+ * 같은 모양을 쓰려고 부른다. 메뉴 · 밀기 · 링크가 없다
+ */
+export function RoomRowPreview({ room, active = false }: { room: RoomListItem; active?: boolean }) {
+  return (
+    <div className={cn("mx-2 rounded-xl", active && ROW_ACTIVE)}>
+      <div className={ROW}>
+        <RoomRowContent room={room} />
+      </div>
+    </div>
   )
 }
 
@@ -895,6 +997,7 @@ function RoomMenuBody({
   room,
   folders,
   onFavorite,
+  onMute,
   onFolder,
   onNewFolder,
   onRemove,
@@ -908,6 +1011,10 @@ function RoomMenuBody({
       <ui.Item onClick={onFavorite} className="touch-target">
         <HugeiconsIcon icon={StarIcon} size={14} aria-hidden className={room.favorite ? "fill-amber-400 text-amber-500" : undefined} />
         {room.favorite ? "즐겨찾기 끄기" : "즐겨찾기"}
+      </ui.Item>
+      <ui.Item onClick={onMute} className="touch-target">
+        <HugeiconsIcon icon={room.muted ? Notification03Icon : NotificationOff03Icon} size={14} aria-hidden />
+        {room.muted ? "알림 켜기" : "알림 끄기"}
       </ui.Item>
       <ui.Separator />
       <ui.Group>
@@ -997,11 +1104,74 @@ function RemoveConfirm({
 
 function ErrorBox({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div role="alert" className="mx-3 mb-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-[12.5px]">
+    <div role="alert" className="mx-3 mb-2 rounded-md border border-destructive/30 bg-destructive/5 p-3.5 text-[14.5px]">
       <p className="text-destructive">{message}</p>
       <Button variant="outline" size="sm" className="touch-target mt-2" onClick={onRetry}>
         다시 불러오기
       </Button>
+    </div>
+  )
+}
+
+const TASK_GROUP_LABEL: Record<TaskGroupStatus, string> = {
+  IN_PROGRESS: "진행 중인 업무",
+  REVIEW: "리뷰 중인 업무",
+  TODO: "할 일",
+  DONE: "완료된 업무",
+}
+
+/**
+ * 업무방 상태별 묶음 — 접어 두면 머리 한 줄(상태 · 개수 · 안 읽은 방)만. 펼침은 기기에 남긴다.
+ * 안 읽은 글이 있으면 접힌 머리에도 배지를 둔다 — 접어 둔 업무에 누가 글을 남겼는지 놓치지 않게
+ */
+function TaskStatusGroup({
+  status,
+  rooms,
+  first,
+  open,
+  onToggle,
+  children,
+}: {
+  status: TaskGroupStatus
+  rooms: RoomListItem[]
+  first: boolean
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  const unreadRooms = unreadRoomCount(rooms)
+  const listId = `task-rooms-${status}`
+  return (
+    <div className={cn(first ? "mt-2 border-t pt-2" : "pt-0.5")} data-task-group={status}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={listId}
+        className="touch-target mx-2 flex w-[calc(100%-1rem)] items-center gap-2.5 rounded-xl px-3 py-3 text-left text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <HugeiconsIcon
+          icon={ArrowRight01Icon}
+          size={16}
+          aria-hidden
+          className={cn("shrink-0 transition-transform duration-150 motion-reduce:transition-none", open && "rotate-90")}
+        />
+        <HugeiconsIcon icon={status === "DONE" ? CheckmarkCircle02Icon : Task01Icon} size={17} aria-hidden className="shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium">{TASK_GROUP_LABEL[status]}</span>
+        {unreadRooms > 0 && !open && (
+          <Badge className="h-5 min-w-5 shrink-0 px-1.5 text-[12px] tabular-nums" aria-label={`안 읽은 방 ${unreadRooms}개`}>
+            {unreadLabel(unreadRooms)}
+          </Badge>
+        )}
+        <span className="shrink-0 rounded-full bg-muted px-2 text-[12.5px] leading-6 tabular-nums" aria-label={`${rooms.length}개`}>
+          {rooms.length}
+        </span>
+      </button>
+      {open && (
+        <div id={listId} className="flex flex-col gap-0.5">
+          {children}
+        </div>
+      )}
     </div>
   )
 }
@@ -1031,7 +1201,7 @@ function EmptyState({
   else if (folder) text = "이 폴더에 방이 없어요. 방을 꾹 누르거나 오른쪽으로 밀어서, 또는 아래 버튼으로 넣을 수 있어요"
   else text = "아직 방이 없어요"
   return (
-    <div className="mx-4 mt-1 rounded-md border border-dashed px-3 py-3 text-[11.5px] text-muted-foreground">
+    <div className="mx-4 mt-1 rounded-md border border-dashed px-3.5 py-3.5 text-[14px] text-muted-foreground">
       <p>{text}</p>
       {onPickRooms && (
         <Button variant="outline" size="sm" className="touch-target mt-2" onClick={onPickRooms}>
@@ -1046,11 +1216,11 @@ function RowSkeletons({ count }: { count: number }) {
   return (
     <>
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="mx-2 flex items-center gap-2.5 px-2 py-1.5" aria-hidden>
-          <Skeleton className="size-8 shrink-0 rounded-full" />
-          <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <Skeleton className="h-3 w-2/3" />
-            <Skeleton className="h-2.5 w-full" />
+        <div key={i} className="mx-2 flex items-center gap-3.5 px-3 py-[18px]" aria-hidden>
+          <Skeleton className="size-[52px] shrink-0 rounded-full" />
+          <span className="flex min-w-0 flex-1 flex-col gap-2.5">
+            <Skeleton className="h-[17px] w-2/3" />
+            <Skeleton className="h-[14px] w-full" />
           </span>
         </div>
       ))}

@@ -8,6 +8,9 @@ import { CommandPaletteProvider } from "@/components/layout/command-palette-cont
 import { RightPanelProvider } from "@/components/layout/right-panel-context"
 import { OnboardingProvider } from "@/components/onboarding/onboarding-provider"
 import { PwaRegister } from "@/components/pwa-register"
+import { PushPresence } from "@/components/push-presence"
+import { AppNudge } from "@/components/layout/app-nudge"
+import { UiMetrics } from "@/components/layout/ui-metrics"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 export default async function MainLayout({
@@ -30,7 +33,8 @@ export default async function MainLayout({
   // 최신 메시지 한 페이지를 가져와 화면 표시용 오름차순으로 정렬
   const recentMessages = await prisma.chatMessage.findMany({
     where: { roomId: "default-room" },
-    orderBy: { createdAt: "desc" },
+    // API 와 같은 순서 — 시각이 같으면 id(lib/chat-cursor.ts)
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: CHAT_PAGE_SIZE,
     include: {
       author: { select: { id: true, name: true } },
@@ -48,6 +52,7 @@ export default async function MainLayout({
     // 사이드바 대신 떠 있는 nav(mydocs/plans/2026-10-28-floating-nav.md). 셸은 화면 높이 그대로 한 칸이다
     <div className="flex min-h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] w-full">
       <PwaRegister />
+      <PushPresence />
       <CurrentUserProvider name={session.user.name ?? null}>
       <CommandPaletteProvider>
         <RightPanelProvider>
@@ -64,6 +69,9 @@ export default async function MainLayout({
           </MainWithChat>
         </main>
         <FloatingNav />
+        {/* 앱 설치 · 기기 알림 권유 — 사용 안내가 끝난 뒤에만 뜬다 */}
+        <AppNudge />
+        <UiMetrics userId={session.user.id as string} />
         </OnboardingProvider>
         </RightPanelProvider>
       </CommandPaletteProvider>

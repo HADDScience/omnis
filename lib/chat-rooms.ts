@@ -6,10 +6,11 @@
 //   TASK     업무방 — 표가 없다. taskId 로 묶인 글을 목록이 방처럼 보여 준다(id 는 업무 id)
 //   OMNIS_DM 옴니스 1:1 — 만든 사람만
 //   GROUP    단톡방 — 사람끼리. 참여자만(lib/chat-people.ts)
-//   DM       사람끼리 1:1 — 두 사람만. 같은 두 사람의 방은 하나(dmKey)
+//   DM       사람끼리 1:1 — 두 사람만. 같은 두 사람의 방은 하나(dmKey). 나와의 대화도 이 종류다(dmKey 나:나, 참여자 나뿐)
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { EXTERNAL_SPEAKER_SELECT, externalSpeakerLabel } from "@/lib/external-speaker"
 import { filterRooms, hiddenFromList, normalizeQuery, parseRoomKey, READ_BASELINE_KEY, roomKeyOf, type ChatFolderView } from "@/lib/chat-list"
 import { ensureReadBaseline, listFolders } from "@/lib/chat-prefs"
 import { peopleRoomTitle } from "@/lib/chat-people-rules"
@@ -60,6 +61,8 @@ export interface RoomListItem {
   /** 안 읽은 글 수 — 셈법은 lib/chat-list.ts countsAsUnread */
   unread: number
   favorite: boolean
+  /** 이 방의 채팅 푸시를 껐다 — 목록에 종 꺼짐 표시 */
+  muted: boolean
 }
 
 export interface RoomList {
@@ -211,10 +214,11 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
   const query = opts.q ? normalizeQuery(opts.q) : ""
   const [baseline, prefs, folders] = await Promise.all([
     ensureReadBaseline(userId),
-    prisma.chatRoomPref.findMany({ where: { userId, roomKey: { not: READ_BASELINE_KEY } }, select: { roomKey: true, favorite: true, hiddenAt: true } }),
+    prisma.chatRoomPref.findMany({ where: { userId, roomKey: { not: READ_BASELINE_KEY } }, select: { roomKey: true, favorite: true, hiddenAt: true, muted: true } }),
     listFolders(userId),
   ])
   const favorites = new Set(prefs.filter((p) => p.favorite).map((p) => p.roomKey))
+  const mutedKeys = new Set(prefs.filter((p) => p.muted).map((p) => p.roomKey))
   // 지운 옴니스 대화 · 숨긴 사람 1:1 (숨긴 뒤 새 글이 오면 다시 보인다 — lib/chat-list.ts hiddenFromList)
   const hidden = new Map(prefs.flatMap((p) => (p.hiddenAt ? [[p.roomKey, p.hiddenAt.toISOString()] as const] : [])))
 
@@ -238,14 +242,14 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       orderBy: [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
       take: 100,
       select: {
-        id: true, kind: true, name: true, createdAt: true, lastMessageAt: true,
+        id: true, kind: true, name: true, dmKey: true, createdAt: true, lastMessageAt: true,
         // 1:1 이름(상대 이름)을 정하려고 — 사람끼리 1:1 만 쓴다
         members: { where: { room: { kind: "DM" } }, select: { user: { select: { id: true, name: true } } } },
         messages: {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { content: true, kind: true, authorId: true, author: { select: { name: true } } },
+          select: { content: true, kind: true, authorId: true, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT },
         },
       },
     }),
@@ -278,9 +282,10 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       kind: r.kind,
       name: peopleRoomTitle(r, r.members.map((m) => m.user), userId),
       lastAt: (r.lastMessageAt ?? r.createdAt).toISOString(),
-      preview: last ? `${authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
+      preview: last ? `${last.externalSpeaker ? externalSpeakerLabel(last.externalSpeaker) : authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
       unread: 0,
       favorite: false,
+      muted: false,
     }
     if (hiddenFromList(item, hidden.get(item.key) ?? null)) continue
     if (r.kind === "OMNIS_DM") omnis.push(item)
@@ -299,6 +304,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
         preview: last ? `${authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
         unread: 0,
         favorite: false,
+        muted: false,
       }
     })
     // 「전체」 를 맨 위에 — 카톡 이식으로 생긴 다른 전사방이 있어도 팀 채팅이 먼저다
@@ -322,6 +328,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       preview: `${authorLabel(t.authorId, t.authorName)}: ${previewText(t.content, t.kind)}`,
       unread: 0,
       favorite: false,
+      muted: false,
     })
   }
 
@@ -339,6 +346,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
   for (const r of all) {
     r.unread = counts.get(r.key) ?? 0
     r.favorite = favorites.has(r.key)
+    r.muted = mutedKeys.has(r.key)
   }
 
   return { ...result, folders, query: query || null }

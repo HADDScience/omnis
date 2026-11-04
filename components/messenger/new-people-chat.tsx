@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { apiUrl } from "@/lib/base-path"
-import { defaultGroupName, PEOPLE_ROOM_NAME_MAX } from "@/lib/chat-people-rules"
+import { defaultGroupName, PEOPLE_ROOM_NAME_MAX, SELF_ROOM_TITLE } from "@/lib/chat-people-rules"
+import { AuthorAvatar } from "@/components/chat/message-parts"
 import { RoomHeader } from "./room-header"
 import { PeoplePicker, type Person } from "./people-picker"
 import { useRoomListReload } from "./messenger-shell"
@@ -27,6 +28,21 @@ export function NewPeopleChat({ me }: { me: Person }) {
   const group = selected.length >= 2
   const autoName = defaultGroupName(selected.map((p) => p.name), me.name)
   const roomName = name ?? autoName
+
+  async function openSelf() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const res = await fetch(apiUrl("/api/chat/self-room"), { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "대화방을 열지 못했어요")
+      reloadList()
+      router.push(`/chat/${data.roomId}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "대화방을 열지 못했어요")
+      setBusy(false)
+    }
+  }
 
   async function start() {
     if (selected.length === 0 || busy) return
@@ -51,21 +67,34 @@ export function NewPeopleChat({ me }: { me: Person }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <RoomHeader title="사람과 대화" subtitle="한 명을 고르면 1:1, 여러 명이면 단톡방이에요. 옴니스는 들어오지 않아요" />
       <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col">
+        <button
+          type="button"
+          data-self-room
+          disabled={busy}
+          onClick={() => void openSelf()}
+          className="touch-target flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:opacity-50 in-data-[messenger]:gap-3 in-data-[messenger]:py-3"
+        >
+          <AuthorAvatar name={me.name} size={36} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-medium in-data-[messenger]:text-[16px]">{SELF_ROOM_TITLE}</span>
+            <span className="block truncate text-[11.5px] text-muted-foreground in-data-[messenger]:text-[13px]">나만 보는 방 — 메모 · 파일</span>
+          </span>
+        </button>
         <PeoplePicker meId={me.id} selected={selected} onChange={setSelected} autoFocus />
-        <div className="shrink-0 space-y-2 border-t px-4 py-3">
+        <div className="shrink-0 space-y-2 border-t px-4 py-3 in-data-[messenger]:space-y-3 in-data-[messenger]:py-4">
           {group && (
             <label className="block">
-              <span className="mb-1 block text-[11.5px] text-muted-foreground">단톡방 이름</span>
+              <span className="mb-1 block text-[11.5px] text-muted-foreground in-data-[messenger]:text-[14px]">단톡방 이름</span>
               <Input
                 value={roomName}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={PEOPLE_ROOM_NAME_MAX}
                 aria-label="단톡방 이름"
-                className="touch-target h-8 text-[13px]"
+                className="touch-target h-8 text-[13px] in-data-[messenger]:h-[50px] in-data-[messenger]:rounded-xl in-data-[messenger]:px-4 in-data-[messenger]:text-[16px]!"
               />
             </label>
           )}
-          <Button className="touch-target w-full" disabled={selected.length === 0 || busy} onClick={() => void start()}>
+          <Button className="touch-target w-full in-data-[messenger]:h-[50px] in-data-[messenger]:rounded-xl in-data-[messenger]:text-[16px]" disabled={selected.length === 0 || busy} onClick={() => void start()}>
             {busy && <Spinner className="size-3.5" />}
             {selected.length === 0
               ? "대화할 사람을 골라 주세요"

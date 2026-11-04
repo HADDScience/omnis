@@ -112,7 +112,8 @@ export async function PATCH(req: NextRequest, { params }: Props) {
     if (!(await roomAccessOk(message.roomId, session.user.id))) return NextResponse.json({ error: "방을 찾을 수 없습니다" }, { status: 404 })
     const edited = await prisma.chatMessage.update({
       where: { id: messageId },
-      data: { content, editedAt: new Date() },
+      // changedAt — 남의 화면 폴링이 이 글을 다시 받아 간다
+      data: { content, editedAt: new Date(), changedAt: new Date() },
       include: {
         author: { select: { id: true, name: true } },
         task: { select: { id: true, name: true, slug: true } },
@@ -138,7 +139,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
 
   const updated = await prisma.chatMessage.update({
     where: { id: messageId },
-    data: { content, editedAt: new Date(), taskId: nextTaskId },
+    data: { content, editedAt: new Date(), changedAt: new Date(), taskId: nextTaskId },
     include: {
       author: { select: { id: true, name: true } },
       task: { select: { id: true, name: true, slug: true } },
@@ -187,11 +188,14 @@ export async function DELETE(_req: NextRequest, { params }: Props) {
 
   await prisma.chatMessage.update({
     where: { id: messageId },
-    data: { deletedAt: new Date() },
+    // changedAt — 남의 화면에서도 본문이 걷히게. 없으면 지운 글이 새로고침 전까지 보인다
+    data: { deletedAt: new Date(), changedAt: new Date() },
   })
 
   // 색인에서도 뺀다 — 지운 글이 검색·RAG 에 남으면 지운 것이 아니다.
   void deleteEmbeddingsSafe("CHAT_MESSAGE", messageId)
+  // 그 메시지의 사진 설명도 — 사진을 지웠는데 설명으로 찾아지면 지운 것이 아니다
+  for (const f of await prisma.file.findMany({ where: { messageId }, select: { id: true } })) void deleteEmbeddingsSafe("PHOTO", f.id)
   // 남은 글만으로 카드를 다시 만든다. 지운 글은 재구성 입력에서 빠진다(lib/chat-post.ts).
   rebuildAfterChange(message, { id: session.user.id, name: session.user.name ?? "" }, "(메시지 삭제)")
 

@@ -106,6 +106,7 @@ export const TOOL_LABEL: Record<string, string> = {
   list_staff: "인력",
   list_market_companies: "경쟁사",
   get_context: "연결된 자료",
+  list_calendar: "웍스 일정",
   list_stages: "지식재산권 상태·사건",
   list_ip: "지식재산권 목록",
   get_ip: "지식재산권 상세",
@@ -116,4 +117,8 @@ export const TOOL_LABEL: Record<string, string> = {
   post_message: "업무방 글 제안",
   write_omnis_card: "지식 카드 제안",
   save_company_record: "회사 기록 제안",
+  write_weekly_report: "주간보고 초안",
+  draft_document: "문서 초안",
+  create_file: "파일 만들기 제안",
+  propose_records: "연혁 제안",
 }

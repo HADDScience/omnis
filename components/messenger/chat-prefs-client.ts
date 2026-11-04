@@ -18,6 +18,8 @@ const json = (method: string, body: unknown): RequestInit => ({ method, body: JS
 export const chatPrefs = {
   markRead: (roomKey: string) => call("/api/chat/prefs", json("PATCH", { roomKey, read: true })),
   setFavorite: (roomKey: string, favorite: boolean) => call("/api/chat/prefs", json("PATCH", { roomKey, favorite })),
+  /** 이 방의 채팅 푸시 끄기 · 켜기 — 멘션 푸시와 벨은 그대로 */
+  setMuted: (roomKey: string, muted: boolean) => call<{ muted: boolean }>("/api/chat/prefs", json("PATCH", { roomKey, muted })),
   /** 옴니스 1:1 = 대화 삭제 · 사람 1:1 = 목록에서 숨기기(서버가 방 종류를 본다) */
   hide: (roomKey: string) => call("/api/chat/prefs", json("PATCH", { roomKey, hidden: true })),
   /** 단톡방 나가기 */

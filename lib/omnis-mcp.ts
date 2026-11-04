@@ -12,6 +12,8 @@
 // 권한
 //  Omnis 계정이 살아 있으면 누구나 붙는다. 지식재산권 도구만 ip.members 로 한 번 더 건다.
 //  Prisma 는 DB 소유자로 붙으므로 이 파일이 곧 권한 경계다.
+import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
+import { listTasksWhere } from "@/lib/task-unassigned"
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
 
 import { prisma } from "@/lib/db"
@@ -27,7 +29,7 @@ import { createOmnisCard, updateOmnisCard } from "@/lib/omnis-cards"
 import { readChatFeed, type FeedView } from "@/lib/chat-feed"
 import type { Prisma } from "@/generated/prisma/client"
 import { createNotification } from "@/lib/notifications"
-import { getMembership, type IpMembership } from "@/lib/ip-data"
+import { getIpAccess, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
@@ -36,7 +38,11 @@ import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
 import { recordTaskEvents } from "@/lib/task-events"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { assignmentTargets } from "@/lib/notify-rules"
 import * as XLSX from "xlsx"
+import { PUBLIC_FILE_WHERE, visibleFileWhere } from "@/lib/file-access"
+import { listCalendarText } from "@/lib/calendar/agent-tool"
+import { findVisibleFile } from "@/lib/file-access-server"
 import {
   TOOLS as IP_TOOLS,
   INSTRUCTIONS as IP_INSTRUCTIONS,
@@ -89,7 +95,7 @@ export async function resolveCaller(authorization: string | null): Promise<Calle
   })
   if (!user || !user.isActive) return null
 
-  return { userId: user.id, name: user.name, role: user.role, ip: await getMembership(user.id) }
+  return { userId: user.id, name: user.name, role: user.role, ip: await getIpAccess(user.id) }
 }
 
 // ─── 지침 ───────────────────────────────────────────────────────────
@@ -104,6 +110,7 @@ export const INSTRUCTIONS = [
   "주간보고는 list_weekly_reports·write_weekly_report, 사내 지식 카드 작성은 write_omnis_card, 업무 밖 채팅은 list_chat 입니다.",
   "업무 카드의 상태·마감·우선순위는 update_task, 체크리스트는 update_checklist. 진행 보고라면 post_message 가 먼저입니다(담당자 확인과 AI 재구성이 따라옵니다).",
   "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
+  "웍스 캘린더 일정(행사·미팅·외근)은 list_calendar — 날짜는 서울 기준이고, 결과의 마지막 동기화 시각만큼 웍스와 늦을 수 있습니다.",
   "",
   IP_INSTRUCTIONS.replace("HADD SCIENCE 지식재산권 기록 서버입니다.", "지식재산권 도구(list_ip·get_ip·add_progress …)는 구성원에게만 열립니다."),
 ].join("\n")
@@ -133,7 +140,7 @@ export const OMNIS_TOOLS = [
         query: { type: "string" },
         sources: {
           type: "array",
-          items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE"] },
+          items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO"] },
           description: "생략하면 전부",
         },
         limit: { type: "integer", description: "기본 8, 최대 30" },
@@ -144,7 +151,7 @@ export const OMNIS_TOOLS = [
   {
     name: "list_tasks",
     description:
-      "업무 목록. 상태·담당자·프로젝트·이름으로 거른다. mine=true 면 내가 담당인 것만, overdue=true 면 마감이 지난 미완료만. 결과는 최근 만든 순.",
+      "업무 목록. 상태·담당자·프로젝트·이름으로 거른다. mine=true 면 내가 담당인 것만, overdue=true 면 마감이 지난 미완료만, unassigned=true 면 담당자가 없는 미완료만(마감 빠른 순). 그 밖의 결과는 최근 만든 순.",
     inputSchema: {
       type: "object",
       properties: {
@@ -154,6 +161,7 @@ export const OMNIS_TOOLS = [
         query: { type: "string", description: "업무 이름·배경에 포함된 말" },
         mine: { type: "boolean" },
         overdue: { type: "boolean" },
+        unassigned: { type: "boolean", description: "담당 미배정(담당 0명 · 미완료)만. mine · assignee · status=DONE 과 함께 쓸 수 없다" },
         limit: { type: "integer", description: "기본 50, 최대 200" },
       },
     },
@@ -533,6 +541,25 @@ export const OMNIS_TOOLS = [
       "대상 하나(업무·프로젝트·사람·기관·견적·세금계산서·연혁·특허·카드)와 DB 로 이어진 것, 의미상 가까운 것. 「국일그래핀과 엮인 견적·세금계산서」「이 과제에 딸린 업무」 처럼 관계를 물으면 쓴다. node 는 이전 결과의 key, 없으면 query 에 이름을 준다.",
     inputSchema: { type: "object", properties: { node: { type: "string" }, query: { type: "string" } } },
   },
+  // ─── 캘린더 (lib/calendar/agent-tool) — 캘린더 탭과 같은 함수 · 같은 보기 권한 ───
+  {
+    name: "list_calendar",
+    description:
+      "네이버 웍스 캘린더 일정(회사 행사 · 미팅 · 외근 · 출장 · 제출 마감)을 기간으로 읽는다. 반복 일정은 회차마다 펼쳐 준다. " +
+      "「다음 주 일정」「이번 달 회사 행사」「11/4 에 누가 외근이야」 처럼 일정 · 날짜를 물으면 쓴다. 날짜는 서울 기준 YYYY-MM-DD. " +
+      "웍스 일정에는 사람별 칸이 없다 — 사람은 제목에 적힌 이름으로 찾는다(query). 캘린더 화면에서 볼 수 있는 캘린더만 보이고, 마지막 동기화 시각을 함께 준다. " +
+      "업무 마감은 list_tasks, 연혁 · 정부과제 기간은 list_company_records.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "시작 날짜 YYYY-MM-DD(서울). 생략하면 오늘" },
+        to: { type: "string", description: "끝 날짜 YYYY-MM-DD(서울, 그날 포함). 생략하면 from 부터 7일. from~to 는 최대 62일" },
+        calendar: { type: "string", description: "캘린더 이름 일부(예: 대표님). 생략하면 볼 수 있는 캘린더 전부" },
+        query: { type: "string", description: "제목 · 장소에서 찾을 말 — 사람 이름 · 기관 · 행사명 · 외근. 띄어 쓴 말은 모두 든 일정만" },
+        all_day: { type: "boolean", description: "true 면 종일 일정만, false 면 시간 있는 일정만" },
+      },
+    },
+  },
 ] as const
 
 export const TOOLS = [...OMNIS_TOOLS, ...IP_TOOLS]
@@ -704,19 +731,20 @@ export async function verifyUploadLink(token: string): Promise<{ taskId: string 
 
 export const signDownloadLink = (userId: string, fileId: string) => signLink("download", { u: userId, f: fileId })
 
-export async function verifyDownloadLink(token: string): Promise<{ fileId: string } | null> {
+export async function verifyDownloadLink(token: string): Promise<{ fileId: string; userId: string } | null> {
   const p = await verifyLink("download", token)
-  return p && typeof p.f === "string" ? { fileId: p.f } : null
+  return p && typeof p.f === "string" && typeof p.u === "string" ? { fileId: p.f, userId: p.u } : null
 }
 
 type FileRow = { id: string; name: string; path: string; mimeType: string; size: number; task: { slug: string } | null }
 
 /** 파일 찾기 — ID, 없으면 업무 첨부(업무에 직접 붙었거나 그 스레드 메시지에 붙은 것) 중 이름 일부. 여럿이면 고르지 않는다. */
-async function findFile(args: Record<string, unknown>): Promise<FileRow | { error: string }> {
+async function findFile(args: Record<string, unknown>, userId: string): Promise<FileRow | { error: string }> {
   const select = { id: true, name: true, path: true, mimeType: true, size: true, task: { select: { slug: true } } } as const
   const id = str(args.file)
   if (id) {
-    const f = await prisma.file.findUnique({ where: { id }, select })
+    // 참여자만 보는 방의 파일은 그 방 사람에게만(lib/file-access.ts) — 못 보는 파일은 없는 파일과 같게
+    const f = (await findVisibleFile(id, userId)) ? await prisma.file.findUnique({ where: { id }, select }) : null
     return f ?? { error: `'${id}' 파일이 없습니다. get_task 의 첨부 목록에서 파일 ID 를 확인하세요.` }
   }
   if (!str(args.task)) return { error: "file(파일 ID) 또는 task 를 주세요." }
@@ -726,6 +754,7 @@ async function findFile(args: Record<string, unknown>): Promise<FileRow | { erro
   const hits = await prisma.file.findMany({
     where: {
       OR: [{ taskId: found.id }, { message: { taskId: found.id } }],
+      ...PUBLIC_FILE_WHERE,
       ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
     },
     select, orderBy: { createdAt: "desc" }, take: 20,
@@ -793,28 +822,37 @@ export async function runTool(
       return {
         text: chunks
           // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
-          .map((c, i) => `[${i + 1}] ${SOURCE_LABEL[c.source]} · ${c.title} (${Math.round(c.similarity * 100)}%)\n${c.content.slice(0, c.source === "CHAT_MESSAGE" ? 1500 : 600)}`)
+          .map((c, i) => `[${i + 1}] ${SOURCE_LABEL[c.source]} · ${c.title} (${Math.round(c.similarity * 100)}%)\n${c.content.slice(0, c.source === "CHAT_MESSAGE" || c.source === "PHOTO" ? 1500 : 600)}`)
           .join("\n\n"),
       }
     }
 
     case "list_tasks": {
-      const where: Record<string, unknown> = { archived: false }
       const status = str(args.status)
-      if (status && (TASK_STATUS as readonly string[]).includes(status)) where.status = status
-      if (args.mine === true) where.assignees = { some: { userId: caller.userId } }
-      else if (str(args.assignee)) where.assignees = { some: { user: { name: { contains: str(args.assignee) } } } }
-      if (str(args.project)) where.project = { name: { contains: str(args.project), mode: "insensitive" } }
-      if (str(args.query)) {
-        where.OR = [
-          { name: { contains: str(args.query), mode: "insensitive" } },
-          { background: { contains: str(args.query), mode: "insensitive" } },
-        ]
-      }
-      if (args.overdue === true) { where.status = { not: "DONE" }; where.deadline = { lt: new Date() } }
+      const unassigned = args.unassigned === true
+      const built = listTasksWhere(
+        {
+          status: status && (TASK_STATUS as readonly string[]).includes(status) ? status : undefined,
+          mine: args.mine === true,
+          assignee: str(args.assignee) || undefined,
+          project: str(args.project) || undefined,
+          query: str(args.query) || undefined,
+          overdue: args.overdue === true,
+          unassigned,
+        },
+        caller.userId,
+      )
+      if ("error" in built) return built
+      const { where } = built
       const limit = clampInt(args.limit, 50, 200)
       const [rows, total] = await Promise.all([
-        prisma.task.findMany({ where, select: TASK_SELECT, orderBy: { createdAt: "desc" }, take: limit }),
+        prisma.task.findMany({
+          where,
+          select: TASK_SELECT,
+          // 담당 미배정은 급한 것부터 — 묻힌 업무를 찾는 조회다
+          orderBy: unassigned ? [{ deadline: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }] : { createdAt: "desc" },
+          take: limit,
+        }),
         prisma.task.count({ where }),
       ])
       if (rows.length === 0) return { text: "조건에 맞는 업무가 없습니다." }
@@ -835,8 +873,8 @@ export async function runTool(
       if (!t) return { error: "업무가 없습니다." }
       const n = clampInt(args.messages, 20, 100)
       const msgs = await prisma.chatMessage.findMany({
-        where: { taskId: t.id, kind: "NORMAL" },
-        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { select: { id: true, name: true } } },
+        where: { taskId: t.id, kind: "NORMAL", ...NOT_EXTERNAL_WHERE },
+        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true } } },
         orderBy: { createdAt: "desc" }, take: n,
       })
       // 파일 ID 를 함께 보여준다 — read_file 이 ID 로 읽는다.
@@ -877,7 +915,8 @@ export async function runTool(
       // 여기서는 모델이 ID 를 잘못 옮기면 남의 메시지 첨부를 빼앗아 온다.
       const fileIds = Array.isArray(args.files) ? [...new Set(args.files.map(String).map((s) => s.trim()).filter(Boolean))] : []
       if (fileIds.length) {
-        const rows = await prisma.file.findMany({ where: { id: { in: fileIds } }, select: { id: true, name: true, messageId: true } })
+        // 참여자만 보는 방의 파일은 없는 파일로 본다 — 전사방 글로 옮기지 않는다(lib/file-access.ts)
+        const rows = await prisma.file.findMany({ where: { id: { in: fileIds }, ...PUBLIC_FILE_WHERE }, select: { id: true, name: true, messageId: true } })
         const missing = fileIds.filter((id) => !rows.some((r) => r.id === id))
         if (missing.length) return { error: `없는 파일 ID: ${missing.join(", ")}. upload_file 로 받은 ID 를 넣으세요.` }
         const taken = rows.filter((r) => r.messageId)
@@ -952,7 +991,7 @@ export async function runTool(
     }
 
     case "read_file": {
-      const f = await findFile(args)
+      const f = await findFile(args, caller.userId)
       if ("error" in f) return f
       const head = `# ${f.name}  (${(f.size / 1024).toFixed(1)}KB · ${f.mimeType}${f.task ? ` · 업무 #${f.task.slug}` : ""} · 파일 ID ${f.id})`
       const kind = fileKind(f.name, f.mimeType)
@@ -1190,8 +1229,8 @@ export async function runTool(
         { field: "created", before: null, after: { status: "TODO", assignees: [...assigneeIds].sort(), deadline: deadline?.toISOString() ?? null } },
       ])
 
-      // 담당자 전원에게 수락 알림 — 화면에서 만든 것과 같다.
-      for (const userId of assigneeIds.filter((id) => id !== caller.userId)) {
+      // 담당자 전원에게 수락 알림 — 화면에서 만든 것과 같다. 에이전트 확인 카드도 이 길을 지난다(executeWrite → runTool).
+      for (const userId of assignmentTargets({ previous: [], next: assigneeIds, actorId: caller.userId, systemUserId: SYSTEM_USER_ID })) {
         await createNotification(userId, "task_assigned", `새 업무: ${task.name}`, `${caller.name}님이 업무를 지시했습니다.`, task.id, "accept_task")
       }
       // 채팅에 지시 원문과 카드를 올린다 — 채팅이 기록의 원본이다.
@@ -1474,6 +1513,8 @@ export async function runTool(
       return { text: await marketCompaniesText(args) }
     case "get_context":
       return contextText(args, caller.role === "ADMIN")
+    case "list_calendar":
+      return listCalendarText(args, { id: caller.userId, isAdmin: caller.role === "ADMIN" })
   }
 
   return { error: `모르는 도구입니다: ${name}` }

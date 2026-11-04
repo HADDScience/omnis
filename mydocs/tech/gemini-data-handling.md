@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/tech/gemini-data-handling.md
-last_verified: 2026-09-21
+last_verified: 2026-10-29
 ---
 
 # Gemini 로 나가는 회사 데이터 — 무엇이 · 어떤 약관으로
@@ -17,7 +17,7 @@ Omnis 는 회사 데이터를 Google 의 Gemini API 로 보낸다. 이 문서는
 
 | 경로 | 전송 내용 | 시점 |
 |---|---|---|
-| `embedTexts` (`lib/ai.ts`) | `OMNIS_CARD`·`TASK`·`WEEKLY_REPORT`·`CHAT_MESSAGE`·`IP_CASE` 청크 **전문** | 채팅은 15자 넘으면 등록 즉시 (`lib/chat-post.ts`) |
+| `embedTexts` (`lib/ai.ts`) | `OMNIS_CARD`·`TASK`·`WEEKLY_REPORT`·`CHAT_MESSAGE`·`IP_CASE`·`PHOTO` 청크 **전문** | 채팅은 15자 넘으면 등록 즉시 (`lib/chat-post.ts`). 사진은 설명이 만들어진 뒤 |
 | `taxInvoiceVision` (`lib/tax-invoice.ts`) | 세금계산서 **원본 파일을 base64 인라인** | 업로드 판독 시 |
 | `structureTask` | 업무 지시 대화 원문 | 지시 입력 시 |
 | `omnisAsk` | 질문 + 벡터검색으로 끌어온 회사 데이터 조각 | 질문 시 |
@@ -62,6 +62,31 @@ Omnis 는 회사 데이터를 Google 의 Gemini API 로 보낸다. 이 문서는
 - **로깅 기간에 숫자가 없다.** "a limited period of time" 이라고만 적혀 있다.
 - **약관은 바뀐다.** 위 인용은 2026-04-28 갱신판 기준이다.
 - 개인정보가 섞여 나가므로 **국외이전 고지**가 필요하다. 처리위탁 계약이 있다는 것과 고지 의무는 별개다.
+
+## Gemini 밖으로 나가는 것 — 사진 원본 (2026-10-29)
+
+사진 검색(`mydocs/plans/2026-10-29-photo-search.md`)은 사진 **원본**을 Gemini 가 아닌 벤더로 보낸다.
+전사방(`ChatRoom.kind = COMPANY`)에 올라온 사진만 보낸다 — 1:1 · 단톡 사진은 색인 범위 밖이라 보내지도 않는다.
+
+| 경로 | 벤더 · 모델 | 전송 내용 | 시점 |
+|---|---|---|---|
+| `describePhoto` (`lib/photo-describe.ts`) | OpenAI `gpt-6.1-terra`(`OMNIS_PHOTO_MODEL`) | 사진(긴 변 1,280px) + 앞 6 · 뒤 4 메시지 + 업무 이름 | 옴니스 화면 · MCP 로 올린 사진, 메시지 전송 직후 |
+| `scripts/photo-backfill.ts` | Anthropic — 이 맥의 `claude -p` (Claude 구독) | 같음 | 기존 사진 일괄 · 카톡 이식 직후 |
+
+만들어진 설명은 **업무 정보를 그대로 담는다** — 전화번호 · 이메일 · 계좌번호 · 비밀번호(작업지시자 결정 2026-10-29,
+회사 일로 공유된 것은 모두가 찾게). 주민등록번호 · 카드번호만 모델 지시와 코드(`maskPersonalIds`) 두 겹으로 가린다.
+그 설명이 `PHOTO` 청크로 Gemini 임베딩 · 옴니스 질문 · 에이전트 답에 들어간다. 에이전트가 그 값을 카드 · 기록 ·
+다른 방으로 **옮기는** 쓰기는 `lib/agent/secrets.ts` 가 지금처럼 막는다.
+
+학습 사용 근거(2026-10-29 확인, 두 회사 콘솔의 데이터 공유 설정이 꺼져 있음을 작업지시자가 확인):
+
+- **OpenAI** — [Your data](https://developers.openai.com/api/docs/guides/your-data): *"As of March 1, 2023, data sent to
+  the OpenAI API is not used to train or improve OpenAI models"* (명시적으로 공유를 켠 경우 제외).
+  남용 감시 기록은 최대 30일. 이미지는 CSAM 검사를 거치고 걸리면 수동 검토용으로 남는다. 요청에 `store: false` 를 준다
+- **Anthropic** — [학습 사용](https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training)(2026-08-18):
+  상업용 제품 입출력은 기본적으로 학습에 쓰지 않는다(피드백을 보내거나 직접 허용한 경우 제외).
+  [보관](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data)(2026-07-01): 30일 안에 삭제,
+  이용 정책 위반 판정이면 최대 2년. `claude -p` 는 Claude 구독(Max) 계정으로 돈다 — 앱용 `ANTHROPIC_API_KEY` 를 지우고 부른다
 
 ## 학습 코퍼스 추출은 왜 낮은 위험인가
 

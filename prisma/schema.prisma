@@ -41,6 +41,10 @@ model User {
   omnisQueries     OmnisQuery[]
   notifications    Notification[]
   pushSubscriptions PushSubscription[]
+  notificationPref NotificationPref?
+  pushPresence     PushPresence?
+  uiEvents         UiEvent[]
+  uiSurveyResponses UiSurveyResponse[]
   omnisViewLogs    OmnisViewLog[]
   bookmarks        Bookmark[]
   activityLogs     ActivityLog[]
@@ -150,6 +154,8 @@ model ChatRoomPref {
   /// 내 목록에서 지운 · 숨긴 시각(2026-10-29). 옴니스 1:1 = 대화 삭제(나에게서 숨김 · AgentRun · AiUsage 는 남는다),
   /// 사람 1:1 = 숨기기(이 시각 뒤에 새 글이 오면 다시 보인다). 단톡방은 나가기(참여자 행 삭제)라 쓰지 않는다
   hiddenAt   DateTime?
+  /// 이 방의 채팅 푸시를 끈다(2026-10-29). 멘션 푸시와 벨 기록은 그대로 — mydocs/plans/2026-10-29-push-notifications.md
+  muted      Boolean   @default(false)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -221,6 +227,13 @@ model ChatMessage {
   /// 지운 시각. 행은 지우지 않는다 — 답장이 가리키는 글 · 업무 연결 · 색인이 함께 사라지기 때문이다.
   /// 본문은 그대로 두고 API 가 내려보내지 않는다.
   deletedAt         DateTime?
+  /// 만든 뒤 화면에 보이는 것이 바뀐 시각 — 고치기 · 지우기(2026-10-30).
+  /// 폴링은 새 글만 가져와서, 이것이 없으면 남이 고치거나 지운 글이 내 화면에 옛 모습으로 남는다.
+  /// null 이면 보낸 그대로다. 백필하지 않는다(지금까지 바뀐 글은 이미 각 화면이 처음 읽을 때 받았다)
+  changedAt         DateTime?
+  /// 화면이 보낼 때 만든 id. 응답만 끊긴 글을 다시 보내도 두 번 저장되지 않게 한다(2026-10-30).
+  /// 화면 밖(MCP · 카톡 이식 · 시스템 글)은 비워 둔다
+  clientId          String?     @unique
   /// 답장 대상. 지워진 글에도 답장이 달려 있을 수 있어 행을 남긴다.
   replyToId         String?
   replyTo           ChatMessage?  @relation("MessageReply", fields: [replyToId], references: [id])
@@ -229,13 +242,18 @@ model ChatMessage {
   /// 옴니스 글의 작성자는 시스템 계정(lib/system-user.ts, id "system")이다
   omnisQueryId      String?       @unique
   omnisQuery        OmnisQuery?   @relation(fields: [omnisQueryId], references: [id])
+  /// 옴니스 계정이 없는 사람의 글(카톡 이식 · 참여자 전용 방만). 이때 authorId 는 시스템 계정이다 — lib/external-speaker.ts
+  externalSpeakerId String?
+  externalSpeaker   ExternalSpeaker? @relation(fields: [externalSpeakerId], references: [id], onDelete: Restrict)
 
   files    File[]
   mentions ChatMention[]
 
   @@index([roomId, createdAt])
+  @@index([roomId, changedAt])
   @@index([taskId])
   @@index([replyToId])
+  @@index([externalSpeakerId])
 }
 
 enum MessageKind {
@@ -601,6 +619,15 @@ model ActivityLog {
 
 // ─── 파일 ────────────────────────────────────────────────
 
+/// 옴니스 계정이 없는 카톡 발화자. 이름 · 소속 · 직급만 저장한다 — 로그인 · 멘션 · 담당 · 알림 대상이 아니다.
+model ExternalSpeaker {
+  id       String        @id
+  name     String
+  org      String?
+  title    String?
+  messages ChatMessage[]
+}
+
 model File {
   id        String       @id @default(uuid())
   name      String
@@ -612,6 +639,18 @@ model File {
   taskId    String?
   task      Task?        @relation(fields: [taskId], references: [id])
   createdAt DateTime     @default(now())
+  /// 사진 설명 — 검색 색인(EmbeddingSource.PHOTO)에 들어가는 글. 이미지가 아니거나 아직 안 만들었으면 null.
+  /// 사진 안의 내용으로 찾게 하려고 둔다(mydocs/plans/2026-10-29-photo-search.md)
+  description String?   @db.Text
+  describedAt DateTime?
+  /// 만든 모델 — "openai:gpt-6.1-terra" (앱 업로드) · "claude-cli:sonnet" (카톡 이식 · 일괄)
+  describedBy String?
+  /// 참여자만 보는 방(옴니스 1:1 · 사람 1:1 · 단톡방)에 붙이려고 올린 파일이면 올린 사람 id. 전사방 · 업무 첨부는 null.
+  /// 메시지에 붙기 전에는 올린 사람만, 붙은 뒤에는 그 방 참여자만 본다 — 판정은 lib/file-access.ts 한 곳.
+  /// User 관계를 두지 않는다(AgentRun.userId 와 같은 이유 — 사람이 바뀌어도 행은 남는다)
+  privateToUserId String?
+
+  @@index([privateToUserId])
 }
 
 // ─── Gemini 토큰 사용 로그 ───────────────────────────────
@@ -676,6 +715,32 @@ model PushSubscription {
   @@index([userId])
 }
 
+/// 사람이 지금 Omnis 를 쓰고 있는 기기(2026-10-30). 사람마다 한 줄, 화면을 만질 때 덮어쓴다.
+/// activeAt 이 최근이면 푸시를 이 기기로만 보낸다 — PC 에서 쓰는 중에 폰이 울리지 않게.
+/// 규칙의 정본은 lib/notify-rules.ts presenceTargets 다.
+model PushPresence {
+  userId   String   @id
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeAt DateTime
+  /// 그 기기의 푸시 구독 endpoint. 구독하지 않은 기기면 null — 그때는 어느 기기로도 보내지 않는다
+  endpoint String?
+}
+
+/// 사람마다 종류별 기기 알림(푸시) 켜고 끄기(2026-10-29). 행이 없으면 전부 켜짐이다.
+/// 끄면 그 종류의 **푸시만** 멈춘다 — 벨(Notification) 기록은 그대로 남아 놓치지 않는다.
+/// 종류 나눔은 lib/notify-rules.ts categoryOfType 이 정본이다.
+model NotificationPref {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 채팅 글 · 옴니스 답 · 확인 카드 · chat_mention
+  chatPush     Boolean  @default(true)
+  /// task_* (지정 · 완료 확인 · 재구성 · 상태 변경 · 수락)
+  taskPush     Boolean  @default(true)
+  /// calendar_event_added
+  calendarPush Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
+}
+
 // ─── 임베딩 (pgvector 벡터 검색) ─────────────────────────
 // 옴니스 카드·업무·주간보고·채팅을 청크 단위로 임베딩해 RAG 검색에 사용.
 // embedding 컬럼은 Prisma 미지원 타입이라 raw SQL(lib/embeddings.ts)로 read/write.
@@ -687,6 +752,8 @@ enum EmbeddingSource {
   CHAT_MESSAGE
   /// 지식재산권 건 (상표·특허). sourceId 는 "trademark:TM-01" 꼴.
   IP_CASE
+  /// 사진 설명. sourceId 는 File.id
+  PHOTO
 }
 
 model EmbeddingChunk {
@@ -1810,6 +1877,8 @@ model AgentRun {
   /// 찾은 사내 지식 조각 [{ id, source, sourceId, title, sourceLabel, similarity }] — 답의 각주 [n] 이 이 순서를 가리킨다
   sources           Json           @default("[]")
   error             String?
+  /// 멈춘(STOPPED) 실행이 남긴 옴니스 글 — 그때까지 흘러나온 답. 화면이 이 글에 「중지됨」 을 붙인다. 글 없이 멈췄으면 null
+  stoppedMessageId  String?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   steps             AgentStep[]
@@ -1828,6 +1897,8 @@ enum AgentRunStatus {
   LIMIT
   /// 확인을 기다리는 동안 새 글이 와서 버렸다
   CANCELLED
+  /// 답하는 중에 사용자가 「답변 중지」 를 눌렀다 (CANCELLED 와 다르다 — 그건 새 글이 앞 제안을 버린 것)
+  STOPPED
 }
 
 /// 쓰기 제안 하나 = 확인 카드 하나. 승인은 화면에 보인 제안(planHash)에 묶이고 한 번만 쓴다
@@ -1894,4 +1965,40 @@ model AiUsage {
   @@index([createdAt])
   @@index([feature, createdAt])
   @@index([userId, createdAt])
+}
+
+// ─── UI 변경 적응 부담 측정 ───────────────────────────────
+
+/// 화면 사용 기록. 이름 · 숫자 · 경로 형태 · 배포 커밋만 둔다. 내용은 받지 않는다(lib/ui-metrics/rules.ts).
+/// 90일 뒤 cron/daily 가 지운다.
+model UiEvent {
+  id        String   @id @default(uuid())
+  at        DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// lib/ui-metrics/rules.ts 의 UI_EVENT_NAMES
+  name      String
+  value     Int?
+  /// "/chat/:id" — ID · 이름은 지운 형태
+  path      String
+  /// 그 화면을 그린 빌드의 VERCEL_GIT_COMMIT_SHA
+  commitSha String
+
+  @@index([at])
+  @@index([commitSha, at])
+  @@index([userId, commitSha])
+}
+
+/// 배포 다음 날 묻는 한 문항. score 가 null 이면 답하지 않고 닫았다 — 다시 묻지 않으려고 남긴다.
+model UiSurveyResponse {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commitSha String
+  score     Int?
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, commitSha])
+  @@index([commitSha])
 }

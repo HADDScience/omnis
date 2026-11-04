@@ -20,6 +20,13 @@ test("실행이 끝났는데 마지막이 내 글이면 답을 못 받은 것이
   assert.equal(unansweredQuestion({ messages: [q], cards: [], busy: false, running: false }), q)
 })
 
+test("내가 멈춘 질문은 답을 못 받은 것이 아니다 — 글 없이 멈춰도(「답을 멈췄어요」) 「다시 묻기」 를 띄우지 않는다", () => {
+  assert.equal(unansweredQuestion({ messages: [q], cards: [], busy: false, running: false, stopped: { q1: null } }), null)
+  assert.equal(unansweredQuestion({ messages: [q], cards: [], busy: false, running: false, stopped: {} }), q)
+  // 다른 질문을 멈춘 기록은 이 질문과 상관없다 (거부되어야 하는 경우)
+  assert.equal(unansweredQuestion({ messages: [q], cards: [], busy: false, running: false, stopped: { q0: "a0" } }), q)
+})
+
 test("답이 붙었으면 아니다", () => {
   assert.equal(unansweredQuestion({ messages: [q, a], cards: [], busy: false, running: false }), null)
 })

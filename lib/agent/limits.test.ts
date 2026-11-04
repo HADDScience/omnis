@@ -3,7 +3,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 
 import { limitReason, spentWith, usageOf } from "./limits"
-import { costOf, KRW_PER_USD } from "../ai-pricing"
+import { costOf, KRW_PER_USD, MODEL_PRICES } from "../ai-pricing"
 import { agentLimits, modelFor, modelKey } from "../ai-models"
 
 const SOL = "openai:gpt-6.1-sol"
@@ -56,4 +56,12 @@ test("모델 설정 — 기본은 gpt-6.1-sol · medium, 환경변수로 바꾼�
   assert.throws(() => modelFor("agent", { OMNIS_AGENT_MODEL: "azure:gpt" }), /vendor:model/)
   assert.deepEqual(agentLimits({}), { maxTurns: 12, maxKrw: 200 })
   assert.deepEqual(agentLimits({ OMNIS_AGENT_MAX_TURNS: "6", OMNIS_AGENT_MAX_KRW: "50" }), { maxTurns: 6, maxKrw: 50 })
+})
+
+test("사진 설명 모델 — 기본은 gpt-6.1-terra · low, 에이전트 설정과 따로 바꾼다", () => {
+  assert.deepEqual(modelFor("photo", {}), { vendor: "openai", model: "gpt-6.1-terra", reasoning: "low" })
+  assert.equal(modelKey(modelFor("photo", { OMNIS_PHOTO_MODEL: "openai:gpt-6-luna" })), "openai:gpt-6-luna")
+  // 에이전트 환경변수는 사진 모델을 바꾸지 않는다
+  assert.equal(modelKey(modelFor("photo", { OMNIS_AGENT_MODEL: "anthropic:claude-sonnet-5-5" })), "openai:gpt-6.1-terra")
+  assert.ok(MODEL_PRICES[modelKey(modelFor("photo", {}))], "요금표에 없으면 비용이 0 으로 기록된다")
 })

@@ -17,6 +17,7 @@ export type EmbeddingSource =
   | "WEEKLY_REPORT"
   | "CHAT_MESSAGE"
   | "IP_CASE"
+  | "PHOTO"
 
 const ALL_SOURCES: EmbeddingSource[] = [
   "OMNIS_CARD",
@@ -24,6 +25,7 @@ const ALL_SOURCES: EmbeddingSource[] = [
   "WEEKLY_REPORT",
   "CHAT_MESSAGE",
   "IP_CASE",
+  "PHOTO",
 ]
 
 /** 채팅 메시지 임베딩 최소 길이 (짧은 잡담 제외) */
@@ -168,6 +170,10 @@ async function buildChatMessageChunks(
   if (!msg) return null
   // 사내 지식은 전사방 글만 — 옴니스 1:1 · 단톡 글은 그 방 사람만 읽는다. 색인에 넣으면 남의 검색에 걸린다
   if (msg.room.kind !== "COMPANY") return null
+  // 외부 발화자 글은 참여자 전용 방에만 들어온다. 방 종류가 바뀌어도 색인되지 않게 따로 막는다
+  if (msg.externalSpeakerId) return null
+  // 지운 글은 본문이 남아 있어도 색인하지 않는다 — 백필이 다시 실으면 지운 말이 검색에 되살아난다.
+  if (msg.deletedAt) return null
 
   const text = msg.content.trim()
   // 시스템 메시지·플레이스홀더·짧은 잡담 제외
@@ -181,6 +187,25 @@ async function buildChatMessageChunks(
   const lines = [`[채팅 ${when}] ${msg.author.name}: ${text}`]
   if (msg.task?.name) lines.push(`관련 업무: ${msg.task.name}`)
   return [{ title: `${msg.author.name}의 메시지 (${when.slice(0, 10)})`, content: lines.join("\n") }]
+}
+
+/**
+ * 사진 하나를 청크 하나로 — File.description(사진 설명, lib/photo-describe.ts)에 올린 시각 · 사람 · 업무를 붙인다.
+ * 채팅과 같은 범위만: 전사방에 올라온, 지워지지 않은 메시지의 사진.
+ */
+async function buildPhotoChunks(fileId: string): Promise<RawChunk[] | null> {
+  const file = await prisma.file.findUnique({
+    where: { id: fileId },
+    select: {
+      name: true, description: true,
+      message: { select: { createdAt: true, deletedAt: true, author: { select: { name: true } }, task: { select: { name: true } }, room: { select: { kind: true } } } },
+    },
+  })
+  const msg = file?.message
+  if (!file?.description || !msg || msg.deletedAt || msg.room.kind !== "COMPANY") return null
+  const when = msg.createdAt.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16)
+  const head = `[사진 ${when}] ${msg.author.name}이 올림${msg.task?.name ? ` · 관련 업무: ${msg.task.name}` : ""}`
+  return [{ title: `${msg.author.name}의 사진 (${when.slice(0, 10)})`, content: `${head}\n${file.description}` }]
 }
 
 const TURN_LABEL: Record<string, string> = {
@@ -262,6 +287,8 @@ async function buildChunks(
       return buildChatMessageChunks(sourceId)
     case "IP_CASE":
       return buildIpCaseChunks(sourceId)
+    case "PHOTO":
+      return buildPhotoChunks(sourceId)
   }
 }
 
@@ -608,6 +635,7 @@ export async function withFollowUps(chunks: RetrievedChunk[]): Promise<Retrieved
           createdAt: { gt: h.createdAt, lt: new Date(h.createdAt.getTime() + FOLLOW_UP_DAYS * 86_400_000) },
           kind: "NORMAL",
           deletedAt: null,
+          externalSpeakerId: null,
         },
         orderBy: { createdAt: "asc" },
         take: FOLLOW_UP_MAX * 2,

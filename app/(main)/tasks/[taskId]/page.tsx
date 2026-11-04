@@ -1,5 +1,9 @@
+import { auth } from "@/lib/auth"
+import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
+import { visibleFileWhere } from "@/lib/file-access"
 import { prisma } from "@/lib/db"
 import { notFound } from "next/navigation"
+import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { TaskDetail } from "./task-detail"
 import { RegisterPanelTask } from "@/components/layout/right-panel-context"
@@ -13,6 +17,8 @@ interface Props {
 }
 
 export default async function TaskDetailPage({ params }: Props) {
+  const session = await auth()
+  if (!session?.user?.id) notFound()
   const { taskId } = await params
 
   const [task, feedbackMessages, files, projects, users] = await Promise.all([
@@ -32,11 +38,12 @@ export default async function TaskDetailPage({ params }: Props) {
       },
     }),
     prisma.chatMessage.findMany({
-      where: { taskId },
+      where: { taskId, ...NOT_EXTERNAL_WHERE },
       orderBy: { createdAt: "asc" },
       include: {
         author: { select: { id: true, name: true } },
-        files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
+        // 참여자 전용 방의 글이 카드에 연결돼도 첨부는 그 방 사람에게만(lib/file-access.ts)
+        files: { where: visibleFileWhere(session.user.id), select: { id: true, name: true, path: true, size: true, mimeType: true } },
         replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
       },
     }),
@@ -99,6 +106,7 @@ export default async function TaskDetailPage({ params }: Props) {
     kind: m.kind,
     files: m.deletedAt ? [] : m.files,
     editedAt: m.editedAt?.toISOString() ?? null,
+    changedAt: m.changedAt?.toISOString() ?? null,
     deletedAt: m.deletedAt?.toISOString() ?? null,
     replyTo: m.replyTo
       ? {
@@ -113,10 +121,18 @@ export default async function TaskDetailPage({ params }: Props) {
     <>
       <Header title={task.name} />
       {/* 스레드는 오른쪽 패널이 맡는다. 여기서 자리를 차지하지 않는다 —
-          예전에는 320px 을 고정으로 먹어 좁은 화면에서 본문이 34px 로 눌렸다. */}
+          예전에는 320px 을 고정으로 먹어 좁은 화면에서 본문이 34px 로 눌렸다.
+          md 미만에는 패널이 없어 그 업무방으로 가는 링크를 둔다 */}
       <RegisterPanelTask id={task.id} name={task.name} messages={sidebarMessages} />
       <div className="flex flex-1 overflow-hidden">
         <div className="min-w-0 flex-1 overflow-auto">
+          <Link
+            href={`/chat/task/${task.id}`}
+            data-task-room-link
+            className="touch-target mx-4 mt-3 flex items-center justify-center rounded-xl border bg-card px-4 py-2.5 text-[14px] font-medium md:hidden"
+          >
+            이 업무 대화 보기
+          </Link>
           <TaskDetail task={serialized} projects={projects} users={users} />
         </div>
       </div>

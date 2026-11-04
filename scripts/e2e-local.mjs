@@ -34,6 +34,7 @@ const env = {
   NEXTAUTH_URL: `http://localhost:${port}`,
   AUTH_URL: `http://localhost:${port}`,
   NEXT_PUBLIC_IS_DEMO: "true",
+  NEXT_PUBLIC_UI_METRICS: "1",
   BASE_URL: `http://localhost:${port}`,
 }
 let server

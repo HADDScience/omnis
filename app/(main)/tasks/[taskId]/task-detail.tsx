@@ -358,10 +358,13 @@ export function TaskDetail({
                   setDraftInstructorId(task.instructor.id)
                   setEditingPeople(true)
                 }}
-                className="rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
+                // 담당이 비어 있으면 숨기지 않는다 — 터치 기기에는 hover 가 없어 지정할 길이 안 보였다
+                className={task.assignees.length === 0
+                  ? "touch-hit rounded border border-destructive/40 px-1.5 py-0.5 text-[11px] font-medium text-destructive transition-colors hover:bg-destructive/5"
+                  : "rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"}
                 aria-label="담당자·지시자 편집"
               >
-                <HugeiconsIcon icon={PencilEdit01Icon} size={14} className="text-muted-foreground" />
+                {task.assignees.length === 0 ? "담당 지정" : <HugeiconsIcon icon={PencilEdit01Icon} size={14} className="text-muted-foreground" />}
               </button>
             </div>
             )}

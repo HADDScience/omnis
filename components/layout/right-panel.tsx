@@ -1,13 +1,16 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { ChatPanel } from "@/components/chat/chat-panel"
 import { TaskCmdModal } from "@/components/chat/task-cmd-modal"
 import { TaskThread } from "@/app/(main)/tasks/[taskId]/task-sidebar"
+import { useMediaQuery } from "@/hooks/use-media-query"
+import { useShortcut } from "@/hooks/use-shortcuts"
+import { NAV_DESKTOP_QUERY } from "./floating-nav"
 import { useRightPanel } from "./right-panel-context"
 import { PanelOmnis } from "./panel-omnis"
 import { cn } from "@/lib/utils"
@@ -46,12 +49,18 @@ type View = "task" | "all" | "omnis"
  *
  * 그래서 **덮어서** 연다. 닫혀 있을 때 폭은 0 이다 — 접힌 레일조차 두지 않는다.
  * 스레드 하나 때문에 모든 화면이 좁아질 이유가 없다. 여는 곳은 오른쪽 아래의 둥근 유리 단추(PanelDock) ·
- * C 키 · ⌘⇧F · ?taskId= 링크다(2026-10-29, 제목줄의 「채팅 열기」 는 지웠다).
+ * 단축키(⌥⇧C · ⌘⇧F, 설정에서 바꾼다) · ?taskId= 링크다(2026-10-29, 제목줄의 「채팅 열기」 는 지웠다).
  *
  * 업무 상세에서 열면 전체 채팅이 아니라 **그 업무 스레드**가 먼저 뜬다.
+ *
+ * md 미만에서는 열지 않는다(2026-11-04 작업지시자) — 화면 전체를 가려 채팅 탭으로 가는 편이 낫다. 단축키는 /chat 으로,
+ * ?taskId= 는 그 업무방으로 보낸다. 저장된 「열림」 값이 있어도 그리지 않는다(내용을 만들지 않아 폴링도 돌지 않는다).
  */
 export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Props) {
-  const { open, setOpen, task, requestedView, clearRequestedView } = useRightPanel()
+  const { open: panelOpen, setOpen, task, requestedView, clearRequestedView } = useRightPanel()
+  const isDesktop = useMediaQuery(NAV_DESKTOP_QUERY)
+  const open = panelOpen && isDesktop
+  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const urlTaskId = searchParams.get("taskId")
@@ -67,22 +76,19 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
     if (!open || view !== "all") setSearchOpen(false)
   }, [open, view])
 
-  // ⌘⇧F (윈도우는 Ctrl+Shift+F) — 어디서든 패널을 열고 전체 채팅 검색 줄로 간다. 이미 열려 있으면 검색칸을 다시 고른다.
+  // ⌘⇧F (윈도우는 Ctrl+Shift+F, 설정에서 바꿀 수 있다) — 어디서든 패널을 열고 전체 채팅 검색 줄로 간다. 이미 열려 있으면 검색칸을 다시 고른다.
   // 입력칸 안에서도 받는다 — 글을 쓰다가 바로 찾는 게 단축키의 쓸모다
   const [searchFocus, setSearchFocus] = useState(0)
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return
-      if (e.code !== "KeyF" && e.key.toLowerCase() !== "f") return
-      e.preventDefault()
-      setOpen(true)
-      setView("all")
-      setSearchOpen(true)
-      setSearchFocus((n) => n + 1)
+  useShortcut("panelSearch", () => {
+    if (!window.matchMedia(NAV_DESKTOP_QUERY).matches) {
+      router.push("/chat")
+      return
     }
-    window.addEventListener("keydown", handleKey)
-    return () => window.removeEventListener("keydown", handleKey)
-  }, [setOpen])
+    setOpen(true)
+    setView("all")
+    setSearchOpen(true)
+    setSearchFocus((n) => n + 1)
+  })
 
   // 업무 화면으로 들어오면 그 업무 스레드로, 떠나면 전체로 되돌린다
   useEffect(() => {
@@ -110,8 +116,10 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
     }
     if (openedFor.current === urlTaskId) return
     openedFor.current = urlTaskId
-    setOpen(true)
-  }, [urlTaskId, setOpen])
+    // 하이드레이션 첫 값은 false 라 isDesktop 을 믿지 않고 직접 묻는다 — PC 링크가 업무방으로 튀면 안 된다
+    if (window.matchMedia(NAV_DESKTOP_QUERY).matches) setOpen(true)
+    else router.replace(`/chat/task/${encodeURIComponent(urlTaskId)}`)
+  }, [urlTaskId, setOpen, router])
 
   const loadRecentThreads = useCallback(async () => {
     try {
@@ -165,7 +173,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
         aria-hidden={!open}
         aria-label="대화 패널"
         className={cn(
-          "glass fixed! top-[calc(var(--demo-banner-height,0px)+8px)] right-2 bottom-2 z-[var(--z-banner)] flex flex-col overflow-hidden rounded-[22px] transition-[transform,opacity] duration-200 motion-reduce:transition-none",
+          "glass fixed! top-[calc(var(--demo-banner-height,0px)+8px)] right-2 h-[calc(var(--app-vh)-var(--demo-banner-height,0px)-8px-0.5rem)] z-[var(--z-banner)] flex flex-col overflow-hidden rounded-[22px] transition-[transform,opacity] duration-200 motion-reduce:transition-none max-md:hidden",
           // 92vw 를 그대로 쓰면 안 된다 — vw 는 zoom 을 모르므로 배율만큼 화면을 넘친다
           // (--app-vh 주석과 같은 함정). zoom 을 나눈 --app-vw 로 계산한다.
           "w-[min(400px,calc(var(--app-vw)-16px))]",

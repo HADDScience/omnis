@@ -33,8 +33,8 @@ interface ChatSearchProps {
   taskId: string | null
   users: { id: string; name: string }[]
   onClose: () => void
-  /** 이 결과 자리로 가서 강조한다 */
-  onGo: (messageId: string) => void
+  /** 이 결과 자리로 가서 강조한다. typing 은 검색어 입력이 데려온 이동(누른 것이 아니다) */
+  onGo: (messageId: string, typing?: boolean) => void
   /** 이 시각 이후 첫 메시지 자리로 */
   onGoDate: (atIso: string) => void
   /** 말풍선 안 표시에 쓸 검색어 — 결과가 돌아온 검색어만 넘긴다 */
@@ -120,7 +120,7 @@ export function ChatSearch({
           setIndex(0)
           setSearched(true)
           callbacks.current.onSearchTextChange(q.length >= MIN_QUERY ? q : "")
-          if (found[0]) callbacks.current.onGo(found[0])
+          if (found[0]) callbacks.current.onGo(found[0], true)
         })
         .catch((err: unknown) => {
           if ((err as Error)?.name !== "AbortError") toast.error("검색하지 못했습니다")
@@ -141,7 +141,12 @@ export function ChatSearch({
   const canNewer = index > 0
 
   async function older() {
-    if (loading || !canOlder) return
+    if (loading) return
+    // 더 갈 결과가 없으면 지금 결과를 다시 보여 준다 — 결과가 하나일 때 Enter 가 아무 일도 안 하면 눌린 줄 모른다
+    if (!canOlder) {
+      if (ids[index]) onGo(ids[index])
+      return
+    }
     if (index + 1 < ids.length) {
       setIndex(index + 1)
       onGo(ids[index + 1])
@@ -164,18 +169,22 @@ export function ChatSearch({
   }
 
   function newer() {
-    if (!canNewer) return
+    if (!canNewer) {
+      if (ids[index]) onGo(ids[index])
+      return
+    }
     setIndex(index - 1)
     onGo(ids[index - 1])
   }
 
   const iconButton =
-    "touch-target inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+    "touch-target inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md in-data-[messenger]:size-11 in-data-[messenger]:[&_svg]:size-[20px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
 
   return (
     <div
       role="search"
       aria-label="채팅 검색"
+      data-keyboard-dock
       className="flex shrink-0 flex-wrap items-center gap-x-0.5 gap-y-1 border-b px-2 py-1.5"
       onKeyDown={(e) => {
         if (e.key === "Escape") {
@@ -185,10 +194,10 @@ export function ChatSearch({
       }}
     >
       {/* 입력칸 — 좁으면 아래 아이콘 묶음이 다음 줄로 접힌다 */}
-      <div className="flex h-9 min-w-0 flex-[1_1_170px] items-center gap-1.5 rounded-lg border border-primary/50 bg-background px-2 ring-2 ring-primary/15 focus-within:border-primary">
-        <HugeiconsIcon icon={Search01Icon} size={15} className="shrink-0 text-muted-foreground" aria-hidden />
+      <div className="flex h-9 min-w-0 flex-[1_1_170px] items-center gap-1.5 in-data-[messenger]:h-11 in-data-[messenger]:gap-2 rounded-lg border border-primary/50 bg-background px-2 ring-2 ring-primary/15 focus-within:border-primary">
+        <HugeiconsIcon icon={Search01Icon} size={15} className="shrink-0 text-muted-foreground in-data-[messenger]:size-[20px]" aria-hidden />
         {author && (
-          <span className="inline-flex max-w-[45%] shrink-0 items-center gap-0.5 rounded bg-primary/10 py-0.5 pl-1.5 pr-0.5 text-[11px] font-medium text-primary">
+          <span className="inline-flex max-w-[45%] shrink-0 items-center gap-0.5 rounded bg-primary/10 py-0.5 pl-1.5 pr-0.5 text-[11px] in-data-[messenger]:text-[13px] font-medium text-primary">
             <span className="truncate">{author.name}</span>
             <button
               type="button"
@@ -213,14 +222,14 @@ export function ChatSearch({
           }}
           placeholder={author ? "검색어 (비우면 이 사람 글 전체)" : taskId ? "이 업무 대화에서 찾기" : "대화 내용 검색"}
           aria-label="채팅 검색어"
-          className="h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
+          className="h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none in-data-[messenger]:text-[16px] placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
         />
         {loading ? (
           <Spinner className="h-4 w-4 shrink-0" />
         ) : (
           active &&
           searched && (
-            <span aria-live="polite" className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            <span aria-live="polite" className="shrink-0 text-[11px] tabular-nums text-muted-foreground in-data-[messenger]:text-[13px]">
               {total > 0 ? `${index + 1}/${total}` : "결과 없음"}
             </span>
           )

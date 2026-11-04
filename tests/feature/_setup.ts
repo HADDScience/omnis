@@ -34,6 +34,12 @@ export async function openChatDock(page: Page) {
     "메시지 입력...  / 명령 · @ 사람 · # 업무"
   )
   if (!(await input.isVisible())) {
+    // md 미만에는 패널이 없다(2026-11-04) — 같은 입력창이 있는 전사방으로 간다
+    if ((page.viewportSize()?.width ?? 1440) < 768) {
+      await page.goto("/chat/default-room")
+      await expect(input).toBeVisible({ timeout: 30_000 })
+      return
+    }
     // 제목줄의 「채팅 열기」 는 지웠다(2026-10-29) — 오른쪽 아래 둥근 단추가 패널을 연다.
     // 그 단추는 채팅 화면(로그인하면 들어오는 곳)에서는 숨으므로 업무 화면으로 옮겨 간다
     if (new URL(page.url()).pathname.startsWith("/chat")) await page.goto("/tasks")

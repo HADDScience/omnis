@@ -9,13 +9,15 @@
 //   쓰기  — 확인 카드
 //   되돌리기 어려운 것(삭제 · 외부 게시 · 알림 응답 · 지식재산권 기록) — 이번에 열지 않는다
 import { prisma } from "@/lib/db"
-import { getMembership } from "@/lib/ip-data"
+import { getIpAccess } from "@/lib/ip-data"
 import { retrieveHybrid, type EmbeddingSource } from "@/lib/embeddings"
 import { buildIpOverview, SOURCE_LABEL, type AskSource } from "@/lib/omnis-ask"
 import { TASK_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/constants"
 import { migrateContent } from "@/lib/omnis-types"
 import { sectionToText } from "@/lib/embeddings"
 import type { Caller } from "@/lib/omnis-mcp"
+import { format } from "date-fns"
+import { ko } from "date-fns/locale"
 
 export type ToolRisk = "read" | "write"
 
@@ -34,13 +36,17 @@ export const AGENT_READ_TOOLS = [
   "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat", "list_notifications",
   "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
   "list_market_companies", "get_context",
+  // 웍스 캘린더 — 캘린더 탭과 같은 함수 · 보기 권한(lib/calendar/agent-tool)
+  "list_calendar",
   // 지식재산권 읽기 — 구성원이 아니면 runTool 이 거절한다
   "list_stages", "list_ip", "get_ip", "list_todo",
 ] as const
 
-/** 쓰기 1차 — 확인 카드를 거친다 */
+/** 쓰기 — 확인 카드를 거친다. MCP 와 같은 함수(runTool)로 실행한다. 결과물 도구(문서 초안 · 파일 · 기록 제안)는 lib/agent/outputs.ts */
 export const AGENT_WRITE_TOOLS = [
   "create_task", "update_task", "update_checklist", "post_message", "write_omnis_card", "save_company_record",
+  // 4단계 — 주간보고 초안. 기존 저장 경로(lib/weekly-report.ts) 그대로
+  "write_weekly_report",
 ] as const
 
 export type AgentWriteTool = (typeof AGENT_WRITE_TOOLS)[number]
@@ -50,6 +56,15 @@ export const isWriteTool = (name: string): name is AgentWriteTool => (AGENT_WRIT
 const DROP_PROPS: Record<string, string[]> = {
   update_task: ["archived"],
   post_message: ["files"],
+  // 주간보고는 초안 저장만 — 제출(submit)은 사람이 주간보고 화면에서 한다. draft(Gemini 초안)는 모델이 본문을 직접 쓰니 필요 없다
+  write_weekly_report: ["submit", "draft"],
+}
+
+/** 에이전트에서 설명을 바꾸는 도구 — MCP 설명이 에이전트에서 열지 않은 인자를 말할 때 */
+const AGENT_DESCRIPTIONS: Record<string, string> = {
+  write_weekly_report:
+    "내 주간보고 본문을 초안으로 저장한다. markdown 에 본문 전체(완료 · 진행 · 다음 주 계획 …)를 쓴다 — 먼저 list_weekly_reports · list_tasks(mine=true)로 이번 주 업무를 확인한다. " +
+    "초안 카드에 본문이 보이고 사용자가 [저장] 하면 이번 주(report 를 주면 그 주차) 보고서 본문이 바뀐다. 제출은 하지 않는다.",
 }
 
 const WRITE_SUFFIX = " — 쓰기 도구다. 부르면 바로 실행되지 않고 사용자에게 확인 카드가 뜬다. 사용자가 확인한 뒤에만 실행된다."
@@ -65,7 +80,7 @@ export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
         type: "object",
         properties: {
           query: { type: "string", description: "검색어. 고유명사(사람·기관·제품)를 포함한다" },
-          sources: { type: "array", items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE"] }, description: "생략하면 전부" },
+          sources: { type: "array", items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO"] }, description: "생략하면 전부" },
           limit: { type: "integer", description: "기본 8, 최대 20" },
         },
         required: ["query"],
@@ -86,18 +101,22 @@ export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
     const schema = structuredClone(t.inputSchema) as { type: string; properties?: Record<string, unknown>; required?: string[] }
     for (const p of DROP_PROPS[name] ?? []) delete schema.properties?.[p]
     if (name === "post_message") schema.required = [...new Set([...(schema.required ?? []), "task"])]
+    if (name === "write_weekly_report") schema.required = ["markdown"]
     // 지식재산권 도구의 guide 확인 코드는 MCP 클라이언트용이다 — 읽기만 열었으니 뺀다
     delete schema.properties?.guide
     const write = isWriteTool(name)
     specs.push({
       name,
       description: write
-        ? `${t.description}${name === "post_message" ? " 에이전트에서는 업무방(task)에만 남긴다." : ""}${WRITE_SUFFIX}`
+        ? `${AGENT_DESCRIPTIONS[name] ?? t.description}${name === "post_message" ? " 에이전트에서는 업무방(task)에만 남긴다." : ""}${WRITE_SUFFIX}`
         : t.description,
       schema: { type: "object", properties: schema.properties ?? {}, ...(schema.required?.length ? { required: schema.required } : {}) },
       risk: write ? "write" : "read",
     })
   }
+  // 4단계 결과물 — 문서 초안 · 파일 · 기록 제안
+  const { OUTPUT_TOOL_SPECS } = await import("./outputs")
+  specs.push(...OUTPUT_TOOL_SPECS)
   return specs
 }
 
@@ -105,7 +124,7 @@ export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
 export async function callerFor(userId: string): Promise<Caller> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, role: true, isActive: true } })
   if (!user || !user.isActive) throw new Error("사용자를 찾지 못했습니다")
-  return { userId: user.id, name: user.name, role: user.role === "ADMIN" ? "ADMIN" : "MEMBER", ip: await getMembership(user.id) }
+  return { userId: user.id, name: user.name, role: user.role === "ADMIN" ? "ADMIN" : "MEMBER", ip: await getIpAccess(user.id) }
 }
 
 // ─── 읽기 ───────────────────────────────────────────────────────────
@@ -166,6 +185,10 @@ export interface WritePreview {
   risk: string
   /** 대상을 못 찾는 등 실행해도 실패할 이유 — 있으면 카드를 막는다 */
   problem?: string
+  /** 초안 카드 — 본문 미리보기(접힘 · 펼치기). copy 가 있으면 [복사] 단추(메일 회신 등) */
+  draft?: { body: string; copy?: string }
+  /** 확인 단추 글 — 기본 「확인」. 초안은 「저장」, 파일은 「만들기」 */
+  confirmLabel?: string
 }
 
 const s = (v: unknown) => (typeof v === "string" ? v.trim() : "")
@@ -173,9 +196,31 @@ const list = (v: unknown) => (Array.isArray(v) ? v.map(String).map((x) => x.trim
 const kstDate = (d: Date | null | undefined) => (d ? d.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 10) : "없음")
 const clip = (t: string, n = 400) => (t.length > n ? `${t.slice(0, n)}…` : t)
 
-export async function buildPreview(name: string, args: Record<string, unknown>): Promise<WritePreview> {
+export async function buildPreview(name: string, args: Record<string, unknown>, ctx: { userId: string; roomId: string }): Promise<WritePreview> {
   const { findTask } = await import("@/lib/omnis-mcp")
+  const { isOutputTool, buildOutputPreview } = await import("./outputs")
+  if (isOutputTool(name)) return buildOutputPreview(name, args, ctx)
   switch (name) {
+    case "write_weekly_report": {
+      const md = typeof args.markdown === "string" ? args.markdown.trim() : ""
+      const reportId = s(args.report)
+      const isoWeek = format(new Date(), "yyyy-'W'II", { locale: ko })
+      // lib/weekly-report.ts upsertThisWeekReport 와 같은 주차 이름 — 이번 주 보고서가 없으면 저장할 때 만든다
+      const report = reportId
+        ? await prisma.weeklyReport.findFirst({ where: { id: reportId, ownerId: ctx.userId } })
+        : await prisma.weeklyReport.findUnique({ where: { ownerId_isoWeek: { ownerId: ctx.userId, isoWeek } } })
+      if (reportId && !report) return { title: "주간보고 초안", target: reportId, changes: [], risk: "", problem: "내 주간보고에서 그 보고서를 찾지 못했습니다" }
+      const before = ((report?.content ?? {}) as { markdown?: string }).markdown?.trim() ?? ""
+      return {
+        title: "주간보고 초안",
+        target: report ? `${report.title} · ${report.isoWeek}${report.status ? ` · ${report.status}` : ""}` : `이번 주(${isoWeek}) 주간보고 — 저장하면 새로 만듭니다`,
+        changes: before ? [{ label: "지금 본문", before: clip(before, 300), after: "아래 초안으로 바뀝니다" }] : [],
+        draft: { body: md, copy: md },
+        confirmLabel: "저장",
+        risk: "내 주간보고 본문이 이 초안으로 바뀝니다. 제출하지는 않습니다 — 주간보고 화면에서 고치고 제출합니다.",
+        ...(md ? {} : { problem: "본문(markdown)이 비어 있습니다" }),
+      }
+    }
     case "create_task": {
       const changes: PreviewChange[] = [
         { label: "업무 이름", before: null, after: s(args.name) || "(없음)" },

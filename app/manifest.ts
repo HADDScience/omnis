@@ -23,6 +23,9 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#ffffff",
     theme_color: "#1447e6",
     lang: "ko",
+    // 이 앱 자신 — 브라우저 탭에서 getInstalledRelatedApps 로 「이미 설치했는가」 를 묻게 한다(lib/pwa.ts detectInstalled).
+    // 주소는 manifest 주소 기준으로 풀린다
+    related_applications: [{ platform: "webapp", url: `${BASE_PATH}/manifest.webmanifest` }],
     icons: [
       { src: `${BASE_PATH}/icon-192.png`, sizes: "192x192", type: "image/png", purpose: "any" },
       { src: `${BASE_PATH}/icon-512.png`, sizes: "512x512", type: "image/png", purpose: "any" },

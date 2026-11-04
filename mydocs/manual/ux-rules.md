@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/manual/ux-rules.md
-last_verified: 2026-10-29
+last_verified: 2026-10-30
 ---
 
 # UX·구조 규칙 — canonical
@@ -34,7 +34,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - (S) `lib/ai.ts`, `app/api/`, 모든 Form
 
 ### 14. floating overlay 사분면 충돌 금지 + z-index 토큰화
-- (R) 신규 `position: fixed`/`sticky` 컴포넌트가 (a) z 토큰 사용, (b) ChatDock 점유 사분면(우하단) 회피?
+- (R) 신규 `position: fixed`/`sticky` 컴포넌트가 (a) z 토큰 사용, (b) md 이상에서 대화 패널 단추(`PanelDock`)가 쓰는 우하단 사분면 회피? md 미만에는 그 단추가 없다(2026-11-04)
 - (E) 모달/토스트는 `var(--z-dialog)` / `var(--z-toast)` 토큰 사용
 - (S) 모든 fixed/sticky 컴포넌트
 - 토큰: `--z-dock: 40` / `--z-nav: 45` / `--z-banner: 50` / `--z-popover: 60` / `--z-dialog: 100` / `--z-toast: 120`
@@ -136,7 +136,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 | Viewport | 본문 max-width | Activity Rail | 헤더 | 주 메뉴 |
 |----------|---------------|---------------|------|---------|
-| `< 768px` (mobile) | `100%` (gutter 16px) | 하단 Sheet (FAB로 토글) | 상단 sticky 컴팩트 1줄 | 하단 떠 있는 nav |
+| `< 768px` (mobile) | `100%` (gutter 16px) | 없음 — 업무 상세의 링크로 업무방에 간다(2026-11-04) | 상단 sticky 컴팩트 1줄 | 하단 떠 있는 nav |
 | `768~1280px` (tablet) | `100%` | 우측 320px Collapsible (기본 접힘) | 상단 sticky 2줄 | 상단 가운데 떠 있는 nav |
 | `≥ 1280px` (desktop) | `min(768px, 1fr)` | 우측 320px 고정 | 상단 sticky 풀 | 상단 가운데 떠 있는 nav |
 
@@ -162,7 +162,8 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - **내용이 nav 밑에 깔리지 않게** 하는 일은 셸(`MainWithChat`)이 `--nav-offset-top` / `--nav-offset-bottom` 만큼 비워서 한다.
   화면 높이에 묶인 화면(업무 보드 · 채팅 · 캘린더)은 이 칸 안에서 `h-full` 로 높이를 잰다 — 화면마다 nav 높이를 빼지 않는다.
   화면 전체를 덮는 `fixed` 요소를 새로 만들면 이 두 변수를 직접 뺀다
-- 폰 키보드가 올라오면(`visualViewport` 높이가 3/4 미만) 하단 nav 를 내린다
+- 화면 키보드가 올라오면 하단 nav 를 내린다(md 이상은 하단 nav 가 없다). 판정은 `lib/keyboard-viewport.ts` — 터치 기기(폰 · 태블릿) + 글자 칸 포커스 + `visualViewport` 높이가 폭별 최대에서 120px 이상 줄었을 때. 포커스만 보지 않는다(물리 키보드)
+- 포커스가 메신저 입력창(`[data-composer]`)이면 입력창을 키보드 바로 위에 붙인다(`hooks/use-keyboard-open.ts`) — `html[data-keyboard-docked]` 동안 `--app-vh` 를 보이는 높이로, `--nav-offset-bottom` · `--safe-bottom` 을 0 으로. 대화 스크롤 칸(`data-keep-bottom`)은 맨 아래까지 남은 거리를 지킨다
 - 폰의 알림 종은 제목줄 오른쪽의 같은 `.glass` 원이다(PC 는 nav 옆). 원 안 버튼이 원을 채워 아이콘이 가운데 온다
 - 아이콘만 든 원 · 칩에 `.touch-target` 을 붙이면 칸이 44px 로 커진다 — `justify-center` 가 없으면 아이콘이 왼쪽에 붙는다(2026-10-29 폴더 관리 칩)
 - 섹션 안의 하위 이동은 nav 가 아니라 제목줄 아래 띠로 한다 — 아카이브는 `ArchiveNav`(`/omnis` · `/crm` 레이아웃), CRM 은 그 아래 `CrmNav`
@@ -178,11 +179,28 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - 주소: 옴니스 1:1 · 전사방 · 사람끼리 방 `/chat/[roomId]`, 업무방 `/chat/task/[taskId]`(표가 없는 가상 방), 옴니스 새 대화 `/chat/new`, 사람과 대화 `/chat/new/people`. nav 채팅 탭은 접두사 `/chat` 으로 켜진다
 - 전사방은 오른쪽 패널 「전체」 와 같은 `ChatPanel`, 업무방은 업무 상세와 같은 `TaskThread` 를 그린다 — 따로 만들지 않는다
 - 옴니스 답 본문은 `OmnisAnswerBody`(`components/omnis/omnis-ask.tsx`) 하나로 그린다 — 각주 · 표 · 참고 자료가 질문 화면과 같다
+- **옴니스가 보낸 글은 말풍선(테두리 · 배경) 없이 본문만 놓는다**(2026-10-29) — ChatGPT · Claude 의 답처럼. 사람이 보낸 글은 말풍선이다. 도구 기록 한 줄 · 각주 · 참고 자료는 그대로이고 **확인 카드는 카드 모양을 유지한다**. 옴니스 방 · 오른쪽 패널 옴니스 탭 · 폰이 같은 `OmnisRoom` 이라 한 곳이다. 전사방 · 사람 방은 바꾸지 않는다
+- **답이 흘러 드는 동안 화면은 맨 아래에 붙어 있을 때만 따라 내려간다**(`lib/agent/scroll-follow.ts`, 아래에서 80px 안이면 붙은 것). 위로 올리면(터치 · 휠 · 키보드 모두 scroll 로 나타난다) 멈추고 「↓ 새 답」(떨어진 사이 새 글이 없으면 「↓ 맨 아래로」)이 뜬다. 직접 내려 가까워지거나 단추를 누르면 다시 따라간다. 내가 글을 보내면 늘 맨 아래로. 앞 글을 붙일 때는 `overflow-anchor: none` + `prependScrollDelta` 로 보던 자리를 지킨다. 화면 확인 `scripts/verify-chat-follow.mjs`
 - 「새 대화」 는 목록 칸 오른쪽 아래의 유리 FAB(`MessengerShell` `NewChatFab`) — 메뉴 둘(옴니스와 대화 · 사람과 대화). 제목줄에는 두지 않는다(2026-10-29)
 - 옴니스 「새 대화」 는 빈 방을 만들지 않는다. 첫 글을 보낼 때 방이 생기고 그 주소로 옮긴다
 - 답을 못 받은 내 글(마지막 글이 내 질문)에는 「다시 묻기」 가 붙는다. 새로고침해도 남는다 — 상태가 아니라 방의 글에서 나온다
 - 높이는 `MainWithChat` 스크롤 칸 안에서 `h-full`. nav 높이를 화면 안에서 다시 빼지 않는다
 - 오른쪽 패널 탭은 「이 업무」 · 「전체」 · 「옴니스」. 옴니스 탭은 예전 Gemini 「Omnis AI」(`OmnisAsk`)가 아니라 에이전트의 옴니스 1:1 방(`PanelOmnis` → `OmnisRoom embedded`)이다 — 쓰기는 방 화면과 같은 확인 카드를 거친다. 아래 「오른쪽 패널」
+
+### 메신저 안의 크기 — 폰 Gemini 앱 수준 (2026-10-30, 작업지시자)
+
+기록: [`../working/2026-10-30-chat-scale.md`](../working/2026-10-30-chat-scale.md) (전 → 후 표 · 스크린샷). 목록 줄 약 2배, 대화 본문 17px · 행간 1.65, 입력창 17px.
+
+- **키운 크기는 `MessengerShell` 루트의 `data-messenger` 안에서만 먹는다.** 메신저 밖에서도 쓰는 부품(ChatPanel · MessageList · MessageInput · TaskThread · OmnisRoom 의 말풍선 · 도구 기록 · 확인 카드 · `OmnisAnswerBody` · `AuthorAvatar` · `MessageTime` …)은
+  기본 클래스는 그대로 두고 **`in-data-[messenger]:…` 변형으로 큰 크기를 더한다.** 오른쪽 패널 · 업무 상세 · 온보딩 시연은 이 셸 밖이라 그대로다(오른쪽 패널 · 업무 상세는 전후 스크린샷이 픽셀 단위로 같다). 메신저에만 있는 부품(`RoomList` · `RoomHeader` · 스켈레톤)은 변형 없이 바로 키웠다
+- 마크다운 본문은 `globals.css` 의 `[data-messenger] .omnis-md` 한 곳. 같은 `.omnis-md` 를 쓰는 주간보고 · 지식 카드는 그대로다
+- 인라인 style 은 변형으로 못 덮는다 — 아바타는 `size` · `lgSize` 를 CSS 변수(`--av` · `--av-lg`)로 넘기고 클래스가 고른다
+- **CSS `zoom` 은 쓰지 않는다**(스크롤 위치 · 좌표 계산이 어긋난다)
+- 크기는 px 로 쓴다 — `size-8` · `text-sm` 같은 rem 유틸리티는 html 81.25% 를 타서 의도한 크기가 안 나온다(`size-8` 은 26px)
+- 함정 1: **`Button` 안 아이콘은 `[&_svg:not([class*='size-'])]:size-4` 가 크기를 정한다.** 아이콘에 `size-…` 클래스를 달면 이 규칙이 빠져 속성(`size={18}`)대로 돌아간다 — 메신저 밖의 크기까지 바뀐다. `in-data-[messenger]:h-[Npx]! in-data-[messenger]:w-[Npx]!` 로 쓴다
+- 함정 2: 입력칸의 `@media(pointer:coarse)` · `md:` 크기는 변형 순서를 장담할 수 없다 — 겹치는 속성은 `!` 로 이긴다
+- 함정 3: `.touch-target`(unlayered)이 레이어 유틸리티의 min-height 를 이긴다. 44px 보다 큰 단추는 `h-` 로 키운다
+- 폰 목록 줄 높이 88px · 칩 48px · 검색칸 50px · 머리줄 64px · 입력칸 58px(글자 17px). PC 목록 칸은 340 / 360px
 
 ### 사람끼리 대화 — 1:1 · 단톡방 (2026-10-29, 5단계)
 
@@ -207,7 +225,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - **스크롤바를 숨긴 줄은 넘친 것을 따로 알린다** — 넘친 쪽 끝을 흐리게(mask) 하고, PC 에서는 그 끝에 ‹ › 버튼, 세로 휠도 가로로 민다.
   이게 없으면 줄 밖에 그려진 칩은 PC 에서 영영 보이지 않는다(2026-10-29 「폴더를 만들었는데 칩이 없다」 제보의 원인).
   새로 만든 폴더의 칩은 **바로 고르고** 줄을 밀어 보이게 한다 — 시험은 「DOM 에 있다」 가 아니라 「줄의 보이는 칸 안에 있다」 로 본다(`tests/feature/chat-folders.spec.ts`)
-- 「전체」 는 방 종류를 섞은 최근 글 순 한 목록이다. **전사방도 다른 방과 똑같이** 섞이고 맨 위에 고정하지 않는다(위에 두려면 즐겨찾기). 「새 대화」 줄은 전체 · 옴니스 칩 맨 위에만
+- 「전체」 는 방 종류를 섞은 최근 글 순 한 목록이다. **전사방도 다른 방과 똑같이** 섞이고 맨 위에 고정하지 않는다(위에 두려면 즐겨찾기). 목록에 「새 대화」 줄은 두지 않는다 — 시작은 FAB 로 한다(2026-11-04)
 - 「안읽음」 칩 배지는 **안 읽은 글이 있는 방의 수**, 방 줄 배지는 **그 방의 안 읽은 글 수**. 100 부터 「99+」
 - 마지막으로 고른 칩은 사람마다 `localStorage`(`omnis.chat.chip.<userId>`)에 둔다. 지운 폴더의 칩이면 「전체」 로 돌아간다
 - **폴더 = 내가 고른 방들을 묶는 상자.** 하나뿐인 방(전사방)은 폴더가 될 수 없다. 폴더는 **개인 설정**이다
@@ -228,7 +246,10 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 **밀기(`components/messenger/swipe-row.tsx`)** — 카톡 채팅 목록과 같다
 
-- 오른쪽→왼쪽 = 지우기 칸, 왼쪽→오른쪽 = 즐겨찾기 · 폴더 칸. 칸의 단추를 눌러야 실행된다(밀기만으로 지우지 않는다)
+- 오른쪽→왼쪽 = 지우기 칸, 왼쪽→오른쪽 = 즐겨찾기 · 알림 · 폴더 칸. 칸의 단추를 눌러야 실행된다(밀기만으로 지우지 않는다)
+- **알림 끄기 / 켜기**(2026-10-29) — 방 키 단위 `ChatRoomPref.muted`. 밀기 칸 · 꾹 누르기 메뉴 · 방 머리줄(네 종류 방 모두)이 같은 API 를 쓴다.
+  꺼진 방은 목록 줄(이름 옆)과 머리줄에 빗금 종으로 보인다. 끄면 그 방의 채팅 푸시만 멈춘다 — 멘션 푸시 · 안읽음 배지는 그대로.
+  받는 사람 규칙: [`../plans/2026-10-29-push-notifications.md`](../plans/2026-10-29-push-notifications.md)
 - 지우기는 방 종류마다 뜻이 다르다 — 정본은 `lib/chat-list.ts` `roomRemoval`
   | 방 | 오른쪽→왼쪽 | 무엇이 남나 |
   |---|---|---|
@@ -247,6 +268,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 **입력칸**
 - 한 줄일 때 글자와 보내기 단추의 세로 가운데가 같아야 한다 — 입력칸 최소 높이 = 단추 높이, 남는 높이는 위아래 여백. 높이는 px(rem 은 81.25% 배율을 탄다). 여러 줄로 늘면 단추는 아래(`items-end`)에 붙는다
+- ＋ 메뉴: PC 는 메뉴, 터치 폰은 바텀시트(`components/chat/composer-plus-sheet.tsx`). 항목 목록은 하나(`ComposerPlusAction`)이고 시트에만 「사진」(`accept="image/*"`)이 있다
 - Enter: PC(물리 키보드) 보내기 · Shift+Enter 줄바꿈. 폰(`(pointer: coarse)`)은 Enter 가 줄바꿈이고 보내기는 단추로만. 한글 조합 중(isComposing · keyCode 229)의 Enter 는 어디서도 보내거나 후보를 고르지 않는다 — `lib/enter-to-send.ts` 하나로 판정한다
 - 보내기 · [확인] 은 ref 로 잠근다 — 상태는 다음 그리기에야 보여 같은 순간 두 번 누르면 둘 다 지나간다
 
@@ -262,8 +284,9 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 ### 오른쪽 패널 (2026-10-29)
 
-- 여는 길: 오른쪽 아래 둥근 유리 단추(`PanelDock`, 규칙 14 의 독 사분면) · C 키 · ⌘⇧F(전체 검색) · `?taskId=` 링크 · 온보딩 「대화 패널」 장면. **제목줄의 「채팅 열기」 는 지웠다** — 지우고 단추를 두지 않으면 폰에서는 열 길이 없다
-- 단추는 폰 채팅 화면(`/chat…`)에서 그리지 않는다(FAB · 입력칸 자리). PC 채팅 화면에서는 입력칸 위(`bottom: 96px`)로 올린다
+- 여는 길(md 이상): 오른쪽 아래 둥근 유리 단추(`PanelDock`, 규칙 14 의 독 사분면) · 단축키 ⌥⇧C(Alt+Shift+C, 마이 → 키보드 단축키에서 바꾼다) · ⌘⇧F(전체 검색) · `?taskId=` 링크. 제목줄의 「채팅 열기」 는 지웠다
+- 단추는 채팅 화면(`/chat…`)에서 그리지 않는다
+- **md 미만에는 패널도 단추도 없다**(2026-11-04) — 패널이 화면 전체를 가려 채팅 탭으로 가는 편이 낫다. 단축키는 `/chat` 으로, `?taskId=` 는 `/chat/task/<id>` 로 간다. 업무 상세는 「이 업무 대화 보기」 링크로 그 업무방에 간다
 - 업무 상세에서 열면 「이 업무」 가 먼저. 모양은 화면 가장자리에서 띄운 둥근 판(`.glass`), 탭은 캡슐 + 현재 탭만 `.glass-pill`. 속은 불투명 바탕(유리는 크롬에만)
 - 「옴니스」 탭은 내 최근 옴니스 방을 이어 쓰거나 새로 연다. 「크게 보기」 → `/chat/<방>`. 패널에서 새 방이 생겨도 지금 화면 주소는 바꾸지 않는다
 
@@ -306,6 +329,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 - 패널 머리 🔍 또는 **⌘⇧F**(Ctrl+Shift+F) → 목록 위에 **검색 줄 한 줄**(`components/chat/chat-search.tsx`). 대화와 입력창을 덮지 않는다.
   업무 필터 중이면 그 업무 안에서만 찾는다. 「전체」 탭에만 있다(「이 업무」 탭은 `TaskThread` 라 다른 컴포넌트다)
+- 결과에 도착하면 그 글이 0.9초 한 번 튕긴다(`lib/chat-arrival.ts`). 움직임 줄이기면 튕기지 않고 말풍선을 강조한다. 걸린 글자 표시가 되는 브라우저는 평소 말풍선을 칠하지 않는다. 검색어를 고치는 동안 같은 글에 머물면 튕기지 않고, 더 갈 결과가 없을 때 Enter 는 지금 결과를 다시 보여 준다. 폰에서 검색칸에 포커스가 있으면 셸을 키보드 위 높이로 줄인다. 메시지 검색은 전사 · 사람 방 · PC 대화 패널에만 있다
 - 검색하면 가장 최근 결과로 바로 간다. ▲(Enter) 더 옛 결과 · ▼(Shift+Enter) 더 최근 결과 · `3/120`. 📅 그날 첫 메시지로 · 👤 보낸 사람으로 거르기(검색어 없이도)
 - 걸린 글자는 **CSS Custom Highlight**(`::highlight(chat-search-hit)` · `chat-search-current`)로 표시한다. 렌더를 쪼개지 않아 링크 · 칩 안 글자도 표시된다.
   지금 결과는 걸린 **글자**를 가운데로 가져온다 — 긴 글에서 말풍선 가운데는 걸린 자리가 아니다. 글자가 없는 이동(날짜 · 사람만)은 말풍선을 2초 강조
@@ -319,8 +343,8 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 ## 화면 배율과 떠 있는 창 (PR #12)
 
-- `html` 에 `zoom: var(--ui-zoom)`(데스크톱 1.1, md 미만 1)을 건다. 배율은 `globals.css` 의 `--ui-zoom` 한 곳에서만 바꾼다.
-- 화면을 꽉 채우는 셸은 `100svh`/`100vw` 가 아니라 `--app-vh`/`--app-vw` 를 쓴다. `100svh` 는 zoom 을 몰라 zoom 배만큼 길어진다.
+- `html` 에 `zoom: var(--ui-zoom)`(데스크톱 1.1, md 미만 · iOS · iPadOS 1)을 건다. iOS 26.0 Safari 는 zoom 이 걸려도 `100svh` 를 화면 높이 그대로 그려 `--app-vh` 가 짧아진다. 배율은 `globals.css` 의 `--ui-zoom` 한 곳에서만 바꾼다.
+- 화면을 꽉 채우는 셸은 `100svh`/`100vw` 가 아니라 `--app-vh`/`--app-vw` 를 쓴다. Chrome · macOS Safari 의 `100svh` 는 zoom 배만큼 길어진다.
 - base-ui(floating-ui) 떠 있는 창은 `globals.css` 가 위치 칸에 `scale: 1/zoom`, 안의 창에 `zoom` 을 다시 건다 —
   팝오버 · 드롭다운 · 컨텍스트 메뉴 · 호버카드 · 툴팁 · 콤보박스 · 내비 메뉴. **셀렉트는 빼 둔다**(항목을 트리거에 겹쳐 놓는 방식이라 원래 맞다).
 - 새 떠 있는 컴포넌트를 들이면 목록에 `data-slot` 을 더하고 1920 · 1440 · 1024 · 390px 에서 트리거와 창의 x 차이를 잰다.

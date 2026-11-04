@@ -27,15 +27,33 @@ self.addEventListener("push", (event) => {
   const url = payload.url ? new URL(payload.url.replace(/^\//, ""), scope).href : scope
 
   event.waitUntil(
-    self.registration.showNotification(payload.title || "Omnis", {
-      body: payload.body || "",
-      icon: new URL("icon-192.png", scope).href,
-      // 같은 tag 는 서로를 덮어쓴다. 같은 업무 알림이 잠금화면에 쌓이지 않게 한다.
-      tag: payload.tag,
-      data: { url },
-    })
+    (async () => {
+      // 그 방을 지금 보고 있으면 띄우지 않는다 — 화면에 이미 글이 올라온다(채팅 글 · 옴니스 답 · 멘션).
+      // 「보고 있다」 = 포커스된 창의 주소가 그 방 주소다. 다른 탭 · 백그라운드 창은 보고 있지 않은 것이다.
+      if (payload.roomPath && (await isViewing(new URL(payload.roomPath.replace(/^\//, ""), scope).pathname))) return
+
+      await self.registration.showNotification(payload.title || "Omnis", {
+        body: payload.body || "",
+        icon: new URL("icon-192.png", scope).href,
+        // 같은 tag 는 서로를 덮어쓴다. 같은 업무 · 같은 방 알림이 잠금화면에 쌓이지 않게 한다.
+        tag: payload.tag,
+        // 채팅은 같은 방의 새 글이 앞 알림을 덮을 때도 다시 울린다. tag 가 없으면 브라우저가 거부한다
+        renotify: Boolean(payload.tag && payload.renotify),
+        data: { url },
+      })
+    })()
   )
 })
+
+const trimSlash = (path) => (path.length > 1 ? path.replace(/\/+$/, "") : path)
+
+async function isViewing(pathname) {
+  const target = trimSlash(pathname)
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true })
+  return windows.some(
+    (client) => client.focused && client.visibilityState === "visible" && trimSlash(new URL(client.url).pathname) === target
+  )
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()

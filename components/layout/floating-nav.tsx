@@ -12,6 +12,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { LinkPendingMark } from "@/components/ui/pending-link"
 import { cn } from "@/lib/utils"
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { MeAvatarLink } from "./current-user"
 import { useRightPanel } from "./right-panel-context"
@@ -42,7 +43,7 @@ const TABS: readonly Tab[] = [
   // 방 주소(/chat/[roomId] · /chat/task/[taskId] · /chat/new)는 접두사 /chat 이 켠다
   { key: "chat", href: "/chat", label: "채팅", match: ["/chat"], onboarding: "ai" },
   { key: "tasks", href: "/tasks", label: "업무", match: ["/tasks"], onboarding: "tasks" },
-  { key: "calendar", href: "/calendar", label: "캘린더", match: ["/calendar"] },
+  { key: "calendar", href: "/calendar", label: "캘린더", match: ["/calendar"], onboarding: "calendar" },
   // 아카이브 = 회사가 가진 것: 지식 카드 · 시놀로지 NAS · 지식재산권 · 고객·견적
   { key: "archive", href: "/omnis", label: "아카이브", match: ["/omnis", "/nas", "/crm"], onboarding: "resources" },
 ]
@@ -57,22 +58,6 @@ const ICONS = {
 function isActive(tab: Tab, pathname: string) {
   if (tab.key === "chat" && pathname === "/") return true
   return tab.match.some((p) => pathname === p || pathname.startsWith(p + "/"))
-}
-
-/**
- * 폰에서 키보드가 올라오면 하단 nav 가 입력창 위로 떠서 글 쓰는 자리를 가린다 — 그동안은 내린다.
- * visualViewport 가 화면의 3/4 밑으로 줄면 키보드가 열린 것으로 본다.
- */
-function useKeyboardOpen() {
-  const [open, setOpen] = useState(false)
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const check = () => setOpen(vv.height < window.innerHeight * 0.75)
-    vv.addEventListener("resize", check)
-    return () => vv.removeEventListener("resize", check)
-  }, [])
-  return open
 }
 
 /**
@@ -104,6 +89,7 @@ function useMainScrolled() {
 export function FloatingNav() {
   const pathname = usePathname()
   const rightPanel = useRightPanel()
+  // 폰에서 키보드가 올라오면 하단 nav 가 글 쓰는 자리를 가린다 — 그동안은 내린다
   const keyboardOpen = useKeyboardOpen()
   const scrolled = useMainScrolled()
   // 알림 종은 PC 에서는 nav, 폰에서는 페이지 헤더에 하나만 둔다 — 둘 다 그리면 알림을 두 번씩 불러온다

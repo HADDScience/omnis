@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { apiUrl } from "@/lib/base-path"
 import { prisma } from "@/lib/db"
-import { getMembership } from "@/lib/ip-data"
+import { getIpAccess } from "@/lib/ip-data"
 import { ApproveButton } from "./approve-button"
 
 /**
@@ -36,7 +36,7 @@ export default async function AuthorizePage({
     )
   }
 
-  const membership = await getMembership(session.user.id)
+  const membership = await getIpAccess(session.user.id)
 
   const rows = req
     ? await prisma.$queryRaw<{ client_id: string; client_name: string; expires_at: Date }[]>`

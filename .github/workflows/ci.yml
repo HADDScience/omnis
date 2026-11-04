@@ -76,6 +76,8 @@ jobs:
       GEMINI_API_KEY: ci-placeholder
       # 데모 시드로 채운 DB 라 데모 화면이 맞다. auth.spec 의 빠른 로그인 검사가 이 값을 본다.
       NEXT_PUBLIC_IS_DEMO: "true"
+      # 사용 기록은 운영에서만 켜지지만 시험은 켜고 돈다(tests/feature/ui-metrics.spec.ts)
+      NEXT_PUBLIC_UI_METRICS: "1"
       E2E_PASSWORD: demo1234
       BASE_URL: http://localhost:3000
 
@@ -103,6 +105,14 @@ jobs:
 
       - name: 브라우저 설치
         run: pnpm exec playwright install --with-deps chromium
+
+      # 파일 응답을 실제 HTTP 로 본다(tests/feature/file-headers.spec.ts). 서버가 이 값으로 NAS 에 붙으므로 먼저 띄운다
+      - name: 가짜 NAS 기동
+        run: |
+          node scripts/e2e-fake-nas.mjs /tmp/fake-nas.env > /tmp/fake-nas.log 2>&1 &
+          for i in $(seq 1 20); do [ -s /tmp/fake-nas.env ] && break; sleep 1; done
+          [ -s /tmp/fake-nas.env ] || { cat /tmp/fake-nas.log; exit 1; }
+          cat /tmp/fake-nas.env >> "$GITHUB_ENV"
 
       # wait-on 을 새로 넣지 않는다 — 셸 몇 줄로 되는 일에 의존성을 늘리지 않는다.
       # 못 뜨면 서버 로그를 찍는다. 로그 없이 "타임아웃" 만 보면 원인을 못 찾는다.

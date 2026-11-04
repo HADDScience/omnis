@@ -1,6 +1,7 @@
 // 옴니스 질문 — 화면(app/api/omnis/ask)과 MCP(hadd-omnis)가 같은 길을 쓴다.
 //
 // 검색(top-K) + 현황 전량(업무·지식재산권·CRM) + 생성. 라우트에서 그대로 옮겼다(2026-09-07).
+import { isUnassignedOpen } from "@/lib/task-unassigned"
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { assigneeLabel } from "@/lib/task-assignees"
@@ -10,6 +11,8 @@ import { answerWithOmnis, runGeminiToolLoop, type GeminiFunctionDeclaration, typ
 import { writeActivity } from "@/lib/api"
 import { listCases, listOpenTurns } from "@/lib/ip-data"
 import type { OmnisTurn } from "@/lib/omnis-history"
+import { seoulDayLabel } from "@/lib/calendar/time"
+import { CALENDAR_WRITE_RULE } from "@/lib/agent/prompt"
 
 export const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   OMNIS_CARD: "옴니스 카드",
@@ -17,6 +20,7 @@ export const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   WEEKLY_REPORT: "주간보고",
   CHAT_MESSAGE: "채팅",
   IP_CASE: "지식재산권",
+  PHOTO: "사진",
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -52,13 +56,14 @@ export async function buildTaskOverview(): Promise<string> {
       (a.deadline?.getTime() ?? Infinity) - (b.deadline?.getTime() ?? Infinity)
   )
   const overdueCount = tasks.filter(isOverdue).length
+  const unassignedCount = tasks.filter((t) => isUnassignedOpen({ status: t.status, assigneeCount: t.assignees.length })).length
   const lines = sorted.map((t) => {
     const dl = t.deadline
       ? ` · 마감 ${t.deadline.toISOString().slice(0, 10)}${isOverdue(t) ? " (지연)" : ""}`
       : ""
     return `- ${t.name} · ${STATUS_LABEL[t.status] ?? t.status}${dl} · 담당 ${assigneeLabel(t.assignees)}`
   })
-  return `전체 비보관 업무 ${tasks.length}건 · 지연 ${overdueCount}건\n${lines.join("\n")}`
+  return `전체 비보관 업무 ${tasks.length}건 · 지연 ${overdueCount}건 · 담당 미배정(미완료) ${unassignedCount}건\n${lines.join("\n")}`
 }
 
 /**
@@ -290,19 +295,22 @@ export const ROUTE_READ_TOOLS = new Set([
   "list_tasks", "get_task", "read_file", "list_notifications", "list_projects", "list_members",
   "crm_overview", "find_org", "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat",
   "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
-  "list_market_companies", "get_context",
+  "list_market_companies", "get_context", "list_calendar",
 ])
 
-function routeSystemPrompt(today: string, userName: string, withHistory = false): string {
+export function routeSystemPrompt(today: string, userName: string, withHistory = false): string {
   return `당신은 HADD Science 의 사내 지식 비서 "옴니스" 입니다. 오늘은 ${today} 이고, 질문한 사람은 ${userName} 입니다.
 직원의 질문에 답하려면 도구를 골라 부르세요. 한 번에 여러 도구를 불러도 됩니다. 최대 5번까지 부를 수 있습니다.
 ${withHistory ? HISTORY_RULE : ""}
 도구 고르는 법:
 - 대화 내용·진행 상황·"누가 뭐라고 했나" 는 search_knowledge 로 찾으세요. 사람 이름·기관명·제품명처럼 고유명사가 있으면 그것을 query 에 넣으세요.
-- 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true), 한 업무의 체크리스트·최근 대화는 get_task.
+- 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true, 담당 미배정은 unassigned=true), 한 업무의 체크리스트·최근 대화는 get_task.
 - 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org, 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
 - 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
+- 일정·행사·미팅·외근·「다음 주」「11/4」 같은 날짜 질문은 list_calendar(웍스 캘린더). 날짜는 오늘(서울)을 기준으로 YYYY-MM-DD 로 풀어 from·to 에 넣으세요.
 - 첫 도구 결과로 충분하면 바로 답하세요. 부족할 때만 더 부르세요.
+
+${CALENDAR_WRITE_RULE}
 
 답변 규칙:
 - 도구 결과에 있는 내용만으로 답하세요. 결과에 없으면 추측하지 말고 "관련 내용을 찾지 못했습니다" 라고 답하세요.
@@ -339,7 +347,7 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
         type: "object",
         properties: {
           query: { type: "string", description: "검색어. 고유명사(사람·기관·제품)를 포함한다" },
-          sources: { type: "array", items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE"] }, description: "생략하면 전부" },
+          sources: { type: "array", items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO"] }, description: "생략하면 전부" },
           limit: { type: "integer", description: "기본 8, 최대 20" },
         },
         required: ["query"],
@@ -378,7 +386,8 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
     return "error" in r ? `오류: ${r.error}` : r.text
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  // 서울 날짜 · 요일 — UTC 날짜면 서울 0~9시에 하루 어긋나 「오늘」「다음 주」 가 틀린다(list_calendar)
+  const today = `${seoulDayLabel(new Date())} · 시간대 Asia/Seoul`
   const history = opts.history ?? []
   const loop = await runGeminiToolLoop(routeSystemPrompt(today, user.name, history.length > 0), question, tools, runOne, {
     model, thinking, maxSteps: 6, endpoint: opts.endpoint ?? "omnisAsk.route", userId, history,

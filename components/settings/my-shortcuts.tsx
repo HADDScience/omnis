@@ -16,6 +16,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { Card, CardContent } from "@/components/ui/card"
 import { ShineBorder } from "@/components/magicui/shine-border"
+import { KeyboardShortcuts } from "@/components/settings/keyboard-shortcuts"
 import { useOnboarding } from "@/components/onboarding/onboarding-provider"
 import { useCommandPalette } from "@/components/layout/command-palette-context"
 import { cn } from "@/lib/utils"
@@ -71,6 +72,7 @@ export function MyShortcuts() {
   const dark = mounted && theme === "dark"
 
   return (
+    <>
     <Card className="py-0">
       <CardContent className="p-0">
         <ul className="flex flex-col divide-y">
@@ -135,5 +137,7 @@ export function MyShortcuts() {
         </ul>
       </CardContent>
     </Card>
+    <KeyboardShortcuts />
+    </>
   )
 }

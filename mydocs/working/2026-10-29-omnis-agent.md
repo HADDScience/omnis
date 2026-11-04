@@ -867,3 +867,15 @@ migrate 전에 이 코드가 나가면 목록(`listRooms`)이 `ChatRoomPref.hidd
 ## dev 서버
 
 `http://localhost:3103` — 띄워 둔 채로 둔다. 로그 `/private/tmp/claude-501/-Users-jeong-uchang-work-omnis-local/94daa007-779b-4ee8-9c84-fb288600d17f/scratchpad/dev3103.log`.
+
+## 옴니스 방 — 말풍선 걷기 · 스크롤 따라가기 (2026-10-29 밤, `fix/omnis-chat-ui`)
+
+작업지시자 요청 2건. push 하지 않았다. 규칙은 [`../manual/ux-rules.md`](../manual/ux-rules.md) 메신저 절 첫 목록에 옮겼다.
+
+1. **말풍선.** `OmnisMessage` · `LiveOmnis` 의 본문 감싸개에서 `rounded-xl border bg-card px-3.5 py-3` 을 걷고 본문만 둔다. 아바타 · 이름 · 시각 · 도구 기록 줄 · 각주 · 확인 카드(`AgentCard`)는 그대로. 기기 저장본 미리보기(`CachedRoomPreview`)의 옴니스 글도 같은 모양으로.
+2. **스크롤.** 원인: 글 · 카드 · 답 조각이 바뀔 때마다 무조건 `scrollTop = scrollHeight`. 판정을 순수 함수(`lib/agent/scroll-follow.ts` `isStuckToBottom`, 80px)로 빼고 시험 8건. 목록의 `scroll` 이벤트로 붙음/떨어짐을 갱신한다(터치 · 휠 · 키보드 공통). 떨어지면 따라가기를 멈추고 「↓ 새 답」 단추. 앞 글 붙이기는 `prependScrollDelta` + `overflow-anchor: none`(브라우저 자동 보정과 겹쳐 두 번 밀리는 것을 막음). 따라가는 스크롤은 `useLayoutEffect` 로 그리기 전에.
+
+검증(`scripts/verify-chat-follow.mjs` — 모델 없이 보내기를 브라우저에서 조금씩 흘리는 SSE 로 바꿔 끼움):
+옴니스 글 테두리 0px · 배경 투명 / 내 글 말풍선 유지 · 흐르는 동안 gap≤2px · 휠 · 키보드(PageUp) · 터치(CDP 제스처)로 올리면 top 이 움직이지 않고(h 만 늘어남) 단추 표시 · 단추 · 직접 내리기로 다시 따라감 · 앞 글 붙이기 전후 보던 글의 자리 차 ≤2px(1440 · 375). 고치기 전 코드로는 같은 시험이 「머문다」 에서 실패한다(top 2023→2432).
+스크린샷: `omnis-agent/V-{1440,375}-omnis-answer.png` · `V-{1440,375}-stream-scrolled-up.png` · `V-{1440,375}-stream-following.png`
+

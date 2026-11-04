@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { assigneeLabel } from "@/lib/task-assignees"
+import { isUnassignedOpen } from "@/lib/task-unassigned"
 import { Header } from "@/components/layout/header"
 import { auth } from "@/lib/auth"
 import { TaskCreateButton } from "@/components/chat/task-create-button"
@@ -33,6 +34,7 @@ export default async function TasksPage() {
       status: t.status,
       priority: t.priority,
       ownerName: t.assignees.length > 0 ? assigneeLabel(t.assignees) : null,
+      unassigned: isUnassignedOpen({ status: t.status, assigneeCount: t.assignees.length }),
       projectName: t.project?.name ?? null,
       productName: t.project?.product?.name ?? null,
       productColor: t.project?.product?.color ?? null,
@@ -74,6 +76,7 @@ export default async function TasksPage() {
           updatedAt: t.updatedAt.toISOString(),
         }))}
         stalledCount={stalledIds.size}
+        unassignedCount={tasks.filter((t) => t.card.unassigned).length}
         members={overview.userStats.map((u) => ({ id: u.id, name: u.name, inProgress: u.inProgress }))}
         stalledGroups={overview.stalledGroups}
         userStats={overview.userStats}

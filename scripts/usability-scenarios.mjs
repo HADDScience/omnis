@@ -228,7 +228,7 @@ if (want("input")) {
   await shot(page, "U-375-input-omnis-multiline")
 
   await open(page, "/chat/default-room")
-  a = await align('textarea[aria-label="메시지 입력"]', 'button[aria-label="메시지 전송"]')
+  a = await align('textarea[aria-label="메시지 입력"]', 'button[aria-label="보내기"]')
   check("전사방 — 한 줄일 때 세로 가운데(±1px)", a && Math.abs(a.textMid - a.btnMid) <= 1, a)
   await shot(page, "U-375-input-company")
   const dm = await page.evaluate(async (base) => {
@@ -238,7 +238,7 @@ if (want("input")) {
   }, BASE)
   if (dm) {
     await open(page, `/chat/${dm}`)
-    a = await align('textarea[aria-label="메시지 입력"]', 'button[aria-label="메시지 전송"]')
+    a = await align('textarea[aria-label="메시지 입력"]', 'button[aria-label="보내기"]')
     check("사람 방 — 한 줄일 때 세로 가운데(±1px)", a && Math.abs(a.textMid - a.btnMid) <= 1, a)
     await shot(page, "U-375-input-people")
   }
@@ -280,7 +280,16 @@ if (want("tools")) {
 // ─── 오른쪽 패널 ───
 if (want("panel")) {
   console.log("[panel] 오른쪽 패널 — 독 단추 · 탭 셋 · 옴니스")
-  for (const w of [1440, 375]) {
+  // md 미만에는 단추도 패널도 없다(2026-11-04)
+  {
+    const page = await pageAt(375)
+    await open(page, "/tasks")
+    check("375 — 대화 패널 단추가 없다", !(await page.getByRole("button", { name: /^대화 패널 열기/ }).isVisible()))
+    check("375 — 대화 패널이 보이지 않는다", !(await page.locator('aside[aria-label="대화 패널"]').isVisible()))
+    await shot(page, "U-375-panel-none")
+    await page.close()
+  }
+  for (const w of [1440]) {
     const page = await pageAt(w)
     await open(page, "/tasks")
     check(`${w} — 제목줄에 「채팅 열기」 가 없다`, (await page.locator("header").getByRole("button", { name: /채팅 열기/ }).count()) === 0)
@@ -373,7 +382,7 @@ if (want("speed")) {
   await input.fill(text)
   const posts = []
   page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/api/chat/messages")) posts.push(r.url()) })
-  await page.getByRole("button", { name: "메시지 전송" }).evaluate((b) => { b.click(); b.click() })
+  await page.getByRole("button", { name: "보내기" }).evaluate((b) => { b.click(); b.click() })
   await page.waitForTimeout(2500)
   check("보내기를 같은 순간 두 번 눌러도 요청은 한 번", posts.length === 1, { posts: posts.length, before })
   await page.close()

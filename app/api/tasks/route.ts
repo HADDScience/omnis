@@ -9,6 +9,10 @@ import { normalizeName } from "@/lib/name-match"
 import { normalizeProjectName } from "@/lib/project-name"
 import { findOrCreateProduct, findOrCreateProject } from "@/lib/project-resolve"
 import { recordTaskEvents } from "@/lib/task-events"
+import { assignmentTargets } from "@/lib/notify-rules"
+import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
+import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import type { Prisma, Priority } from "@/generated/prisma/client"
 
 export async function GET(req: NextRequest) {
@@ -132,8 +136,9 @@ export async function POST(req: NextRequest) {
   // TaskCmdModal에서 이름 기반으로 전달된 경우 ID 해석
   // 존칭("우창님")·약칭("우창")도 흡수 — 완전 일치 우선, 없으면 정규화한 이름의 부분 일치
   // 담당자는 여러 명일 수 있다 — "인턴들 각자 ~해주세요" 같은 지시가 흔하다.
+  // 같은 id 가 두 번 오면 TaskAssignee 복합 키가 충돌해 업무 생성이 500 으로 끝난다 — 처음부터 한 번씩만
   const assigneeIds: string[] = Array.isArray(ownerIds)
-    ? ownerIds.filter((v: unknown): v is string => typeof v === "string" && v.length > 0)
+    ? [...new Set(ownerIds.filter((v: unknown): v is string => typeof v === "string" && v.length > 0))]
     : []
 
   // 이름으로 전달된 담당자를 ID로 해석 (슬래시 명령·AI 초안).
@@ -274,21 +279,24 @@ export async function POST(req: NextRequest) {
   // 업무 지시에 사용된 메시지들 마킹 + 첨부 파일 연결
   if (messageIds?.length) {
     await prisma.chatMessage.updateMany({
-      where: { id: { in: messageIds } },
-      data: { isTaskInstruction: true, taskId: task.id },
+      // 참여자만 보는 방의 글은 업무에 잇지 않는다 — 업무 카드는 전원이 본다
+      where: { id: { in: messageIds }, ...PUBLIC_MESSAGE_WHERE },
+      data: { isTaskInstruction: true, taskId: task.id, changedAt: new Date() },
     })
 
     // 선택된 메시지에 첨부된 파일을 업무에도 연결
+    // 참여자만 보는 방의 파일은 업무 첨부로 옮기지 않는다(lib/file-access.ts)
     await prisma.file.updateMany({
-      where: { messageId: { in: messageIds } },
+      where: { messageId: { in: messageIds }, ...PUBLIC_FILE_WHERE },
       data: { taskId: task.id },
     })
   }
 
   // 담당자 전원에게 알림 — 수락(확인)하기 전까지 사라지지 않는다.
   // 지시가 도착한 사실만 통보하고 끝내면 "확인 안 한 업무"가 조용히 쌓인다(인수인계 §4-2).
+  // 받는 사람 규칙(자기 지정 · 중복 · 시스템 계정 제외)은 모든 지정 경로가 같은 함수를 쓴다(lib/notify-rules.ts)
   const instructorName = session.user.name
-  for (const userId of assigneeIds.filter((id) => id !== instructorId)) {
+  for (const userId of assignmentTargets({ previous: [], next: assigneeIds, actorId: instructorId, systemUserId: SYSTEM_USER_ID })) {
     await createNotification(
       userId,
       "task_assigned",

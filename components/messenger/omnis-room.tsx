@@ -1,14 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowUp01Icon, BubbleChatSparkIcon, Refresh01Icon } from "@hugeicons/core-free-icons"
+import { ArrowDown01Icon, BubbleChatSparkIcon, Refresh01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { DayDivider, MessageTime } from "@/components/chat/message-parts"
-import { MESSAGE_ENTER } from "@/components/chat/message-list"
+import { MESSAGE_ENTER, MessageFiles, type FileInfo } from "@/components/chat/message-list"
 import { OmnisAnswerBody } from "@/components/omnis/omnis-ask"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
@@ -17,14 +17,22 @@ import { cn } from "@/lib/utils"
 import type { OmnisRoomMessage } from "@/lib/omnis-room"
 import type { AgentCard as AgentCardData, AgentRoomState } from "@/lib/agent/service"
 import type { ToolUse } from "@/lib/agent/tool-trail"
-import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
 import { answeredAfter, mergeLatest, prependOlder, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
+import { isStuckToBottom, prependScrollDelta } from "@/lib/agent/scroll-follow"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
+import { resolveHandoff } from "@/lib/chat-entry"
+import { useComposerHandoff } from "@/hooks/use-composer-handoff"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
 import { ToolTrail } from "./tool-trail"
 import { RoomHeader } from "./room-header"
+import { RoomMuteButton } from "./room-mute-button"
 import { useChatUserId, useRoomListReload } from "./messenger-shell"
+import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
+import { AttachChips, ComposerPlus, RoomComposer, type PickedFile } from "@/components/chat/room-composer"
+import { useOmnisAttachments } from "./omnis-attach"
+import { IS_DEMO } from "@/lib/demo"
+import { noteUiSend } from "@/lib/ui-metrics/client"
 
 const EXAMPLES = [
   "이번 주 마감인 업무 정리해 줘",
@@ -47,8 +55,10 @@ export function OmnisRoom({
   initialCards = [],
   initialTools = {},
   initialHasMore = false,
+  initialStopped = {},
   activeRun = null,
   embedded,
+  muted = false,
 }: {
   roomId: string | null
   roomName?: string
@@ -57,21 +67,28 @@ export function OmnisRoom({
   initialTools?: Record<string, ToolUse[]>
   /** 처음 받은 글 앞에 더 있는가 — 위로 올리면 30개씩 더 받는다 */
   initialHasMore?: boolean
+  /** 내가 멈춘 질문 id → 그때까지의 답 글 id(없으면 null) — 「중지됨」 · 「답을 멈췄어요」 */
+  initialStopped?: Record<string, string | null>
   activeRun?: { id: string; status: string } | null
   /**
    * 오른쪽 패널 안에 끼울 때. 머리줄을 그리지 않고(패널이 그린다), 새 방이 생겨도 주소를 바꾸지 않는다 —
    * 패널은 어느 화면 위에나 열린다. 확인 카드 · 다시 붙기는 방 화면과 같은 코드다
    */
   embedded?: { onRoomCreated?: (roomId: string) => void }
+  /** 이 방의 옴니스 답 푸시를 껐는가 */
+  muted?: boolean
 }) {
   const reloadList = useRoomListReload()
+  const nudgeRoomList = useRoomListNudge()
   const [roomId, setRoomId] = useState(initialRoomId)
   const [messages, setMessages] = useState(initialMessages)
   const [cards, setCards] = useState(initialCards)
   const [tools, setTools] = useState(initialTools)
   const [draft, setDraft] = useState("")
   /** 보내는 중인 글 — 방 글에 그 질문(questionId)이 들어올 때까지 옅게 보인다 */
-  const [pending, setPending] = useState<{ content: string; questionId: string | null } | null>(null)
+  const [pending, setPending] = useState<{ content: string; questionId: string | null; files?: FileInfo[] } | null>(null)
+  /** ＋ 로 고른 파일 — 고르는 즉시 올리고, 질문을 보낼 때 id 를 붙인다(./omnis-attach.tsx) */
+  const attach = useOmnisAttachments()
   /** 스트림으로 받는 중인 답. null 이면 읽고 있지 않다 */
   const [live, setLive] = useState<LiveAnswer | null>(null)
   /**
@@ -80,6 +97,21 @@ export function OmnisRoom({
    */
   const [running, setRunning] = useState<string | null>(activeRun?.status === "RUNNING" ? activeRun.id : null)
   const [deciding, setDeciding] = useState<{ id: string; decision: "approve" | "reject" } | null>(null)
+  const [stopped, setStopped] = useState(initialStopped)
+  /**
+   * 「답변 중지」 를 눌렀다 — 서버가 멈추고 방을 다시 읽을 때까지. 상태(stopping)는 단추 모양,
+   * ref 는 같은 순간 도는 스트림 읽기 · 다시 붙기가 바로 알게(상태는 다음 그리기에야 보인다)
+   */
+  const [stopping, setStopping] = useState(false)
+  const stoppingRef = useRef(false)
+  /** 중지 API 를 불렀다 — 뒷정리(다시 읽기 · 보내는 중 글 걷기)는 stopRun 이 한다. 끊긴 흐름들은 손대지 않고 빠진다 */
+  const stopCalled = useRef(false)
+  /** 지금 읽는 스트림의 실행 id(x-agent-run-id) — 중지가 멈출 대상 */
+  const streamRun = useRef<string | null>(null)
+  /** 지금 읽는 스트림의 요청 — 중지를 누르면 끊는다 */
+  const streamAbort = useRef<AbortController | null>(null)
+  /** 새 대화는 첫 글을 보낸 뒤에야 방 id 가 생긴다 — 중지 뒤 다시 읽을 방 */
+  const roomRef = useRef(initialRoomId)
   const [error, setError] = useState<string | null>(null)
   /** 하루 상한(429) 안내 — 데모 사이트. 입력창 위에 남겨 둔다(토스트만으로는 왜 안 되는지 금방 사라진다) */
   const [quotaNotice, setQuotaNotice] = useState<string | null>(null)
@@ -97,20 +129,43 @@ export function OmnisRoom({
   /** 앞 페이지를 붙이기 전의 스크롤 높이 — 붙인 뒤 보던 자리를 그대로 두려고 */
   const anchor = useRef<number | null>(null)
 
+  /**
+   * 맨 아래에 붙어 있는가 — 붙어 있을 때만 새 글 · 흘러 드는 답을 따라 내려간다(lib/agent/scroll-follow.ts).
+   * 사용자가 위로 올리면(터치 · 휠 · 키보드 모두 scroll 이벤트로 나타난다) 놓고, 직접 아래로 내려 가까워지면 다시 붙는다.
+   * 예전에는 답이 한 조각 올 때마다 무조건 끝으로 내려 읽던 자리를 빼앗았다(2026-10-29)
+   */
+  const stickRef = useRef(true)
+  /** 맨 아래에서 떨어져 있다 → 「맨 아래로」 단추 */
+  const [away, setAway] = useState(false)
+  /** 떨어져 있는 동안 새 글 · 답이 왔다 → 단추가 「새 답」 */
+  const [unseen, setUnseen] = useState(false)
+
   // 아래로 붙이는 것은 새 글이 끝에 붙었을 때만 — 위로 올려 앞 글을 붙일 때(길이만 바뀜) 끝으로 튀지 않게
+  // 그리기 전에 내려 한 프레임이라도 새 글이 아래에 잘려 보이지 않게(useLayoutEffect)
   const lastId = messages.at(-1)?.id
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = listRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    if (stickRef.current) el.scrollTop = el.scrollHeight
+    else setUnseen(true)
   }, [lastId, cards.length, pending, live, error])
 
   useLayoutEffect(() => {
     const el = listRef.current
     if (el && anchor.current !== null) {
-      el.scrollTop += el.scrollHeight - anchor.current
+      el.scrollTop += prependScrollDelta(anchor.current, el.scrollHeight)
       anchor.current = null
     }
   }, [messages])
+
+  function followBottom() {
+    const el = listRef.current
+    if (!el) return
+    stickRef.current = true
+    setAway(false)
+    setUnseen(false)
+    el.scrollTop = el.scrollHeight
+  }
 
   /** 위로 올리면 — 지금 맨 앞 글보다 앞의 30개 */
   const loadOlder = useCallback(async () => {
@@ -119,10 +174,11 @@ export function OmnisRoom({
     try {
       const res = await fetch(apiUrl(`/api/agent/rooms/${roomId}?before=${encodeURIComponent(messages[0].createdAt)}`), { cache: "no-store" })
       if (!res.ok) throw new Error()
-      const page = (await res.json()) as { messages: OmnisRoomMessage[]; tools: Record<string, ToolUse[]>; hasMore: boolean }
+      const page = (await res.json()) as { messages: OmnisRoomMessage[]; tools: Record<string, ToolUse[]>; hasMore: boolean; stopped?: Record<string, string | null> }
       anchor.current = listRef.current?.scrollHeight ?? null
       setMessages((prev) => prependOlder(prev, page.messages))
       setTools((prev) => ({ ...page.tools, ...prev }))
+      setStopped((prev) => ({ ...(page.stopped ?? {}), ...prev }))
       setHasMore(page.hasMore)
     } catch {
       toast.error("앞의 대화를 불러오지 못했습니다")
@@ -157,17 +213,42 @@ export function OmnisRoom({
     setMessages((prev) => mergeLatest(prev, state.messages))
     setCards(state.cards)
     setTools((prev) => ({ ...prev, ...(state.tools ?? {}) }))
+    // 최근 페이지의 질문은 서버 값으로 갈아 끼우고, 위로 올려 받아 둔 앞 질문의 값은 남긴다
+    setStopped((prev) => {
+      const ids = new Set(state.messages.map((m) => m.id))
+      return { ...Object.fromEntries(Object.entries(prev).filter(([k]) => !ids.has(k))), ...(state.stopped ?? {}) }
+    })
     setRunning(state.activeRun?.status === "RUNNING" ? state.activeRun.id : null)
     return state
+  }, [])
+
+  /** 중지 — 아래 stopRun. consume 이 실행 id 를 받는 순간 부를 수 있게 ref 로 둔다 */
+  const stopRunRef = useRef<(runId: string) => Promise<void>>(async () => {})
+  /** 멈출 실행 없이 흐름이 끝났다(거절 · 답이 막 끝남) — 중지를 기다리던 단추를 푼다 */
+  const releaseStop = useCallback(() => {
+    if (stoppingRef.current && !stopCalled.current) {
+      stoppingRef.current = false
+      setStopping(false)
+    }
   }, [])
 
   /** 스트림 응답을 끝까지 읽는다. 실패(JSON)면 메시지를 던진다 */
   const consume = useCallback(async (res: Response, onHeaders?: (h: Headers) => void) => {
     if (!res.ok || !res.headers.get("content-type")?.includes("text/event-stream")) {
+      // 멈출 실행이 생기지 않았다(거절 · 오류)
+      releaseStop()
       const data = (await res.json().catch(() => null)) as { error?: string } | null
       throw Object.assign(new Error(data?.error ?? `답을 받지 못했습니다 (${res.status})`), { status: res.status })
     }
     onHeaders?.(res.headers)
+    const runId = res.headers.get("x-agent-run-id")
+    if (runId) streamRun.current = runId
+    // 실행 id 를 받기 전에 중지를 눌렀다 — 받는 즉시 멈춘다
+    if (stoppingRef.current && runId) {
+      void res.body?.cancel().catch(() => {})
+      void stopRunRef.current(runId)
+      throw new DOMException("답변 중지", "AbortError")
+    }
     streams.current++
     try {
       setLive(EMPTY_LIVE)
@@ -179,8 +260,9 @@ export function OmnisRoom({
       if (last.error) throw new Error(last.error)
     } finally {
       streams.current--
+      streamRun.current = null
     }
-  }, [])
+  }, [releaseStop])
 
   /**
    * 돌고 있는 실행에 다시 붙는다(처음부터 다시 받는다). 끝나면 방을 다시 읽고, 그래도 돌고 있으면(구간이 이어졌거나
@@ -194,10 +276,14 @@ export function OmnisRoom({
       try {
         for (let attempt = 0; attempt < 6; attempt++) {
           try {
-            await consume(await fetch(apiUrl(`/api/agent/runs/${runId}/stream`), { cache: "no-store" }))
+            const ctrl = new AbortController()
+            streamAbort.current = ctrl
+            await consume(await fetch(apiUrl(`/api/agent/runs/${runId}/stream`), { cache: "no-store", signal: ctrl.signal }))
           } catch {
             // 이미 끝났으면 409 · 연결이 끊겼으면 네트워크 오류 — 어느 쪽이든 방 상태가 답이다
           }
+          // 중지를 눌러 끊었다 — 방을 다시 읽는 것은 중지(stopRun)가 한다. 흐르던 글은 그때까지 그대로 둔다
+          if (stopCalled.current) return
           setLive(null)
           const state = await refresh(id)
           if (!state) return // 연결이 없다 — 돌아오면(online · visibilitychange) 다시 붙는다
@@ -209,10 +295,13 @@ export function OmnisRoom({
         setRunning(null)
       } finally {
         following.current = false
-        setLive(null)
+        if (!stopCalled.current) {
+          setLive(null)
+          releaseStop()
+        }
       }
     },
-    [consume, refresh],
+    [consume, refresh, releaseStop],
   )
 
   // 새로고침 · 재접속 — 돌고 있는 실행이 있으면 그 스트림에 다시 붙는다
@@ -227,7 +316,7 @@ export function OmnisRoom({
   useEffect(() => {
     if (!roomId) return
     const wake = () => {
-      if (document.visibilityState !== "visible" || streams.current > 0 || following.current) return
+      if (document.visibilityState !== "visible" || streams.current > 0 || following.current || stoppingRef.current) return
       void refresh(roomId).then((s) => {
         if (s?.activeRun?.status === "RUNNING") void follow(roomId, s.activeRun.id)
       })
@@ -241,7 +330,7 @@ export function OmnisRoom({
   }, [roomId, refresh, follow])
 
   // 답을 못 받은 내 글 — 마지막이 내 질문이고, 읽는 스트림도 · 서버에 도는 실행도 · 기다리는 카드도 없을 때(새로고침해도 남는다)
-  const unanswered = unansweredQuestion({ messages, cards, busy, running: running !== null })
+  const unanswered = unansweredQuestion({ messages, cards, busy, running: running !== null, stopped })
   const waitingCard = cards.some((c) => c.status === "PENDING")
 
   /** 스트림이 끝난 뒤 — 방을 다시 읽고, 서버가 아직 돌고 있으면(스트림만 먼저 끝났으면) 다시 붙는다 */
@@ -251,27 +340,36 @@ export function OmnisRoom({
     return state
   }
 
-  async function ask(body: { content: string } | { retryOf: string }, shown: string) {
+  async function ask(body: { content: string; fileIds?: string[] } | { retryOf: string }, shown: string, files?: FileInfo[]) {
     // 보내는 중에는 다시 보내지 않는다 — 버튼 · Enter · 예시 칸이 모두 여기로 온다
     if (busy || sendingRef.current) return
     sendingRef.current = true
+    noteUiSend()
+    stickRef.current = true // 내가 보낸 글은 바로 보인다
+    setAway(false)
     let questionId: string | null = "retryOf" in body ? body.retryOf : null
-    setPending({ content: shown, questionId })
+    setPending({ content: shown, questionId, files })
     setError(null)
     let id = roomId
     try {
-      const res = id
-        ? await fetch(apiUrl(`/api/agent/rooms/${id}`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-        : await fetch(apiUrl("/api/agent/rooms"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      const ctrl = new AbortController()
+      streamAbort.current = ctrl
+      const init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal }
+      const res = id ? await fetch(apiUrl(`/api/agent/rooms/${id}`), init) : await fetch(apiUrl("/api/agent/rooms"), init)
       await consume(res, (h) => {
         const created = h.get("x-room-id")
         const qid = h.get("x-question-id")
         if (qid) {
           questionId = qid
-          setPending({ content: shown, questionId: qid })
+          // 서버가 내 글을 받았다 — 답을 기다리지 않고 목록의 미리보기 · 순서를 맞춘다. 끝나면 답까지 한 번 더 읽는다
+          nudgeRoomList()
+          setPending({ content: shown, questionId: qid, files })
+          // 서버가 질문을 받았다 — 첨부는 그 질문에 붙었다. 거절(429 · 409)이면 칩을 그대로 둔다
+          if (files?.length) attach.clear()
         }
         if (created && !id) {
           id = created
+          roomRef.current = created
           setRoomId(created)
           // 화면을 다시 그리지 않고 주소만 — 스트림이 끊기지 않게. 패널 안이면 주소는 그대로 둔다
           if (embedded) embedded.onRoomCreated?.(created)
@@ -281,6 +379,8 @@ export function OmnisRoom({
       })
       reloadList()
     } catch (err) {
+      // 중지를 눌러 끊었다 — 뒷정리(다시 읽기 · 보내는 중 글 걷기)는 중지(stopRun)가 한다
+      if (stopCalled.current) return
       const message = err instanceof Error ? err.message : "보내지 못했습니다"
       const status = (err as { status?: number }).status
       const state = id ? await refresh(id) : null
@@ -304,55 +404,122 @@ export function OmnisRoom({
     setLive(null)
     setPending(null)
     sendingRef.current = false
+    if (!following.current) releaseStop()
     textareaRef.current?.focus()
   }
 
   function send(raw: string) {
-    const content = raw.trim()
+    const files = attach.ready
+    if (attach.uploading) {
+      toast.error("파일을 올리는 중이에요. 다 올라간 뒤 보내 주세요")
+      return
+    }
+    if (attach.failed) {
+      toast.error("올리지 못한 파일이 있어요. 빼거나 다시 골라 주세요")
+      return
+    }
+    // 파일만 보내면 사람 방과 같은 자리 글(「[파일 N개 첨부]」) — 옴니스는 첨부를 보고 답한다
+    const content = raw.trim() || (files.length ? `[파일 ${files.length}개 첨부]` : "")
     if (content.length < 2) {
       toast.error("2자 이상 입력해 주세요")
       return
     }
     if (busy || sendingRef.current) return
     setDraft("")
-    void ask({ content }, content)
+    void ask(files.length ? { content, fileIds: files.map((f) => f.id) } : { content }, content, files.length ? files : undefined)
   }
+
+  // 방이 오기 전 loading 화면에서 쓴 글 · 눌러 둔 보내기를 이어받는다(lib/chat-entry.ts).
+  // 오른쪽 패널(embedded)은 메신저 밖이라 받지 않는다. 답하는 중이거나 2자가 안 되면 보내지 않고 입력칸에 남긴다
+  useComposerHandoff(embedded || !roomId ? undefined : `room:${roomId}`, textareaRef, (h) => {
+    const { send: queued, text } = resolveHandoff(h, Date.now())
+    const sendNow = queued !== null && !busy && queued.trim().length >= 2
+    if (sendNow) send(queued)
+    setDraft(queued !== null && !sendNow ? (text ? `${queued}\n${text}` : queued) : text)
+  })
 
   async function decide(card: AgentCardData, decision: "approve" | "reject") {
     // [확인] 을 같은 순간 두 번 눌러도 한 번만(서버도 조건부 갱신으로 하나만 받는다)
     if (busy || !roomId || sendingRef.current) return
     sendingRef.current = true
+    stickRef.current = true
+    setAway(false)
     setDeciding({ id: card.id, decision })
     setError(null)
+    const ctrl = new AbortController()
+    streamAbort.current = ctrl
     try {
       const res = await fetch(apiUrl(`/api/agent/steps/${card.id}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision, planHash: card.planHash }),
+        signal: ctrl.signal,
       })
       if (res.headers.get("content-type")?.includes("text/event-stream")) {
         setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, status: decision === "approve" ? "APPROVED" : "REJECTED" } : c)))
         setDeciding(null)
         await consume(res)
       } else {
+        // 이어 가지 않았다(다른 카드가 남았다) — 멈출 실행이 없다
+        releaseStop()
         const data = (await res.json().catch(() => null)) as { card?: AgentCardData; error?: string } | null
         if (!res.ok || !data?.card) throw Object.assign(new Error(data?.error ?? `처리하지 못했습니다 (${res.status})`), { status: res.status })
         setCards((prev) => prev.map((c) => (c.id === card.id ? data.card! : c)))
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "처리하지 못했습니다"
-      // 스트림만 끊긴 것이면 아래 settle 이 다시 붙는다
-      if ((err as { status?: number }).status) {
+      // 스트림만 끊긴 것이면 아래 settle 이 다시 붙는다. 중지로 끊은 것이면 중지가 뒷정리한다
+      if ((err as { status?: number }).status && !stopCalled.current) {
         setError(message)
         toast.error(message)
       }
-    } finally {
-      setDeciding(null)
-      setLive(null)
-      sendingRef.current = false
-      await settle(roomId)
-      reloadList()
     }
+    setDeciding(null)
+    if (stopCalled.current) return
+    setLive(null)
+    sendingRef.current = false
+    await settle(roomId)
+    if (!following.current) releaseStop()
+    reloadList()
+  }
+
+  /**
+   * 실행을 멈춘다 — 읽던 스트림을 끊고(흐르던 글은 그대로 둔다) 중지 API 를 부른 뒤 방을 다시 읽는다.
+   * 서버는 그 Workflow 가 끝나기를 기다렸다 돌려주므로 다시 읽은 방에 그때까지의 답(「중지됨」)이 있다.
+   * 이미 끝났으면(409) 다시 읽기만 한다 — 끝난 답이 그대로 보인다
+   */
+  const stopRun = useCallback(
+    async (runId: string) => {
+      stopCalled.current = true
+      streamAbort.current?.abort()
+      const res = await fetch(apiUrl(`/api/agent/runs/${runId}/stop`), { method: "POST" }).catch(() => null)
+      if (!res || (!res.ok && res.status !== 409)) toast.error("답을 멈추지 못했습니다")
+      const id = roomRef.current
+      const state = id ? await refresh(id) : null
+      stoppingRef.current = false
+      stopCalled.current = false
+      setStopping(false)
+      setLive(null)
+      setPending(null)
+      sendingRef.current = false
+      streamRun.current = null
+      reloadList()
+      // 멈추지 못해 아직 돌고 있으면 다시 붙는다
+      if (id && state?.activeRun?.status === "RUNNING") void follow(id, state.activeRun.id)
+    },
+    [refresh, follow, reloadList],
+  )
+  useEffect(() => {
+    stopRunRef.current = stopRun
+  }, [stopRun])
+
+  /** 「답변 중지」 단추. 실행 id 를 아직 모르면(질문 · 확인을 보내는 중) 응답 머리가 오는 즉시 consume 이 멈춘다 */
+  function stop() {
+    if (stoppingRef.current) return
+    stoppingRef.current = true
+    setStopping(true)
+    const runId = streamRun.current ?? running
+    if (runId) void stopRun(runId)
   }
 
   // 글과 카드를 시간 순으로 한 줄에
@@ -376,53 +543,48 @@ export function OmnisRoom({
   const isNew = roomId === null && messages.length === 0
   let trailFor: string | null = null
   const text = live ? liveText(live) : ""
+  // 멈춘 답 — 그때까지의 답 글에는 「중지됨」, 글 없이 멈춘 질문에는 그 질문의 차례 끝에 「답을 멈췄어요」
+  const stoppedAnswers = new Set(Object.values(stopped).filter((v): v is string => v !== null))
+  let stoppedBare: string | null = null
+  const bareStop = () => {
+    if (!stoppedBare) return null
+    const key = `stopped-${stoppedBare}`
+    stoppedBare = null
+    return <StoppedNote key={key} />
+  }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    // 온보딩 시연이 이 칸 위에 대본을 그린다(패널 안의 방은 비추지 않는다)
+    <div className="flex min-h-0 flex-1 flex-col" data-onboarding={embedded ? undefined : "omnis-room"}>
       {!embedded && (
         <RoomHeader
           title={isNew ? "새 대화" : (roomName ?? (messages[0] ? messages[0].content.replace(/\s+/g, " ").slice(0, 30) : "옴니스"))}
           subtitle={isNew ? "옴니스와 1:1 · 첫 글을 보내면 대화방이 생깁니다" : "옴니스와 1:1 · 앞의 대화를 이어서 답합니다"}
+          actions={roomId ? <RoomMuteButton key={roomId} roomKey={`room:${roomId}`} initialMuted={muted} /> : undefined}
         />
       )}
 
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        data-keep-bottom
+        // overflow-anchor: none — 앞 글을 붙일 때 보던 자리는 위 useLayoutEffect 가 지킨다. 브라우저의 자동 보정과 겹치면 두 번 밀린다
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain [overflow-anchor:none]"
         onScroll={(e) => {
-          if (e.currentTarget.scrollTop < 120) void loadOlder()
+          const el = e.currentTarget
+          const stuck = isStuckToBottom(el)
+          stickRef.current = stuck
+          setAway(!stuck)
+          if (stuck) setUnseen(false)
+          if (el.scrollTop < 120) void loadOlder()
         }}
       >
-        <div className={cn("mx-auto flex w-full max-w-[760px] flex-col py-4", embedded ? "px-3" : "px-3 sm:px-6")}>
-          {isNew && !pending && (
-            <div className={cn("flex flex-col items-center gap-4 text-center", embedded ? "py-4" : "py-8 sm:py-14")}>
-              <span className="ai-rainbow-border flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <HugeiconsIcon icon={BubbleChatSparkIcon} size={24} aria-hidden />
-              </span>
-              <div>
-                <h2 className="text-[18px] font-bold tracking-[-0.02em]">옴니스에게 물어보세요</h2>
-                <p className="mt-1 break-keep text-[12.5px] text-muted-foreground">
-                  업무 · 지식 카드 · 주간보고 · 채팅 · 지식재산권 · 회사 기록을 찾아 답합니다. 업무를 만들거나 고치는 일은 확인 카드를 띄우고, 확인하면 실행합니다.
-                </p>
-              </div>
-              <div className={cn("grid w-full max-w-[520px] gap-2", !embedded && "sm:grid-cols-2")}>
-                {EXAMPLES.map((ex) => (
-                  <button
-                    key={ex}
-                    type="button"
-                    onClick={() => send(ex)}
-                    className="touch-target rounded-lg border bg-card px-3 py-2.5 text-left text-[12.5px] transition-colors hover:border-border-strong hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                  >
-                    {ex}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className={cn("mx-auto flex w-full max-w-[760px] flex-col py-4 in-data-[messenger]:px-4 in-data-[messenger]:py-5", embedded ? "px-3" : "px-3 sm:px-6")}>
+          {isNew && !pending && <OmnisWelcome embedded={!!embedded} onPick={send} />}
 
           {hasMore && (
             <div className="flex justify-center pb-2">
-              <Button variant="ghost" size="sm" className="touch-target text-[12px] text-muted-foreground" onClick={() => void loadOlder()} disabled={loadingOlder}>
+              <Button variant="ghost" size="sm" className="touch-target text-[12px] text-muted-foreground in-data-[messenger]:h-11 in-data-[messenger]:px-4 in-data-[messenger]:text-[14.5px]" onClick={() => void loadOlder()} disabled={loadingOlder}>
                 {loadingOlder ? <Spinner className="size-3.5" /> : null}
                 앞의 대화 더 보기
               </Button>
@@ -431,9 +593,14 @@ export function OmnisRoom({
           <div role="log" aria-label="옴니스와의 대화" className="flex flex-col">
             {timeline.map((item) => {
               // 도구 기록은 그 질문에 붙은 첫 옴니스 글 위에 — 흐름 순서(도구를 본 뒤 답했다)
+              let before: React.ReactNode = null
               if (item.kind === "row" && item.row.type !== "day") {
                 const m = item.row.message
-                if (!m.fromOmnis) trailFor = m.id
+                if (!m.fromOmnis) {
+                  before = bareStop()
+                  trailFor = m.id
+                  if (stopped[m.id] === null) stoppedBare = m.id
+                }
               }
               if (item.kind === "card") {
                 const c = item.card
@@ -457,18 +624,22 @@ export function OmnisRoom({
                 trailFor = null
               }
               return m.fromOmnis ? (
-                <OmnisMessage key={row.key} message={m} fresh={fresh} tools={trail} />
+                <OmnisMessage key={row.key} message={m} fresh={fresh} tools={trail} stopped={stoppedAnswers.has(m.id)} />
               ) : (
-                <MyMessage key={row.key} content={m.content} iso={m.createdAt} fresh={fresh} />
+                <Fragment key={row.key}>
+                  {before}
+                  <MyMessage content={m.content} iso={m.createdAt} fresh={fresh} files={m.files} />
+                </Fragment>
               )
             })}
-            {pending && showPendingBubble(messages, pending) && <MyMessage content={pending.content} sending />}
-            {(live || pending || running) && <LiveOmnis text={text} tools={live?.tools ?? []} resuming={!live && !pending} />}
+            {bareStop()}
+            {pending && showPendingBubble(messages, pending) && <MyMessage content={pending.content} sending files={pending.files} />}
+            {(live || pending || running) && <LiveOmnis text={text} tools={live?.tools ?? []} resuming={!live && !pending} stopping={stopping} />}
             {unanswered && roomId && (
-              <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground" role="status">
+              <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground in-data-[messenger]:mt-3 in-data-[messenger]:text-[14.5px]" role="status">
                 <span>{error ?? "이 질문에 아직 답을 받지 못했어요"}</span>
-                <Button size="sm" variant="outline" className="touch-target gap-1" onClick={() => void ask({ retryOf: unanswered.id }, unanswered.content)}>
-                  <HugeiconsIcon icon={Refresh01Icon} size={14} aria-hidden />
+                <Button size="sm" variant="outline" className="touch-target gap-1 in-data-[messenger]:h-11 in-data-[messenger]:px-4 in-data-[messenger]:text-[14.5px]" onClick={() => void ask({ retryOf: unanswered.id }, unanswered.content)}>
+                  <HugeiconsIcon icon={Refresh01Icon} size={14} aria-hidden className="in-data-[messenger]:h-[18px]! in-data-[messenger]:w-[18px]!" />
                   다시 묻기
                 </Button>
               </div>
@@ -476,9 +647,23 @@ export function OmnisRoom({
           </div>
         </div>
       </div>
+      {away && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={followBottom}
+          data-scroll-bottom
+          className="touch-target absolute bottom-3 left-1/2 -translate-x-1/2 gap-1 rounded-full bg-background/95 text-[12px] shadow-md backdrop-blur in-data-[messenger]:h-11 in-data-[messenger]:px-4 in-data-[messenger]:text-[14.5px]"
+        >
+          <HugeiconsIcon icon={ArrowDown01Icon} size={14} aria-hidden className="in-data-[messenger]:h-[18px]! in-data-[messenger]:w-[18px]!" />
+          {unseen ? "새 답" : "맨 아래로"}
+        </Button>
+      )}
+      </div>
 
       {quotaNotice && (
-        <p role="status" data-agent-quota className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-1 text-center text-[12.5px] text-amber-700 dark:text-amber-300">
+        <p role="status" data-agent-quota className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-1 text-center text-[12.5px] text-amber-700 dark:text-amber-300 in-data-[messenger]:text-[14.5px]">
           {quotaNotice}
         </p>
       )}
@@ -488,18 +673,58 @@ export function OmnisRoom({
         onChange={setDraft}
         onSend={() => send(draft)}
         busy={busy}
+        onStop={stop}
+        stopping={stopping}
         autoFocus={isNew}
         waitingCard={waitingCard}
-        compact={!!embedded}
+        attach={IS_DEMO ? undefined : { items: attach.items, onFiles: attach.addFiles, onNas: attach.addNas, onRemove: attach.remove }}
       />
     </div>
   )
 }
 
-/** 스트림으로 받는 중인 답 — 도는 도구 한 줄 + 지금까지 쓴 글. 글이 오기 전에는 스켈레톤 */
-function LiveOmnis({ text, tools, resuming = false }: { text: string; tools: LiveTool[]; resuming?: boolean }) {
+/**
+ * 새 대화의 첫 화면 — 옴니스 소개와 예시 질문. 랜딩의 업무 시연(components/landing/motion/workflow-film.tsx)도
+ * 실제 화면과 같은 모양을 쓰려고 부른다
+ */
+export function OmnisWelcome({ embedded = false, onPick }: { embedded?: boolean; onPick: (example: string) => void }) {
+  return (
+    <div className={cn("flex flex-col items-center gap-4 text-center", embedded ? "py-4" : "py-8 sm:py-14")}>
+      <span className="ai-rainbow-border flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary in-data-[messenger]:size-[68px] in-data-[messenger]:rounded-3xl in-data-[messenger]:[&_svg]:size-[34px]">
+        <HugeiconsIcon icon={BubbleChatSparkIcon} size={24} aria-hidden />
+      </span>
+      <div>
+        <h2 className="text-[18px] font-bold tracking-[-0.02em] in-data-[messenger]:text-[26px]">옴니스에게 물어보세요</h2>
+        <p className="mt-1 break-keep text-[12.5px] text-muted-foreground in-data-[messenger]:mt-2 in-data-[messenger]:text-[16px] in-data-[messenger]:leading-[1.6]">
+          업무 · 지식 카드 · 주간보고 · 채팅 · 지식재산권 · 회사 기록을 찾아 답합니다. 업무를 만들거나 고치는 일은 확인 카드를 띄우고, 확인하면 실행합니다.
+        </p>
+      </div>
+      <div className={cn("grid w-full max-w-[520px] gap-2 in-data-[messenger]:gap-3", !embedded && "sm:grid-cols-2")}>
+        {EXAMPLES.map((ex) => (
+          <button
+            key={ex}
+            type="button"
+            onClick={() => onPick(ex)}
+            className="touch-target rounded-lg border bg-card px-3 py-2.5 text-left text-[12.5px] in-data-[messenger]:rounded-2xl in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[16px] in-data-[messenger]:leading-[1.5] transition-colors hover:border-border-strong hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            {ex}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 스트림으로 받는 중인 답 — 도는 도구 한 줄 + 지금까지 쓴 글. 글이 오기 전에는 스켈레톤.
+ * 아래 MyMessage · OmnisMessage · Composer 와 함께 온보딩 시연(components/onboarding/tour-demo.tsx)도 그린다 —
+ * 시연이 실제 화면과 어긋나지 않게 같은 컴포넌트를 쓴다
+ */
+export function LiveOmnis({ text, tools, resuming = false, stopping = false }: { text: string; tools: LiveTool[]; resuming?: boolean; stopping?: boolean }) {
   const running = tools.filter((t) => t.state === "running").at(-1)
-  const status = resuming
+  const status = stopping
+    ? "멈추는 중…"
+    : resuming
     ? "옴니스가 답하는 중… 이어 받는 중"
     : running
     ? `${TOOL_LABEL[running.name] ?? running.name} 보는 중…`
@@ -509,22 +734,22 @@ function LiveOmnis({ text, tools, resuming = false }: { text: string; tools: Liv
         ? "쓰는 중…"
         : "옴니스가 생각하는 중…"
   return (
-    <div className="mt-4 flex gap-2.5" role="status" aria-live="polite" data-agent-live>
+    <div className="mt-4 flex gap-2.5 in-data-[messenger]:mt-6 in-data-[messenger]:gap-3" role="status" aria-live="polite" data-agent-live>
       <OmnisAvatar />
       <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+        <div className="mb-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground in-data-[messenger]:mb-2 in-data-[messenger]:gap-2 in-data-[messenger]:text-[14.5px]">
           <Spinner />
           {status}
         </div>
         <ToolTrail items={tools} live />
-        <div className="min-w-0 rounded-xl border bg-card px-3.5 py-3">
+        <div className="min-w-0 py-1">
           {text ? (
             <OmnisAnswerBody answer={text} sources={[]} />
           ) : (
             <div className="flex flex-col gap-2">
-              <Skeleton className="h-3 w-[85%]" />
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-[60%]" />
+              <Skeleton className="h-3 w-[85%] in-data-[messenger]:h-4" />
+              <Skeleton className="h-3 w-full in-data-[messenger]:h-4" />
+              <Skeleton className="h-3 w-[60%] in-data-[messenger]:h-4" />
             </div>
           )}
         </div>
@@ -533,21 +758,27 @@ function LiveOmnis({ text, tools, resuming = false }: { text: string; tools: Liv
   )
 }
 
-function MyMessage({ content, iso, sending = false, fresh = false }: { content: string; iso?: string; sending?: boolean; fresh?: boolean }) {
+export function MyMessage({ content, iso, sending = false, fresh = false, files }: { content: string; iso?: string; sending?: boolean; fresh?: boolean; files?: FileInfo[] }) {
   return (
-    <div className={cn("mt-3 flex flex-col items-end gap-0.5", fresh && MESSAGE_ENTER)}>
+    <div className={cn("mt-3 flex flex-col items-end gap-0.5 in-data-[messenger]:mt-5 in-data-[messenger]:gap-1", fresh && MESSAGE_ENTER)}>
       <div
         className={cn(
-          "max-w-[85%] whitespace-pre-wrap break-keep rounded-2xl rounded-br-md bg-primary/10 px-3.5 py-2 text-[13.5px] leading-[1.6] [overflow-wrap:anywhere]",
+          "max-w-[85%] whitespace-pre-wrap break-keep rounded-2xl rounded-br-md bg-primary/10 px-3.5 py-2 text-[13.5px] leading-[1.6] [overflow-wrap:anywhere] in-data-[messenger]:rounded-[24px] in-data-[messenger]:rounded-br-lg in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] in-data-[messenger]:leading-[1.6]",
           sending && "opacity-60",
         )}
       >
         {tidyBody(content)}
       </div>
+      {/* 질문에 붙인 파일 — 사람 방과 같은 파일 카드(이미지는 미리보기), 말풍선 아래 오른쪽 */}
+      {files && files.length > 0 && (
+        <div className={cn("flex max-w-[85%] justify-end [&>div]:items-end", sending && "opacity-60")}>
+          <MessageFiles files={files} />
+        </div>
+      )}
       {sending ? (
-        <span className="text-[10.5px] text-muted-foreground">보내는 중…</span>
+        <span className="text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]">보내는 중…</span>
       ) : iso ? (
-        <MessageTime iso={iso} className="text-[10.5px]" />
+        <MessageTime iso={iso} className="text-[10.5px] in-data-[messenger]:text-[12.5px]" />
       ) : null}
     </div>
   )
@@ -555,105 +786,109 @@ function MyMessage({ content, iso, sending = false, fresh = false }: { content: 
 
 function OmnisAvatar() {
   return (
-    <span aria-hidden className="ai-rainbow-border mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+    <span aria-hidden className="ai-rainbow-border mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary in-data-[messenger]:size-[38px] in-data-[messenger]:[&_svg]:size-[21px]">
       <HugeiconsIcon icon={BubbleChatSparkIcon} size={15} />
     </span>
   )
 }
 
-function OmnisMessage({ message, fresh, tools }: { message: OmnisRoomMessage; fresh: boolean; tools: ToolUse[] }) {
+export function OmnisMessage({ message, fresh, tools, stopped = false }: { message: OmnisRoomMessage; fresh: boolean; tools: ToolUse[]; stopped?: boolean }) {
   return (
-    <div className={cn("mt-4 flex gap-2.5", fresh && MESSAGE_ENTER)}>
+    <div className={cn("mt-4 flex gap-2.5 in-data-[messenger]:mt-6 in-data-[messenger]:gap-3", fresh && MESSAGE_ENTER)}>
       <OmnisAvatar />
       <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-baseline gap-1.5">
-          <span className="text-[13px] font-semibold">옴니스</span>
+        <div className="mb-1 flex items-baseline gap-1.5 in-data-[messenger]:mb-1.5 in-data-[messenger]:gap-2">
+          <span className="text-[13px] font-semibold in-data-[messenger]:text-[15.5px]">옴니스</span>
           <MessageTime iso={message.createdAt} />
         </div>
         <ToolTrail items={tools} />
-        <div className="min-w-0 rounded-xl border bg-card px-3.5 py-3">
+        <div className="min-w-0 py-1">
           <OmnisAnswerBody answer={message.content} sources={message.sources} />
         </div>
+        {/* 옴니스가 만든 파일 — 눌러 내려받는다(방 주인만, lib/file-access.ts) */}
+        {message.files && message.files.length > 0 && <MessageFiles files={message.files} />}
+        {stopped && <StoppedTag />}
       </div>
     </div>
   )
 }
 
-function Composer({
+/** 사용자가 멈춘 답의 꼬리표 */
+function StoppedTag() {
+  return (
+    <span data-agent-stopped className="mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground in-data-[messenger]:mt-1.5 in-data-[messenger]:px-2.5 in-data-[messenger]:text-[13px]">
+      <span aria-hidden className="size-[7px] rounded-[1.5px] bg-current in-data-[messenger]:size-[9px]" />
+      중지됨
+    </span>
+  )
+}
+
+/** 글이 흐르기 전에 멈춘 질문 — 옴니스 자리에 한 줄 */
+function StoppedNote() {
+  return (
+    <div className="mt-4 flex items-center gap-2.5 in-data-[messenger]:mt-6 in-data-[messenger]:gap-3" data-agent-stopped>
+      <OmnisAvatar />
+      <span className="text-[12.5px] text-muted-foreground in-data-[messenger]:text-[15px]">답을 멈췄어요</span>
+    </div>
+  )
+}
+
+export function Composer({
   textareaRef,
   value,
   onChange,
   onSend,
   busy,
+  onStop,
+  stopping = false,
   autoFocus,
   waitingCard,
-  compact = false,
+  attach,
 }: {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   value: string
   onChange: (v: string) => void
   onSend: () => void
   busy: boolean
+  /** 답하는 동안 보내기 자리를 「답변 중지」 로 바꾼다. 없으면(온보딩 시연) 예전처럼 도는 표시 */
+  onStop?: () => void
+  /** 중지를 눌러 서버가 멈추기를 기다리는 중 */
+  stopping?: boolean
   autoFocus: boolean
   waitingCard: boolean
-  /** 오른쪽 패널 안 — 좁은 칸이라 여백을 줄인다 */
-  compact?: boolean
+  /** 알약 안 왼쪽 ＋(첨부)와 입력창 위 칩. 없으면(온보딩 시연 · 데모) ＋ 가 없다 */
+  attach?: {
+    items: PickedFile[]
+    onFiles: (files: File[]) => void
+    onNas: (entry: { path: string; name: string; size?: number }) => void
+    onRemove: (key: string) => void
+  }
 }) {
-  // 내용만큼 늘린다 — 6줄을 넘으면 안에서 민다
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-  }, [value, textareaRef])
+  const items = attach?.items ?? []
+  const attachReady = items.length > 0 && items.every((i) => i.status === "done")
+  // 파일만 붙여도 보낼 수 있다. 올리는 중 · 실패한 파일이 있으면 기다린다(칩에 상태가 보인다)
+  const canSend = !busy && (value.trim().length >= 2 || attachReady) && value.length <= OMNIS_MESSAGE_MAX && items.every((i) => i.status === "done")
 
-  const tooLong = value.length > OMNIS_MESSAGE_MAX
-  const canSend = !busy && value.trim().length >= 2 && !tooLong
-
+  // 공통 입력창에 자동완성을 넘기지 않는다 — 여기서 친 `/업무` · `@이름` · `#업무` 는 옴니스에게 가는 그냥 글이다(업무 재구성으로 가지 않는다)
   return (
-    <div className={cn("shrink-0 border-t bg-background pb-3 pt-2", compact ? "px-2.5" : "px-3 sm:px-6")}>
-      <div className="mx-auto w-full max-w-[760px]">
-        {/* 한 줄일 때 글자와 보내기 버튼의 세로 가운데가 같게 — 입력칸 최소 높이 = 버튼 높이(PC 32px · 터치 44px),
-            남는 높이는 위아래 여백으로. 여러 줄로 늘면 버튼은 아래에 붙는다(items-end). 2026-10-29 폰에서 글자가 아래로 처졌다 */}
-        <div className="flex items-end gap-2 rounded-[22px] border bg-card py-1 pr-1 pl-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong">
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={(e) => {
-              // PC 는 Enter 보내기 · Shift+Enter 줄바꿈, 폰은 Enter 가 줄바꿈이고 보내기는 버튼으로만(lib/enter-to-send.ts)
-              if (enterSends(e, isTouchTyping())) {
-                e.preventDefault()
-                if (canSend) onSend()
-              }
-            }}
-            rows={1}
-            enterKeyHint="enter"
-            autoFocus={autoFocus}
-            aria-label="옴니스에게 보낼 글"
-            placeholder={busy ? "옴니스가 답하는 중…" : "옴니스에게 물어보세요"}
-            className="max-h-40 min-h-[32px] flex-1 resize-none bg-transparent py-[5px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:py-[11px] [@media(pointer:coarse)]:text-[16px]"
-          />
-          <Button
-            size="icon"
-            onClick={onSend}
-            disabled={!canSend}
-            aria-label="보내기"
-            title="보내기 (Enter)"
-            className="touch-target ai-rainbow-border size-[32px] shrink-0 rounded-full"
-          >
-            {busy ? <Spinner /> : <HugeiconsIcon icon={ArrowUp01Icon} size={16} aria-hidden />}
-          </Button>
-        </div>
-        <div className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground">
-          <span className={cn("hidden [@media(pointer:coarse)]:hidden!", !compact && "sm:inline")}>
-            {waitingCard ? "위 확인 카드를 눌러 주세요 · 새 글을 보내면 그 제안은 버려집니다" : "Enter 보내기 · Shift+Enter 줄바꿈 · 쓰기는 확인 카드를 거칩니다"}
-          </span>
-          <span className={cn("ml-auto tabular-nums", tooLong && "font-medium text-destructive")}>
-            {value.length > OMNIS_MESSAGE_MAX * 0.8 ? `${value.length}/${OMNIS_MESSAGE_MAX}` : ""}
-          </span>
-        </div>
-      </div>
-    </div>
+    <RoomComposer
+      textareaRef={textareaRef}
+      value={value}
+      onChange={onChange}
+      onSend={onSend}
+      canSend={canSend}
+      busy={busy}
+      onStop={onStop}
+      stopping={stopping}
+      autoFocus={autoFocus}
+      accent
+      ariaLabel="옴니스에게 보낼 글"
+      placeholder={busy ? "옴니스가 답하는 중…" : "옴니스에게 물어보세요"}
+      hint={waitingCard ? "위 확인 카드를 눌러 주세요 · 새 글을 보내면 그 제안은 버려집니다" : "Enter 보내기 · Shift+Enter 줄바꿈 · 쓰기는 확인 카드를 거칩니다"}
+      maxLength={OMNIS_MESSAGE_MAX}
+      onFiles={attach?.onFiles}
+      above={attach && <AttachChips items={items} onRemove={attach.onRemove} />}
+      plus={attach && <ComposerPlus files={{ onFiles: attach.onFiles, onNas: attach.onNas }} />}
+    />
   )
 }

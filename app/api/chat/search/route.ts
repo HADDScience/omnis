@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { roomAccess } from "@/lib/chat-rooms"
+import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
 
 /** 한 번에 내려보내는 결과 수. 더 있으면 마지막 결과 시각을 before 로 다시 부른다 */
 const PAGE = 20
@@ -56,6 +57,7 @@ export async function GET(req: NextRequest) {
       content: true,
       createdAt: true,
       author: { select: { id: true, name: true } },
+      externalSpeaker: EXTERNAL_SPEAKER_SELECT,
       task: { select: { id: true, name: true, slug: true } },
     },
   })
@@ -87,7 +89,7 @@ export async function GET(req: NextRequest) {
     results: page.map((r) => ({
       id: r.id,
       createdAt: r.createdAt,
-      author: r.author,
+      author: displayAuthor(r.author, r.externalSpeaker),
       task: r.task,
       snippet: snippetAround(r.content, text ?? ""),
     })),

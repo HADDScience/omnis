@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { PriorityRating } from "@/components/ui/priority-rating"
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS } from "@/lib/constants"
+import { UNASSIGNED_LABEL } from "@/lib/task-unassigned"
 import { cn } from "@/lib/utils"
 
 /**
@@ -22,6 +23,8 @@ export interface TaskCardData {
   status: string
   priority: string | null
   ownerName: string | null
+  /** 미완료인데 담당자가 없다 — lib/task-unassigned.ts */
+  unassigned?: boolean
   projectName: string | null
   productName: string | null
   productColor: string | null
@@ -66,6 +69,12 @@ function formatDeadline(deadline: string | null, isDone: boolean) {
     overdue: false,
   }
 }
+
+const UNASSIGNED_BADGE = (
+  <Badge variant="outline" className="h-5 shrink-0 border-destructive/40 px-1.5 text-[10px] text-destructive">
+    {UNASSIGNED_LABEL}
+  </Badge>
+)
 
 function CardSurface({ readOnly, href, className, children }: { readOnly: boolean; href: string; className: string; children: ReactNode }) {
   return readOnly ? <div className={cn(className, "cursor-default")}>{children}</div> : <Link href={href} className={className}>{children}</Link>
@@ -122,6 +131,7 @@ export function TaskCard({ task, variant = "board", className, readOnly = false 
           )}
         </span>
         {task.priority && <PriorityRating value={task.priority} disabled size={12} />}
+        {task.unassigned && UNASSIGNED_BADGE}
         {task.ownerName && (
           <Avatar className="h-6 w-6 shrink-0">
             <AvatarFallback className="text-[10px]">{task.ownerName.charAt(0)}</AvatarFallback>
@@ -167,6 +177,7 @@ export function TaskCard({ task, variant = "board", className, readOnly = false 
       <div className="flex items-center gap-1.5">
         {task.priority && <PriorityRating value={task.priority} disabled size={11} />}
         {projectChip}
+        {task.unassigned && UNASSIGNED_BADGE}
         {task.ownerName && (
           <Avatar className="ml-auto h-5 w-5 shrink-0">
             <AvatarFallback className="text-[9px]">{task.ownerName.charAt(0)}</AvatarFallback>

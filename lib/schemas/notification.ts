@@ -69,7 +69,27 @@ export function notificationHref(type: string, entityId: string | null): string 
   // 사람끼리 방에서 나를 부른 글 — 그 방을 연다(참여자가 아니면 방이 404 다)
   if (type === "chat_mention") return `/chat/${entityId}`
   if (type === "crm_invoice_request") return `/crm/invoices/new?quote=${entityId}`
+  // 새 일정 — entityId 가 `YYYY-MM-DD:<일정 id>` 다(lib/notify-rules.ts calendarNotices). 캘린더의 그 날짜를 연다
+  if (type === "calendar_event_added") {
+    const day = /^(\d{4}-\d{2}-\d{2}):/.exec(entityId)?.[1]
+    return day ? `/calendar?day=${day}` : "/calendar"
+  }
   // 칼럼 검토는 홈페이지 관리 화면에서 한다(Omnis 밖)
   if (type.startsWith("column_")) return `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN ?? "https://haddscience.com"}/admin/column?draft=${entityId}`
   return null
 }
+
+/**
+ * 종류별 푸시 켜고 끄기(마이 → 기기 알림). PATCH /api/notification-prefs 본문이자 GET 응답의 모양.
+ * DB 는 NotificationPref(chatPush · taskPush · calendarPush). 종류 나눔은 lib/notify-rules.ts categoryOfType
+ */
+export const NotificationPrefsSchema = z.object({
+  chat: z.boolean(),
+  task: z.boolean(),
+  calendar: z.boolean(),
+})
+export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>
+export const NotificationPrefsPatchSchema = NotificationPrefsSchema.partial().refine(
+  (v) => v.chat !== undefined || v.task !== undefined || v.calendar !== undefined,
+  "바꿀 것이 없습니다",
+)
