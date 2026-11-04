@@ -145,11 +145,14 @@ test.describe("폰", () => {
   test("읽던 자리를 지킨다 — 입력창 바로 위 글이 그대로다", async ({ page }) => {
     await mockViewport(page)
     await quickLogin(page, "팀장")
+    // 전사방에 글을 몰아넣지 않는다 — 다른 시험이 그 방의 폴링을 잰다
+    const room = (await roomUrls(page)).사람
+    const roomId = room.split("/").at(-1)
     for (let i = 0; i < 30; i++) {
-      const res = await page.request.post("/api/chat/messages", { data: { roomId: "default-room", content: `자리 시험 ${i} ${Date.now()}` } })
+      const res = await page.request.post("/api/chat/messages", { data: { roomId, content: `자리 시험 ${i} ${Date.now()}` } })
       expect(res.ok()).toBe(true)
     }
-    await open(page, COMPANY)
+    await open(page, room)
     const list = page.locator("[data-keep-bottom]").first()
     const fromBottom = () => list.evaluate((el) => Math.round(el.scrollHeight - el.clientHeight - el.scrollTop))
 

@@ -45,3 +45,14 @@ last_verified: 2026-11-04
 - `tests/feature/composer-plus-sheet.spec.ts`(데모 빌드 — 열기 · 닫기 · 언급 항목 · PC 메뉴)
 - `scripts/verify-composer-plus-sheet.mjs`(일반 빌드 — 네 방 항목, 사진 · 파일 · 시놀로지, 첨부 유지). 데모 빌드에 첨부가 없어 CI 에는 들어가지 않는다
 - 실제 아이폰에서 고르기 창의 메뉴 구성 · 밀기 감각 · 키보드 내림과 시트가 겹치는 순간은 확인하지 못했다
+
+# 채팅 목록의 「새 대화」 줄을 뺀다
+
+- `components/messenger/room-list.tsx` 의 `NewChatRow` 제거. `/chat/new` · `/chat/new/people` 라우트는 그대로다
+- 새 대화는 목록 칸 오른쪽 아래 FAB(`NewChatFab`)의 「옴니스와 대화」 · 「사람과 대화」 로 시작한다. PC 는 `/chat` 가운데 칸이 곧 옴니스 새 대화이고, 패널 옴니스 탭의 새 대화 단추도 그대로다
+- `/chat/new` 를 미리 받던 목록 줄의 링크가 사라졌다. FAB 메뉴를 열 때 두 주소를 미리 받는 코드는 그대로다
+- 시험: `tests/feature/new-chat-entry.spec.ts`
+
+## 남은 것
+
+한 방에 10초 안에 글이 30건을 넘게 몰리면, 폴링의 겹침 구간이 첫 화면보다 앞의 글을 돌려줘 목록을 한 번 더 읽는다(`ChatPanel` 의 `seenIds`, PR #143). 화면 동작은 그대로이고 고치지 않았다. `mobile-keyboard` 시험은 이 때문에 전사방 대신 사람 방에 글을 넣는다.
