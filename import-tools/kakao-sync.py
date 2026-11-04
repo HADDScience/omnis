@@ -259,10 +259,16 @@ def folder_rooms(folder, mouse, max_rooms):
         x, y, w, h = geo(tab(prefix))
         mouse.click(x + w / 2, y + h / 2, hover=0.3)
 
-    tab(f"{folder} folder")
     activate()
     AXUIElementPerformAction(main, "AXRaise")
     wait_for(lambda: attr(ax_app(), "AXFrontmost"), "카톡이 앞으로 나오기", timeout=5)
+    # 친구 탭이 떠 있으면 폴더 탭 줄 자체가 없다
+    has_tabs = lambda: child(main, Identifier="_NS:28") is not None
+    if not has_tabs():
+        x, y, w, h = geo(child(main, Identifier="chatrooms"))
+        mouse.click(x + w / 2, y + h / 2, hover=0.3)
+        wait_for(has_tabs, "채팅 목록 화면", timeout=5)
+    tab(f"{folder} folder")
     switch_to_folder(lambda: click("All folder"), lambda: click(f"{folder} folder"),
                      lambda: len(kids(kids(chat_table())[0])), max_rooms)
     scroll_chat(0.0)
