@@ -34,7 +34,7 @@ from ApplicationServices import (
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kakao_folder import FolderError, check_folder, csv_name_for, csv_room, duplicates, parse_report, room_key, summary
+from kakao_folder import FolderError, check_folder, csv_name_for, csv_room, duplicates, parse_report, room_key, summary, switch_to_folder
 
 BUNDLE = "com.kakao.KakaoTalkMac"
 REPO = Path(__file__).resolve().parents[1]
@@ -101,7 +101,12 @@ def geo(el):
 
 
 def press(el):
-    err = AXUIElementPerformAction(el, "AXPress")
+    # -25204: 저장 창처럼 막 뜬 창은 잠시 동작을 받지 못한다(카톡 26.9.0, 2026-11-04 실측)
+    for _ in range(15):
+        err = AXUIElementPerformAction(el, "AXPress")
+        if err != -25204:
+            break
+        time.sleep(0.4)
     if err != 0:
         raise Abort(f"누르기 실패 ({err})")
 
@@ -243,19 +248,43 @@ def scroll_chat(value):
         time.sleep(0.4)
 
 
-def folder_rooms(folder, mouse):
-    """폴더 탭을 눌러 그 폴더의 방 이름을 돌려준다. 탭을 못 찾으면 전체 목록을 잘못 읽지 않게 멈춘다."""
+def folder_rooms(folder, mouse, max_rooms):
+    """폴더 탭을 눌러 그 폴더의 방 이름을 돌려준다. 탭을 못 찾거나 전환이 안 되면 전체 목록을 잘못 읽지 않게 멈춘다."""
     main = main_window()
-    area = next((k for k in kids(main) if attr(k, "AXIdentifier") == "_NS:28"), None)
-    groups = kids((kids(kids(area)[0]) or [None])[0]) if area is not None else []
-    tab = next((g for g in groups if any((attr(t, "AXValue") or "").startswith(f"{folder} folder") for t in kids(g))), None)
-    if tab is None:
-        raise FolderError(f"「{folder}」 폴더 탭을 찾지 못했다")
+
+    def tab(prefix):
+        """탭 줄은 옆으로 밀려 있을 수 있다 — 밖에 있는 탭은 목록에 없거나 좌표가 영역 밖이다(누르면 엉뚱한 곳이 눌린다)."""
+        area = next((k for k in kids(main) if attr(k, "AXIdentifier") == "_NS:28"), None)
+        if area is None:
+            raise FolderError("폴더 탭 줄이 없다")
+        ax, _, aw, _ = geo(area)
+        bar = next((k for k in kids(area) if attr(k, "AXRole") == "AXScrollBar"), None)
+        for value in (None, 0.0, 0.5, 1.0):
+            if value is not None and bar is not None:
+                AXUIElementSetAttributeValue(bar, "AXValue", value)
+                time.sleep(0.4)
+            groups = kids((kids(kids(area)[0]) or [None])[0])
+            found = next((g for g in groups if any((attr(t, "AXValue") or "").startswith(prefix) for t in kids(g))), None)
+            if found is not None and ax <= geo(found)[0] and geo(found)[0] + geo(found)[2] <= ax + aw:
+                return found
+        raise FolderError(f"「{prefix}」 탭을 찾지 못했다")
+
+    def click(prefix):
+        x, y, w, h = geo(tab(prefix))
+        mouse.click(x + w / 2, y + h / 2, hover=0.3)
+
     activate()
     AXUIElementPerformAction(main, "AXRaise")
-    x, y, w, h = geo(tab)
-    mouse.click(x + w / 2, y + h / 2, hover=0.3)
-    time.sleep(1.5)
+    wait_for(lambda: attr(ax_app(), "AXFrontmost"), "카톡이 앞으로 나오기", timeout=5)
+    # 친구 탭이 떠 있으면 폴더 탭 줄 자체가 없다
+    has_tabs = lambda: child(main, Identifier="_NS:28") is not None
+    if not has_tabs():
+        x, y, w, h = geo(child(main, Identifier="chatrooms"))
+        mouse.click(x + w / 2, y + h / 2, hover=0.3)
+        wait_for(has_tabs, "채팅 목록 화면", timeout=5)
+    tab(f"{folder} folder")
+    switch_to_folder(lambda: click("All folder"), lambda: click(f"{folder} folder"),
+                     lambda: len(kids(kids(chat_table())[0])), max_rooms)
     scroll_chat(0.0)
     return [n for n, _ in row_names()]
 
@@ -285,7 +314,7 @@ def open_room(room, mouse):
         time.sleep(0.3)
         x, y, w, h = geo(rows[0])
         mouse.double_click(x + w / 2, y + h / 2)
-        new = wait_for(lambda: next((z for z in windows() if attr(z, "AXIdentifier") == "_NS:441" and nfc(attr(z, "AXTitle") or "") not in before), None), f"{room} 창")
+        new = wait_for(lambda: next((z for z in windows() if child(z, Role="AXButton", Title="Send") is not None and nfc(attr(z, "AXTitle") or "") not in before), None), f"{room} 창")
         TITLES[room] = nfc(attr(new, "AXTitle") or "")
         opened = True
     focus_room(room)
@@ -668,6 +697,7 @@ def main():
     start_pos = mouse.pos()
     todo, failed, not_started = [], {}, []
     stopped = False
+    fails_in_row = 0
     try:
         if args.room:
             rooms = [nfc(r) for r in args.room]
@@ -676,7 +706,7 @@ def main():
                 sys.exit("import-config.json 에 me(내 계정 이름)가 없다 — 새 방의 참여자를 정할 수 없다")
             try:
                 with limit("폴더 목록 읽기", args.step_timeout):
-                    rooms = check_folder(folder_rooms(folder, mouse), config.get("rooms", {}), folder, args.max_rooms, args.max_new_rooms)
+                    rooms = check_folder(folder_rooms(folder, mouse, args.max_rooms), config.get("rooms", {}), folder, args.max_rooms, args.max_new_rooms)
             except (FolderError, Abort) as e:
                 sys.exit(f"멈춤 — {e}. 아무 방도 건드리지 않았다")
             log(f"「{folder}」 폴더 {len(rooms)}개 방")
@@ -694,12 +724,15 @@ def main():
             try:
                 csv_path, got = sync_room(room, key, state, mouse, args)
                 todo.append((key, csv_path, got))
+                fails_in_row = 0
             except Exception as e:
                 failed[key] = str(e)[:200]
                 log(f"✗ {key}: {e!r}" if not isinstance(e, Abort) else f"✗ {key}: {e}")
-                if "마우스" in str(e):
+                fails_in_row += 1
+                # 연달아 실패하면 화면을 잘못 읽는 것이다 — 방 창을 더 열지 않는다
+                if "마우스" in str(e) or fails_in_row >= 2:
                     not_started = [r for r in rooms[i + 1:]]
-                    stopped = True
+                    stopped = "마우스" in str(e)
                     break
             finally:
                 state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))

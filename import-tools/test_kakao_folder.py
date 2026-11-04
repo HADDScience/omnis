@@ -1,9 +1,43 @@
 # python3 -m unittest import-tools/test_kakao_folder.py — 카톡 없이 돈다. 이름은 지어낸 값이다.
 import os, sys, unittest
 sys.path.insert(0, os.path.dirname(__file__))
-from kakao_folder import FolderError, check_folder, csv_name_for, csv_room, duplicates, parse_report, room_key, safe_key, summary
+from kakao_folder import FolderError, check_folder, csv_name_for, csv_room, duplicates, parse_report, room_key, safe_key, summary, switch_to_folder
 
 ROOMS = {"전사방": {"kind": "COMPANY"}, "Group Chat": {"kind": "GROUP", "listName": "갑, 을, 병"}}
+
+
+class SwitchToFolder(unittest.TestCase):
+    """rows 는 지금 탭의 행 수. absorb 만큼의 클릭은 창을 앞으로 가져오는 데만 쓰여 듣지 않는다."""
+    def run_switch(self, start, absorb=0, stuck=False, tries=3):
+        state = {"rows": start, "absorb": absorb, "clicks": 0}
+
+        def click(rows):
+            def go():
+                state["clicks"] += 1
+                if state["absorb"] > 0:
+                    state["absorb"] -= 1
+                elif not stuck:
+                    state["rows"] = rows
+            return go
+        switch_to_folder(click(750), click(11), lambda: state["rows"], 50, tries=tries, sleep=lambda _: None)
+        return state
+
+    def test_전체_탭을_거쳐_폴더로_간다(self):
+        self.assertEqual(self.run_switch(750), {"rows": 11, "absorb": 0, "clicks": 2})
+
+    def test_다른_폴더에_있어도_전체를_거친다(self):
+        self.assertEqual(self.run_switch(3)["rows"], 11)
+
+    def test_첫_클릭이_먹혀도_다시_눌러_바뀐다(self):
+        self.assertEqual(self.run_switch(750, absorb=1)["rows"], 11)
+
+    def test_탭이_끝내_안_바뀌면_멈춘다(self):
+        with self.assertRaises(FolderError):
+            self.run_switch(750, stuck=True)
+
+    def test_전체_탭으로_못_가면_폴더를_읽지_않는다(self):
+        with self.assertRaises(FolderError):
+            self.run_switch(3, stuck=True)
 
 
 class RoomKey(unittest.TestCase):

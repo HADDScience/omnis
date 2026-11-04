@@ -1,5 +1,5 @@
 # kakao-sync.py 의 판단만 모은 곳 — 카톡 · AppKit 없이 시험한다(import-tools/test_kakao_folder.py).
-import hashlib, json, re, unicodedata
+import hashlib, json, re, time, unicodedata
 
 REPORT_PREFIX = "@@kakao-report "
 nfc = lambda s: unicodedata.normalize("NFC", s)
@@ -54,6 +54,22 @@ def check_folder(names, rooms, folder, max_rooms, max_new):
     if len(new) > max_new:
         raise FolderError(f"새 방이 {len(new)}개다 (상한 {max_new}, --max-new-rooms). 폴더를 확인한 뒤 상한을 올려 돌린다")
     return names
+
+
+def switch_to_folder(click_all, click_folder, count, max_rooms, tries=3, wait=5.0, sleep=time.sleep):
+    """폴더 탭 전환을 행 수로 확인한다. 카톡이 뒤에 있으면 클릭이 창 앞으로 가져오는 데만 쓰여 탭이 그대로일 수 있다.
+    접근성으로는 어느 탭이 선택됐는지 알 수 없어(AXSelected 가 모두 거짓), 전체 탭(행이 많다)을 거쳐 폴더 탭(행이 적다)으로 간다.
+    클릭이 들으면 행 수는 0.1초 안에 바뀐다(2026-11-04 실측)."""
+    def settle(click, ok, what):
+        for _ in range(tries):
+            click()
+            for _ in range(int(wait / 0.2)):
+                if ok(count()):
+                    return
+                sleep(0.2)
+        raise FolderError(f"{what} 탭으로 바뀌지 않았다 (지금 {count()}행)")
+    settle(click_all, lambda n: n > max_rooms, "전체")
+    settle(click_folder, lambda n: n <= max_rooms, "폴더")
 
 
 def duplicates(names):
