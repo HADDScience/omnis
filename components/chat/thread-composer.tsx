@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { MessageInput } from "@/components/chat/message-input"
 import { apiUrl } from "@/lib/base-path"
 import { reportIncident } from "@/lib/report-client-error"
+import { noteAttachAttempt } from "@/lib/ui-metrics/client"
 import { createSerialQueue } from "@/lib/serial-queue"
 
 /** 자동완성 후보 — 스레드 목록이 한 번 불러와 목록(멘션 링크)과 입력창이 같이 쓴다 */
@@ -80,6 +81,7 @@ export function ThreadComposer({
     try {
       // NAS 에 먼저 올리고 받은 id 를 메시지에 붙인다 — 채팅 패널과 같은 순서
       const fileIds: string[] = []
+      if (attached?.length) noteAttachAttempt()
       for (const f of attached ?? []) {
         const form = new FormData()
         form.append("file", f)
