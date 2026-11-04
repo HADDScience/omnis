@@ -1,7 +1,7 @@
 // 사람끼리 방 첨부 화면 확인(Playwright) — 모델을 부르지 않는다. 로컬 dev 에서만 돌린다.
 // 실행: A=$(… agent-cookie.ts 정우창) B=$(… 윤훈) C=$(… 허찬) BN=윤훈 BASE=http://localhost:3118 OUT=<캡처 폴더> IMAGE=<png> \
 //       node scripts/verify-people-attach.mjs
-//  1. A(390x844): B 와의 1:1 → ＋ 메뉴(파일 업로드 · 시놀로지 · 사람 언급, 업무 지시 · 업무 언급 없음) → 사진 붙여 보내기 → 말풍선 아래 미리보기
+//  1. A(390x844): B 와의 1:1 → ＋ 시트(사진 · 파일 업로드 · 시놀로지 · 사람 언급, 업무 지시 · 업무 언급 없음) → 사진 붙여 보내기 → 말풍선 아래 미리보기
 //  2. B(390x844): 같은 방에서 그 사진이 보이고 원본이 열린다
 //  3. C(방 밖): 그 파일 주소를 열면 404
 //  남는 것: A·B 1:1 에 시험 글 한 줄과 사진(로컬 DB · NAS _dev)
@@ -39,12 +39,12 @@ let fileHref = null
   const { browser, page } = await open(A)
   await page.goto(roomUrl, { waitUntil: "networkidle" })
   await page.getByRole("button", { name: "추가" }).click()
-  const items = await page.getByRole("menuitem").allInnerTexts()
+  const items = await page.locator("[data-composer-plus-sheet] button").allInnerTexts()
   ok(items.some((t) => t.includes("파일 업로드")) && items.some((t) => t.includes("시놀로지 파일 연결")), `메뉴에 파일 업로드 · 시놀로지 (${items.map((t) => t.split("\n")[0]).join(" / ")})`)
   ok(!items.some((t) => t.includes("업무 지시") || t.includes("업무 언급")), "업무 지시 · 업무 언급은 없다")
   await page.screenshot({ path: `${OUT}/people-1-menu.png` })
   await page.keyboard.press("Escape")
-  await page.locator('input[type="file"]').setInputFiles(IMAGE)
+  await page.locator("[data-composer-file-input]").setInputFiles(IMAGE)
   await page.waitForTimeout(1000)
   await page.screenshot({ path: `${OUT}/people-2-chip.png` })
   await page.getByLabel("메시지 입력").fill(text)

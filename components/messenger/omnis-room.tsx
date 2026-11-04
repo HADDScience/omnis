@@ -567,6 +567,7 @@ export function OmnisRoom({
       <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={listRef}
+        data-keep-bottom
         // overflow-anchor: none — 앞 글을 붙일 때 보던 자리는 위 useLayoutEffect 가 지킨다. 브라우저의 자동 보정과 겹치면 두 번 밀린다
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain [overflow-anchor:none]"
         onScroll={(e) => {

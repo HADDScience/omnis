@@ -12,6 +12,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { LinkPendingMark } from "@/components/ui/pending-link"
 import { cn } from "@/lib/utils"
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { MeAvatarLink } from "./current-user"
 import { useRightPanel } from "./right-panel-context"
@@ -60,22 +61,6 @@ function isActive(tab: Tab, pathname: string) {
 }
 
 /**
- * 폰에서 키보드가 올라오면 하단 nav 가 입력창 위로 떠서 글 쓰는 자리를 가린다 — 그동안은 내린다.
- * visualViewport 가 화면의 3/4 밑으로 줄면 키보드가 열린 것으로 본다.
- */
-function useKeyboardOpen() {
-  const [open, setOpen] = useState(false)
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const check = () => setOpen(vv.height < window.innerHeight * 0.75)
-    vv.addEventListener("resize", check)
-    return () => vv.removeEventListener("resize", check)
-  }, [])
-  return open
-}
-
-/**
  * PC 에서는 페이지가 스크롤돼 내용이 nav 밑으로 들어갈 때만, 폰에서는 늘 — 바 가장자리에 가변 블러 띠를 깐다.
  * 글자가 유리 바로 밑에서 또렷하게 겹치지 않고 서서히 흐려지며 들어간다(Linear 의 스크롤 끝 가변 블러).
  */
@@ -104,6 +89,7 @@ function useMainScrolled() {
 export function FloatingNav() {
   const pathname = usePathname()
   const rightPanel = useRightPanel()
+  // 폰에서 키보드가 올라오면 하단 nav 가 글 쓰는 자리를 가린다 — 그동안은 내린다
   const keyboardOpen = useKeyboardOpen()
   const scrolled = useMainScrolled()
   // 알림 종은 PC 에서는 nav, 폰에서는 페이지 헤더에 하나만 둔다 — 둘 다 그리면 알림을 두 번씩 불러온다

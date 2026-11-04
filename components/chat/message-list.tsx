@@ -335,6 +335,7 @@ export function MessageList({
       )}
       <div
         ref={scrollRef}
+        data-keep-bottom
         onScroll={handleScroll}
         onWheel={userScrolled}
         onTouchMove={userScrolled}
