@@ -34,7 +34,7 @@ from ApplicationServices import (
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kakao_folder import FolderError, check_folder, csv_name_for, csv_room, duplicates, parse_report, room_key, summary
+from kakao_folder import FolderError, check_folder, csv_name_for, csv_room, duplicates, parse_report, room_key, summary, switch_to_folder
 
 BUNDLE = "com.kakao.KakaoTalkMac"
 REPO = Path(__file__).resolve().parents[1]
@@ -243,19 +243,28 @@ def scroll_chat(value):
         time.sleep(0.4)
 
 
-def folder_rooms(folder, mouse):
-    """폴더 탭을 눌러 그 폴더의 방 이름을 돌려준다. 탭을 못 찾으면 전체 목록을 잘못 읽지 않게 멈춘다."""
+def folder_rooms(folder, mouse, max_rooms):
+    """폴더 탭을 눌러 그 폴더의 방 이름을 돌려준다. 탭을 못 찾거나 전환이 안 되면 전체 목록을 잘못 읽지 않게 멈춘다."""
     main = main_window()
-    area = next((k for k in kids(main) if attr(k, "AXIdentifier") == "_NS:28"), None)
-    groups = kids((kids(kids(area)[0]) or [None])[0]) if area is not None else []
-    tab = next((g for g in groups if any((attr(t, "AXValue") or "").startswith(f"{folder} folder") for t in kids(g))), None)
-    if tab is None:
-        raise FolderError(f"「{folder}」 폴더 탭을 찾지 못했다")
+
+    def tab(prefix):
+        area = next((k for k in kids(main) if attr(k, "AXIdentifier") == "_NS:28"), None)
+        groups = kids((kids(kids(area)[0]) or [None])[0]) if area is not None else []
+        found = next((g for g in groups if any((attr(t, "AXValue") or "").startswith(prefix) for t in kids(g))), None)
+        if found is None:
+            raise FolderError(f"「{prefix}」 탭을 찾지 못했다")
+        return found
+
+    def click(prefix):
+        x, y, w, h = geo(tab(prefix))
+        mouse.click(x + w / 2, y + h / 2, hover=0.3)
+
+    tab(f"{folder} folder")
     activate()
     AXUIElementPerformAction(main, "AXRaise")
-    x, y, w, h = geo(tab)
-    mouse.click(x + w / 2, y + h / 2, hover=0.3)
-    time.sleep(1.5)
+    wait_for(lambda: attr(ax_app(), "AXFrontmost"), "카톡이 앞으로 나오기", timeout=5)
+    switch_to_folder(lambda: click("All folder"), lambda: click(f"{folder} folder"),
+                     lambda: len(kids(kids(chat_table())[0])), max_rooms)
     scroll_chat(0.0)
     return [n for n, _ in row_names()]
 
@@ -676,7 +685,7 @@ def main():
                 sys.exit("import-config.json 에 me(내 계정 이름)가 없다 — 새 방의 참여자를 정할 수 없다")
             try:
                 with limit("폴더 목록 읽기", args.step_timeout):
-                    rooms = check_folder(folder_rooms(folder, mouse), config.get("rooms", {}), folder, args.max_rooms, args.max_new_rooms)
+                    rooms = check_folder(folder_rooms(folder, mouse, args.max_rooms), config.get("rooms", {}), folder, args.max_rooms, args.max_new_rooms)
             except (FolderError, Abort) as e:
                 sys.exit(f"멈춤 — {e}. 아무 방도 건드리지 않았다")
             log(f"「{folder}」 폴더 {len(rooms)}개 방")
