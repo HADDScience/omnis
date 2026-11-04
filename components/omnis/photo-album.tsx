@@ -92,7 +92,8 @@ function PhotoViewer({ photos, index, onIndex }: { photos: AlbumPhoto[]; index: 
               {index! + 1} / {photos.length} · {p.title}
             </DialogTitle>
             <div
-              className="relative flex items-center justify-center"
+              // 사진이 아직 안 왔거나 납작해도 넘기기 단추가 위의 닫기 단추를 덮지 않게 높이를 남긴다
+              className="relative flex min-h-40 items-center justify-center"
               onTouchStart={(e) => { touchX.current = e.touches[0].clientX }}
               onTouchEnd={(e) => {
                 if (touchX.current === null) return
