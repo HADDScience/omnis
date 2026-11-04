@@ -71,8 +71,8 @@ export function TodoView() {
     .sort((a, b) => a.date.localeCompare(b.date))
 
   const issues = useMemo(
-    () => detect(trademarks, patents, today),
-    [trademarks, patents, today]
+    () => detect(trademarks, patents, today, progress),
+    [trademarks, patents, today, progress]
   )
   const stale = issues.filter((i) => i.key.startsWith("stale:"))
   const mismatch = issues.filter((i) => !i.key.startsWith("stale:"))

@@ -112,6 +112,7 @@ const FILED_STAGES = new Set([
  * 실제로 멈춰 있는 단계만 본다.
  */
 const STALE_STAGES = new Set([
+  "출원전",
   "아이디어",
   "검토요청",
   "검토의견",
@@ -120,12 +121,40 @@ const STALE_STAGES = new Set([
   "보정서제출",
 ])
 
+/**
+ * 출원 상태 안에서도 우리 차례인 사건. 옛 단계일 때는 대장의 값으로 알 수 있었지만
+ * 상태 5개로 나눈 뒤에는 대장이 「출원」이라 마지막 사건을 봐야 한다.
+ */
+const STALE_EVENTS = new Set(["의견제출통지", "보정서제출"])
+
+/** 건별 마지막 사건을 볼 만큼의 진행 기록. 값 정정은 일의 차례를 말하지 않아 뺀다. */
+export type DetectProgress = {
+  entityKind: "trademark" | "patent"
+  entityId: string
+  stage: string | null
+  date: string
+  source?: string
+}
+
+function latestEvents(progress: DetectProgress[]): Map<string, { date: string; stage: string }> {
+  const latest = new Map<string, { date: string; stage: string }>()
+  for (const e of progress) {
+    if (!e.stage || e.source === "edit") continue
+    const key = `${e.entityKind}:${e.entityId}`
+    const cur = latest.get(key)
+    if (!cur || e.date >= cur.date) latest.set(key, { date: e.date, stage: e.stage })
+  }
+  return latest
+}
+
 export function detect(
   trademarks: Trademark[],
   patents: Patent[],
-  today: string
+  today: string,
+  progress: DetectProgress[] = []
 ): Issue[] {
   const all = rows(trademarks, patents)
+  const lastEvent = latestEvents(progress)
   const out: Issue[] = []
 
   // --- 같은 것이 둘 -------------------------------------------------------
@@ -360,7 +389,9 @@ export function detect(
   for (const r of all) {
     if (!r.refDate) continue
     const days = daysBetween(r.refDate, today)
-    if (days !== null && days >= 90 && STALE_STAGES.has(r.status)) {
+    const event = lastEvent.get(`${r.kind}:${r.id}`)?.stage
+    const ourTurn = STALE_STAGES.has(r.status) || (r.status === "출원" && !!event && STALE_EVENTS.has(event))
+    if (days !== null && days >= 90 && ourTurn) {
       out.push({
         key: `stale:${r.id}`,
         level: "warn",

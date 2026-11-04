@@ -37,6 +37,9 @@ const PATENT_GROUP: Record<string, string> = {
   의견제출통지: "특허 출원",
   보정서제출: "특허 출원",
   심사중: "특허 출원",
+  출원전: "특허 출원 준비",
+  거절: "특허 거절",
+  포기: "특허 중단",
   아이디어: "특허 출원 준비",
   검토요청: "특허 출원 준비",
   검토의견: "특허 출원 준비",
@@ -52,6 +55,9 @@ const TRADEMARK_GROUP: Record<string, string> = {
   의견제출통지: "상표 출원",
   보정서제출: "상표 출원",
   심사중: "상표 출원",
+  출원전: "상표 준비",
+  거절: "상표 거절",
+  포기: "상표 중단",
   검토요청: "상표 검토",
   검토의견: "상표 검토",
   아이디어: "상표 준비",
@@ -178,6 +184,13 @@ const TRADEMARK_LEGEND = [
   "거절",
   "등록",
 ]
+
+/** 대장 상태가 내보내기의 어느 「구분」에 들어가는지. */
+export function exportGroupOf(kind: "trademark" | "patent", status: string): string {
+  return kind === "patent"
+    ? group(PATENT_GROUP, "특허 출원 준비", status)
+    : group(TRADEMARK_GROUP, "상표 준비", status)
+}
 
 function patentSheet(patents: Patent[]): SheetSpec {
   const ordered = byGroup(patents, PATENT_ORDER, (p) =>

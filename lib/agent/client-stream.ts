@@ -107,7 +107,7 @@ export const TOOL_LABEL: Record<string, string> = {
   list_market_companies: "경쟁사",
   get_context: "연결된 자료",
   list_calendar: "웍스 일정",
-  list_stages: "지식재산권 단계",
+  list_stages: "지식재산권 상태·사건",
   list_ip: "지식재산권 목록",
   get_ip: "지식재산권 상세",
   list_todo: "지식재산권 할 일",

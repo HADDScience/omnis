@@ -99,7 +99,7 @@ function countAs(status: string): string {
 export function RegisterView() {
   const today = useToday()
   const { member, canWrite } = useAuth()
-  const { trademarks, patents, progress, stages, refresh } = useData()
+  const { trademarks, patents, progress, statusOptions, refresh } = useData()
 
   // 대시보드에서 넘어올 때의 초기 탭만 쿼리로 받는다. 이후 전환은 화면 안에서만.
   const initialTab = useQueryParam("kind", "trademark")
@@ -160,8 +160,8 @@ export function RegisterView() {
   }, [focusId, flashed])
 
   const issues = useMemo(
-    () => detect(trademarks, patents, today),
-    [trademarks, patents, today]
+    () => detect(trademarks, patents, today, progress),
+    [trademarks, patents, today, progress]
   )
   const byId = useMemo(() => issuesById(issues), [issues])
 
@@ -174,14 +174,14 @@ export function RegisterView() {
     return map
   }, [progress])
 
-  /** 이 종류의 단계를 파이프라인 순서대로 */
+  /** 이 종류의 상태를 차례대로. 대장·필터·값 정정은 사건이 아니라 상태를 다룬다 */
   const pipeline = useMemo(
     () =>
-      stages
+      statusOptions
         .filter((s) => s.kind === kind)
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((s) => s.value),
-    [stages, kind]
+    [statusOptions, kind]
   )
 
   /**

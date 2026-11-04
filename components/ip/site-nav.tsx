@@ -35,7 +35,7 @@ export function SiteNav() {
       if (!cur || e.date > cur.date) latest.set(k, e)
     }
     const ours = [...latest.values()].filter((e) => e.nextTurn === "us").length
-    return ours + detect(trademarks, patents, today).length
+    return ours + detect(trademarks, patents, today, progress).length
   }, [progress, trademarks, patents, today])
 
   const items: { href: string; label: string; badge?: number }[] = [

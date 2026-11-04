@@ -164,7 +164,7 @@ export function ProgressForm({
   onCancel?: () => void
 }) {
   const today = useToday()
-  const { trademarks, patents, stages, refresh } = useData()
+  const { trademarks, patents, stages, statusOptions, refresh } = useData()
   const [draft, setDraft] = useState<ProgressEntry>(initial ?? blank(today))
   const [newName, setNewName] = useState("")
   const [saving, setSaving] = useState(false)
@@ -188,12 +188,12 @@ export function ProgressForm({
   )
 
   /**
-   * 건 목록 — 진행 중인 것이 위, 끝난 것(등록·거절확정·포기·중단)이 아래.
+   * 건 목록 — 진행 중인 것이 위, 끝난 것(등록·거절·포기)이 아래.
    * 끝난 건은 볼 일이 드문데 개수는 계속 늘어나므로 섞여 있으면 목록이 못 쓰게 된다.
    */
   const { live, closed } = useMemo(() => {
     const closedStages = new Set(
-      stages
+      statusOptions
         .filter((s) => s.kind === draft.entityKind && !s.isOpen)
         .map((s) => s.value)
     )
@@ -209,7 +209,7 @@ export function ProgressForm({
       live: rows.filter((r) => !closedStages.has(r.status)).sort(byName),
       closed: rows.filter((r) => closedStages.has(r.status)).sort(byName),
     }
-  }, [trademarks, patents, stages, draft.entityKind])
+  }, [trademarks, patents, statusOptions, draft.entityKind])
 
   const caseItems = useMemo(() => {
     const map: Record<string, string> = { [NEW_CASE]: "+ 새 건 등록" }
