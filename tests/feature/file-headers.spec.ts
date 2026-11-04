@@ -2,9 +2,9 @@
  * 파일을 내보내는 경로의 응답 헤더 · 미리보기 · 권한. 규칙의 단위 시험: lib/file-serving.test.ts
  * 가짜 NAS(scripts/e2e-fake-nas.mjs)가 떠 있을 때만 돈다 — CI 는 띄운다.
  */
+import { createHmac } from "node:crypto"
 import { expect, request, test, type APIRequestContext, type APIResponse, type Browser, type Page } from "@playwright/test"
 import { PrismaClient } from "../../generated/prisma/client"
-import { signDownloadLink } from "../../lib/omnis-mcp"
 import { login, type DemoUser } from "./_setup"
 
 const NAS = process.env.E2E_FAKE_NAS_URL
@@ -15,6 +15,13 @@ const PNG = Buffer.from(
 )
 const PLAIN_HTML = Buffer.from("<!doctype html><title>시험</title><p>시험 문서</p>")
 const PLAIN_SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>')
+
+/** lib/omnis-mcp 의 signDownloadLink 와 같은 모양. 그 모듈은 next/server 를 불러 시험 프로세스에서 읽히지 않는다 */
+function downloadToken(userId: string, fileId: string) {
+  const payload = Buffer.from(JSON.stringify({ u: userId, f: fileId, e: Math.floor(Date.now() / 1000) + 600 })).toString("base64url")
+  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? ""
+  return `${payload}.${createHmac("sha256", secret).update(`mcp-download.${payload}`).digest("base64url")}`
+}
 
 function expectServed(res: APIResponse, want: { type: string; disposition: "inline" | "attachment"; name?: string }) {
   const h = res.headers()
@@ -234,10 +241,10 @@ test.describe("파일 응답 헤더", () => {
       const me = ((await (await page.request.get("/api/users")).json()) as { id: string; name: string }[]).find((u) => u.name === "팀장")!.id
       const html = await upload(page, "링크.html", "text/html", PLAIN_HTML)
       const png = await upload(page, "링크.png", "image/png", PNG)
-      expectServed(await page.request.get(`/api/ip-mcp/download?t=${signDownloadLink(me, html.id)}`), {
+      expectServed(await page.request.get(`/api/ip-mcp/download?t=${downloadToken(me, html.id)}`), {
         type: "application/octet-stream", disposition: "attachment", name: "링크.html",
       })
-      expectServed(await page.request.get(`/api/ip-mcp/download?t=${signDownloadLink(me, png.id)}`), {
+      expectServed(await page.request.get(`/api/ip-mcp/download?t=${downloadToken(me, png.id)}`), {
         type: "image/png", disposition: "attachment", name: "링크.png",
       })
     } finally {
