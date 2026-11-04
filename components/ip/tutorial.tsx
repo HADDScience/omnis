@@ -329,7 +329,7 @@ export function Tutorial({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="tutorial-title"
-                className="fixed right-4 bottom-[calc(var(--nav-offset-bottom)+72px)] z-[var(--z-popover)] flex max-h-[min(70svh,34rem)] w-[calc(100vw-2rem)] max-w-[26rem] flex-col overflow-hidden border border-border/70 bg-popover text-[13px]/relaxed text-popover-foreground shadow-2xl sm:right-6 sm:bottom-6"
+                className="fixed right-4 bottom-[calc(var(--nav-offset-bottom)+12px)] z-[var(--z-popover)] flex max-h-[min(70svh,34rem)] w-[calc(100vw-2rem)] max-w-[26rem] flex-col overflow-hidden border border-border/70 bg-popover text-[13px]/relaxed text-popover-foreground shadow-2xl sm:right-6 sm:bottom-6"
               >
                 <div className="flex flex-col gap-0.5 p-4 pr-10 pb-3">
                   <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
