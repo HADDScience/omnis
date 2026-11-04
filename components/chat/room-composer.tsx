@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import type { FileInfo } from "@/components/chat/message-list"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
+import { trackUi } from "@/lib/ui-metrics/client"
 import { PHONE_TOUCH_QUERY } from "@/lib/keyboard-viewport"
 import { cn } from "@/lib/utils"
 import { ComposerPlusSheet } from "./composer-plus-sheet"
@@ -301,6 +302,7 @@ export function ComposerPlus({ files, disabled, actions = [] }: { files?: Compos
               // 키보드를 내리고 시트를 올린다
               onClick: () => {
                 if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+                trackUi("plus_open")
                 setSheetOpen(true)
               },
             },

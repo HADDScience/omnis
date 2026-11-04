@@ -3,6 +3,7 @@
 import { flushSync } from "react-dom"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
+import { trackUi } from "@/lib/ui-metrics/client"
 
 export interface ComposerPlusSheetItem {
   key: string
@@ -29,7 +30,16 @@ export function ComposerPlusSheet({
   items: ComposerPlusSheetItem[]
 }) {
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} repositionInputs={false} noBodyStyles>
+    <Drawer
+      open={open}
+      onOpenChange={(next) => {
+        // 여기로 오는 닫힘은 바탕 누르기 · 밀기 · Esc 뿐이다. 항목을 고른 닫힘은 아래에서 바로 부른다
+        if (!next) trackUi("plus_dismiss")
+        onOpenChange(next)
+      }}
+      repositionInputs={false}
+      noBodyStyles
+    >
       <DrawerContent
         data-composer-plus-sheet
         aria-describedby={undefined}
@@ -45,6 +55,7 @@ export function ComposerPlusSheet({
               key={item.key}
               type="button"
               onClick={() => {
+                trackUi("plus_act")
                 flushSync(() => onOpenChange(false))
                 item.onSelect()
               }}
