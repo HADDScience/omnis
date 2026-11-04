@@ -43,6 +43,8 @@ model User {
   pushSubscriptions PushSubscription[]
   notificationPref NotificationPref?
   pushPresence     PushPresence?
+  uiEvents         UiEvent[]
+  uiSurveyResponses UiSurveyResponse[]
   omnisViewLogs    OmnisViewLog[]
   bookmarks        Bookmark[]
   activityLogs     ActivityLog[]
@@ -1963,4 +1965,40 @@ model AiUsage {
   @@index([createdAt])
   @@index([feature, createdAt])
   @@index([userId, createdAt])
+}
+
+// ─── UI 변경 적응 부담 측정 ───────────────────────────────
+
+/// 화면 사용 기록. 이름 · 숫자 · 경로 형태 · 배포 커밋만 둔다. 내용은 받지 않는다(lib/ui-metrics/rules.ts).
+/// 90일 뒤 cron/daily 가 지운다.
+model UiEvent {
+  id        String   @id @default(uuid())
+  at        DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// lib/ui-metrics/rules.ts 의 UI_EVENT_NAMES
+  name      String
+  value     Int?
+  /// "/chat/:id" — ID · 이름은 지운 형태
+  path      String
+  /// 그 화면을 그린 빌드의 VERCEL_GIT_COMMIT_SHA
+  commitSha String
+
+  @@index([at])
+  @@index([commitSha, at])
+  @@index([userId, commitSha])
+}
+
+/// 배포 다음 날 묻는 한 문항. score 가 null 이면 답하지 않고 닫았다 — 다시 묻지 않으려고 남긴다.
+model UiSurveyResponse {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commitSha String
+  score     Int?
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, commitSha])
+  @@index([commitSha])
 }

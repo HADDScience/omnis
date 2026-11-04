@@ -10,6 +10,7 @@ import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { createSerialQueue } from "@/lib/serial-queue"
 import { reportIncident } from "@/lib/report-client-error"
+import { noteAttachAttempt, noteUiSend } from "@/lib/ui-metrics/client"
 import { ChatSearch } from "@/components/chat/chat-search"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
 import { applyChanges, encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
@@ -483,6 +484,8 @@ export function ChatPanel({
         onSlashTaskCommand(content.trim())
         return
       }
+      noteUiSend()
+      if (files?.length || nasPaths?.length) noteAttachAttempt()
       // 옛 자리를 보다가 보내면 새 글이 엉뚱한 자리에 붙는다 — 최신 목록으로 돌아가서 보낸다.
       // 폴링은 보내는 동안 멈춰 있다가, 끝나면 lastFetchedAt 이 비어 있어 최신 한 페이지로 갈아 끼운다
       if (jumpedRef.current) {

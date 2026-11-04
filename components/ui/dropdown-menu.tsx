@@ -4,11 +4,31 @@ import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 
 import { cn } from "@/lib/utils"
+import { trackUi } from "@/lib/ui-metrics/client"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
 
-function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
-  return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+/** 메뉴를 그냥 닫았는지 고르고 닫았는지 — 사용 기록(lib/ui-metrics). 이름 · 항목 글자는 넘기지 않는다 */
+const DISMISS_REASONS = new Set(["outside-press", "escape-key", "trigger-press", "focus-out", "close-press"])
+
+function DropdownMenu({ onOpenChange, ...props }: MenuPrimitive.Root.Props) {
+  // 입력창의 ＋ 는 트리거 표식으로 가른다. 입력창 쪽을 고치지 않으려고 — 표식이 바뀌면 tests/feature/ui-metrics.spec.ts 가 잡는다
+  const metric = React.useRef<"menu" | "plus">("menu")
+  return (
+    <MenuPrimitive.Root
+      data-slot="dropdown-menu"
+      onOpenChange={(open, details) => {
+        if (open) {
+          const target = details.event?.target
+          metric.current = target instanceof Element && target.closest('[aria-label="추가"]') ? "plus" : "menu"
+          trackUi(`${metric.current}_open`)
+        } else if (details.reason === "item-press") trackUi(`${metric.current}_act`)
+        else if (DISMISS_REASONS.has(details.reason)) trackUi(`${metric.current}_dismiss`)
+        onOpenChange?.(open, details)
+      }}
+      {...props}
+    />
+  )
 }
 
 function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
