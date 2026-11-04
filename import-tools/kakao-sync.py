@@ -248,12 +248,21 @@ def folder_rooms(folder, mouse, max_rooms):
     main = main_window()
 
     def tab(prefix):
+        """탭 줄은 옆으로 밀려 있을 수 있다 — 밖에 있는 탭은 목록에 없거나 좌표가 영역 밖이다(누르면 엉뚱한 곳이 눌린다)."""
         area = next((k for k in kids(main) if attr(k, "AXIdentifier") == "_NS:28"), None)
-        groups = kids((kids(kids(area)[0]) or [None])[0]) if area is not None else []
-        found = next((g for g in groups if any((attr(t, "AXValue") or "").startswith(prefix) for t in kids(g))), None)
-        if found is None:
-            raise FolderError(f"「{prefix}」 탭을 찾지 못했다")
-        return found
+        if area is None:
+            raise FolderError("폴더 탭 줄이 없다")
+        ax, _, aw, _ = geo(area)
+        bar = next((k for k in kids(area) if attr(k, "AXRole") == "AXScrollBar"), None)
+        for value in (None, 0.0, 0.5, 1.0):
+            if value is not None and bar is not None:
+                AXUIElementSetAttributeValue(bar, "AXValue", value)
+                time.sleep(0.4)
+            groups = kids((kids(kids(area)[0]) or [None])[0])
+            found = next((g for g in groups if any((attr(t, "AXValue") or "").startswith(prefix) for t in kids(g))), None)
+            if found is not None and ax <= geo(found)[0] and geo(found)[0] + geo(found)[2] <= ax + aw:
+                return found
+        raise FolderError(f"「{prefix}」 탭을 찾지 못했다")
 
     def click(prefix):
         x, y, w, h = geo(tab(prefix))
