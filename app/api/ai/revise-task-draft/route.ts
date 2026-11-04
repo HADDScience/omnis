@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db"
 import { reviseTaskDraft } from "@/lib/ai"
 import { ReviseDraftRequestSchema } from "@/lib/schemas/task-ai"
 import type { Prisma } from "@/generated/prisma/client"
+import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 
 /**
  * 작성 중인 업무 초안을 자연어 지시로 고친다.
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
     }),
     prisma.product.findMany({ select: { id: true, name: true }, orderBy: { sortOrder: "asc" } }),
     prisma.user.findMany({
-      where: { isActive: true },
+      where: ACTIVE_MEMBER_WHERE,
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

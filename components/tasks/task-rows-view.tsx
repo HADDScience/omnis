@@ -37,7 +37,7 @@ export function TaskRowsView({ tasks, members, keepOrder = false }: TaskRowsView
           (t) =>
             t.name.toLowerCase().includes(q) ||
             t.slug.toLowerCase().includes(q) ||
-            (t.ownerName ?? "").toLowerCase().includes(q) ||
+            (t.ownerSearch ?? t.ownerName ?? "").toLowerCase().includes(q) ||
             (t.projectName ?? "").toLowerCase().includes(q) ||
             (t.productName ?? "").toLowerCase().includes(q),
         )

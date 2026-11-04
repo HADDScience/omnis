@@ -12,6 +12,7 @@ import { queueChatPush } from "@/lib/chat-push"
 import { roomKeyOf } from "@/lib/chat-list"
 import { checkAttachable } from "@/lib/file-access"
 import { defaultGroupName, dmKeyOf, isSelfDmKey, mentionedMembers, peopleRoomTitle, planPeopleRoom, SELF_ROOM_TITLE, selfDmKeyOf } from "@/lib/chat-people-rules"
+import { ACTIVE_MEMBER_WHERE, isActiveMember } from "@/lib/active-members"
 
 export type PeopleResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string }
 const fail = (status: number, error: string) => ({ ok: false as const, status, error })
@@ -21,7 +22,7 @@ const PEOPLE_KINDS = ["DM", "GROUP"] as const
 /** 고를 수 있는 사람 — 로그인할 수 있는 구성원. 시스템 계정(isActive=false)은 빠진다 */
 async function activeMembers(ids: string[]): Promise<Map<string, string>> {
   const rows = await prisma.user.findMany({
-    where: { id: { in: ids, not: SYSTEM_USER_ID }, isActive: true },
+    where: { id: { in: ids, not: SYSTEM_USER_ID }, ...ACTIVE_MEMBER_WHERE },
     select: { id: true, name: true },
   })
   return new Map(rows.map((u) => [u.id, u.name]))
@@ -121,6 +122,8 @@ export interface PeopleRoomView {
   /** 저장된 이름(단톡방 이름 바꾸기의 기본값) */
   name: string
   members: { id: string; name: string }[]
+  /** 그중 재직자 — @ 후보 · 멘션 알림. 떠난 사람은 참여자 이름으로는 남고 새로 부를 수 없다 */
+  activeMembers: { id: string; name: string }[]
 }
 
 /** 내가 참여한 사람끼리 방. 아니면 null — 호출자가 404 로 답한다(있는지조차 알리지 않는다) */
@@ -129,12 +132,13 @@ export async function loadPeopleRoom(roomId: string, userId: string): Promise<Pe
     where: { id: roomId, kind: { in: [...PEOPLE_KINDS] }, members: { some: { userId } } },
     select: {
       id: true, kind: true, name: true, dmKey: true,
-      members: { orderBy: { joinedAt: "asc" }, select: { user: { select: { id: true, name: true } } } },
+      members: { orderBy: { joinedAt: "asc" }, select: { user: { select: { id: true, name: true, isActive: true, staffProfile: { select: { employment: true } } } } } },
     },
   })
   if (!room || (room.kind !== "DM" && room.kind !== "GROUP")) return null
-  const members = room.members.map((m) => m.user)
-  return { id: room.id, kind: room.kind, self: isSelfDmKey(room.dmKey), name: room.name, title: peopleRoomTitle(room, members, userId), members }
+  const members = room.members.map(({ user: { id, name } }) => ({ id, name }))
+  const activeMembers = room.members.filter((m) => isActiveMember(m.user)).map(({ user: { id, name } }) => ({ id, name }))
+  return { id: room.id, kind: room.kind, self: isSelfDmKey(room.dmKey), name: room.name, title: peopleRoomTitle(room, members, userId), members, activeMembers }
 }
 
 /** 단톡방 이름 바꾸기 — 참여자 누구나. 1:1 은 이름이 상대 이름이라 바꾸지 않는다 */
@@ -235,7 +239,7 @@ export async function postPeopleMessage(
     throw err
   }
 
-  const targets = mentionedMembers(content, room.members, me.id)
+  const targets = mentionedMembers(content, room.activeMembers, me.id)
   // 참여자에게 채팅 푸시(벨 없이) — 멘션 받는 사람은 아래 chat_mention 으로 한 번만 울린다
   queueChatPush({
     room: { kind: room.kind, id: room.id, name: room.title, memberIds: room.members.map((m) => m.id) },

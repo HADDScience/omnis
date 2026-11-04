@@ -14,6 +14,7 @@ import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
 import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import type { Prisma, Priority } from "@/generated/prisma/client"
+import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -148,7 +149,8 @@ export async function POST(req: NextRequest) {
     if (!exactName) continue
     const norm = normalizeName(exactName)
     const user = await prisma.user.findFirst({
-      where: norm ? { OR: [{ name: exactName }, { name: { contains: norm } }] } : { name: exactName },
+      // 재직자 중에서만 — 없으면 건너뛴다. 예전에는 퇴사자 이름이 그대로 담당으로 들어갔다
+      where: { ...ACTIVE_MEMBER_WHERE, ...(norm ? { OR: [{ name: exactName }, { name: { contains: norm } }] } : { name: exactName }) },
       select: { id: true },
     })
     if (user && !assigneeIds.includes(user.id)) assigneeIds.push(user.id)
@@ -173,6 +175,8 @@ export async function POST(req: NextRequest) {
   if (!name?.trim() || assigneeIds.length === 0) {
     return apiError(400, "name, 담당자 최소 1명 필수")
   }
+  const activeCount = await prisma.user.count({ where: { id: { in: assigneeIds }, ...ACTIVE_MEMBER_WHERE } })
+  if (activeCount !== assigneeIds.length) return apiError(400, "담당자 중에 재직 중이 아닌 사람이 있습니다")
 
   // TaskCmdModal이 보낸 `checklist: string[]` → `checklists: {name}[]` 정규화
   if (!checklists && Array.isArray(checklist)) {
