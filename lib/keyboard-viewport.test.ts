@@ -2,9 +2,9 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { isKeyboardOpen, isTextEntry, rememberBaseline } from "./keyboard-viewport"
 
-const open = { phone: true, textEntryFocused: true, baseline: 844, height: 450 }
+const open = { touch: true, textEntryFocused: true, baseline: 844, height: 450 }
 
-test("폰에서 글자 칸에 포커스가 있고 높이가 크게 줄면 키보드다", () => {
+test("터치 기기에서 글자 칸에 포커스가 있고 높이가 크게 줄면 키보드다", () => {
   assert.equal(isKeyboardOpen(open), true)
 })
 
@@ -21,8 +21,14 @@ test("높이가 줄어도 글자 칸에 포커스가 없으면 키보드가 아�
   assert.equal(isKeyboardOpen({ ...open, textEntryFocused: false }), false)
 })
 
-test("폰이 아니면 언제나 아니다 — PC 의 좁은 창", () => {
-  assert.equal(isKeyboardOpen({ ...open, phone: false }), false)
+test("터치 기기가 아니면 언제나 아니다 — PC 의 창 크기 조절", () => {
+  assert.equal(isKeyboardOpen({ ...open, touch: false }), false)
+})
+
+test("iPad 가로 높이에서도 같은 기준이다 — 키보드는 키보드, 물리 키보드의 단축키 막대는 아니다", () => {
+  const ipad = { ...open, baseline: 734 }
+  assert.equal(isKeyboardOpen({ ...ipad, height: 400 }), true)
+  assert.equal(isKeyboardOpen({ ...ipad, height: 734 - 55 }), false)
 })
 
 test("평소 높이는 폭마다 가장 큰 값을 기억한다 — 키보드가 열린 높이로 내려가지 않는다", () => {
