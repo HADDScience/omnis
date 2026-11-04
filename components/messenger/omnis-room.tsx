@@ -32,6 +32,7 @@ import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { AttachChips, ComposerPlus, RoomComposer, type PickedFile } from "@/components/chat/room-composer"
 import { useOmnisAttachments } from "./omnis-attach"
 import { IS_DEMO } from "@/lib/demo"
+import { noteUiSend } from "@/lib/ui-metrics/client"
 
 const EXAMPLES = [
   "이번 주 마감인 업무 정리해 줘",
@@ -343,6 +344,7 @@ export function OmnisRoom({
     // 보내는 중에는 다시 보내지 않는다 — 버튼 · Enter · 예시 칸이 모두 여기로 온다
     if (busy || sendingRef.current) return
     sendingRef.current = true
+    noteUiSend()
     stickRef.current = true // 내가 보낸 글은 바로 보인다
     setAway(false)
     let questionId: string | null = "retryOf" in body ? body.retryOf : null
@@ -565,6 +567,7 @@ export function OmnisRoom({
       <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={listRef}
+        data-keep-bottom
         // overflow-anchor: none — 앞 글을 붙일 때 보던 자리는 위 useLayoutEffect 가 지킨다. 브라우저의 자동 보정과 겹치면 두 번 밀린다
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain [overflow-anchor:none]"
         onScroll={(e) => {

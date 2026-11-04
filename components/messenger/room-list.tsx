@@ -17,7 +17,6 @@ import {
   Logout03Icon,
   Notification03Icon,
   NotificationOff03Icon,
-  PencilEdit02Icon,
   Search01Icon,
   StarIcon,
   Task01Icon,
@@ -381,7 +380,6 @@ export function RoomList({ version, userId }: { version: number; userId: string 
   const unreadRooms = unreadRoomCount(rooms.map(withActiveRead))
   const loading = searching ? !search?.data && !search?.error : data === null && !error
   const currentFolder = chip.startsWith("folder:") ? folders.find((f) => `folder:${f.id}` === chip) : undefined
-  const showNewChat = !searching && (chip === "all" || chip === "omnis")
   // 업무방은 상태별 접는 묶음으로(groupTaskRooms). 기본은 모두 접힘. 검색 결과는 찾은 그대로 한 목록이다
   const { open: openRooms, groups: taskGroups } = searching ? { open: visible, groups: [] } : groupTaskRooms(visible)
   const [openGroups, setOpenGroups] = useState<TaskGroupStatus[]>([])
@@ -473,7 +471,6 @@ export function RoomList({ version, userId }: { version: number; userId: string 
           )}
 
           <div className="flex flex-col gap-0.5">
-            {showNewChat && <NewChatRow active={pathname === "/chat/new"} />}
             {loading ? (
               <RowSkeletons count={6} />
             ) : visible.length === 0 ? (
@@ -729,24 +726,7 @@ function ScrollNudge({ side, onClick }: { side: "left" | "right"; onClick: () =>
 // 크기는 모두 px — size-8 같은 rem 유틸리티는 html 81.25% 를 타 의도한 크기가 안 나온다
 const ROW =
   "touch-target flex min-w-0 flex-1 items-center gap-3.5 rounded-xl px-3 py-[18px] text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-const ROW_WRAP = "group/row mx-2 flex items-center rounded-xl hover:bg-muted/60"
 const ROW_ACTIVE = "bg-muted hover:bg-muted"
-
-function NewChatRow({ active }: { active: boolean }) {
-  return (
-    <div className={cn(ROW_WRAP, active && ROW_ACTIVE)}>
-      <Link href="/chat/new" aria-current={active ? "page" : undefined} className={ROW}>
-        <RoomIcon className="bg-primary/10 text-primary">
-          <HugeiconsIcon icon={PencilEdit02Icon} size={26} aria-hidden />
-        </RoomIcon>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[16.5px] font-medium">새 대화</span>
-          <span className="mt-0.5 block truncate text-[14.5px] text-muted-foreground">옴니스에게 회사 일을 물어보세요</span>
-        </span>
-      </Link>
-    </div>
-  )
-}
 
 function RoomIcon({ className, children }: { className?: string; children: ReactNode }) {
   return (

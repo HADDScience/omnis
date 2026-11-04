@@ -6,6 +6,7 @@ import { RightPanel } from "./right-panel"
 import { useRightPanel } from "./right-panel-context"
 import { CommandPalette } from "./command-palette"
 import { PanelDock } from "./panel-dock"
+import { NAV_DESKTOP_QUERY } from "./floating-nav"
 import { useShortcut } from "@/hooks/use-shortcuts"
 
 interface Message {
@@ -31,7 +32,11 @@ export function MainWithChat({
   const router = useRouter()
   const { open, setOpen } = useRightPanel()
 
-  useShortcut("togglePanel", () => setOpen(!open))
+  // md 미만에는 패널이 없다 — 물리 키보드를 붙인 폰 · 좁은 창의 단축키는 채팅 탭으로 간다
+  useShortcut("togglePanel", () => {
+    if (window.matchMedia(NAV_DESKTOP_QUERY).matches) setOpen(!open)
+    else router.push("/chat")
+  })
 
   return (
     <>

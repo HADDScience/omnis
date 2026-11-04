@@ -11,6 +11,7 @@ import { apiUrl } from "@/lib/base-path"
 import { MAX_UPLOAD_BYTES } from "@/lib/constants"
 import { ATTACH_MAX } from "@/lib/file-access"
 import { reportIncident } from "@/lib/report-client-error"
+import { noteAttachAttempt } from "@/lib/ui-metrics/client"
 
 let seq = 0
 
@@ -52,6 +53,7 @@ export function useOmnisAttachments() {
       })
     }
     const ok = picked.filter((f) => f.size <= MAX_UPLOAD_BYTES).slice(0, Math.max(room, 0))
+    if (ok.length > 0) noteAttachAttempt()
     const fresh = ok.map((f) => ({
       key: `up-${++seq}`,
       name: f.name,
