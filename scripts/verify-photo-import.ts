@@ -32,7 +32,7 @@ try {
     fileIds.push((await prisma.file.create({ data: { messageId: m.id, name: "fixture.png", path: "/fixture", size: 1, mimeType: i === 3 ? "application/pdf" : "image/png" } })).id)
   }
   const selected = await describeImportedPhotos([csv], { dry: true, workers: 3 })
-  assert.deepEqual(selected, [fileIds[0]])
+  assert.deepEqual(selected.ids, [fileIds[0]])
   assert.equal(await prisma.file.count({ where: { id: { in: fileIds }, describedAt: { not: null } } }), 0)
   console.log("✓ dry: 이번 CSV 전사방 사진만 선택 · DM/삭제/비사진/다른 CSV 제외 · 저장 없음")
 
@@ -43,7 +43,7 @@ try {
   assert.equal(await prisma.embeddingChunk.count({ where: { source: "PHOTO", sourceId: fileIds[0] } }), 0)
   console.log("✓ 잘못된 JSON 저장 거부 · 설명 저장 시 임베딩 생략")
 
-  assert.deepEqual(await describeImportedPhotos([csv], { dry: false, workers: 3 }), [fileIds[0]])
+  assert.deepEqual(await describeImportedPhotos([csv], { dry: false, workers: 3 }), { ids: [fileIds[0]], left: 0 })
   assert.equal(await prisma.file.count({ where: { id: { in: fileIds.slice(1) }, describedAt: { not: null } } }), 0)
   console.log("✓ 재실행: 설명 완료 사진은 NAS/Claude 호출 없이 건너뛰고 색인 대상 ID를 유지")
 } finally {

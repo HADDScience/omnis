@@ -87,12 +87,52 @@ def parse_report(lines):
     return None
 
 
+def env_fingerprint(room_config, exclude_bytes):
+    """CSV 말고 이식 결과를 바꾸는 입력 — 방 설정과 제외 목록. 바뀌면 CSV 가 같아도 다시 돌린다."""
+    text = json.dumps(room_config, ensure_ascii=False, sort_keys=True).encode()
+    return hashlib.sha256(text + b"\0" + exclude_bytes).hexdigest()
+
+
+def leftovers(report):
+    """이번 실행이 남긴 일. 보고가 없으면 끝났는지 모르므로 남은 것으로 본다."""
+    if not report or "leftover" not in report:
+        return {"unknown": 1}
+    return {k: v for k, v in report["leftover"].items() if v}
+
+
+def can_skip(room_state, csv_digest, env, got):
+    """kakao.ts 를 돌리지 않아도 놓치는 것이 없는가.
+    - 새 글: CSV 가 지난번 완료 때와 같아야 한다. 완료 표시는 남은 일이 없을 때만 남는다(remember_import)
+      — 분류 실패 · 카드 라운드 실패 · 사진 설명 · 사진 색인 실패는 CSV 가 그대로여도 재시도되어야 하기 때문이다.
+    - 새 사진: 이번에 받았거나, 건식 · --no-import 로 받아만 두고 아직 안 넣은 것이 없어야 한다.
+    - 방 설정 · 제외 목록: 같아야 한다. 표시가 없으면(이 기능 전의 완료 기록) 같은 것으로 본다."""
+    st = room_state or {}
+    if got or st.get("mediaPending") or st.get("importedCsv") != csv_digest:
+        return False
+    return st.get("importedEnv") in (None, env)
+
+
+def remember_import(room_state, csv_digest, env, report):
+    """운영 이식이 끝난 뒤의 상태. 남은 일이 있으면 완료 표시를 지워 다음 실행에서 다시 돌린다."""
+    st = dict(room_state or {})
+    left = leftovers(report)
+    if left:
+        st.pop("importedCsv", None)
+        st.pop("importedEnv", None)
+    else:
+        st.update(importedCsv=csv_digest, importedEnv=env)
+        st.pop("mediaPending", None)
+    return st, left
+
+
 def summary(results, failed, not_started, dry):
     """실행 보고 — results: [{room, inserted, pending, newRoom, newExternals, newMembers, skipped}]"""
     verb = "넣을 글" if dry else "넣은 글"
     out = [f"── 실행 보고{' (건식)' if dry else ''} ──"]
     for r in results:
         n = "같은 CSV — 건너뜀" if r.get("skipped") else f"{verb} {r.get('pending' if dry else 'inserted', 0)}건"
+        if r.get("elapsed") is not None:
+            n += f" · {r['elapsed']}초"
         out.append(f"  {r['room']}: {n}")
     new_rooms = [r["room"] for r in results if r.get("newRoom")]
     externals = sorted({e for r in results for e in r.get("newExternals", [])})
@@ -101,6 +141,9 @@ def summary(results, failed, not_started, dry):
     out.append(f"  새 외부 발화자 {len(externals)}: {', '.join(externals) or '없음'}")
     if members:
         out.append(f"  참여자 추가: {' · '.join(members)}")
+    left = [f"{r['room']} ({', '.join(f'{k} {v}' for k, v in leftovers(r).items())})" for r in results if not r.get("skipped") and leftovers(r)]
+    if left and not dry:
+        out.append(f"  다음 실행에서 다시 돌릴 방 {len(left)}: {' · '.join(left)}")
     out.append(f"  실패 방 {len(failed)}: {' · '.join(f'{k} ({v})' for k, v in failed.items()) or '없음'}")
     if not_started:
         out.append(f"  시작 못 한 방 {len(not_started)}: {', '.join(not_started)}")

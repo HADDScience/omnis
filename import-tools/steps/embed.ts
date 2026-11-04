@@ -11,7 +11,7 @@ import { syncEmbeddingsBatch } from "../../lib/embeddings"
 /** 앱의 채팅 청킹 규칙과 같은 조건 — 짧은 잡담·시스템 메시지는 색인하지 않는다. */
 const CHAT_MIN_LENGTH = 15
 
-export async function embed(opts: { dry: boolean; photoIds?: string[] }) {
+export async function embed(opts: { dry: boolean; photoIds?: string[] }): Promise<{ photosLeft: number }> {
   const reembedAll = process.env.KAKAO_REEMBED_ALL === "1"
   const [tasks, messages] = await Promise.all([
     // 업무도 같은 이유로 — 색인이 없거나 마지막 색인 뒤에 고쳐진 카드만. 전량은 KAKAO_REEMBED_ALL=1
@@ -40,7 +40,7 @@ export async function embed(opts: { dry: boolean; photoIds?: string[] }) {
   ])
   console.log(`  업무 ${taskIds.length}건 (색인 없는 것 ${Number(noTask[0].n)}) · 메시지 ${messages.length}건 (색인 없는 것 ${Number(noMsg[0].n)})`)
   console.log(`  Gemini 호출 최대 ≈ ${Math.ceil(taskIds.length / 100) + Math.ceil(messages.length / 100)}회 (바뀐 것만 부른다)`)
-  if (opts.dry) return
+  if (opts.dry) return { photosLeft: 0 }
 
   // 업무는 전량 동기화한다 — 상태·체크리스트가 바뀐 카드도 해시 비교로 갱신된다.
   const t = await syncEmbeddingsBatch("TASK", taskIds, {
@@ -63,7 +63,9 @@ export async function embed(opts: { dry: boolean; photoIds?: string[] }) {
       onProgress: (d, n) => process.stdout.write(`\r  사진 ${d}/${n}`),
     })
     console.log(`\r  사진 — 새로 ${p.embedded} · 그대로 ${p.unchanged} · 제거 ${p.removed}`)
+    return { photosLeft: 0 }
   } catch (e) {
     console.log(`\r  ✗ 사진 색인 ${photos.length}장 실패 — ${(e as Error).message.split("\n")[0].slice(0, 160)}`)
+    return { photosLeft: photos.length }
   }
 }

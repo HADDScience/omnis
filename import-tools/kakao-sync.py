@@ -34,7 +34,9 @@ from ApplicationServices import (
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kakao_folder import FolderError, check_folder, csv_name_for, csv_room, duplicates, parse_report, room_key, summary, switch_to_folder
+from kakao_folder import (
+    FolderError, can_skip, check_folder, csv_name_for, csv_room, duplicates, env_fingerprint, parse_report, remember_import, room_key, summary, switch_to_folder,
+)
 
 BUNDLE = "com.kakao.KakaoTalkMac"
 REPO = Path(__file__).resolve().parents[1]
@@ -572,7 +574,8 @@ def sync_room(room, key, state, mouse, args):
                 stamp_n[base] = stamp_n.get(base, 0) + 1
                 shutil.move(f, media / f"{base}_{stamp_n[base]}{f.suffix.lower()}")
         got = sum(len(fs) for fs in files)
-        state[key] = {**(st or {}), "count": count - extra, "seen": seen}
+        # 건식 · --no-import 로 받기만 하면 다음 실행의 CSV 가 같아도 넣어야 한다
+        state[key] = {**(st or {}), "count": count - extra, "seen": seen, "mediaPending": True}
         log(f"{key}: 새 사진·영상 {got}장({k}칸) 받음" + (f" (내보낸 뒤 올라온 {extra}칸은 다음에)" if extra else ""))
         return csv_path, got
     finally:
@@ -619,17 +622,28 @@ def dry_copy():
 def import_rooms(todo, state, state_path, args, dry):
     """todo: [(방 키, CSV, 받은 사진 수)]. 한 방이 실패해도 나머지를 넣는다."""
     results, failed = [], {}
+    rooms = read_config().get("rooms", {})
+    exclude = DATA_ROOT / "exclude.json"
+    exclude_bytes = lambda: exclude.read_bytes() if exclude.exists() else b""
     for key, csv_path, got in todo:
         digest = hashlib.sha256(csv_path.read_bytes()).hexdigest()
-        if not dry and state.get(key, {}).get("importedCsv") == digest and got == 0:
-            log(f"{key}: 지난번과 같은 CSV — 이식 건너뜀")
+        if can_skip(state.get(key), digest, env_fingerprint(rooms.get(key), exclude_bytes()), got):
+            log(f"{key}: 새 글 · 새 사진 없음 — 이식 건너뜀")
             results.append({"room": key, "skipped": True})
             continue
         tmp = dry_copy() if dry else None
+        t0 = time.time()
         try:
-            results.append({"room": key, **run_import(key, csv_path, args, tmp)})
+            report = run_import(key, csv_path, args, tmp)
+            elapsed = round(time.time() - t0)
+            log(f"{key}: 이식 {elapsed}초")
+            results.append({"room": key, "elapsed": elapsed, **report})
             if not dry:
-                state.setdefault(key, {})["importedCsv"] = digest
+                # 방 설정은 kakao.ts 가 바꿀 수 있으므로 끝난 뒤의 것을 적는다
+                env = env_fingerprint(read_config().get("rooms", {}).get(key), exclude_bytes())
+                state[key], left = remember_import(state.get(key), digest, env, report)
+                if left:
+                    log(f"⚠ {key}: 남은 일 {left} — CSV 가 그대로여도 다음 실행에서 다시 돌린다")
                 state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
         except Exception as e:
             failed[key] = str(e)[:200]
@@ -722,7 +736,9 @@ def main():
                 continue
             key = room_key(room, config.get("rooms", {}))
             try:
+                t0 = time.time()
                 csv_path, got = sync_room(room, key, state, mouse, args)
+                log(f"{key}: 카톡 {round(time.time() - t0)}초")
                 todo.append((key, csv_path, got))
                 fails_in_row = 0
             except Exception as e:

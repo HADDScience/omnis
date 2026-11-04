@@ -1,9 +1,12 @@
 /** md 미만에는 대화 단추와 오른쪽 패널이 없다. 패널로 가던 길은 채팅 탭으로 간다. PC 는 그대로다 */
 import { expect, test, type Page } from "@playwright/test"
+import { notificationHref } from "../../lib/schemas/notification"
 import { quickLogin } from "./_setup"
 
 const dock = (page: Page) => page.getByRole("button", { name: /^대화 패널 열기/ })
 const panel = (page: Page) => page.locator('aside[aria-label="대화 패널"]')
+/** :visible — 스트리밍 중에는 같은 링크가 숨은 임시 칸(div#S:1[hidden])에도 잠깐 있어, 그냥 잡으면 두 개라 시험이 깨진다 */
+const roomLink = (page: Page) => page.locator("[data-task-room-link]:visible")
 
 async function firstTask(page: Page) {
   const data = (await (await page.request.get("/api/tasks")).json()) as { id: string }[] | { tasks: { id: string }[] }
@@ -55,8 +58,19 @@ for (const [name, use] of [
       const task = await firstTask(page)
       await page.goto(`/tasks/${task}`)
       await settled(page)
-      await page.locator("[data-task-room-link]").click()
+      await roomLink(page).click()
       await page.waitForURL(`**/chat/task/${task}`, { timeout: 30_000 })
+    })
+
+    test("업무 알림은 업무 상세에 머물고, 패널 없이 업무방 링크가 보인다", async ({ page }) => {
+      await quickLogin(page, "팀장")
+      await page.evaluate(() => localStorage.setItem("omnis:right-panel-open", "1"))
+      const task = await firstTask(page)
+      await page.goto(notificationHref("task_rebuilt", task)!)
+      await settled(page)
+      expect(new URL(page.url()).pathname).toBe(`/tasks/${task}`)
+      await expect(panel(page)).toBeHidden()
+      await expect(roomLink(page)).toHaveAttribute("href", `/chat/task/${task}`)
     })
 
     test("단축키는 채팅 탭으로 간다", async ({ page }) => {
@@ -79,7 +93,7 @@ test.describe("PC", () => {
     await quickLogin(page, "팀장")
     await page.goto("/calendar")
     await settled(page)
-    await expect(page.locator("[data-task-room-link]")).toHaveCount(0)
+    await expect(roomLink(page)).toHaveCount(0)
     await dock(page).click()
     await expect(panel(page)).toHaveAttribute("aria-hidden", "false")
     await page.evaluate(() => localStorage.setItem("omnis:right-panel-open", "0"))
@@ -103,13 +117,30 @@ test.describe("PC", () => {
     await expect(panel(page)).toHaveAttribute("aria-hidden", "false")
   })
 
+  test("창을 md 미만으로 줄이면 열린 패널과 막이 사라지고, 다시 늘리면 돌아온다", async ({ page }) => {
+    await quickLogin(page, "팀장")
+    await page.goto("/calendar")
+    await settled(page)
+    await dock(page).click()
+    await expect(panel(page)).toHaveAttribute("aria-hidden", "false")
+
+    await page.setViewportSize({ width: 700, height: 800 })
+    await expect(panel(page)).toBeHidden()
+    await expect(dock(page)).toBeHidden()
+    await expect(page.getByRole("button", { name: "패널 닫기" })).toHaveCount(0)
+    expect(new URL(page.url()).pathname).toBe("/calendar")
+
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await expect(panel(page)).toHaveAttribute("aria-hidden", "false")
+  })
+
   test("업무 상세에서 연 패널은 그 업무 스레드다", async ({ page }) => {
     await quickLogin(page, "팀장")
     const task = await firstTask(page)
     await page.evaluate(() => localStorage.setItem("omnis:right-panel-open", "0"))
     await page.goto(`/tasks/${task}`)
     await settled(page)
-    await expect(page.locator("[data-task-room-link]")).toBeHidden()
+    await expect(roomLink(page)).toHaveCount(0)
     await dock(page).click()
     await expect(panel(page).getByRole("button", { name: /이 업무/ })).toBeVisible()
   })

@@ -148,6 +148,46 @@ test.describe("내용 비수집", () => {
   })
 })
 
+test.describe("폰의 ＋ 시트", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+
+  const counts = async (id: string) => {
+    const rows = await prisma.uiEvent.groupBy({ by: ["name"], where: { userId: id, name: { startsWith: "plus_" } }, _count: true })
+    return Object.fromEntries(rows.map((r) => [r.name, r._count]))
+  }
+  const flush = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event("pagehide")))
+  const plus = (page: Page) => page.locator(`${PILL} button[aria-label="추가"]`).first()
+  const sheet = (page: Page) => page.locator("[data-composer-plus-sheet]")
+
+  test("항목을 고르면 열기 · 사용, 바탕을 누르면 열기 · 닫기로 한 번씩 남고, 메뉴 항목 글자는 남지 않는다", async ({ page }) => {
+    await login(page, "사원3")
+    const id = await userId("사원3")
+    await prisma.uiEvent.deleteMany({ where: { userId: id } })
+    await openRoom(page)
+
+    await plus(page).tap()
+    await expect(sheet(page)).toBeVisible()
+    await sheet(page).getByRole("button", { name: "사람 언급" }).tap()
+    await expect(sheet(page)).toBeHidden()
+    await flush(page)
+    await expect.poll(() => counts(id), { timeout: 45_000 }).toEqual({ plus_open: 1, plus_act: 1 })
+
+    await page.keyboard.press("Escape")
+    await plus(page).tap()
+    await expect(sheet(page)).toBeVisible()
+    await page.waitForTimeout(600)
+    await page.touchscreen.tap(195, 120)
+    await expect(sheet(page)).toBeHidden()
+    await flush(page)
+    await expect.poll(() => counts(id), { timeout: 45_000 }).toEqual({ plus_open: 2, plus_act: 1, plus_dismiss: 1 })
+
+    const rows = await prisma.uiEvent.findMany({ where: { userId: id, name: { startsWith: "plus_" } } })
+    expect(rows.every((r) => r.path === "/chat/:id" && r.value === null)).toBe(true)
+    expect(JSON.stringify(rows)).not.toContain("언급")
+    await prisma.uiEvent.deleteMany({ where: { userId: id } })
+  })
+})
+
 test.describe("설문 — 꺼 둔 동안", () => {
   const seed = async (user: string, sha: string) => {
     const id = await userId(user)

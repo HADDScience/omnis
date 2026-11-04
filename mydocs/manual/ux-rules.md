@@ -34,7 +34,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - (S) `lib/ai.ts`, `app/api/`, 모든 Form
 
 ### 14. floating overlay 사분면 충돌 금지 + z-index 토큰화
-- (R) 신규 `position: fixed`/`sticky` 컴포넌트가 (a) z 토큰 사용, (b) ChatDock 점유 사분면(우하단) 회피?
+- (R) 신규 `position: fixed`/`sticky` 컴포넌트가 (a) z 토큰 사용, (b) md 이상에서 대화 패널 단추(`PanelDock`)가 쓰는 우하단 사분면 회피? md 미만에는 그 단추가 없다(2026-11-04)
 - (E) 모달/토스트는 `var(--z-dialog)` / `var(--z-toast)` 토큰 사용
 - (S) 모든 fixed/sticky 컴포넌트
 - 토큰: `--z-dock: 40` / `--z-nav: 45` / `--z-banner: 50` / `--z-popover: 60` / `--z-dialog: 100` / `--z-toast: 120`
@@ -136,7 +136,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 | Viewport | 본문 max-width | Activity Rail | 헤더 | 주 메뉴 |
 |----------|---------------|---------------|------|---------|
-| `< 768px` (mobile) | `100%` (gutter 16px) | 하단 Sheet (FAB로 토글) | 상단 sticky 컴팩트 1줄 | 하단 떠 있는 nav |
+| `< 768px` (mobile) | `100%` (gutter 16px) | 없음 — 업무 상세의 링크로 업무방에 간다(2026-11-04) | 상단 sticky 컴팩트 1줄 | 하단 떠 있는 nav |
 | `768~1280px` (tablet) | `100%` | 우측 320px Collapsible (기본 접힘) | 상단 sticky 2줄 | 상단 가운데 떠 있는 nav |
 | `≥ 1280px` (desktop) | `min(768px, 1fr)` | 우측 320px 고정 | 상단 sticky 풀 | 상단 가운데 떠 있는 nav |
 
@@ -162,7 +162,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - **내용이 nav 밑에 깔리지 않게** 하는 일은 셸(`MainWithChat`)이 `--nav-offset-top` / `--nav-offset-bottom` 만큼 비워서 한다.
   화면 높이에 묶인 화면(업무 보드 · 채팅 · 캘린더)은 이 칸 안에서 `h-full` 로 높이를 잰다 — 화면마다 nav 높이를 빼지 않는다.
   화면 전체를 덮는 `fixed` 요소를 새로 만들면 이 두 변수를 직접 뺀다
-- 폰 키보드가 올라오면 하단 nav 를 내린다. 판정은 `lib/keyboard-viewport.ts` — 터치 폰 폭 + 글자 칸 포커스 + `visualViewport` 높이가 폭별 최대에서 120px 이상 줄었을 때. 포커스만 보지 않는다(물리 키보드)
+- 화면 키보드가 올라오면 하단 nav 를 내린다(md 이상은 하단 nav 가 없다). 판정은 `lib/keyboard-viewport.ts` — 터치 기기(폰 · 태블릿) + 글자 칸 포커스 + `visualViewport` 높이가 폭별 최대에서 120px 이상 줄었을 때. 포커스만 보지 않는다(물리 키보드)
 - 포커스가 메신저 입력창(`[data-composer]`)이면 입력창을 키보드 바로 위에 붙인다(`hooks/use-keyboard-open.ts`) — `html[data-keyboard-docked]` 동안 `--app-vh` 를 보이는 높이로, `--nav-offset-bottom` · `--safe-bottom` 을 0 으로. 대화 스크롤 칸(`data-keep-bottom`)은 맨 아래까지 남은 거리를 지킨다
 - 폰의 알림 종은 제목줄 오른쪽의 같은 `.glass` 원이다(PC 는 nav 옆). 원 안 버튼이 원을 채워 아이콘이 가운데 온다
 - 아이콘만 든 원 · 칩에 `.touch-target` 을 붙이면 칸이 44px 로 커진다 — `justify-center` 가 없으면 아이콘이 왼쪽에 붙는다(2026-10-29 폴더 관리 칩)
@@ -329,6 +329,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 - 패널 머리 🔍 또는 **⌘⇧F**(Ctrl+Shift+F) → 목록 위에 **검색 줄 한 줄**(`components/chat/chat-search.tsx`). 대화와 입력창을 덮지 않는다.
   업무 필터 중이면 그 업무 안에서만 찾는다. 「전체」 탭에만 있다(「이 업무」 탭은 `TaskThread` 라 다른 컴포넌트다)
+- 결과에 도착하면 그 글이 0.9초 한 번 튕긴다(`lib/chat-arrival.ts`). 움직임 줄이기면 튕기지 않고 말풍선을 강조한다. 걸린 글자 표시가 되는 브라우저는 평소 말풍선을 칠하지 않는다. 검색어를 고치는 동안 같은 글에 머물면 튕기지 않고, 더 갈 결과가 없을 때 Enter 는 지금 결과를 다시 보여 준다. 폰에서 검색칸에 포커스가 있으면 셸을 키보드 위 높이로 줄인다. 메시지 검색은 전사 · 사람 방 · PC 대화 패널에만 있다
 - 검색하면 가장 최근 결과로 바로 간다. ▲(Enter) 더 옛 결과 · ▼(Shift+Enter) 더 최근 결과 · `3/120`. 📅 그날 첫 메시지로 · 👤 보낸 사람으로 거르기(검색어 없이도)
 - 걸린 글자는 **CSS Custom Highlight**(`::highlight(chat-search-hit)` · `chat-search-current`)로 표시한다. 렌더를 쪼개지 않아 링크 · 칩 안 글자도 표시된다.
   지금 결과는 걸린 **글자**를 가운데로 가져온다 — 긴 글에서 말풍선 가운데는 걸린 자리가 아니다. 글자가 없는 이동(날짜 · 사람만)은 말풍선을 2초 강조
@@ -342,8 +343,8 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 ## 화면 배율과 떠 있는 창 (PR #12)
 
-- `html` 에 `zoom: var(--ui-zoom)`(데스크톱 1.1, md 미만 1)을 건다. 배율은 `globals.css` 의 `--ui-zoom` 한 곳에서만 바꾼다.
-- 화면을 꽉 채우는 셸은 `100svh`/`100vw` 가 아니라 `--app-vh`/`--app-vw` 를 쓴다. `100svh` 는 zoom 을 몰라 zoom 배만큼 길어진다.
+- `html` 에 `zoom: var(--ui-zoom)`(데스크톱 1.1, md 미만 · iOS · iPadOS 1)을 건다. iOS 26.0 Safari 는 zoom 이 걸려도 `100svh` 를 화면 높이 그대로 그려 `--app-vh` 가 짧아진다. 배율은 `globals.css` 의 `--ui-zoom` 한 곳에서만 바꾼다.
+- 화면을 꽉 채우는 셸은 `100svh`/`100vw` 가 아니라 `--app-vh`/`--app-vw` 를 쓴다. Chrome · macOS Safari 의 `100svh` 는 zoom 배만큼 길어진다.
 - base-ui(floating-ui) 떠 있는 창은 `globals.css` 가 위치 칸에 `scale: 1/zoom`, 안의 창에 `zoom` 을 다시 건다 —
   팝오버 · 드롭다운 · 컨텍스트 메뉴 · 호버카드 · 툴팁 · 콤보박스 · 내비 메뉴. **셀렉트는 빼 둔다**(항목을 트리거에 겹쳐 놓는 방식이라 원래 맞다).
 - 새 떠 있는 컴포넌트를 들이면 목록에 `data-slot` 을 더하고 1920 · 1440 · 1024 · 390px 에서 트리거와 창의 x 차이를 잰다.

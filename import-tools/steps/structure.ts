@@ -324,17 +324,18 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
   return stats
 }
 
-export async function structure(sessions: RawSession[], opts: { model: string; dry: boolean }): Promise<{ created: number }> {
+export async function structure(sessions: RawSession[], opts: { model: string; dry: boolean }): Promise<{ created: number; failedRounds: number }> {
   const cache = loadDraftCache()
   const targets = await pendingForStructure(sessions, cache)
   const totalRounds = Math.ceil(targets.length / SIZE)
   const tailN = targets.filter((s) => s.id.includes("@")).length
   console.log(`  카드 없는 업무 세션 ${targets.length}개${tailN ? ` (그중 늘어난 뒷부분 ${tailN})` : ""} → ${totalRounds}라운드 × ≤${SIZE} · ${opts.model}`)
-  if (targets.length === 0 || opts.dry) return { created: 0 }
+  if (targets.length === 0 || opts.dry) return { created: 0, failedRounds: 0 }
 
   const template = readFileSync(`${import.meta.dirname}/../prompts/structure.md`, "utf8")
   mkdirSync(`${DIR}/in`, { recursive: true }); mkdirSync(`${DIR}/out`, { recursive: true })
   let created = 0
+  let failedRounds = 0
   let round = nextRoundNumber()
 
   for (let i = 0; i < targets.length; i += SIZE) {
@@ -364,7 +365,7 @@ export async function structure(sessions: RawSession[], opts: { model: string; d
           console.log(`  ⚠ ${tag} 시도 ${attempt}: ${(e as Error).message.split("\n")[0]}`)
         }
       }
-      if (!lists) { console.log(`  ✗ ${tag} 건너뜀 — 다음 실행에서 다시 시도한다`); round++; continue }
+      if (!lists) { console.log(`  ✗ ${tag} 건너뜀 — 다음 실행에서 다시 시도한다`); failedRounds++; round++; continue }
       const ctx = new Map(payload.context.projects.map((p) => [p.id, p.name]))
       for (const [id, ds] of lists) cache.set(id, ds.map((d) => ({ ...d, projectName: d.projectId ? ctx.get(d.projectId) ?? null : null, round })))
       saveDraftCache(cache)
@@ -376,5 +377,5 @@ export async function structure(sessions: RawSession[], opts: { model: string; d
     created += st.created
     console.log(`  적용 — 생성 ${st.created} · 기존 업무에 붙임 ${st.continued} (상태 올림 ${st.promoted}) ·건너뜀 ${st.skipped} · 과제 매칭 ${st.matched} (신규 ${st.newProj}) · 기타 ${st.misc} · 담당자 없음 ${st.noAssignee} · 마감 ${st.deadline} (버림 ${st.dropped})`)
   }
-  return { created }
+  return { created, failedRounds }
 }
