@@ -49,7 +49,6 @@ export function blobPathnameFor(fileId: string): string {
 
 /** 경로로 쓰이는 값이 아니어도(저장 키의 확장자로 쓰인다) 경로 문자 · 제어 문자는 남기지 않는다 */
 export function sanitizeUploadName(name: string): string {
-  // eslint-disable-next-line no-control-regex
   const clean = name.replace(/[\u0000-\u001f\u007f/\\]/g, "_").trim()
   return clean.slice(-200) || "파일"
 }

@@ -7,6 +7,8 @@ import { MessageInput } from "@/components/chat/message-input"
 import { apiUrl } from "@/lib/base-path"
 import { reportIncident } from "@/lib/report-client-error"
 import { noteAttachAttempt } from "@/lib/ui-metrics/client"
+import { startLargeUpload } from "@/lib/large-upload/client"
+import { isLargeUpload } from "@/lib/large-upload/rules"
 import { createSerialQueue } from "@/lib/serial-queue"
 
 /** 자동완성 후보 — 스레드 목록이 한 번 불러와 목록(멘션 링크)과 입력창이 같이 쓴다 */
@@ -74,13 +76,37 @@ export function ThreadComposer({
     setSending((n) => n + 1)
     onPending?.(key, content)
     onClearReply?.()
-    return queue.current.run(() => deliver(key, content, reply, attached, nasPaths)).finally(() => setSending((n) => n - 1))
+    // 큰 파일은 줄 밖에서 올린다 — 올리는 동안 다음 글이 먼저 나갈 수 있다
+    const large = (attached ?? []).filter((f) => isLargeUpload(f.size))
+    if (large.length === 0) return queue.current.run(() => deliver(key, content, reply, attached, nasPaths)).finally(() => setSending((n) => n - 1))
+    noteAttachAttempt()
+    const small = attached?.filter((f) => !isLargeUpload(f.size))
+    return Promise.all(large.map((f) => startLargeUpload(f)))
+      .catch((e: unknown) => {
+        giveUp(key, reply, e)
+        throw e
+      })
+      .then((files) => queue.current.run(() => deliver(key, content, reply, small, nasPaths, files.map((f) => f.id))))
+      .finally(() => setSending((n) => n - 1))
   }
 
-  async function deliver(key: number, content: string, reply: ThreadComposerProps["replyTo"], attached?: File[], nasPaths?: string[]) {
+  /** 보내지 못했다 — 보내는 중 표시를 걷고 답장 대상을 되돌린다. 쓴 글과 첨부는 입력창이 되돌린다 */
+  function giveUp(key: number, reply: ThreadComposerProps["replyTo"], e: unknown) {
+    onPending?.(key, null)
+    if (reply) onRestoreReply?.(reply)
+    if (e instanceof SessionExpired) {
+      toast.error("세션이 만료되었습니다. 다시 로그인해주세요.", {
+        action: { label: "로그인", onClick: () => { window.location.href = apiUrl("/login") } },
+      })
+    } else {
+      toast.error(e instanceof Error ? e.message : "메시지 전송 실패")
+    }
+  }
+
+  async function deliver(key: number, content: string, reply: ThreadComposerProps["replyTo"], attached?: File[], nasPaths?: string[], uploadedIds: string[] = []) {
     try {
       // NAS 에 먼저 올리고 받은 id 를 메시지에 붙인다 — 채팅 패널과 같은 순서
-      const fileIds: string[] = []
+      const fileIds = [...uploadedIds]
       if (attached?.length) noteAttachAttempt()
       for (const f of attached ?? []) {
         const form = new FormData()
@@ -127,15 +153,7 @@ export function ThreadComposer({
       onSent?.()
       router.refresh()
     } catch (e) {
-      onPending?.(key, null)
-      if (reply) onRestoreReply?.(reply)
-      if (e instanceof SessionExpired) {
-        toast.error("세션이 만료되었습니다. 다시 로그인해주세요.", {
-          action: { label: "로그인", onClick: () => { window.location.href = apiUrl("/login") } },
-        })
-      } else {
-        toast.error(e instanceof Error ? e.message : "메시지 전송 실패")
-      }
+      giveUp(key, reply, e)
       throw e
     }
   }

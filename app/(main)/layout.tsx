@@ -11,6 +11,7 @@ import { PwaRegister } from "@/components/pwa-register"
 import { PushPresence } from "@/components/push-presence"
 import { AppNudge } from "@/components/layout/app-nudge"
 import { UiMetrics } from "@/components/layout/ui-metrics"
+import { LargeUploadStatus } from "@/components/layout/large-upload-status"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
 
 export default async function MainLayout({
@@ -72,6 +73,7 @@ export default async function MainLayout({
         {/* 앱 설치 · 기기 알림 권유 — 사용 안내가 끝난 뒤에만 뜬다 */}
         <AppNudge />
         <UiMetrics userId={session.user.id as string} />
+        <LargeUploadStatus />
         </OnboardingProvider>
         </RightPanelProvider>
       </CommandPaletteProvider>

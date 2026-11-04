@@ -27,6 +27,7 @@ import { AuthorAvatar, DayDivider, MessageTime } from "@/components/chat/message
 
 import { apiUrl } from "@/lib/base-path"
 import { safeInlineType } from "@/lib/file-serving"
+import { isLargeUpload } from "@/lib/large-upload/rules"
 import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arrival"
 export interface FileInfo {
   id: string
@@ -684,7 +685,8 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
     <div className="mt-1.5 flex flex-col gap-1.5">
       {files.map((f) => {
         // 그 자리에서 열리는 형식만 미리보기를 그린다 — 나머지(SVG 등)는 내려받기로 나가 이미지가 깨진다
-        const isImage = safeInlineType(f.mimeType)?.startsWith("image/")
+        // 큰 첨부 사진은 카드로 — 말풍선이 원본 수백 MB 를 부르지 않게
+        const isImage = safeInlineType(f.mimeType)?.startsWith("image/") && !isLargeUpload(f.size)
         const uploading = f._uploading
 
         if (isImage) {

@@ -10,7 +10,9 @@ import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { createSerialQueue } from "@/lib/serial-queue"
 import { reportIncident } from "@/lib/report-client-error"
-import { noteAttachAttempt, noteUiSend } from "@/lib/ui-metrics/client"
+import { startLargeUpload, type UploadedFile } from "@/lib/large-upload/client"
+import { isLargeUpload, largeUploadClientEnabled } from "@/lib/large-upload/rules"
+import { noteAttachAttempt, noteUiSend, trackUi } from "@/lib/ui-metrics/client"
 import { ChatSearch } from "@/components/chat/chat-search"
 import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
 import { applyChanges, encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
@@ -501,7 +503,7 @@ export function ChatPanel({
       const tempFiles = (files || []).map((f, i) => ({
         id: `uploading-${i}`,
         name: f.name,
-        path: f.type.startsWith("image/") ? URL.createObjectURL(f) : "",
+        path: f.type.startsWith("image/") && !isLargeUpload(f.size) ? URL.createObjectURL(f) : "",
         size: f.size,
         mimeType: f.type,
         _uploading: true,
@@ -524,18 +526,33 @@ export function ChatPanel({
       const mentionSlug = mentionMatch?.[1] || null
       const hasAction = mentionSlug && content.length > (mentionMatch?.[0]?.length || 0) + 2
 
+      // 큰 파일은 전송 줄 밖에서 올린다 — 몇 분 걸리는 동안 다음 글이 밀리지 않고, 폴링도 멈추지 않는다.
+      // 다 올라가면 그때 글을 줄에 넣는다. 다른 글이 먼저 나갈 수 있다. 방을 옮겨도 이 함수는 끝까지 돌아 글이 나간다
+      const largeFiles = (files ?? []).filter((f) => isLargeUpload(f.size))
+      const smallFiles = largeFiles.length > 0 ? files?.filter((f) => !isLargeUpload(f.size)) : files
+      let largeUploaded: UploadedFile[] = []
+      if (largeFiles.length > 0) {
+        try {
+          largeUploaded = await Promise.all(largeFiles.map((f) => startLargeUpload(f, people ? { scope: "private" } : {})))
+        } catch (err) {
+          if (reply) setReplyTo((cur) => cur ?? reply)
+          stopSending(tempId, err instanceof Error ? err.message : "파일을 올리지 못했습니다")
+        }
+      }
+
       sendsInFlight.current++
       // 어떤 길로 끝나든(첨부 실패 · 네트워크 오류 포함) 폴링을 다시 켠다 — 예전에는 fetch 가 던지면 그 방 폴링이 멈춘 채 남았다
       try {
         await sendQueue.current.run(async () => {
           // 파일 업로드 (진행률 업데이트)
-          const uploadedFiles: { id: string; name: string; mimeType: string; size: number; path: string }[] = []
+          const uploadedFiles: { id: string; name: string; mimeType: string; size: number; path: string }[] = [...largeUploaded]
+          const smallStart = performance.now()
           try {
-            if (files && files.length > 0) {
-              for (let i = 0; i < files.length; i++) {
+            if (smallFiles && smallFiles.length > 0) {
+              for (let i = 0; i < smallFiles.length; i++) {
                 setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 30))
                 const form = new FormData()
-                form.append("file", files[i])
+                form.append("file", smallFiles[i])
                 // 사람끼리 방 — 참여자만 보는 파일로 올린다(붙기 전에는 나만, 붙은 뒤에는 그 방 참여자만, lib/file-access.ts)
                 if (people) form.append("scope", "private")
                 const fRes = await fetch(apiUrl("/api/files"), { method: "POST", body: form })
@@ -543,13 +560,15 @@ export function ChatPanel({
                   // 예전에는 실패한 파일을 건너뛰고 글만 보냈다 — 첨부가 빠진 줄 모른 채 "보냈다"가 됐다(2026-09-17).
                   // 글을 보내지 않고 멈춘다. 던지면 MessageInput 이 쓴 글과 첨부를 남겨 둔다(스레드 입력창과 같은 약속).
                   const err = await fRes.json().catch(() => ({}))
-                  reportIncident({ kind: "upload_failed", message: err?.error ?? "파일 업로드 실패", status: fRes.status, size: files[i].size, fileName: files[i].name })
-                  stopSending(tempId, err?.error ?? `「${files[i].name}」 을 올리지 못했습니다`)
+                  reportIncident({ kind: "upload_failed", message: err?.error ?? "파일 업로드 실패", status: fRes.status, size: smallFiles[i].size, fileName: smallFiles[i].name })
+                  stopSending(tempId, err?.error ?? `「${smallFiles[i].name}」 을 올리지 못했습니다`)
                 }
                 const uploaded = await fRes.json()
                 uploadedFiles.push(uploaded)
                 setUploadProgress((prev) => new Map(prev).set(`${tempId}-${i}`, 100))
               }
+              // 큰 첨부와 비교할 기준 — 켠 뒤에만 잰다
+              if (largeUploadClientEnabled) trackUi("attach_small_ms", Math.round(performance.now() - smallStart))
             }
 
             // NAS 에 있는 파일은 올리지 않고 잇는다(2026-09-17)
