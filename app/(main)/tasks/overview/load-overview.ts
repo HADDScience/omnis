@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { assigneeLabel } from "@/lib/task-assignees"
 import type { StalledGroups, StalledTask } from "./dashboard-stalled"
 import type { MemberStat } from "./dashboard-members"
+import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 
 /** 진행 중으로 둔 채 이만큼 움직임이 없으면 「멈춤」 으로 본다 */
 const STALE_DAYS = 3
@@ -42,8 +43,9 @@ export async function loadTasksOverview() {
       },
       orderBy: { updatedAt: "desc" },
     }),
+    // 담당 칩 · 「담당 지정」 후보. 퇴사자의 업무는 목록 검색칸에서 찾는다
     prisma.user.findMany({
-      where: { isActive: true },
+      where: ACTIVE_MEMBER_WHERE,
       select: { id: true, name: true },
     }),
     prisma.omnisCard.findFirst({ where: { title: "가점항목 리스트" } }),

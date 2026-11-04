@@ -148,6 +148,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 계획: [`../plans/2026-10-28-floating-nav.md`](../plans/2026-10-28-floating-nav.md)
 
 - 탭 정의는 `components/layout/floating-nav.tsx` 의 `TABS` 한 곳이다. 메뉴를 더하거나 빼면 여기만 고친다
+- 폰 하단 탭을 옮겨 누르면 짧은 햅틱(`lib/haptics.ts`, 2026-11-04). 안드로이드는 `navigator.vibrate(10)`, iOS 18+ 는 숨긴 스위치 체크박스를 라벨로 누른다. 켜진 탭을 다시 누를 때 · PC · iPad 는 내지 않는다. 다른 화면으로 넓히지 않았다
 - PC(≥ 768px)는 페이지 제목줄 가운데에 겹쳐 뜨고, 폰은 하단. PC 제목줄(`Header`)은 가운데 `--nav-w` 칸을 비우고
   제목은 왼쪽, 버튼은 오른쪽 칸에 둔다. md 는 아이콘만(16.25rem), lg 부터 글자까지(29.25rem) — 탭 폭을 바꾸면 이 값도 같이 고친다. 두 모양은 **CSS 로만** 가른다 — JS 로 가르면 서버 첫 화면과 어긋난다.
   단 알림 종처럼 두 번 그리면 일을 두 번 하는 것은 `NAV_DESKTOP_QUERY` 로 한 곳에만 그린다

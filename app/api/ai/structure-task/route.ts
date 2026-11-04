@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db"
 import { structureTask } from "@/lib/ai"
 import { fallbackAiDraft } from "@/lib/schemas/task-ai"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -49,8 +50,8 @@ export async function POST(req: NextRequest) {
       orderBy: { sortOrder: "asc" },
     }),
     prisma.user.findMany({
-      // 시스템 계정(🤖 메시지 작성자)은 담당자 후보가 아니다.
-      where: { id: { not: SYSTEM_USER_ID } },
+      // 시스템 계정(🤖 메시지 작성자)과 퇴사자는 담당자 후보가 아니다 — 프롬프트에 있으면 AI 가 옛 담당자를 고른다
+      where: { id: { not: SYSTEM_USER_ID }, ...ACTIVE_MEMBER_WHERE },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

@@ -23,6 +23,8 @@ export interface TaskCardData {
   status: string
   priority: string | null
   ownerName: string | null
+  /** 목록 검색용 담당자 전체 이름 — ownerName 은 3명을 넘으면 접혀 뒤 사람을 찾지 못한다 */
+  ownerSearch?: string
   /** 미완료인데 담당자가 없다 — lib/task-unassigned.ts */
   unassigned?: boolean
   projectName: string | null

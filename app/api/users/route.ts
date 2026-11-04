@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
+import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 
 export async function GET() {
   const session = await auth()
@@ -9,7 +10,7 @@ export async function GET() {
   }
 
   const users = await prisma.user.findMany({
-    where: { isActive: true },
+    where: ACTIVE_MEMBER_WHERE,
     select: { id: true, name: true, role: true },
     orderBy: { name: "asc" },
   })

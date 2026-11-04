@@ -11,6 +11,7 @@ import {
   Task01Icon,
 } from "@hugeicons/core-free-icons"
 import { LinkPendingMark } from "@/components/ui/pending-link"
+import { tapHaptic } from "@/lib/haptics"
 import { cn } from "@/lib/utils"
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open"
 import { useMediaQuery } from "@/hooks/use-media-query"
@@ -276,6 +277,8 @@ function TabCapsule({
             onClick={(e) => {
               // 새 탭·새 창으로 여는 클릭은 이 화면을 떠나지 않는다
               if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+              // 탭을 옮길 때만 — 켜진 탭을 다시 누르는 것은 전환이 아니다
+              if (variant === "bottom" && !active) tapHaptic()
               onSelect(tab.key)
             }}
             title={variant === "top" ? tab.label : undefined}
