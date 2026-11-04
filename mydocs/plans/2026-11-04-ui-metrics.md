@@ -37,6 +37,6 @@ last_verified: 2026-11-04
 
 ## 알려진 한계
 
-- PR #144 가 들어오면 폰의 ＋ 는 `ComposerPlusSheet` 라 `plus_*` 가 폰에서 끊긴다. 뒤에 들어오는 쪽이 시트에 `trackUi` 를 잇는다.
+- 폰의 ＋ 는 PR #144 부터 `ComposerPlusSheet` 다. `plus_*` 를 시트와 `ComposerPlus` 에 이었다. PC 메뉴는 `DropdownMenu` 그대로다.
 - 코드 변경이 없는 배포(문서만)에도 설문이 나간다.
 - 데모 e2e 는 첨부가 꺼져 있어 첨부 실패 · 재시도는 단위 시험으로만 잰다.
