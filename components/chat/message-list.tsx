@@ -26,6 +26,7 @@ import { isStuckToBottom } from "@/lib/agent/scroll-follow"
 import { AuthorAvatar, DayDivider, MessageTime } from "@/components/chat/message-parts"
 
 import { apiUrl } from "@/lib/base-path"
+import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arrival"
 export interface FileInfo {
   id: string
   name: string
@@ -114,7 +115,7 @@ interface MessageListProps {
   onResend?: (tempId: string) => void
   onDiscardFailed?: (tempId: string) => void
   /** 검색 결과로 갈 때 — 이 글을 가운데로 가져와 잠깐 강조한다. n 은 같은 글을 다시 눌렀을 때 다시 움직이게 */
-  highlight?: { id: string; n: number } | null
+  highlight?: { id: string; n: number; typing?: boolean } | null
   /** 검색 결과 보기 중 — 최신이 아닌 자리를 보고 있다. 뒤를 붙여도 맨 아래로 끌어내리지 않는다 */
   jumped?: boolean
   /** 아래로 스크롤 시 뒤 메시지 로드 요청 (검색 결과 보기 중에만) */
@@ -174,6 +175,9 @@ export function MessageList({
     highlightRef.current = highlight
   })
   const scrolledHighlightRef = useRef<number | null>(null)
+  const arrivedIdRef = useRef<string | null>(null)
+  const arrivalFrameRef = useRef(0)
+  useEffect(() => () => cancelAnimationFrame(arrivalFrameRef.current), [])
   const [flashId, setFlashId] = useState<string | null>(null)
 
   // 이전 메시지(prepend)면 스크롤 위치 유지, 그 외(새 메시지·초기 로드)는 맨 아래로
@@ -255,11 +259,22 @@ export function MessageList({
       const r = first.getBoundingClientRect()
       const box = el.getBoundingClientRect()
       el.scrollTop += r.top - box.top - box.height / 2 + r.height / 2
-      if (typeof CSS !== "undefined" && CSS.highlights) return
     } else {
       target.scrollIntoView({ block: "center" })
     }
-    setFlashId(highlight.id)
+    const { bounce, flash } = arrivalEffects({
+      typing: !!highlight.typing,
+      sameTarget: arrivedIdRef.current === highlight.id,
+      reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      textMarked: !!first && typeof CSS !== "undefined" && !!CSS.highlights,
+    })
+    arrivedIdRef.current = highlight.id
+    if (flash) setFlashId(highlight.id)
+    // 스크롤은 위에서 끝났다 — 그 자리가 그려지는 다음 프레임에 튕긴다
+    if (bounce) {
+      cancelAnimationFrame(arrivalFrameRef.current)
+      arrivalFrameRef.current = requestAnimationFrame(() => playArrival(target))
+    }
   }, [highlight, messages, searchText])
 
   // 걸린 글자 표시. DOM 위에 범위만 거는 방식이라 링크 · 칩으로 쪼갠 렌더를 건드리지 않는다.
@@ -288,7 +303,7 @@ export function MessageList({
 
   useEffect(() => {
     if (!flashId) return
-    const timer = setTimeout(() => setFlashId(null), 2000)
+    const timer = setTimeout(() => setFlashId(null), ARRIVAL_FLASH_MS)
     return () => clearTimeout(timer)
   }, [flashId, highlight])
 

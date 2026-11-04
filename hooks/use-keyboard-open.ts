@@ -20,7 +20,7 @@ function keepingBottom(change: () => void) {
 /**
  * 폰 키보드가 열렸는가. 앱 셸에서 한 번만 쓴다.
  *
- * 포커스가 메신저 입력창(`[data-composer]`)에 있으면 입력창을 키보드 바로 위에 붙인다 — 셸을 보이는 높이로 줄이고,
+ * 포커스가 메신저 입력창(`[data-composer]`)이나 채팅 검색 줄(`[data-keyboard-dock]`)에 있으면 입력창을 키보드 바로 위에 붙인다 — 셸을 보이는 높이로 줄이고,
  * nav 자리와 홈 인디케이터 여백을 걷는다. 다른 입력 칸은 브라우저가 칸을 찾아 올려 주는 동작을 그대로 둔다.
  */
 export function useKeyboardOpen() {
@@ -64,7 +64,7 @@ export function useKeyboardOpen() {
         height,
       })
       setOpen(next)
-      dock(next && active?.closest("[data-composer]") ? Math.round(vv.height) : null)
+      dock(next && active?.closest("[data-composer],[data-keyboard-dock]") ? Math.round(vv.height) : null)
       // iOS 는 키보드가 열리면 입력칸을 찾아 화면을 위로 민다. 이미 보이는 높이로 줄였으니 되돌린다
       if (dockedHeight !== null && (window.scrollY !== 0 || vv.offsetTop !== 0)) window.scrollTo(0, 0)
     }
