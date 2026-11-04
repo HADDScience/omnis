@@ -26,6 +26,7 @@ import { isStuckToBottom } from "@/lib/agent/scroll-follow"
 import { AuthorAvatar, DayDivider, MessageTime } from "@/components/chat/message-parts"
 
 import { apiUrl } from "@/lib/base-path"
+import { safeInlineType } from "@/lib/file-serving"
 import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arrival"
 export interface FileInfo {
   id: string
@@ -682,7 +683,8 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
   return (
     <div className="mt-1.5 flex flex-col gap-1.5">
       {files.map((f) => {
-        const isImage = f.mimeType?.startsWith("image/")
+        // 그 자리에서 열리는 형식만 미리보기를 그린다 — 나머지(SVG 등)는 내려받기로 나가 이미지가 깨진다
+        const isImage = safeInlineType(f.mimeType)?.startsWith("image/")
         const uploading = f._uploading
 
         if (isImage) {

@@ -187,8 +187,8 @@ export async function readFile(path: string): Promise<DavResponse | null> {
   return res
 }
 
-/** 브라우저가 그 자리에서 열 수 있는 형식인가. 아니면 저장으로 넘긴다. */
-export function inlineContentType(name: string): string | null {
+/** 이름으로 짐작한 파일 형식. 첨부 행의 mimeType 을 채울 때 쓴다 — 응답 헤더는 lib/file-serving 이 정한다. */
+export function mimeTypeFromName(name: string): string | null {
   const ext = name.toLowerCase().split(".").pop() ?? ""
   const map: Record<string, string> = {
     pdf: "application/pdf",

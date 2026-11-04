@@ -42,7 +42,6 @@ const EXT: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/gif": "gif",
-  "image/svg+xml": "svg",
 }
 
 export function extensionFor(contentType: string): string | null {
