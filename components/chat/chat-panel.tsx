@@ -538,6 +538,11 @@ export function ChatPanel({
           if (reply) setReplyTo((cur) => cur ?? reply)
           stopSending(tempId, err instanceof Error ? err.message : "파일을 올리지 못했습니다")
         }
+        // 그동안 나간 글들 뒤로 옮긴다 — 서버에 이제 닿는 글이다
+        setMessages((prev) => {
+          const bubble = prev.find((m) => m.id === tempId)
+          return bubble ? [...prev.filter((m) => m.id !== tempId), bubble] : prev
+        })
       }
 
       sendsInFlight.current++

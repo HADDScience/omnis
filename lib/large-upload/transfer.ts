@@ -69,7 +69,7 @@ export async function loadCopyPlan(fileId: string) {
  * 복사 자리를 잡는다 — 전체 동시 2개. 한 문장으로 세고 바꿔 자리 다툼을 줄인다.
  * 15분 넘게 소식 없는 COPYING 은 세지 않는다(실행이 사라졌을 수 있다).
  */
-export async function claimCopySlot(fileId: string): Promise<boolean> {
+export async function claimCopySlot(fileId: string): Promise<"ok" | "busy" | "stop"> {
   const updated = await prisma.$executeRaw`
     UPDATE "FileTransfer" SET "state" = 'COPYING', "updatedAt" = now()
     WHERE "fileId" = ${fileId}
@@ -77,7 +77,9 @@ export async function claimCopySlot(fileId: string): Promise<boolean> {
         "state" IN ('UPLOADED', 'WAITING_NAS')
         AND (SELECT count(*) FROM "FileTransfer" WHERE "state" = 'COPYING' AND "updatedAt" > now() - interval '15 minutes') < ${COPY_CONCURRENCY}
       ))`
-  return updated > 0
+  if (updated > 0) return "ok"
+  const row = await prisma.fileTransfer.findUnique({ where: { fileId }, select: { state: true } })
+  return row && (row.state === "UPLOADED" || row.state === "WAITING_NAS") ? "busy" : "stop"
 }
 
 /** 한 단계: 임시본 범위 읽기 → 해시 → NAS 쓰기 → NAS 되읽기 → 해시 대조. 같은 범위를 다시 해도 결과가 같다 */

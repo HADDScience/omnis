@@ -12,7 +12,7 @@ function ops(over: Partial<CopyOps> & { segments?: number; segmentsDone?: number
     now: () => clock,
     sleep: async (ms) => { clock += ms; log.push(`sleep:${ms}`) },
     loadCopyPlan: async () => ({ state, segments, segmentsDone, manifestSha256: null }),
-    claimCopySlot: async () => { log.push("claim"); return true },
+    claimCopySlot: async () => { log.push("claim"); return "ok" },
     copySegment: async (i) => { log.push(`copy:${i}`); return { kind: "ok", manifest: `m${i}` } },
     recordProgress: async (n) => { log.push(`progress:${n}`) },
     markWaiting: async (n, _m, r) => { log.push(`waiting:${n}:${r}`) },
@@ -145,9 +145,16 @@ test("30일을 넘기면 FAILED 로 두고 임시본을 지우지 않는다", as
 
 test("자리가 없으면 기다린다", async () => {
   let n = 0
-  const { ops: o, log } = ops({ claimCopySlot: async () => ++n >= 3 })
+  const { ops: o, log } = ops({ claimCopySlot: async () => (++n >= 3 ? "ok" : "busy") })
   await runCopy(o)
   assert.equal(log.filter((l) => l === "sleep:60000").length, 2)
+})
+
+test("자리를 기다리는 사이 끝난 전송이면 복사하지 않고 멈춘다", async () => {
+  const { ops: o, log } = ops({ claimCopySlot: async () => "stop" })
+  assert.equal(await runCopy(o), "SKIPPED")
+  assert.ok(!has(log, "copy"))
+  assert.ok(!log.includes("delete"))
 })
 
 test("삭제 직전 NAS 가 꺼졌으면 기다렸다 다시 본다", async () => {

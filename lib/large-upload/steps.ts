@@ -7,7 +7,7 @@ export async function loadCopyPlan(fileId: string) {
   return loadCopyPlan(fileId)
 }
 
-export async function claimCopySlot(fileId: string): Promise<boolean> {
+export async function claimCopySlot(fileId: string) {
   "use step"
   const { claimCopySlot } = await import("./transfer")
   return claimCopySlot(fileId)

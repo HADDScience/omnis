@@ -12,7 +12,8 @@ export interface CopyOps {
   now: () => number
   sleep: (ms: number) => Promise<void>
   loadCopyPlan: () => Promise<{ state: string; segments: number; segmentsDone: number; manifestSha256: string | null } | null>
-  claimCopySlot: () => Promise<boolean>
+  /** busy: 자리가 없다. stop: 그새 끝났거나 실패로 바뀌었다 */
+  claimCopySlot: () => Promise<"ok" | "busy" | "stop">
   copySegment: (index: number, manifest: string | null) => Promise<CopyResult>
   recordProgress: (segmentsDone: number, manifest: string | null) => Promise<void>
   markWaiting: (segmentsDone: number, manifest: string | null, reason: string) => Promise<void>
@@ -37,8 +38,13 @@ export async function runCopy(ops: CopyOps): Promise<string> {
   const plan = await ops.loadCopyPlan()
   if (!plan || plan.state === "TEMP_DELETED" || plan.state === "FAILED") return plan?.state ?? "GONE"
 
-  const claim = async () => {
-    while (!(await ops.claimCopySlot())) await ops.sleep(SLOT_RETRY_MS)
+  /** 자리를 잡으면 true. 이 전송이 더 복사할 상태가 아니면 false — 자리를 기다리며 영원히 돌지 않게 */
+  const claim = async (): Promise<boolean> => {
+    for (;;) {
+      const slot = await ops.claimCopySlot()
+      if (slot !== "busy") return slot === "ok"
+      await ops.sleep(SLOT_RETRY_MS)
+    }
   }
 
   /** NAS 를 만날 때까지 기다린다. 기다리는 동안 DB 를 건드리지 않는다. false 면 한도를 넘겨 FAILED 로 끝났다 */
@@ -68,7 +74,7 @@ export async function runCopy(ops: CopyOps): Promise<string> {
   }
 
   if (plan.state !== "VERIFIED") {
-    await claim()
+    if (!(await claim())) return "SKIPPED"
 
     let index = plan.segmentsDone
     let manifest = plan.manifestSha256
@@ -98,7 +104,7 @@ export async function runCopy(ops: CopyOps): Promise<string> {
       } else {
         await ops.markWaiting(index, manifest, result.kind)
         if (!(await waitForNas(result.kind))) return "FAILED"
-        await claim()
+        if (!(await claim())) return "SKIPPED"
       }
     }
 

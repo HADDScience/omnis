@@ -1,5 +1,6 @@
 // 첨부 파일의 실물을 연다. 올린 파일이든 NAS 연결이든 읽는 곳은 이것만 부른다.
 // 읽는 곳: /api/files/[id]/raw · MCP read_file · MCP 내려받기 링크
+import { Readable } from "node:stream"
 import { MAX_UPLOAD_BYTES } from "@/lib/constants"
 import { getObject, getObjectRange, objectKeyFor, type DavResponse } from "@/lib/storage"
 import { readFile, normalizeNasPath } from "@/lib/nas"
@@ -39,7 +40,6 @@ async function openLargeObject(
 ): Promise<FileObject> {
   const range = parseRange(rangeHeader, file.size)
   if (range === "unsatisfiable") {
-    const { Readable } = await import("node:stream")
     return { status: 416, body: Readable.from([]), headers: {}, large: { contentLength: 0, contentRange: `bytes */${file.size}`, unsatisfiable: true } }
   }
   const large = range

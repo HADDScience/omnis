@@ -35,7 +35,7 @@ function Status() {
   return (
     <div
       data-large-upload-status
-      className="pointer-events-none fixed inset-x-3 top-[calc(var(--demo-banner-height,0px)+var(--safe-top,0px)+0.5rem)] z-[var(--z-banner)] mx-auto flex max-w-sm flex-col gap-1.5 md:top-[calc(var(--demo-banner-height,0px)+3.75rem)]"
+      className="pointer-events-none fixed inset-x-3 top-[calc(var(--demo-banner-height,0px)+var(--safe-top,0px)+0.5rem)] z-[var(--z-banner)] mx-auto flex max-w-sm flex-col gap-1.5 md:top-[calc(var(--demo-banner-height,0px)+7.5rem)]"
     >
       {uploads.map((u) => (
         <div key={u.id} className="pointer-events-auto">
