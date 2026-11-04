@@ -33,8 +33,8 @@ interface ChatSearchProps {
   taskId: string | null
   users: { id: string; name: string }[]
   onClose: () => void
-  /** 이 결과 자리로 가서 강조한다 */
-  onGo: (messageId: string) => void
+  /** 이 결과 자리로 가서 강조한다. typing 은 검색어 입력이 데려온 이동(누른 것이 아니다) */
+  onGo: (messageId: string, typing?: boolean) => void
   /** 이 시각 이후 첫 메시지 자리로 */
   onGoDate: (atIso: string) => void
   /** 말풍선 안 표시에 쓸 검색어 — 결과가 돌아온 검색어만 넘긴다 */
@@ -120,7 +120,7 @@ export function ChatSearch({
           setIndex(0)
           setSearched(true)
           callbacks.current.onSearchTextChange(q.length >= MIN_QUERY ? q : "")
-          if (found[0]) callbacks.current.onGo(found[0])
+          if (found[0]) callbacks.current.onGo(found[0], true)
         })
         .catch((err: unknown) => {
           if ((err as Error)?.name !== "AbortError") toast.error("검색하지 못했습니다")
@@ -141,7 +141,12 @@ export function ChatSearch({
   const canNewer = index > 0
 
   async function older() {
-    if (loading || !canOlder) return
+    if (loading) return
+    // 더 갈 결과가 없으면 지금 결과를 다시 보여 준다 — 결과가 하나일 때 Enter 가 아무 일도 안 하면 눌린 줄 모른다
+    if (!canOlder) {
+      if (ids[index]) onGo(ids[index])
+      return
+    }
     if (index + 1 < ids.length) {
       setIndex(index + 1)
       onGo(ids[index + 1])
@@ -164,7 +169,10 @@ export function ChatSearch({
   }
 
   function newer() {
-    if (!canNewer) return
+    if (!canNewer) {
+      if (ids[index]) onGo(ids[index])
+      return
+    }
     setIndex(index - 1)
     onGo(ids[index - 1])
   }
@@ -176,6 +184,7 @@ export function ChatSearch({
     <div
       role="search"
       aria-label="채팅 검색"
+      data-keyboard-dock
       className="flex shrink-0 flex-wrap items-center gap-x-0.5 gap-y-1 border-b px-2 py-1.5"
       onKeyDown={(e) => {
         if (e.key === "Escape") {

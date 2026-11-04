@@ -136,7 +136,7 @@ export function ChatPanel({
   const jumpedRef = useRef(false)
   const [hasMoreNewer, setHasMoreNewer] = useState(false)
   const [loadingNewer, setLoadingNewer] = useState(false)
-  const [highlight, setHighlight] = useState<{ id: string; n: number } | null>(null)
+  const [highlight, setHighlight] = useState<{ id: string; n: number; typing?: boolean } | null>(null)
 
   // 기기에 저장 — 다음에 이 방을 열 때 서버를 기다리지 않고 바로 그린다(lib/chat-cache.ts). 최근 30개 · 본문만.
   // 업무로 거른 목록 · 검색 점프 중의 목록은 「이 방의 최근 글」 이 아니라 저장하지 않는다
@@ -275,7 +275,7 @@ export function ChatPanel({
 
   /** 주변 불러오기(around=id 또는 at=시각)로 목록을 갈아 끼우고 대상을 강조한다 */
   const loadAround = useCallback(
-    async (query: { around: string } | { at: string }) => {
+    async (query: { around: string } | { at: string }, typing = false) => {
       const params = new URLSearchParams({ roomId, ...query })
       if (filterTaskId) params.set("taskId", filterTaskId)
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`)).catch(() => null)
@@ -292,18 +292,18 @@ export function ChatPanel({
       setHasMoreOlder(data.hasMoreOlder)
       setMessages(data.messages)
       if (data.messages.length > 0) lastFetchedAt.current = edgeOf(data.messages[data.messages.length - 1])
-      setHighlight((prev) => ({ id: data.targetId, n: (prev?.n ?? 0) + 1 }))
+      setHighlight((prev) => ({ id: data.targetId, n: (prev?.n ?? 0) + 1, typing }))
     },
     [roomId, filterTaskId],
   )
 
   const jumpTo = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, typing = false) => {
       if (messagesRef.current.some((m) => m.id === messageId)) {
-        setHighlight((prev) => ({ id: messageId, n: (prev?.n ?? 0) + 1 }))
+        setHighlight((prev) => ({ id: messageId, n: (prev?.n ?? 0) + 1, typing }))
         return
       }
-      await loadAround({ around: messageId })
+      await loadAround({ around: messageId }, typing)
     },
     [loadAround],
   )
@@ -670,7 +670,7 @@ export function ChatPanel({
           users={users}
           focusSignal={searchFocus}
           onClose={() => onSearchOpenChange?.(false)}
-          onGo={(id) => void jumpTo(id)}
+          onGo={(id, typing) => void jumpTo(id, typing)}
           onGoDate={(at) => void loadAround({ at })}
           onSearchTextChange={setSearchText}
         />
