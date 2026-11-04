@@ -23,6 +23,8 @@ const nextConfig = {
     NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     // 화면이 그려진 빌드의 커밋 — 열어 둔 탭은 옛 빌드일 수 있어 서버 값이 아니라 이것을 기록한다(lib/ui-metrics)
     NEXT_PUBLIC_BUILD_SHA: process.env.VERCEL_GIT_COMMIT_SHA ?? "",
+    // 큰 첨부 — 화면이 같은 값을 본다. 서버는 LARGE_UPLOAD_ENABLED 를 직접 본다(lib/large-upload/server.ts). 켜고 끄려면 재배포한다
+    NEXT_PUBLIC_LARGE_UPLOAD: process.env.LARGE_UPLOAD_ENABLED === "1" ? "1" : "",
     // 사용 기록은 운영에서만. 데모 · 프리뷰 · 로컬은 끈다. e2e 는 이 값을 직접 준다
     NEXT_PUBLIC_UI_METRICS:
       process.env.NEXT_PUBLIC_UI_METRICS ??
