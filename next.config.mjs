@@ -19,7 +19,15 @@ const nextConfig = {
    * next-auth/react 는 클라이언트에서 NEXTAUTH_URL 의 경로를 자기 basePath 로 삼는다.
    * NEXT_PUBLIC_ 이 아니라 번들에 안 실리므로 여기서 실어 준다 (비밀이 아니다 — 주소다).
    */
-  env: { NEXTAUTH_URL: process.env.NEXTAUTH_URL },
+  env: {
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+    // 화면이 그려진 빌드의 커밋 — 열어 둔 탭은 옛 빌드일 수 있어 서버 값이 아니라 이것을 기록한다(lib/ui-metrics)
+    NEXT_PUBLIC_BUILD_SHA: process.env.VERCEL_GIT_COMMIT_SHA ?? "",
+    // 사용 기록은 운영에서만. 데모 · 프리뷰 · 로컬은 끈다. e2e 는 이 값을 직접 준다
+    NEXT_PUBLIC_UI_METRICS:
+      process.env.NEXT_PUBLIC_UI_METRICS ??
+      (process.env.VERCEL_ENV === "production" && process.env.NEXT_PUBLIC_IS_DEMO !== "true" ? "1" : ""),
+  },
   devIndicators: false, // 좌측하단 Next.js 개발 툴박스 숨김
   /*
    * 클라이언트 라우터 캐시 — 한 번 연 화면을 이 시간 동안 브라우저에 두어, 탭을 오갈 때

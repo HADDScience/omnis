@@ -32,6 +32,7 @@ import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { AttachChips, ComposerPlus, RoomComposer, type PickedFile } from "@/components/chat/room-composer"
 import { useOmnisAttachments } from "./omnis-attach"
 import { IS_DEMO } from "@/lib/demo"
+import { noteUiSend } from "@/lib/ui-metrics/client"
 
 const EXAMPLES = [
   "이번 주 마감인 업무 정리해 줘",
@@ -343,6 +344,7 @@ export function OmnisRoom({
     // 보내는 중에는 다시 보내지 않는다 — 버튼 · Enter · 예시 칸이 모두 여기로 온다
     if (busy || sendingRef.current) return
     sendingRef.current = true
+    noteUiSend()
     stickRef.current = true // 내가 보낸 글은 바로 보인다
     setAway(false)
     let questionId: string | null = "retryOf" in body ? body.retryOf : null

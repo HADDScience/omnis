@@ -1,5 +1,8 @@
 
-import { apiUrl } from "@/lib/base-path"/**
+import { apiUrl } from "@/lib/base-path"
+import { noteAttachFailed } from "@/lib/ui-metrics/client"
+
+/**
  * 화면에서 터진 오류를 서버로 보낸다. 서버가 로그를 남기고 메일을 쏜다.
  *
  * 실패해도 조용히 넘어간다 — 오류를 보고하다 또 터지면 사용자에게 보이는 것은
@@ -45,6 +48,8 @@ export function reportIncident(incident: {
   size?: number
   fileName?: string
 }): void {
+  // 사용 기록에는 상태 코드만 — 파일 이름 · 메시지는 넘기지 않는다
+  if (incident.kind !== "send_failed") noteAttachFailed(incident.status)
   try {
     void fetch(apiUrl("/api/errors"), {
       method: "POST",
