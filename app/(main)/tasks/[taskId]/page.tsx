@@ -9,6 +9,7 @@ import { TaskDetail } from "./task-detail"
 import { RegisterPanelTask } from "@/components/layout/right-panel-context"
 import { CHAT_DELETED_TEXT } from "@/lib/constants"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 
 export const dynamic = "force-dynamic"
 
@@ -60,9 +61,9 @@ export default async function TaskDetailPage({ params }: Props) {
         product: { select: { id: true, name: true, color: true } },
       },
     }),
-    // 담당자·지시자를 고칠 때 고를 사람들. 🤖 시스템 계정은 뺀다.
+    // 담당자·지시자를 고칠 때 고를 사람들. 🤖 시스템 계정과 퇴사자는 뺀다 — 이 업무에 이미 걸린 퇴사자는 화면이 붙여 준다
     prisma.user.findMany({
-      where: { id: { not: SYSTEM_USER_ID } },
+      where: { id: { not: SYSTEM_USER_ID }, ...ACTIVE_MEMBER_WHERE },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

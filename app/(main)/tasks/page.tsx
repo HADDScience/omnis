@@ -34,6 +34,7 @@ export default async function TasksPage() {
       status: t.status,
       priority: t.priority,
       ownerName: t.assignees.length > 0 ? assigneeLabel(t.assignees) : null,
+      ownerSearch: t.assignees.map((a) => a.user.name).join(" "),
       unassigned: isUnassignedOpen({ status: t.status, assigneeCount: t.assignees.length }),
       projectName: t.project?.name ?? null,
       productName: t.project?.product?.name ?? null,

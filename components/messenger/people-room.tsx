@@ -101,7 +101,7 @@ export function PeopleRoom({
           currentUserId={currentUserId}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
-          people={{ members: room.members }}
+          people={{ members: room.activeMembers }}
           handoffKey={`room:${room.id}`}
         />
       </div>

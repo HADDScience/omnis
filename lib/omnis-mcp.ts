@@ -12,6 +12,7 @@
 // 권한
 //  Omnis 계정이 살아 있으면 누구나 붙는다. 지식재산권 도구만 ip.members 로 한 번 더 건다.
 //  Prisma 는 DB 소유자로 붙으므로 이 파일이 곧 권한 경계다.
+import { ACTIVE_MEMBER_WHERE, isActiveMember } from "@/lib/active-members"
 import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
 import { listTasksWhere } from "@/lib/task-unassigned"
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
@@ -632,8 +633,10 @@ export async function findTask(ref: string): Promise<{ id: string } | { error: s
 }
 
 /** 이름 → 사용자. 정확히 같은 이름 우선, 없으면 「우창님」「혜린씨」 같은 호칭을 벗긴 부분 일치. */
-export async function findUsers(names: string[]): Promise<{ ids: string[]; missing: string[] }> {
-  const users = await prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true } })
+export async function findUsers(names: string[], keep: { id: string; name: string }[] = []): Promise<{ ids: string[]; missing: string[] }> {
+  // keep — 이 업무에 이미 걸린 사람. 퇴사했어도 담당 목록을 통째로 다시 보낼 때 이름이 풀려야 한다
+  const active = await prisma.user.findMany({ where: ACTIVE_MEMBER_WHERE, select: { id: true, name: true } })
+  const users = [...active, ...keep.filter((k) => !active.some((a) => a.id === k.id))]
   const ids: string[] = []
   const missing: string[] = []
   for (const raw of names) {
@@ -1109,8 +1112,9 @@ export async function runTool(
       if (args.assignees !== undefined) {
         const names = Array.isArray(args.assignees) ? args.assignees.map(String).map((n) => n.trim()).filter(Boolean) : []
         if (names.length === 0) return { error: "assignees 는 담당자 이름 1명 이상입니다." }
-        const { ids, missing } = await findUsers(names)
-        if (missing.length) return { error: `모르는 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
+        const current = await prisma.taskAssignee.findMany({ where: { taskId: found.id }, select: { user: { select: { id: true, name: true } } } })
+        const { ids, missing } = await findUsers(names, current.map((a) => a.user))
+        if (missing.length) return { error: `모르거나 재직 중이 아닌 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
         input.assigneeIds = ids
       }
       if (Object.keys(input).length === 0) return { error: "바꿀 필드를 하나 이상 주세요." }
@@ -1187,7 +1191,7 @@ export async function runTool(
       if (!taskName) return { error: "name 이 비어 있습니다." }
       if (names.length === 0) return { error: "담당자가 1명 이상 필요합니다. list_members 로 정식 이름을 확인하세요." }
       const { ids: assigneeIds, missing } = await findUsers(names)
-      if (missing.length) return { error: `모르는 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
+      if (missing.length) return { error: `모르거나 재직 중이 아닌 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
 
       let projectId: string | null = null
       if (str(args.project)) {
@@ -1274,12 +1278,12 @@ export async function runTool(
     case "list_members": {
       const rows = await prisma.user.findMany({
         // 시스템 계정(🤖 메시지 작성자)은 구성원이 아니다 — 과거 구성원을 포함해도 뺀다.
-        where: { id: { not: SYSTEM_USER_ID }, ...(args.includeInactive === true ? {} : { isActive: true }) },
-        select: { name: true, position: true, department: true, role: true, isActive: true },
+        where: { id: { not: SYSTEM_USER_ID }, ...(args.includeInactive === true ? {} : ACTIVE_MEMBER_WHERE) },
+        select: { name: true, position: true, department: true, role: true, isActive: true, staffProfile: { select: { employment: true } } },
         orderBy: { name: "asc" },
       })
       return {
-        text: rows.map((u) => `- ${u.name}${u.position ? ` · ${u.position}` : ""}${u.department ? ` · ${u.department}` : ""}${u.role === "ADMIN" ? " · 관리자" : ""}${u.isActive ? "" : " · 과거 구성원"}`).join("\n"),
+        text: rows.map((u) => `- ${u.name}${u.position ? ` · ${u.position}` : ""}${u.department ? ` · ${u.department}` : ""}${u.role === "ADMIN" ? " · 관리자" : ""}${isActiveMember(u) ? "" : " · 과거 구성원"}`).join("\n"),
       }
     }
 

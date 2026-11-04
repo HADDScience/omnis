@@ -17,6 +17,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { PencilEdit01Icon, Add01Icon, Delete02Icon } from "@hugeicons/core-free-icons"
 import { format } from "date-fns"
 import { apiUrl } from "@/lib/base-path"
+import { personOptions } from "@/lib/active-members"
 
 interface Checklist {
   id: string
@@ -86,7 +87,7 @@ export function TaskDetail({
 }: {
   task: Task
   projects?: Project[]
-  /** 담당자·지시자를 고를 사람들. 🤖 시스템 계정은 빠져 있다. */
+  /** 담당자·지시자를 고를 사람들 — 재직자만. 이 업무에 이미 걸린 퇴사자는 peopleChoices 가 붙인다. */
   users?: { id: string; name: string }[]
 }) {
   const router = useRouter()
@@ -190,6 +191,9 @@ export function TaskDetail({
     }
   }
 
+  // 고를 사람 = 재직자 + 이 업무에 걸린 사람. 편집을 여는 동안 칩이 사라지지 않게 draft 가 아니라 저장된 값으로 만든다
+  const peopleChoices = personOptions(users, [...task.assignees, task.instructor])
+
   // 담당자·지시자 저장. 담당자는 통째로 바꾼다 — 서버가 TaskAssignee 를 갈아끼운다.
   async function savePeople() {
     if (draftOwnerIds.length === 0) return
@@ -203,8 +207,8 @@ export function TaskDetail({
       if (res.ok) {
         setTask((prev) => ({
           ...prev,
-          assignees: users.filter((u) => draftOwnerIds.includes(u.id)),
-          instructor: users.find((u) => u.id === draftInstructorId) ?? prev.instructor,
+          assignees: peopleChoices.filter((u) => draftOwnerIds.includes(u.id)).map(({ id, name }) => ({ id, name })),
+          instructor: peopleChoices.find((u) => u.id === draftInstructorId) ?? prev.instructor,
         }))
         setEditingPeople(false)
         router.refresh()
@@ -273,7 +277,7 @@ export function TaskDetail({
                   <div className="mb-1 text-xs text-muted-foreground">담당자</div>
                   {/* 인원이 10명 안쪽이라 칩 토글이 드롭다운보다 빠르다 — /업무 모달과 같은 방식 */}
                   <div className="flex flex-wrap gap-1.5">
-                    {users.map((u) => {
+                    {peopleChoices.map((u) => {
                       const on = draftOwnerIds.includes(u.id)
                       return (
                         <button
@@ -292,6 +296,7 @@ export function TaskDetail({
                           }`}
                         >
                           {u.name}
+                          {u.former && " · 과거 구성원"}
                         </button>
                       )
                     })}
@@ -301,10 +306,10 @@ export function TaskDetail({
                   <span className="text-xs text-muted-foreground">지시</span>
                   <Select value={draftInstructorId} onValueChange={(v) => v && setDraftInstructorId(v)}>
                     <SelectTrigger className="h-8 w-28 text-xs">
-                      <SelectValue>{users.find((u) => u.id === draftInstructorId)?.name ?? "선택"}</SelectValue>
+                      <SelectValue>{peopleChoices.find((u) => u.id === draftInstructorId)?.name ?? "선택"}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      {users.map((u) => (
+                      {peopleChoices.map((u) => (
                         <SelectItem key={u.id} value={u.id} label={u.name} className="text-xs">
                           {u.name}
                         </SelectItem>
