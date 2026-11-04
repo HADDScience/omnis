@@ -173,7 +173,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
         aria-hidden={!open}
         aria-label="대화 패널"
         className={cn(
-          "glass fixed! top-[calc(var(--demo-banner-height,0px)+8px)] right-2 bottom-2 z-[var(--z-banner)] flex flex-col overflow-hidden rounded-[22px] transition-[transform,opacity] duration-200 motion-reduce:transition-none max-md:hidden",
+          "glass fixed! top-[calc(var(--demo-banner-height,0px)+8px)] right-2 h-[calc(var(--app-vh)-var(--demo-banner-height,0px)-8px-0.5rem)] z-[var(--z-banner)] flex flex-col overflow-hidden rounded-[22px] transition-[transform,opacity] duration-200 motion-reduce:transition-none max-md:hidden",
           // 92vw 를 그대로 쓰면 안 된다 — vw 는 zoom 을 모르므로 배율만큼 화면을 넘친다
           // (--app-vh 주석과 같은 함정). zoom 을 나눈 --app-vw 로 계산한다.
           "w-[min(400px,calc(var(--app-vw)-16px))]",

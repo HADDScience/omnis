@@ -520,6 +520,15 @@
     --ui-zoom: 1;
   }
 }
+/* iOS · iPadOS 도 배율을 끈다. iOS 26.0 Safari 는 zoom 이 걸려도 100svh 를 화면 높이 그대로 그려서
+   --app-vh 가 화면의 1/1.1 이 된다 — iPad 가로에서 셸이 734px 중 667px 까지만 찼다(시뮬레이터 실측 2026-11-04).
+   macOS Safari 26.6 과 Chrome 은 zoom 배로 그려 나눗셈이 맞는다. 엔진 버전마다 다르니 값을 맞추지 않고 배율을 없앤다.
+   화면 크기로 가르면 iPad 의 md 레이아웃까지 흔들려서, iOS 에서만 참인 이 속성으로 가른다 */
+@supports (-webkit-touch-callout: none) {
+  :root {
+    --ui-zoom: 1;
+  }
+}
 
 /* 폰 키보드 위에 입력창을 붙인 동안(hooks/use-keyboard-open.ts) — 입력창 아래 빈 줄을 걷는다 */
 html[data-keyboard-docked] [data-composer] {
@@ -561,7 +570,8 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
 }
 @media (width >= 48rem) {
   :root {
-    --nav-offset-bottom: 0px;
+    /* 하단 nav 는 없지만 iPad 의 홈 인디케이터 자리는 비운다. PC 에서는 0 이다 */
+    --nav-offset-bottom: var(--safe-bottom);
     --nav-w: 16.25rem;
   }
 }

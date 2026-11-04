@@ -187,7 +187,9 @@ export function NotificationBell() {
       >
         <HugeiconsIcon icon={Notification03Icon} size={18} />
         {unreadCount > 0 && (
-          <Badge className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px]">
+          // 버튼 가장자리가 아니라 가운데(아이콘)에 맞춘다. 터치 기기의 버튼은 44px 로 원(2.5rem)보다 커서,
+          // 가장자리에 맞추면 뱃지가 화면 위로 잘렸다
+          <Badge className="absolute bottom-1/2 left-1/2 mb-1 h-4 min-w-4 px-1 text-[10px]">
             {unreadCount}
           </Badge>
         )}
