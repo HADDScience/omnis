@@ -280,7 +280,16 @@ if (want("tools")) {
 // ─── 오른쪽 패널 ───
 if (want("panel")) {
   console.log("[panel] 오른쪽 패널 — 독 단추 · 탭 셋 · 옴니스")
-  for (const w of [1440, 375]) {
+  // md 미만에는 단추도 패널도 없다(2026-11-04)
+  {
+    const page = await pageAt(375)
+    await open(page, "/tasks")
+    check("375 — 대화 패널 단추가 없다", !(await page.getByRole("button", { name: /^대화 패널 열기/ }).isVisible()))
+    check("375 — 대화 패널이 보이지 않는다", !(await page.locator('aside[aria-label="대화 패널"]').isVisible()))
+    await shot(page, "U-375-panel-none")
+    await page.close()
+  }
+  for (const w of [1440]) {
     const page = await pageAt(w)
     await open(page, "/tasks")
     check(`${w} — 제목줄에 「채팅 열기」 가 없다`, (await page.locator("header").getByRole("button", { name: /채팅 열기/ }).count()) === 0)

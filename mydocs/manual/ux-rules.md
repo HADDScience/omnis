@@ -34,7 +34,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - (S) `lib/ai.ts`, `app/api/`, 모든 Form
 
 ### 14. floating overlay 사분면 충돌 금지 + z-index 토큰화
-- (R) 신규 `position: fixed`/`sticky` 컴포넌트가 (a) z 토큰 사용, (b) ChatDock 점유 사분면(우하단) 회피?
+- (R) 신규 `position: fixed`/`sticky` 컴포넌트가 (a) z 토큰 사용, (b) md 이상에서 대화 패널 단추(`PanelDock`)가 쓰는 우하단 사분면 회피? md 미만에는 그 단추가 없다(2026-11-04)
 - (E) 모달/토스트는 `var(--z-dialog)` / `var(--z-toast)` 토큰 사용
 - (S) 모든 fixed/sticky 컴포넌트
 - 토큰: `--z-dock: 40` / `--z-nav: 45` / `--z-banner: 50` / `--z-popover: 60` / `--z-dialog: 100` / `--z-toast: 120`
@@ -136,7 +136,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 | Viewport | 본문 max-width | Activity Rail | 헤더 | 주 메뉴 |
 |----------|---------------|---------------|------|---------|
-| `< 768px` (mobile) | `100%` (gutter 16px) | 하단 Sheet (FAB로 토글) | 상단 sticky 컴팩트 1줄 | 하단 떠 있는 nav |
+| `< 768px` (mobile) | `100%` (gutter 16px) | 없음 — 업무 상세의 링크로 업무방에 간다(2026-11-04) | 상단 sticky 컴팩트 1줄 | 하단 떠 있는 nav |
 | `768~1280px` (tablet) | `100%` | 우측 320px Collapsible (기본 접힘) | 상단 sticky 2줄 | 상단 가운데 떠 있는 nav |
 | `≥ 1280px` (desktop) | `min(768px, 1fr)` | 우측 320px 고정 | 상단 sticky 풀 | 상단 가운데 떠 있는 nav |
 
