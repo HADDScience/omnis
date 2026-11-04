@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { distanceFromBottom } from "@/lib/agent/scroll-follow"
 import { isKeyboardOpen, isTextEntry, PHONE_TOUCH_QUERY, rememberBaseline } from "@/lib/keyboard-viewport"
 
-/** 키보드가 가리지 않는 높이로 맞춘 동안의 값. 셸 · nav 여백 · 대화 패널이 이 변수로 높이를 잰다 */
+/** 키보드가 가리지 않는 높이로 맞춘 동안의 값. 셸과 nav 여백이 이 변수로 높이를 잰다 */
 const DOCK_VARS = ["--app-vh", "--nav-offset-bottom", "--safe-bottom"] as const
 
 /** 칸 높이가 바뀌는 동안 맨 아래까지 남은 거리를 지킨다 — 입력창 바로 위에 보이던 글이 그 자리에 남는다 */

@@ -179,25 +179,6 @@ test.describe("폰", () => {
     expect(await fromBottom()).toBe(400)
   })
 
-  test("대화 패널의 입력창도 키보드 위에 있다", async ({ page }) => {
-    await mockViewport(page)
-    await quickLogin(page, "팀장")
-    await page.goto("/calendar")
-    await page.getByRole("button", { name: /대화 패널 열기/ }).click()
-    const panel = page.locator("[data-right-panel]")
-    const pill = panel.locator(PILL).first()
-    await pill.waitFor({ timeout: 30_000 })
-    await expect.poll(() => pill.locator("textarea").evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), { timeout: 30_000 }).toBe(true)
-    await pill.locator("textarea").tap()
-    await keyboard(page, KEYBOARD_TOP)
-    await expect.poll(() => docked(page)).toBe(true)
-    const panelBottom = await panel.evaluate((el) => el.getBoundingClientRect().bottom)
-    expect(panelBottom).toBeLessThanOrEqual(KEYBOARD_TOP)
-    const bottom = await pill.evaluate((el) => el.getBoundingClientRect().bottom)
-    expect(bottom).toBeLessThanOrEqual(KEYBOARD_TOP)
-    expect(KEYBOARD_TOP - bottom).toBeLessThanOrEqual(16)
-  })
-
   test("입력창이 아닌 칸은 nav 만 내리고 화면 높이는 그대로다", async ({ page }) => {
     await mockViewport(page)
     await quickLogin(page, "팀장")

@@ -10,7 +10,7 @@ last_verified: 2026-11-04
 ## 바뀐 것
 
 - 판정(`lib/keyboard-viewport.ts`): 터치 폰 폭 + 글자 칸 포커스 + `visualViewport` 높이가 폭별 최대에서 120px 이상 줄어듦. 예전 판정은 `innerHeight` 의 3/4 와 비교했고, 판정이 맞아도 nav 자리(`--nav-offset-bottom`)가 비어 있었다
-- 포커스가 `RoomComposer`(사람 · 전사 · 업무 · 옴니스 · 대화 패널 공통)면 `html[data-keyboard-docked]` 동안 `--app-vh` 를 보이는 높이로, `--nav-offset-bottom` · `--safe-bottom` 을 0 으로 둔다. 입력창 아래 빈 줄도 걷는다
+- 포커스가 `RoomComposer`(사람 · 전사 · 업무 · 옴니스 공통)면 `html[data-keyboard-docked]` 동안 `--app-vh` 를 보이는 높이로, `--nav-offset-bottom` · `--safe-bottom` 을 0 으로 둔다. 입력창 아래 빈 줄도 걷는다
 - 다른 입력 칸(검색 등)은 nav 만 내리고 화면 높이는 그대로다 — 브라우저가 칸을 찾아 올리는 동작을 막지 않는다
 - 대화 스크롤 칸(`data-keep-bottom`)은 높이가 바뀌는 동안 맨 아래까지 남은 거리를 지킨다
 - md 이상과 터치가 아닌 좁은 창은 판정에서 빠진다
@@ -56,3 +56,10 @@ last_verified: 2026-11-04
 ## 남은 것
 
 한 방에 10초 안에 글이 30건을 넘게 몰리면, 폴링의 겹침 구간이 첫 화면보다 앞의 글을 돌려줘 목록을 한 번 더 읽는다(`ChatPanel` 의 `seenIds`, PR #143). 화면 동작은 그대로이고 고치지 않았다. `mobile-keyboard` 시험은 이 때문에 전사방 대신 사람 방에 글을 넣는다.
+
+# md 미만에서 대화 단추와 오른쪽 패널을 뺀다
+
+- `PanelDock` 을 md 미만에서 그리지 않고, `RightPanel` 은 md 미만에서 내용을 만들지 않는다. 저장된 `omnis:right-panel-open` 값이 있어도 열리지 않고 폴링도 돌지 않는다
+- ⌥⇧C · ⌘⇧F 는 md 미만에서 `/chat` 으로, `?taskId=<id>` 는 `/chat/task/<id>` 로 간다. 코드에는 `?taskId=` 를 만드는 곳이 패널 자신 말고 없고, 바깥에 저장된 링크를 위한 것이다
+- 업무 상세의 스레드는 패널로만 열렸다. md 미만에는 「이 업무 대화 보기」 링크를 둔다
+- PC 는 그대로다. 시험: `tests/feature/mobile-no-panel.spec.ts`
