@@ -113,14 +113,14 @@ async function main() {
       check("rebuild_ledger 뒤 대장이 그대로", before === (await snap()))
 
       console.log("\n[latch — 그 단계에 들어간 기록만 날짜를 채운다]")
-      // PT-05·06 의 모양: 이미 출원 단계 · 출원일 없음 · 기준일 = 실제 출원일
+      // 출원일을 나중에 채우는 건의 모양: 이미 출원 단계 · 출원일 없음 · 기준일 = 실제 출원일
       await seed(tx, "ZZ-A", "출원", "2025-10-17")
       await entry(tx, "ZZ-A", "2026-10-26", "출원", "mail")
       let a = await ledger(tx, "ZZ-A")
       check("기준일보다 늦은 같은 단계 기록은 출원일을 채우지 않는다", a.filed === null, JSON.stringify(a))
       check("  그래도 마지막 진행일은 움직인다", a.ref === "2026-10-26", JSON.stringify(a))
 
-      // TM-07 의 모양: 이미 등록 단계 · 기준일 당일의 등록 기록
+      // 등록 기록이 기준일과 같은 건의 모양: 이미 등록 단계 · 기준일 당일의 등록 기록
       await seed(tx, "ZZ-B", "등록", "2025-12-18")
       await entry(tx, "ZZ-B", "2025-12-18", "등록", "excel")
       check("기준일 당일의 같은 단계 기록은 등록일을 채운다", (await ledger(tx, "ZZ-B")).registered === "2025-12-18")
@@ -152,8 +152,8 @@ async function main() {
       check("빈 문자열은 비운다", (await ledger(tx, "ZZ-E")).filed === null)
 
       console.log("\n[상태 — 사건이 옮기는 것만 옮긴다]")
-      // PT-10 의 모양: 출원 상태에서 우선심사신청·의견제출통지·출원공고
-      await seed(tx, "ZZ-F", "출원", "2026-07-31", { appNo: "10-2026-0142466" })
+      // 우선심사를 신청한 출원 건의 모양: 출원 상태에서 우선심사신청·의견제출통지·출원공고
+      await seed(tx, "ZZ-F", "출원", "2026-07-31", { appNo: "10-2099-0000001" })
       await entry(tx, "ZZ-F", "2026-08-13", "우선심사신청", "mail")
       check("우선심사신청은 상태를 바꾸지 않는다", (await ledger(tx, "ZZ-F")).status === "출원")
       await entry(tx, "ZZ-F", "2026-09-01", "의견제출통지", "mail")
@@ -179,27 +179,27 @@ async function main() {
 
       console.log("\n[번호 자동 전환 — 날짜는 채우지 않는다]")
       await seed(tx, "ZZ-I", "출원전", "2026-09-01")
-      await entry(tx, "ZZ-I", "2026-09-10", "출원준비", "manual", { appNo: "사건번호: PJC260673" })
+      await entry(tx, "ZZ-I", "2026-09-10", "출원준비", "manual", { appNo: "사건번호: PJC000000" })
       check("출원번호 형식이 아니면 출원으로 옮기지 않는다", (await ledger(tx, "ZZ-I")).status === "출원전")
       await seed(tx, "ZZ-J", "출원전", "2026-09-01")
-      await entry(tx, "ZZ-J", "2026-10-26", "검토의견", "mail", { appNo: "40-2026-0190878 (제05류)" })
+      await entry(tx, "ZZ-J", "2026-10-26", "검토의견", "mail", { appNo: "40-2099-0000002 (제05류)" })
       let j = await ledger(tx, "ZZ-J")
       check("출원번호를 처음 넣으면 출원", j.status === "출원", JSON.stringify(j))
       check("  메일 날짜를 출원일로 넣지 않는다", j.filed === null, JSON.stringify(j))
-      await entry(tx, "ZZ-J", "2026-10-27", "값 정정", "edit", { regNo: "40-2475905" })
+      await entry(tx, "ZZ-J", "2026-10-27", "값 정정", "edit", { regNo: "40-0000005" })
       j = await ledger(tx, "ZZ-J")
       check("등록번호를 처음 넣으면 등록 · 등록일은 비어 있다", j.status === "등록" && j.registered === null, JSON.stringify(j))
-      await seed(tx, "ZZ-K", "등록", "2025-01-01", { regNo: "40-2359918" })
-      await entry(tx, "ZZ-K", "2026-01-01", "등록료납부", "manual", { regNo: "40-2359918" })
+      await seed(tx, "ZZ-K", "등록", "2025-01-01", { regNo: "40-0000006" })
+      await entry(tx, "ZZ-K", "2026-01-01", "등록료납부", "manual", { regNo: "40-0000006" })
       check("이미 등록번호가 있으면 다시 옮기지 않는다", (await ledger(tx, "ZZ-K")).status === "등록")
 
-      console.log("\n[TM-08 의 모양 — 등록번호 칸의 출원번호를 옮긴다]")
-      await seed(tx, "ZZ-L", "거절", "2026-10-26", { regNo: "40-2025-0124087" })
-      await entry(tx, "ZZ-L", "2026-10-29", "값 정정", "edit", { appNo: "40-2025-0124087", regNo: "" })
+      console.log("\n[번호 칸이 잘못된 거절 건의 모양 — 등록번호 칸의 출원번호를 옮긴다]")
+      await seed(tx, "ZZ-L", "거절", "2026-10-26", { regNo: "40-2099-0000003" })
+      await entry(tx, "ZZ-L", "2026-10-29", "값 정정", "edit", { appNo: "40-2099-0000003", regNo: "" })
       const l = await ledger(tx, "ZZ-L")
       check(
         "app_no 로 옮기고 reg_no 는 비우며 상태는 거절 그대로",
-        l.status === "거절" && l.app === "40-2025-0124087" && l.reg === null && l.ref === "2026-10-26",
+        l.status === "거절" && l.app === "40-2099-0000003" && l.reg === null && l.ref === "2026-10-26",
         JSON.stringify(l)
       )
 

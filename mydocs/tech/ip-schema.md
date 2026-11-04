@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/tech/ip-schema.md
-last_verified: 2026-10-29
+last_verified: 2026-11-04
 ---
 
 # 지식재산권 스키마 (`ip`)
@@ -37,6 +37,7 @@ last_verified: 2026-10-29
 - 옛 단계 값으로 오는 호출은 `lib/ip-data.ts` 의 `resolveStatusEvent` 가 `event_options.legacy_status` 표대로
   번역한다. 옛 값이 지금보다 앞 상태를 가리키면(출원한 건의 「검토의견」) 상태는 그대로 두고 사건만 남긴다.
 - 옛 기록의 stage 값은 지우지 않았다. `opening_state.stage` 도 넘겨받을 때 값 그대로다.
+- `/ip` 화면: 대장·필터·값 정정은 `statusOptions`(상태), 진행 양식은 `stages`(사건)를 쓴다. 「오래 멈춤」 경고는 출원전이거나, 출원 상태에서 마지막 사건이 의견제출통지·보정서제출인 건을 본다(`lib/ip/detect.ts`).
 
 ## 도메인 규칙 — 여기가 핵심이다
 
