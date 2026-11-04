@@ -2,7 +2,9 @@ import { Header } from "@/components/layout/header"
 import { InstallAppCard } from "@/components/layout/install-app-card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SettingsTabs } from "@/components/settings/settings-tabs"
+import { UI_METRICS_NOTICE_ANCHOR } from "@/lib/settings-tab"
 import { AiUsage } from "@/components/settings/ai-usage"
 import { LinkedAccounts } from "@/components/settings/linked-accounts"
 import { MyShortcuts } from "@/components/settings/my-shortcuts"
@@ -47,7 +49,7 @@ export default async function SettingsPage() {
 
         <MyShortcuts />
 
-        <Tabs defaultValue="push">
+        <SettingsTabs>
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="push">기기 알림</TabsTrigger>
             <TabsTrigger value="accounts">연결된 계정</TabsTrigger>
@@ -75,7 +77,7 @@ export default async function SettingsPage() {
                 </p>
               </CardContent>
             </Card>
-            <Card className="mt-4" data-ui-metrics-notice>
+            <Card id={UI_METRICS_NOTICE_ANCHOR} className="mt-4" data-ui-metrics-notice>
               <CardHeader>
                 <CardTitle className="text-base">{UI_METRICS_NOTICE.title}</CardTitle>
               </CardHeader>
@@ -92,7 +94,7 @@ export default async function SettingsPage() {
               </CardContent>
             </Card>
           </TabsContent>
-        </Tabs>
+        </SettingsTabs>
       </div>
     </>
   )

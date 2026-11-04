@@ -11,10 +11,12 @@ import { useOnboarding } from "@/components/onboarding/onboarding-provider"
 import { apiUrl } from "@/lib/base-path"
 import { flushUiEvents, noteUiPath, uiMetricsEnabled } from "@/lib/ui-metrics/client"
 import { UI_METRICS_NOTICE } from "@/lib/ui-metrics/notice"
+import { UI_METRICS_NOTICE_HREF } from "@/lib/settings-tab"
 import { kstDayKey, SURVEY_COMMENT_MAX, UI_SURVEY_ENABLED } from "@/lib/ui-metrics/rules"
 
 /** 첫 화면과 앱 설치 권유(AppNudge)가 먼저 자리 잡은 뒤에 묻는다 */
 const SURVEY_DELAY_MS = 4_000
+const NOTICE_DELAY_MS = 1_200
 const NOTICE_KEY = "omnis:ui-metrics:notice:v1"
 const surveyCheckedKey = (userId: string) => `omnis:ui-survey:checked:${userId}`
 
@@ -74,12 +76,16 @@ export function UiMetrics({ userId }: { userId: string }) {
   // 처음 한 번 안내. 자동화 브라우저에서는 다른 시험의 클릭을 가리지 않게 띄우지 않는다
   useEffect(() => {
     if (!uiMetricsEnabled || touring || navigator.webdriver || readLocal(NOTICE_KEY)) return
-    writeLocal(NOTICE_KEY, "1")
-    toast(UI_METRICS_NOTICE.title, {
-      description: UI_METRICS_NOTICE.summary,
-      duration: 15_000,
-      action: { label: "자세히", onClick: () => router.push("/settings") },
-    })
+    // 첫 화면이 다 그려진 뒤에 띄운다. 알림 칸(Toaster)이 듣기 전에 부르면 사라지는데 「봤다」 만 남는다
+    const timer = setTimeout(() => {
+      writeLocal(NOTICE_KEY, "1")
+      toast(UI_METRICS_NOTICE.title, {
+        description: UI_METRICS_NOTICE.summary,
+        duration: 15_000,
+        action: { label: "자세히", onClick: () => router.push(UI_METRICS_NOTICE_HREF) },
+      })
+    }, NOTICE_DELAY_MS)
+    return () => clearTimeout(timer)
   }, [touring, router])
 
   useEffect(() => {
