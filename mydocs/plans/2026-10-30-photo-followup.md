@@ -2,7 +2,7 @@
 kind: decision
 status: active
 canonical: AGENTS.md
-last_verified: 2026-10-30
+last_verified: 2026-11-04
 ---
 
 # 사진 검색 후속 작업
@@ -21,3 +21,5 @@ last_verified: 2026-10-30
 승인 근거: 2026-10-30 사용자가 위 여섯 작업을 열거하고 “진행해줘”라고 지시했다.
 카톡 사진 설명 단계는 기존 2026-10-29 계획 5단계에 명시된 범위를 따른다.
 push·PR·머지는 별도 승인 대기이며, 삭제할 워크트리 두 경로는 확인 대기다.
+
+2026-11-04: 2~4단계의 코드 변경은 main 에 먼저 들어갔다. 남은 범위는 사진 묶음이고, 결과는 [`working/2026-11-04-photo-answer.md`](../working/2026-11-04-photo-answer.md).
