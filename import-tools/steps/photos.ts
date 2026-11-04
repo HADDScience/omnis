@@ -13,7 +13,7 @@ export async function describeImportedPhotos(csvPaths: string[], opts: { dry: bo
       mimeType: { in: ["image/png", "image/jpeg", "image/webp"] },
       message: { sourceId: { in: sourceIds }, deletedAt: null, room: { kind: "COMPANY" } },
     },
-    select: { id: true, name: true, path: true, mimeType: true, describedAt: true },
+    select: { id: true, name: true, path: true, size: true, mimeType: true, describedAt: true },
     orderBy: { createdAt: "asc" },
   })
   const todo = files.filter((f) => !f.describedAt)

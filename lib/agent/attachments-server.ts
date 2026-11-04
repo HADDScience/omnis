@@ -5,7 +5,7 @@ import { extractText } from "unpdf"
 import { openFileObject } from "@/lib/file-object"
 import { ATTACH_IMAGE_SIDE, ATTACH_READ_MAX_BYTES, attachmentKind, type ReadAttachment } from "./attachments"
 
-async function readAll(file: { id: string; name: string; path: string }): Promise<Buffer> {
+async function readAll(file: { id: string; name: string; path: string; size: number }): Promise<Buffer> {
   const res = await openFileObject(file)
   const chunks: Buffer[] = []
   for await (const c of res.body) chunks.push(Buffer.from(c))

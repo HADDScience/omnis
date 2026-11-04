@@ -207,6 +207,59 @@ export function deleteObject(key: string): Promise<void> {
   return deleteAt(absolutePathFor(key))
 }
 
+// ─── 큰 첨부 이어 쓰기 (2026-11-04 실측: 시놀로지 WebDAV 가 Content-Range PUT 을 받는다) ───
+
+/**
+ * 파일의 한 범위를 쓴다. 같은 범위를 다시 보내도 결과가 같아 재시도가 안전하다.
+ * 상태 코드를 그대로 돌려준다 — 507(디스크 가득 참)은 복사 쪽이 다르게 다룬다.
+ */
+export async function putObjectRange(key: string, body: Buffer, start: number, total: number): Promise<number> {
+  const absolutePath = absolutePathFor(key)
+  const headers = { "Content-Range": `bytes ${start}-${start + body.length - 1}/${total}` }
+  const put = () => retryOnDrop(() => dav("PUT", davUrl(absolutePath), body, "application/octet-stream", headers))
+  let res = await put()
+  if (res.status === 409) {
+    drain(res)
+    await ensureParents(absolutePath)
+    res = await put()
+  }
+  drain(res)
+  return res.status
+}
+
+/** 한 범위를 연다. 상태 코드는 호출부가 본다(206 이어야 범위가 지켜진 것이다) */
+export function getObjectRange(key: string, start: number, length: number): Promise<DavResponse> {
+  return dav("GET", davUrl(absolutePathFor(key)), undefined, undefined, { Range: `bytes=${start}-${start + length - 1}` })
+}
+
+/** 저장된 크기. 없으면 null */
+export async function statObjectSize(key: string): Promise<number | null> {
+  const res = await dav("PROPFIND", davUrl(absolutePathFor(key)), undefined, undefined, { Depth: "0" })
+  if (res.status === 404) {
+    drain(res)
+    return null
+  }
+  if (res.status !== 207) {
+    drain(res)
+    throw new Error(`시놀로지 확인 실패 (HTTP ${res.status})`)
+  }
+  const chunks: Buffer[] = []
+  for await (const c of res.body) chunks.push(Buffer.from(c))
+  const size = Buffer.concat(chunks).toString("utf8").match(/getcontentlength[^>]*>(\d+)</i)?.[1]
+  return size === undefined ? null : Number(size)
+}
+
+/** 첨부 폴더에 닿는가. 디스크 · 파일을 건드리지 않는 PROPFIND 한 번 — NAS 를 기다리는 동안 DB 를 깨우지 않으려고 쓴다 */
+export async function nasReachable(): Promise<boolean> {
+  try {
+    const res = await dav("PROPFIND", davUrl(env("SYNOLOGY_WEBDAV_BASE_PATH")), undefined, undefined, { Depth: "0" })
+    drain(res)
+    return res.status < 500
+  } catch {
+    return false
+  }
+}
+
 /** File.id로부터 NAS 저장 키를 만든다. 업로드·다운로드가 같은 규칙을 쓰도록 여기 한 곳에 둔다. */
 export function objectKeyFor(id: string, originalName: string): string {
   const ext = originalName.includes(".") ? "." + originalName.split(".").pop() : ""

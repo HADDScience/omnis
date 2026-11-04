@@ -7,6 +7,7 @@ import { proposeRecordsFromChat } from "@/lib/record-proposals"
 import { runDailyKpis } from "@/lib/kpi"
 import { syncWorksCalendars } from "@/lib/caldav/sync"
 import { purgeUiEvents } from "@/lib/ui-metrics/server"
+import { largeUploadEnabled, runTransferUpkeep } from "@/lib/large-upload/server"
 
 /**
  * 하루 한 번 도는 일을 모두 여기서 차례로 한다 (`vercel.json` 의 crons 는 이것 하나).
@@ -92,6 +93,16 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("[cron/daily] 사용 기록 정리 실패", e)
     out.uiEvents = { ok: false }
+  }
+
+  if (largeUploadEnabled()) {
+    try {
+      // 큰 첨부 — 멈춘 복사를 다시 시작하고, 행 없는 임시본을 지운다
+      out.transfers = { ok: true, ...(await runTransferUpkeep()) }
+    } catch (e) {
+      console.error("[cron/daily] 큰 첨부 점검 실패", e)
+      out.transfers = { ok: false }
+    }
   }
 
   const ok = Object.values(out).every((v) => (v as { ok: boolean }).ok)

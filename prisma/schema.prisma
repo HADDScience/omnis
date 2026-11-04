@@ -649,8 +649,46 @@ model File {
   /// 메시지에 붙기 전에는 올린 사람만, 붙은 뒤에는 그 방 참여자만 본다 — 판정은 lib/file-access.ts 한 곳.
   /// User 관계를 두지 않는다(AgentRun.userId 와 같은 이유 — 사람이 바뀌어도 행은 남는다)
   privateToUserId String?
+  /// 큰 첨부(4MB 초과)를 임시 저장소에서 NAS 로 옮기는 상태. 행이 없으면 지금처럼 NAS 파일이다
+  transfer FileTransfer?
 
   @@index([privateToUserId])
+}
+
+/// 큰 첨부의 임시본 → NAS 복사. 설계: mydocs/plans/2026-11-04-large-upload.md
+/// VERIFIED 전에는 임시본이 하나뿐인 원본이다 — 지우는 곳은 lib/large-upload/steps.ts 의 deleteTemp 하나뿐이다.
+enum FileTransferState {
+  UPLOADED
+  COPYING
+  WAITING_NAS
+  VERIFIED
+  TEMP_DELETED
+  FAILED
+}
+
+model FileTransfer {
+  fileId         String            @id
+  file           File              @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  /// 임시 저장소의 경로. 파일 이름을 넣지 않는다
+  blobPathname   String
+  state          FileTransferState @default(UPLOADED)
+  segmentSize    Int
+  segmentsDone   Int               @default(0)
+  /// 조각 해시를 차례로 이은 sha256. 감사용
+  manifestSha256 String?
+  /// 크론이 다시 시작한 횟수
+  attempts       Int               @default(0)
+  lastError      String?
+  notifiedAt     DateTime?
+  uploadedAt     DateTime          @default(now())
+  verifiedAt     DateTime?
+  blobDeletedAt  DateTime?
+  updatedAt      DateTime          @updatedAt
+  /// 지금 도는 Workflow 실행. 크론이 다시 시작할 때 옛 실행을 멈추는 데 쓴다
+  runId          String?
+
+  @@index([state, updatedAt])
+  @@index([uploadedAt])
 }
 
 // ─── Gemini 토큰 사용 로그 ───────────────────────────────

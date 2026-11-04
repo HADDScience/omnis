@@ -8,7 +8,8 @@ import { toast } from "sonner"
 import type { FileInfo } from "@/components/chat/message-list"
 import type { PickedFile } from "@/components/chat/room-composer"
 import { apiUrl } from "@/lib/base-path"
-import { MAX_UPLOAD_BYTES } from "@/lib/constants"
+import { startLargeUpload } from "@/lib/large-upload/client"
+import { attachLimitBytes, isLargeUpload } from "@/lib/large-upload/rules"
 import { ATTACH_MAX } from "@/lib/file-access"
 import { reportIncident } from "@/lib/report-client-error"
 import { noteAttachAttempt } from "@/lib/ui-metrics/client"
@@ -44,26 +45,34 @@ export function useOmnisAttachments() {
   const addFiles = useCallback((picked: File[]) => {
     const room = ATTACH_MAX - itemsRef.current.length
     if (picked.length > room) toast.error(`파일은 한 번에 ${ATTACH_MAX}개까지 붙일 수 있어요`)
-    const tooLarge = picked.filter((f) => f.size > MAX_UPLOAD_BYTES)
+    const limit = attachLimitBytes()
+    const tooLarge = picked.filter((f) => f.size > limit)
     if (tooLarge.length > 0) {
-      const limitMb = Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)
+      const limitMb = Math.floor(limit / 1024 / 1024)
       toast.error(`${limitMb}MB 가 넘는 파일은 바로 올릴 수 없습니다`, {
         description: `${tooLarge.map((f) => `「${f.name}」 ${(f.size / 1024 / 1024).toFixed(1)}MB`).join(" · ")} — 시놀로지에 올린 뒤 「시놀로지 파일 연결」 로 다시 첨부해 주세요`,
         duration: 12_000,
       })
     }
-    const ok = picked.filter((f) => f.size <= MAX_UPLOAD_BYTES).slice(0, Math.max(room, 0))
+    const ok = picked.filter((f) => f.size <= limit).slice(0, Math.max(room, 0))
     if (ok.length > 0) noteAttachAttempt()
     const fresh = ok.map((f) => ({
       key: `up-${++seq}`,
       name: f.name,
       size: f.size,
       mimeType: f.type || "application/octet-stream",
-      preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+      preview: f.type.startsWith("image/") && !isLargeUpload(f.size) ? URL.createObjectURL(f) : undefined,
       status: "uploading" as const,
     }))
     setItems((prev) => [...prev, ...fresh])
     fresh.forEach((item, i) => {
+      if (isLargeUpload(ok[i].size)) {
+        // 임시 저장소로 바로 올린다. 실패 사유 알림은 startLargeUpload 가 이미 했다
+        startLargeUpload(ok[i], { scope: "private" })
+          .then((file) => patch(item.key, { status: "done", file }))
+          .catch((err: Error) => patch(item.key, { status: "error", error: err.message }))
+        return
+      }
       const form = new FormData()
       form.append("file", ok[i])
       form.append("scope", "private")

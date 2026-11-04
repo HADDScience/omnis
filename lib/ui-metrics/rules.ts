@@ -14,6 +14,12 @@ export const UI_EVENT_NAMES = [
   "room_open_to_send", // value: 방을 연 뒤 첫 전송까지 ms
   "attach_failed", // value: HTTP 상태(있을 때)
   "attach_retry",
+  "attach_small_ms", // value: 4MB 이하 올리기 ms. 큰 첨부를 켠 뒤만
+  "attach_large_mb", // value: 큰 첨부 크기(MB)
+  "attach_large_s", // value: 사용자가 기다린 초
+  "attach_large_resume", // value: 이어 올릴 때 끝나 있던 조각 수
+  "attach_large_abort", // value: 멈춘 때의 진행 %
+  "attach_paused_hidden", // value: 화면을 내려 멈춘 초
   "menu_open",
   "menu_dismiss",
   "menu_act",

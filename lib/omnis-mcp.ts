@@ -776,7 +776,7 @@ function fileKind(name: string, mimeType: string): "text" | "sheet" | "image" | 
   return "other"
 }
 
-async function readObject(file: { id: string; name: string; path: string }): Promise<Buffer> {
+async function readObject(file: { id: string; name: string; path: string; size: number }): Promise<Buffer> {
   const res = await openFileObject(file)
   const chunks: Buffer[] = []
   for await (const chunk of res.body) chunks.push(Buffer.from(chunk))

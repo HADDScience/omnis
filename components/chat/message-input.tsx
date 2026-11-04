@@ -6,7 +6,7 @@ import { AtIcon, Attachment01Icon, Task01Icon } from "@hugeicons/core-free-icons
 import { SLASH_COMMANDS } from "./slash-command-parser"
 import { IS_DEMO } from "@/lib/demo"
 import { toast } from "sonner"
-import { MAX_UPLOAD_BYTES } from "@/lib/constants"
+import { attachLimitBytes, isLargeUpload } from "@/lib/large-upload/rules"
 import { resolveHandoff } from "@/lib/chat-entry"
 import { composerTrigger, type ComposerTrigger } from "@/lib/composer-trigger"
 import { isTouchTyping } from "@/lib/enter-to-send"
@@ -227,9 +227,10 @@ export function MessageInput({
     // 데모에는 NAS가 없어 파일을 받지 않는다 — 붙여넣기·드래그로 들어와도 조용히 무시한다.
     if (noFiles) return
     // 상한을 넘는 파일은 보낼 때 Vercel 이 이유 없이 끊는다 — 고르는 순간 이유와 함께 거른다(2026-09-17)
-    const tooLarge = picked.filter((f) => f.size > MAX_UPLOAD_BYTES)
+    const limit = attachLimitBytes()
+    const tooLarge = picked.filter((f) => f.size > limit)
     if (tooLarge.length > 0) {
-      const limitMb = Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)
+      const limitMb = Math.floor(limit / 1024 / 1024)
       // 이미 NAS 에 있으면 연결하면 되고, 아니면 NAS 에 올린 뒤 연결한다 — 어느 쪽이든 같은 버튼으로 간다
       toast.error(`${limitMb}MB 가 넘는 파일은 바로 올릴 수 없습니다`, {
         description: `${tooLarge.map((f) => `「${f.name}」 ${(f.size / 1024 / 1024).toFixed(1)}MB`).join(" · ")} — 시놀로지에 올린 뒤 「시놀로지 파일 연결」 로 다시 첨부해 주세요`,
@@ -246,7 +247,7 @@ export function MessageInput({
       }
     }
     const fresh = picked
-      .filter((f) => f.size <= MAX_UPLOAD_BYTES)
+      .filter((f) => f.size <= limit)
       .map<Attached>((f) => ({
         raw: f,
         item: {
@@ -254,7 +255,8 @@ export function MessageInput({
           name: f.name,
           size: f.size,
           mimeType: f.type || "application/octet-stream",
-          preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+          // 큰 사진을 입력창에 그리면 폰이 전체를 디코딩한다
+          preview: f.type.startsWith("image/") && !isLargeUpload(f.size) ? URL.createObjectURL(f) : undefined,
           // 실제 업로드는 보낼 때 — 고르는 것만으로는 기다릴 일이 없다
           status: "done",
         },

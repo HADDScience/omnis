@@ -7,6 +7,7 @@ import sharp from "sharp"
 import { generateText } from "ai"
 import { prisma } from "@/lib/db"
 import { openFileObject } from "@/lib/file-object"
+import { ATTACH_READ_MAX_BYTES } from "@/lib/agent/attachments"
 import { syncEmbeddings } from "@/lib/embeddings"
 import { modelFor, modelKey } from "@/lib/ai-models"
 import { costOf } from "@/lib/ai-pricing"
@@ -23,11 +24,11 @@ const isImage = (mimeType: string) => mimeType === "image/png" || mimeType === "
 const kst = (d: Date) => d.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16)
 
 /** 사진이 올라온 메시지 앞 6 · 뒤 4 와 그 메시지 본문, 붙은 업무. 메시지에 안 붙은 사진이면 null */
-export async function photoContextFor(fileId: string): Promise<{ ctx: PhotoContext; file: { id: string; name: string; path: string; mimeType: string } } | null> {
+export async function photoContextFor(fileId: string): Promise<{ ctx: PhotoContext; file: { id: string; name: string; path: string; size: number; mimeType: string } } | null> {
   const file = await prisma.file.findUnique({
     where: { id: fileId },
     select: {
-      id: true, name: true, path: true, mimeType: true,
+      id: true, name: true, path: true, size: true, mimeType: true,
       task: { select: { name: true } },
       message: { select: { roomId: true, createdAt: true, content: true, deletedAt: true, room: { select: { kind: true } }, author: { select: { name: true } }, task: { select: { name: true } } } },
     },
@@ -70,6 +71,8 @@ export async function describePhoto(fileId: string, userId?: string): Promise<"d
   if (!already || already.describedAt) return "skipped"
   const found = await photoContextFor(fileId)
   if (!found) return "skipped"
+  // 파일 전체를 메모리에 올린다 — 큰 첨부 사진은 설명을 만들지 않는다
+  if (found.file.size > ATTACH_READ_MAX_BYTES) return "skipped"
 
   const obj = await openFileObject(found.file)
   const chunks: Buffer[] = []
