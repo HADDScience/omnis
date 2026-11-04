@@ -155,6 +155,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
       {/* 둥근 유리 판 — nav 와 같은 질감(.glass)의 가장자리 빛 · 그림자, 화면 가장자리에서 띄운다.
           속은 읽기 좋게 거의 불투명한 바탕을 깐다(유리는 크롬에만 — ux-rules 떠 있는 nav) */}
       <aside
+        data-right-panel
         data-onboarding="conversation"
         aria-hidden={!open}
         aria-label="대화 패널"

@@ -162,7 +162,8 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - **내용이 nav 밑에 깔리지 않게** 하는 일은 셸(`MainWithChat`)이 `--nav-offset-top` / `--nav-offset-bottom` 만큼 비워서 한다.
   화면 높이에 묶인 화면(업무 보드 · 채팅 · 캘린더)은 이 칸 안에서 `h-full` 로 높이를 잰다 — 화면마다 nav 높이를 빼지 않는다.
   화면 전체를 덮는 `fixed` 요소를 새로 만들면 이 두 변수를 직접 뺀다
-- 폰 키보드가 올라오면(`visualViewport` 높이가 3/4 미만) 하단 nav 를 내린다
+- 폰 키보드가 올라오면 하단 nav 를 내린다. 판정은 `lib/keyboard-viewport.ts` — 터치 폰 폭 + 글자 칸 포커스 + `visualViewport` 높이가 폭별 최대에서 120px 이상 줄었을 때. 포커스만 보지 않는다(물리 키보드)
+- 포커스가 메신저 입력창(`[data-composer]`)이면 입력창을 키보드 바로 위에 붙인다(`hooks/use-keyboard-open.ts`) — `html[data-keyboard-docked]` 동안 `--app-vh` 를 보이는 높이로, `--nav-offset-bottom` · `--safe-bottom` 을 0 으로. 대화 스크롤 칸(`data-keep-bottom`)은 맨 아래까지 남은 거리를 지킨다
 - 폰의 알림 종은 제목줄 오른쪽의 같은 `.glass` 원이다(PC 는 nav 옆). 원 안 버튼이 원을 채워 아이콘이 가운데 온다
 - 아이콘만 든 원 · 칩에 `.touch-target` 을 붙이면 칸이 44px 로 커진다 — `justify-center` 가 없으면 아이콘이 왼쪽에 붙는다(2026-10-29 폴더 관리 칩)
 - 섹션 안의 하위 이동은 nav 가 아니라 제목줄 아래 띠로 한다 — 아카이브는 `ArchiveNav`(`/omnis` · `/crm` 레이아웃), CRM 은 그 아래 `CrmNav`

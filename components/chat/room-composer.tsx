@@ -96,6 +96,7 @@ export function RoomComposer({
   }, [value, textareaRef])
 
   const tooLong = maxLength !== undefined && value.length > maxLength
+  const showCount = maxLength !== undefined && value.length > maxLength * 0.8
 
   /**
    * 보내고 나서도 입력칸에 머문다 — 이어서 쓴다. PC 는 언제나 되돌린다.
@@ -108,6 +109,7 @@ export function RoomComposer({
 
   return (
     <div
+      data-composer
       className={cn(
         "relative shrink-0 bg-background px-2.5 pt-2 pb-3 in-data-[messenger]:px-3 in-data-[messenger]:sm:px-6",
         bordered && "border-t",
@@ -215,10 +217,14 @@ export function RoomComposer({
             </Button>
           )}
         </div>
-        <div className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
+        <div
+          data-composer-foot
+          data-empty={showCount ? undefined : ""}
+          className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]"
+        >
           {hint && <span className="hidden in-data-[messenger]:sm:inline [@media(pointer:coarse)]:hidden!">{hint}</span>}
           <span className={cn("ml-auto tabular-nums", tooLong && "font-medium text-destructive")}>
-            {maxLength !== undefined && value.length > maxLength * 0.8 ? `${value.length}/${maxLength}` : ""}
+            {showCount ? `${value.length}/${maxLength}` : ""}
           </span>
         </div>
       </div>
