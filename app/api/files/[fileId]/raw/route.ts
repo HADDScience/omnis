@@ -5,6 +5,7 @@ import { findVisibleFile } from "@/lib/file-access-server"
 import { auth } from "@/lib/auth"
 import { openFileObject } from "@/lib/file-object"
 import { demoStorageBlocked } from "@/lib/demo"
+import { NOSNIFF, fileResponseHeaders, safeInlineType } from "@/lib/file-serving"
 
 interface Props {
   params: Promise<{ fileId: string }>
@@ -29,20 +30,19 @@ export async function GET(req: NextRequest, { params }: Props) {
 
   // ?w=96 — 검색 결과 썸네일. 원본(평균 1.4MB)을 목록에 그대로 띄우면 전송량이 그만큼 나간다
   const w = Number(req.nextUrl.searchParams.get("w"))
-  if (w > 0 && file.mimeType.startsWith("image/")) {
+  if (w > 0 && safeInlineType(file.mimeType, file.name)?.startsWith("image/")) {
     const chunks: Buffer[] = []
     for await (const c of object.body) chunks.push(Buffer.from(c))
     const side = Math.min(Math.max(Math.round(w), 32), 640)
     const thumb = await sharp(Buffer.concat(chunks)).rotate().resize(side, side, { fit: "cover", withoutEnlargement: true }).webp({ quality: 70 }).toBuffer()
     return new NextResponse(new Uint8Array(thumb), {
-      headers: { "Content-Type": "image/webp", "Cache-Control": file.isPrivate ? "private, no-store" : "private, max-age=86400" },
+      headers: { "Content-Type": "image/webp", ...NOSNIFF, "Cache-Control": file.isPrivate ? "private, no-store" : "private, max-age=86400" },
     })
   }
 
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
     headers: {
-      "Content-Type": file.mimeType,
-      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      ...fileResponseHeaders({ mimeType: file.mimeType, name: file.name }),
       // 참여자만 보는 방의 파일은 저장하지 않는다 — 방을 나간 뒤 브라우저 저장본으로 다시 열리지 않게
       "Cache-Control": file.isPrivate ? "private, no-store" : "private, max-age=3600",
     },

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db"
 import { getObject } from "@/lib/storage"
 import { parseMediaPath } from "@/lib/website-media"
 import { demoStorageBlocked } from "@/lib/demo"
+import { fileResponseHeaders } from "@/lib/file-serving"
 
 /**
  * 사진 — 공개. NAS 에서 스트리밍한다.
@@ -35,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
   const object = await getObject(parsed.key)
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
     headers: {
-      "Content-Type": media.contentType,
+      ...fileResponseHeaders({ mimeType: media.contentType, name }),
       "Content-Length": String(media.size),
       "Cache-Control": "public, max-age=86400, s-maxage=31536000, immutable",
     },

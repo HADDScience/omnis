@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { writeActivity } from "@/lib/api"
 import { getStaffAsset } from "@/lib/staff-assets"
 import { demoStorageBlocked } from "@/lib/demo"
+import { fileResponseHeaders } from "@/lib/file-serving"
 
 interface Props {
   params: Promise<{ assetId: string }>
@@ -65,8 +66,7 @@ export async function GET(req: NextRequest, { params }: Props) {
   const fileName = `${asset.staff.name}_${label}.${asset.mimeType === "image/jpeg" ? "jpg" : "png"}`
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
     headers: {
-      "Content-Type": asset.mimeType,
-      "Content-Disposition": `${purpose === "download" ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      ...fileResponseHeaders({ mimeType: asset.mimeType, name: fileName, attachment: purpose === "download" }),
       "Cache-Control": "no-store",
     },
   })

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { getObject } from "@/lib/storage"
 import { demoStorageBlocked } from "@/lib/demo"
+import { fileResponseHeaders } from "@/lib/file-serving"
 
 export const runtime = "nodejs"
 
@@ -34,8 +35,7 @@ export async function GET(_req: Request, { params }: Props) {
   const ext = inv.objectKey.split(".").pop() ?? ""
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
     headers: {
-      "Content-Type": MIME[ext] ?? "application/octet-stream",
-      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(inv.fileName ?? `세금계산서.${ext}`)}`,
+      ...fileResponseHeaders({ mimeType: MIME[ext], name: inv.fileName ?? `세금계산서.${ext}` }),
       "Cache-Control": "private, max-age=300",
     },
   })
