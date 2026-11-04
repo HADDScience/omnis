@@ -239,7 +239,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
         </TabsList>
 
         <TabsContent value="thread" className="mt-0 flex min-h-0 flex-1 flex-col p-0">
-          <div ref={listRef} className="flex-1 overflow-auto p-3 in-data-[messenger]:py-4">
+          <div ref={listRef} data-keep-bottom className="flex-1 overflow-auto p-3 in-data-[messenger]:py-4">
             <div role="log" aria-label="업무 스레드" className="flex flex-col">
               {threadMessages.length === 0 && (
                 <div className="rounded-md border border-dashed p-4 text-center text-[11px] text-muted-foreground in-data-[messenger]:text-[14px]">

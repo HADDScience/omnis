@@ -9,6 +9,8 @@ import { MyShortcuts } from "@/components/settings/my-shortcuts"
 import { PushNotifications } from "@/components/settings/push-notifications"
 import { NotificationKinds } from "@/components/settings/notification-kinds"
 import { auth } from "@/lib/auth"
+import { UI_METRICS_NOTICE } from "@/lib/ui-metrics/notice"
+import Link from "next/link"
 
 export const dynamic = "force-dynamic"
 
@@ -71,6 +73,22 @@ export default async function SettingsPage() {
                 <p className="text-sm text-muted-foreground">
                   사용자 관리, Gemini API 키, 시스템 설정을 관리합니다.
                 </p>
+              </CardContent>
+            </Card>
+            <Card className="mt-4" data-ui-metrics-notice>
+              <CardHeader>
+                <CardTitle className="text-base">{UI_METRICS_NOTICE.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+                <p>모으는 것: {UI_METRICS_NOTICE.collected}</p>
+                <p>모으지 않는 것: {UI_METRICS_NOTICE.notCollected}</p>
+                <p>{UI_METRICS_NOTICE.usage}</p>
+                <p>{UI_METRICS_NOTICE.retention}</p>
+                {role === "ADMIN" && (
+                  <Link href="/settings/ui-metrics" className="touch-target w-fit font-medium text-foreground underline underline-offset-4">
+                    배포별 측정 보기
+                  </Link>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

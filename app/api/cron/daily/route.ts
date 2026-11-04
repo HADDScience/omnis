@@ -6,6 +6,7 @@ import { flushVisits } from "@/lib/website-visits"
 import { proposeRecordsFromChat } from "@/lib/record-proposals"
 import { runDailyKpis } from "@/lib/kpi"
 import { syncWorksCalendars } from "@/lib/caldav/sync"
+import { purgeUiEvents } from "@/lib/ui-metrics/server"
 
 /**
  * 하루 한 번 도는 일을 모두 여기서 차례로 한다 (`vercel.json` 의 crons 는 이것 하나).
@@ -83,6 +84,14 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("[cron/daily] 캘린더 동기화 실패", e)
     out.calendar = { ok: false }
+  }
+
+  try {
+    // 90일 지난 사용 기록 — 지울 것이 없으면 질의 한 번이다
+    out.uiEvents = { ok: true, purged: await purgeUiEvents() }
+  } catch (e) {
+    console.error("[cron/daily] 사용 기록 정리 실패", e)
+    out.uiEvents = { ok: false }
   }
 
   const ok = Object.values(out).every((v) => (v as { ok: boolean }).ok)

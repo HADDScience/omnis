@@ -15,6 +15,8 @@ import { useRightPanel } from "./right-panel-context"
  *
  * 채팅 화면(/chat…)에서는 그리지 않는다 — 대화가 화면 전체이고 오른쪽 아래는 「새 대화」 단추 · 입력칸 자리다.
  * PC 에서도 숨긴다(2026-10-29 작업지시자) — 채팅 화면 안에서 대화 패널을 또 열 일이 없다.
+ *
+ * md 미만에서는 어느 화면에서도 그리지 않는다(2026-11-04 작업지시자) — 패널이 화면 전체를 가려 채팅 탭으로 가는 편이 낫다.
  */
 export function PanelDock() {
   const { open, openWith, task } = useRightPanel()
@@ -31,6 +33,7 @@ export function PanelDock() {
       className={cn(
         "glass fixed! right-4 z-[var(--z-dock)] flex size-12 items-center justify-center rounded-full text-foreground transition-transform duration-150 active:scale-[0.94] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         "bottom-[calc(var(--nav-offset-bottom)+12px)]",
+        "max-md:hidden",
         inChat && "hidden",
       )}
     >

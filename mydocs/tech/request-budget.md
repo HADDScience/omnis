@@ -51,6 +51,8 @@ useVisibleInterval(callback, ms, enabled?)
 | 채팅 패널 메시지 | 3초 | 보이는 탭만. `after` 로 마지막 이후만. 전송 중에는 `pausePolling` |
 | AI 재구성 끝 확인 `rebuild-status` | 2초 | 방금 보낸 글의 재구성을 기다리는 동안만, 최대 90초 ([chat-post.md](chat-post.md)) |
 
+사용 기록(`lib/ui-metrics`)은 폴링이 아니다. 동작 20건이 차거나 탭을 숨길 때만 `POST /api/ui-metrics/events`, 설문 확인은 한 기기에서 하루 한 번이다.
+
 **이 표의 앞 두 줄은 PR #17(`fix/request-volume`) 기준이다.** 머지 전 main 은 알림 2.5초 · 채팅 3초이고 둘 다 숨긴 탭에서도 돈다.
 
 ### 3. MCP 스트림 GET 에는 405

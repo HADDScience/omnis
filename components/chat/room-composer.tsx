@@ -1,14 +1,17 @@
 "use client"
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { Alert02Icon, ArrowUp01Icon, Attachment01Icon, Cancel01Icon, Folder01Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
+import { cloneElement, useEffect, useRef, useState, type ReactNode } from "react"
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
+import { Alert02Icon, ArrowUp01Icon, Attachment01Icon, Cancel01Icon, Folder01Icon, Image01Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import type { FileInfo } from "@/components/chat/message-list"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
+import { PHONE_TOUCH_QUERY } from "@/lib/keyboard-viewport"
 import { cn } from "@/lib/utils"
+import { ComposerPlusSheet } from "./composer-plus-sheet"
 import { NasFilePicker } from "./nas-file-picker"
 
 /**
@@ -96,6 +99,7 @@ export function RoomComposer({
   }, [value, textareaRef])
 
   const tooLong = maxLength !== undefined && value.length > maxLength
+  const showCount = maxLength !== undefined && value.length > maxLength * 0.8
 
   /**
    * 보내고 나서도 입력칸에 머문다 — 이어서 쓴다. PC 는 언제나 되돌린다.
@@ -108,6 +112,7 @@ export function RoomComposer({
 
   return (
     <div
+      data-composer
       className={cn(
         "relative shrink-0 bg-background px-2.5 pt-2 pb-3 in-data-[messenger]:px-3 in-data-[messenger]:sm:px-6",
         bordered && "border-t",
@@ -215,10 +220,14 @@ export function RoomComposer({
             </Button>
           )}
         </div>
-        <div className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
+        <div
+          data-composer-foot
+          data-empty={showCount ? undefined : ""}
+          className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]"
+        >
           {hint && <span className="hidden in-data-[messenger]:sm:inline [@media(pointer:coarse)]:hidden!">{hint}</span>}
           <span className={cn("ml-auto tabular-nums", tooLong && "font-medium text-destructive")}>
-            {maxLength !== undefined && value.length > maxLength * 0.8 ? `${value.length}/${maxLength}` : ""}
+            {showCount ? `${value.length}/${maxLength}` : ""}
           </span>
         </div>
       </div>
@@ -235,60 +244,110 @@ export interface ComposerPlusFiles {
   onNasOpenChange?: (open: boolean) => void
 }
 
-/** 알약 안 왼쪽 ＋ — 파일 업로드 · 시놀로지 연결에 방마다 다른 항목(children)을 잇는다 */
-export function ComposerPlus({ files, disabled, children }: { files?: ComposerPlusFiles; disabled?: boolean; children?: ReactNode }) {
+/** ＋ 메뉴에 방마다 더 붙는 항목. PC 메뉴와 폰 시트가 같은 목록을 그린다 */
+export interface ComposerPlusAction {
+  key: string
+  icon: IconSvgElement
+  label: string
+  /** 항목 오른쪽의 키 안내 — PC 메뉴에서만 보인다 */
+  shortcut?: string
+  onSelect: () => void
+}
+
+/**
+ * 알약 안 왼쪽 ＋ — 파일 업로드 · 시놀로지 연결에 방마다 다른 항목(actions)을 잇는다.
+ * PC 는 메뉴, 터치 폰은 아래에서 올라오는 시트(ComposerPlusSheet). 시트의 「사진」 은 파일 고르기를 사진으로 좁힌 것이다.
+ */
+export function ComposerPlus({ files, disabled, actions = [] }: { files?: ComposerPlusFiles; disabled?: boolean; actions?: ComposerPlusAction[] }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const photoRef = useRef<HTMLInputElement>(null)
   const [ownNasOpen, setOwnNasOpen] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const phone = useMediaQuery(PHONE_TOUCH_QUERY)
   const nasOpen = files?.nasOpen ?? ownNasOpen
   const setNasOpen = files?.onNasOpenChange ?? setOwnNasOpen
+
+  const pick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      files?.onFiles(Array.from(e.target.files))
+      e.target.value = ""
+    }
+  }
+  const trigger = (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="추가"
+      className="touch-target size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]!"
+      disabled={disabled}
+    />
+  )
+  const plusIcon = <HugeiconsIcon icon={PlusSignIcon} size={18} className="in-data-[messenger]:h-[26px]! in-data-[messenger]:w-[26px]!" />
+
   return (
     <>
       {files && (
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          className="hidden"
-          data-composer-file-input
-          onChange={(e) => {
-            if (e.target.files) {
-              files.onFiles(Array.from(e.target.files))
-              e.target.value = ""
-            }
-          }}
-        />
+        <>
+          <input ref={inputRef} type="file" multiple className="hidden" data-composer-file-input onChange={pick} />
+          {/* capture 를 주지 않는다 — 주면 바로 카메라로 가서 보관함을 고를 수 없다. 기기가 보관함 · 촬영 고르기를 띄운다 */}
+          <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" data-composer-photo-input onChange={pick} />
+        </>
       )}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="추가"
-              className="touch-target size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]!"
-              disabled={disabled}
-            />
-          }
-        >
-          <HugeiconsIcon icon={PlusSignIcon} size={18} className="in-data-[messenger]:h-[26px]! in-data-[messenger]:w-[26px]!" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" className="w-52">
-          {files && (
-            <DropdownMenuItem onClick={() => inputRef.current?.click()}>
-              <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
-              파일 업로드
-              <span className="ml-auto text-[10px] text-muted-foreground">4MB 이하</span>
-            </DropdownMenuItem>
+      {phone ? (
+        <>
+          {cloneElement(
+            trigger,
+            {
+              // 키보드를 내리고 시트를 올린다
+              onClick: () => {
+                if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+                setSheetOpen(true)
+              },
+            },
+            plusIcon,
           )}
-          {files && (
-            <DropdownMenuItem onClick={() => setNasOpen(true)}>
-              <HugeiconsIcon icon={Folder01Icon} size={14} aria-hidden />
-              시놀로지 파일 연결
-            </DropdownMenuItem>
-          )}
-          {children}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <ComposerPlusSheet
+            open={sheetOpen}
+            onOpenChange={setSheetOpen}
+            items={[
+              ...(files
+                ? [
+                    { key: "photo", icon: Image01Icon, label: "사진", onSelect: () => photoRef.current?.click() },
+                    { key: "file", icon: Attachment01Icon, label: "파일 업로드", hint: "4MB 이하", onSelect: () => inputRef.current?.click() },
+                    { key: "nas", icon: Folder01Icon, label: "시놀로지 파일 연결", onSelect: () => setNasOpen(true) },
+                  ]
+                : []),
+              ...actions,
+            ]}
+          />
+        </>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={trigger}>{plusIcon}</DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="w-52">
+            {files && (
+              <DropdownMenuItem onClick={() => inputRef.current?.click()}>
+                <HugeiconsIcon icon={Attachment01Icon} size={14} aria-hidden />
+                파일 업로드
+                <span className="ml-auto text-[10px] text-muted-foreground">4MB 이하</span>
+              </DropdownMenuItem>
+            )}
+            {files && (
+              <DropdownMenuItem onClick={() => setNasOpen(true)}>
+                <HugeiconsIcon icon={Folder01Icon} size={14} aria-hidden />
+                시놀로지 파일 연결
+              </DropdownMenuItem>
+            )}
+            {actions.map((a) => (
+              <DropdownMenuItem key={a.key} onClick={a.onSelect}>
+                <HugeiconsIcon icon={a.icon} size={14} aria-hidden />
+                {a.label}
+                {a.shortcut && <span className="ml-auto font-mono text-[10px] text-muted-foreground">{a.shortcut}</span>}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       {files && (
         <NasFilePicker
           open={nasOpen}
