@@ -47,7 +47,7 @@ last_verified: 2026-11-04
 
 ```
 $ pnpm run verify
-✖ 39 problems (0 errors, 39 warnings)
+✖ 40 problems (0 errors, 40 warnings)
 
 $ pnpm run build
 exit 0
