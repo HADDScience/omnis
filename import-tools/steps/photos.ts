@@ -5,7 +5,7 @@ import { PhotoLimitError, describeImageWithClaude, describeImageWithCodex } from
 import { openFileObject } from "../../lib/file-object"
 import { photoContextFor, savePhotoDescription } from "../../lib/photo-describe"
 
-export async function describeImportedPhotos(csvPaths: string[], opts: { dry: boolean; workers: number }) {
+export async function describeImportedPhotos(csvPaths: string[], opts: { dry: boolean; workers: number }): Promise<{ ids: string[]; left: number }> {
   // ingest의 sessions는 마스터 전체다. 이번 파일을 다시 읽어 과거의 다른 이식까지 처리하지 않는다.
   const sourceIds = csvPaths.flatMap(parseKakaoCsv).filter((m) => ROOMS[m.room]).map((m) => messageSourceId(m.room, m))
   const files = await prisma.file.findMany({
@@ -18,7 +18,7 @@ export async function describeImportedPhotos(csvPaths: string[], opts: { dry: bo
   })
   const todo = files.filter((f) => !f.describedAt)
   console.log(`  이번 CSV 사진 ${files.length}장 · 미설명 ${todo.length}장 · 구독(Codex → Claude)`)
-  if (opts.dry) return files.map((f) => f.id)
+  if (opts.dry) return { ids: files.map((f) => f.id), left: 0 }
 
   const engines = [
     { by: "codex-cli:gpt-6.1-sol", run: (image: Buffer, ctx: Parameters<typeof describeImageWithCodex>[1]) => describeImageWithCodex(image, ctx, "gpt-6.1-sol") },
@@ -61,5 +61,5 @@ export async function describeImportedPhotos(csvPaths: string[], opts: { dry: bo
     }
   }))
   console.log(`  사진 설명 성공 ${done} · 실패 ${failed} · 남음 ${queue.length}${failed || queue.length ? " — 다음 실행에서 이어 한다" : ""}`)
-  return files.map((f) => f.id)
+  return { ids: files.map((f) => f.id), left: failed + queue.length }
 }

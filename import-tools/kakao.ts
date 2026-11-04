@@ -73,7 +73,21 @@ async function main() {
   const { embed } = await import("./steps/embed")
 
   const t0 = Date.now()
-  const step = (n: number, title: string) => console.log(`\n${n}/7 ${title}`)
+  // 단계별 소요 — 어디가 느린지 로그만 보고 알 수 있게 한다. kakao-sync.py 의 실행 보고도 읽는다
+  const seconds: Record<string, number> = {}
+  let open: { label: string; at: number } | null = null
+  const closeStep = () => {
+    if (!open) return
+    const s = Math.round((Date.now() - open.at) / 100) / 10
+    seconds[open.label] = s
+    console.log(`  ⏱ ${open.label} ${s}초`)
+    open = null
+  }
+  const step = (n: number, title: string) => {
+    closeStep()
+    console.log(`\n${n}/7 ${title}`)
+    open = { label: title.split(" ")[0], at: Date.now() }
+  }
 
   const registered = args.autoRooms ? await registerAutoRooms(args.csv, { dry: args.dry }) : []
 
@@ -89,7 +103,7 @@ async function main() {
   step(4, "구조화 — 업무 카드")
   if (args.noStructure) console.log("  --no-structure 로 건너뜀")
   else if (c.failed.length > 0 && !args.dry) console.log(`  분류 실패 ${c.failed.length}세션은 이번 라운드에 안 들어간다`)
-  const s = args.noStructure ? { created: 0 } : await structure(sessions, { model: args.structureModel, dry: args.dry })
+  const s = args.noStructure ? { created: 0, failedRounds: 0 } : await structure(sessions, { model: args.structureModel, dry: args.dry })
 
   step(5, "첨부 — 실물 파일 붙이기")
   const mediaRoom = args.mediaRoom ?? [...rooms.keys()][0]
@@ -98,23 +112,27 @@ async function main() {
   else console.log("  --media 가 없어 건너뜀 (카톡 채팅방 서랍에서 저장한 폴더를 주면 붙는다)")
 
   step(6, "사진 설명 — Codex·Claude 구독")
-  const photoIds = await describeImportedPhotos(args.csv, { dry: args.dry, workers: args.workers })
+  const photos = await describeImportedPhotos(args.csv, { dry: args.dry, workers: args.workers })
 
   step(7, "임베딩 — 옴니스 AI 색인")
+  let photosLeft = 0
   if (args.noEmbed) console.log("  --no-embed 로 건너뜀")
-  else await embed({ dry: args.dry, photoIds })
+  else photosLeft = (await embed({ dry: args.dry, photoIds: photos.ids })).photosLeft
+  closeStep()
 
   const [msgs, tasks] = await Promise.all([
     prisma.chatMessage.count({ where: { sourceId: { startsWith: "kakao:" } } }),
     prisma.task.count({ where: { sourceId: { startsWith: "kakao-task:" } } }),
   ])
   console.log(`\n끝 — ${Math.round((Date.now() - t0) / 1000)}초 · 이식된 메시지 ${msgs}건 · 업무 카드 ${tasks}건 (이번에 +${s.created})`)
-  // kakao-sync.py 의 실행 보고가 읽는다
+  // kakao-sync.py 의 실행 보고가 읽는다. leftover 가 하나라도 있으면 CSV 가 그대로여도 다음 실행에서 다시 돌린다
   console.log("@@kakao-report " + JSON.stringify({
     inserted: imported.inserted, pending: imported.pending,
     newRoom: registered.some((r) => r.newRoom),
     newExternals: registered.flatMap((r) => r.newExternals),
     newMembers: registered.flatMap((r) => r.newMembers),
+    leftover: { classify: c.failed.length, structure: s.failedRounds, photos: photos.left, photoIndex: photosLeft },
+    seconds,
   }))
   await prisma.$disconnect()
 }
