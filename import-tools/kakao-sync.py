@@ -101,7 +101,12 @@ def geo(el):
 
 
 def press(el):
-    err = AXUIElementPerformAction(el, "AXPress")
+    # -25204: 저장 창처럼 막 뜬 창은 잠시 동작을 받지 못한다(카톡 26.9.0, 2026-11-04 실측)
+    for _ in range(15):
+        err = AXUIElementPerformAction(el, "AXPress")
+        if err != -25204:
+            break
+        time.sleep(0.4)
     if err != 0:
         raise Abort(f"누르기 실패 ({err})")
 
@@ -309,7 +314,7 @@ def open_room(room, mouse):
         time.sleep(0.3)
         x, y, w, h = geo(rows[0])
         mouse.double_click(x + w / 2, y + h / 2)
-        new = wait_for(lambda: next((z for z in windows() if attr(z, "AXIdentifier") == "_NS:441" and nfc(attr(z, "AXTitle") or "") not in before), None), f"{room} 창")
+        new = wait_for(lambda: next((z for z in windows() if child(z, Role="AXButton", Title="Send") is not None and nfc(attr(z, "AXTitle") or "") not in before), None), f"{room} 창")
         TITLES[room] = nfc(attr(new, "AXTitle") or "")
         opened = True
     focus_room(room)
@@ -692,6 +697,7 @@ def main():
     start_pos = mouse.pos()
     todo, failed, not_started = [], {}, []
     stopped = False
+    fails_in_row = 0
     try:
         if args.room:
             rooms = [nfc(r) for r in args.room]
@@ -718,12 +724,15 @@ def main():
             try:
                 csv_path, got = sync_room(room, key, state, mouse, args)
                 todo.append((key, csv_path, got))
+                fails_in_row = 0
             except Exception as e:
                 failed[key] = str(e)[:200]
                 log(f"✗ {key}: {e!r}" if not isinstance(e, Abort) else f"✗ {key}: {e}")
-                if "마우스" in str(e):
+                fails_in_row += 1
+                # 연달아 실패하면 화면을 잘못 읽는 것이다 — 방 창을 더 열지 않는다
+                if "마우스" in str(e) or fails_in_row >= 2:
                     not_started = [r for r in rooms[i + 1:]]
-                    stopped = True
+                    stopped = "마우스" in str(e)
                     break
             finally:
                 state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
