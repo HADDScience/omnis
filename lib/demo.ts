@@ -4,8 +4,12 @@ export const IS_DEMO = process.env.NEXT_PUBLIC_IS_DEMO === "true"
 
 export const DEMO_STORAGE_MESSAGE = "시연용 데모에서는 파일 저장을 쓸 수 없습니다"
 
-/** 데모에서 NAS 가 필요한 요청을 막는다. 데모가 아니면 null — 호출부는 그대로 진행한다. */
+/**
+ * 데모에서 NAS 가 필요한 요청을 막는다. 데모가 아니면 null — 호출부는 그대로 진행한다.
+ * CI 는 데모 빌드라, 가짜 NAS(scripts/e2e-fake-nas.mjs)를 띄운 e2e 만 파일 경로를 실제로 탄다. 배포본에서는 열리지 않는다.
+ */
 export function demoStorageBlocked(): Response | null {
   if (!IS_DEMO) return null
+  if (process.env.E2E_FAKE_NAS_URL && !process.env.VERCEL) return null
   return Response.json({ error: DEMO_STORAGE_MESSAGE }, { status: 403 })
 }

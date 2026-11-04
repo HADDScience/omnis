@@ -21,6 +21,7 @@ import {
 import { openFileObject } from "@/lib/file-object"
 import { findVisibleFile } from "@/lib/file-access-server"
 import { Readable } from "node:stream"
+import { fileResponseHeaders } from "@/lib/file-serving"
 
 /**
  * hadd-omnis — 원격 MCP 서버 (Streamable HTTP) + OAuth 2.1 인가 서버.
@@ -386,8 +387,7 @@ async function downloadViaLink(req: NextRequest) {
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
     headers: {
       ...CORS,
-      "Content-Type": file.mimeType,
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      ...fileResponseHeaders({ mimeType: file.mimeType, name: file.name, attachment: true }),
       "cache-control": "no-store",
     },
   })
