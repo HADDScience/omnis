@@ -1,5 +1,6 @@
 import { createHash } from "crypto"
 import { prisma } from "@/lib/db"
+import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import { embedTexts } from "@/lib/ai"
 import { migrateContent, type Section } from "@/lib/omnis-types"
 import { TASK_STATUS_LABELS } from "@/lib/constants"
@@ -632,6 +633,8 @@ export async function withFollowUps(chunks: RetrievedChunk[]): Promise<Retrieved
       const rows = await prisma.chatMessage.findMany({
         where: {
           ...(h.taskId ? { taskId: h.taskId } : { roomId: h.roomId }),
+          // 색인은 전사방 글만 든다. 이후 대화도 같다 — 같은 업무에 이어진 참여자 전용 방 글이 검색 · 답변 근거로 새지 않게
+          ...PUBLIC_MESSAGE_WHERE,
           createdAt: { gt: h.createdAt, lt: new Date(h.createdAt.getTime() + FOLLOW_UP_DAYS * 86_400_000) },
           kind: "NORMAL",
           deletedAt: null,

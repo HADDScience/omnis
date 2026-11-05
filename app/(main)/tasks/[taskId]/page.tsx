@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
+import { visibleMessageWhere } from "@/lib/chat-rooms"
 import { visibleFileWhere } from "@/lib/file-access"
 import { prisma } from "@/lib/db"
 import { notFound } from "next/navigation"
@@ -39,7 +40,8 @@ export default async function TaskDetailPage({ params }: Props) {
       },
     }),
     prisma.chatMessage.findMany({
-      where: { taskId, ...NOT_EXTERNAL_WHERE },
+      // 참여자 전용 방의 글이 카드에 연결돼도 그 방 사람에게만
+      where: { taskId, ...NOT_EXTERNAL_WHERE, ...visibleMessageWhere(session.user.id) },
       orderBy: { createdAt: "asc" },
       include: {
         author: { select: { id: true, name: true } },
@@ -49,7 +51,7 @@ export default async function TaskDetailPage({ params }: Props) {
       },
     }),
     prisma.file.findMany({
-      where: { taskId },
+      where: { taskId, ...visibleFileWhere(session.user.id) },
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, path: true, size: true, mimeType: true, createdAt: true },
     }),

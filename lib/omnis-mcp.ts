@@ -14,6 +14,7 @@
 //  Prisma 는 DB 소유자로 붙으므로 이 파일이 곧 권한 경계다.
 import { ACTIVE_MEMBER_WHERE, isActiveMember } from "@/lib/active-members"
 import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
+import { visibleMessageWhere } from "@/lib/chat-rooms"
 import { listTasksWhere } from "@/lib/task-unassigned"
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
 
@@ -870,13 +871,14 @@ export async function runTool(
         select: {
           ...TASK_SELECT, background: true, expectedResult: true, workStart: true, workEnd: true,
           checklists: { select: { name: true, done: true }, orderBy: { createdAt: "asc" } },
-          files: { select: { id: true, name: true, size: true } },
+          files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true, size: true } },
         },
       })
       if (!t) return { error: "업무가 없습니다." }
       const n = clampInt(args.messages, 20, 100)
       const msgs = await prisma.chatMessage.findMany({
-        where: { taskId: t.id, kind: "NORMAL", ...NOT_EXTERNAL_WHERE },
+        // 화면과 같다 — 참여자 전용 방의 글은 그 방 사람에게만
+        where: { taskId: t.id, kind: "NORMAL", ...NOT_EXTERNAL_WHERE, ...visibleMessageWhere(caller.userId) },
         select: { createdAt: true, content: true, author: { select: { name: true } }, files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true } } },
         orderBy: { createdAt: "desc" }, take: n,
       })
