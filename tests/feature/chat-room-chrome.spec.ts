@@ -66,8 +66,9 @@ for (const width of [390, 402]) {
       const last = await rowRect(page, `지나가기 글 ${TOTAL - 1}`)
       const pill = await rect(page, PILL)
       expect(last.bottom).toBeLessThanOrEqual(pill.top)
-      const nav = await rect(page, 'nav[aria-label="주 메뉴"]:visible')
-      expect(pill.bottom).toBeLessThanOrEqual(nav.top)
+      // 대화방에는 하단 nav 가 없다 — 입력창이 화면 아래에 붙는다
+      await expect(page.locator('nav[aria-label="주 메뉴"]:visible')).toHaveCount(0)
+      expect(pill.bottom).toBeLessThanOrEqual(844)
       // 머리 뒤 · 입력창 뒤에 글이 있다
       const header = await rect(page, HEADER)
       const counts = await page.locator("section [data-message-id]").evaluateAll(

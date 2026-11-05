@@ -650,6 +650,16 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
 @utility room-edge-bottom {
   background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--background) 80%, transparent) 24px, var(--background) 48px);
 }
+/* 폰 대화방에는 하단 nav 가 없다 — 뒤로 캡슐로 목록에 돌아간다. 셸이 방을 그릴 때 다는 표식으로 가르므로 첫 화면부터 맞고,
+   nav 자리 여백은 홈 인디케이터만 남아 입력창이 화면 아래 안전 영역에 붙는다. 키보드가 뜨면 use-keyboard-open 의 인라인 값이 이긴다 */
+@media (max-width: 767.98px) {
+  html:has([data-chat-in-room]) {
+    --nav-offset-bottom: var(--safe-bottom);
+  }
+  html:has([data-chat-in-room]) [data-phone-bottom-nav] {
+    display: none;
+  }
+}
 .nav-edge-bottom.nav-edge-clear {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;

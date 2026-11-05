@@ -76,7 +76,7 @@ test.describe("폰", () => {
     expect(labels).toEqual([])
   })
 
-  test("이미 켜진 탭을 다시 누르면 내지 않는다 — 방 안에서 채팅 탭을 눌러 목록으로 가는 이동은 그대로다", async ({ page }) => {
+  test("이미 켜진 탭을 다시 누르면 내지 않는다 — 대화방에는 하단 탭이 없다", async ({ page }) => {
     await init(page, "record")
     await quickLogin(page, "팀장")
     await page.goto("/calendar")
@@ -88,8 +88,11 @@ test.describe("폰", () => {
     const task = await firstTask(page)
     await page.goto(`/chat/task/${task}`)
     await settled(page)
+    await expect(bottomNav(page)).toBeHidden()
+    await page.goto("/chat")
+    await settled(page)
     await bottomNav(page).getByRole("link", { name: "채팅" }).tap()
-    await page.waitForURL("**/chat", { timeout: 30_000 })
+    await page.waitForTimeout(300)
     expect((await log(page)).vibrate).toEqual([])
   })
 

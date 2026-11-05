@@ -77,7 +77,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
     <StartRoomEntry.Provider value={startEntry}>
     <RoomSurfaceReady.Provider value={surfaceReady}>
     <OpenClientRoom.Provider value={openClientRoom}>
-      <div data-messenger data-chat-at-list={atList ? "" : undefined} className="flex h-full min-h-0 flex-col md:pt-12">
+      <div data-messenger data-chat-at-list={atList ? "" : undefined} data-chat-in-room={atList ? undefined : ""} className="flex h-full min-h-0 flex-col md:pt-12">
         <div className="flex min-h-0 flex-1">
           <aside
             aria-label="채팅방 목록"
