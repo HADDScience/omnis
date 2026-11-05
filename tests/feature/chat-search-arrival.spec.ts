@@ -87,6 +87,8 @@ for (const [name, use] of [
       const roomId = await peopleRoom(page)
       const w = word()
       const target = await post(page, roomId, `${w} 맨 앞 글`)
+      // 폴링은 커서보다 10초 앞부터 겹쳐 읽는다(lib/chat-cursor.ts) — 그 밖으로 민다
+      await page.waitForTimeout(11_000)
       for (let i = 0; i < 40; i++) await post(page, roomId, `뒤에 쌓는 글 ${i}`)
       await openSearch(page, roomId)
       await expect(page.locator(`[data-message-id="${target}"]`)).toHaveCount(0)

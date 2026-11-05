@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
+import { CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
-import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
+import { MESSAGE_INCLUDE, shapeMessage } from "@/lib/chat-message-shape"
 import { loadAgentRoom } from "@/lib/agent/service"
 import { OmnisRoom } from "@/components/messenger/omnis-room"
 import { CompanyRoom } from "@/components/messenger/company-room"
@@ -49,51 +49,34 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
   }
 
   if (room.kind === "COMPANY") {
-    const messages = await recentMessages(roomId)
-    return <CompanyRoom key={roomId} roomId={roomId} roomName={room.name} currentUserId={userId} initialMessages={messages} muted={muted} />
+    const { messages, checkedAt } = await recentMessages(roomId)
+    return <CompanyRoom key={roomId} roomId={roomId} roomName={room.name} currentUserId={userId} initialMessages={messages} resume={{ checkedAt }} muted={muted} />
   }
 
   if (room.kind === "DM" || room.kind === "GROUP") {
     // 사람끼리 1:1 · 단톡방(5단계). 참여자만 — roomAccess 를 지났어도 loadPeopleRoom 이 한 번 더 본다
     const people = await loadPeopleRoom(roomId, userId)
     if (!people) notFound()
-    const messages = await recentMessages(roomId)
-    return <PeopleRoom key={roomId} room={people} currentUserId={userId} initialMessages={messages} muted={muted} />
+    const { messages, checkedAt } = await recentMessages(roomId)
+    return <PeopleRoom key={roomId} room={people} currentUserId={userId} initialMessages={messages} resume={{ checkedAt }} muted={muted} />
   }
 
   notFound()
 }
 
-/** 첫 화면의 글 한 페이지 — 메시지 API(GET /api/chat/messages)의 shape 와 같게. 지운 글은 자리만, 답장은 인용 한 줄 */
+/**
+ * 첫 화면의 글 한 페이지 — 글 API 와 같은 모양. 읽기 전 시각을 함께 주면 화면이 그 뒤로 고치거나 지운 글만 묻는다.
+ * 뒤로 가기는 받아 둔 이 화면을 다시 그리므로, 그 사이의 변경을 놓치지 않으려면 이 시각이 필요하다
+ */
 async function recentMessages(roomId: string) {
+  const checkedAt = new Date().toISOString()
   const recent = await prisma.chatMessage.findMany({
     where: { roomId },
     // API 와 같은 순서 — 시각이 같으면 id. 이 페이지 맨 앞이 「이전 글」 커서가 된다
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: CHAT_PAGE_SIZE,
-    include: {
-      author: { select: { id: true, name: true } },
-      externalSpeaker: EXTERNAL_SPEAKER_SELECT,
-      task: { select: { id: true, name: true, slug: true } },
-      files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
-      replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT } },
-    },
+    include: MESSAGE_INCLUDE,
   })
-  return recent.reverse().map(({ externalSpeaker, ...m }) => ({
-    ...m,
-    author: displayAuthor(m.author, externalSpeaker),
-    content: m.deletedAt ? CHAT_DELETED_TEXT : m.content,
-    files: m.deletedAt ? [] : m.files,
-    createdAt: m.createdAt.toISOString(),
-    editedAt: m.editedAt?.toISOString() ?? null,
-    changedAt: m.changedAt?.toISOString() ?? null,
-    deletedAt: m.deletedAt?.toISOString() ?? null,
-    replyTo: m.replyTo
-      ? {
-          id: m.replyTo.id,
-          authorName: displayAuthor({ id: "", name: m.replyTo.author.name }, m.replyTo.externalSpeaker).name,
-          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
-        }
-      : null,
-  }))
+  // 날짜를 글자로 — 폴링이 주는 글과 같은 모양이 된다
+  return { checkedAt, messages: JSON.parse(JSON.stringify(recent.reverse().map(shapeMessage))) }
 }

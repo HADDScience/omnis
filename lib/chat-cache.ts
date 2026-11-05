@@ -3,27 +3,18 @@
 //
 // 저장 범위(회사 데이터가 기기에 남는다 — mydocs/manual/ux-rules.md 「기기 저장」):
 //   - 방 목록 한 벌(이름 · 마지막 글 미리보기 60자 · 안 읽은 수 · 폴더)
-//   - 방마다 최근 글 최대 CACHE_MESSAGES 개(본문 · 보낸 사람 이름 · 시각). 첨부 파일 본문 · 확인 카드 · 도구 기록은 넣지 않는다
-//   - 최근에 연 방 MAX_ROOMS 개까지. 넘으면 오래 안 연 방부터 지운다
-// 지우는 때: 로그아웃(clearChatCache) · 다른 사람이 이 기기로 로그인했을 때(소유자가 바뀌면 통째로 비운다).
+//   - 방 저장본(lib/room-snapshot.ts, 키 snap:<방 키>): 최근 글 30개. 전사 · 사람 방은 답장 인용 · 첨부 이름 · 경로 · 크기까지, 사람 방은 참여자도.
+//     첨부 파일 본문 · 확인 카드 · 도구 기록은 넣지 않는다
+//   - 방 MAX_ROOMS 개까지. 넘으면 오래 안 연 방부터 지운다
+// 지우는 때: 로그아웃(clearChatCache) · 다른 사람이 이 기기로 로그인했을 때(소유자가 바뀌면 통째로 비운다) ·
+// 참여자만 보는 방에서 빠졌을 때(서버가 403 · 404 로 답하거나 목록에서 사라질 때, lib/room-snapshot.ts).
 // 사람마다 키를 나눈다(`<userId>:<key>`) — 같은 기기에서 다른 사람 것을 읽지 않는다.
 // IndexedDB 를 못 쓰면(사생활 보호 모드 등) 조용히 아무것도 하지 않는다 — 화면은 서버만으로 그대로 돈다.
 
 const DB_NAME = "omnis-chat-cache"
 const STORE = "kv"
 const OWNER_KEY = "omnis.chat-cache.owner"
-export const CACHE_MESSAGES = 30
 const MAX_ROOMS = 40
-
-export interface CachedMessage {
-  id: string
-  /** 화면이 그릴 보낸 사람 — 옴니스 · 나 · 이름 */
-  author: { id: string; name: string }
-  mine: boolean
-  fromOmnis?: boolean
-  content: string
-  createdAt: string
-}
 
 let dbPromise: Promise<IDBDatabase | null> | null = null
 
@@ -33,7 +24,10 @@ function openDb(): Promise<IDBDatabase | null> {
     try {
       const req = indexedDB.open(DB_NAME, 1)
       req.onupgradeneeded = () => req.result.createObjectStore(STORE)
-      req.onsuccess = () => resolve(req.result)
+      req.onsuccess = () => {
+        resolve(req.result)
+        sweepLegacy(req.result)
+      }
       req.onerror = () => resolve(null)
       req.onblocked = () => resolve(null)
     } catch {
@@ -42,6 +36,21 @@ function openDb(): Promise<IDBDatabase | null> {
   })
   return dbPromise
 }
+
+/** 예전 저장분(<사람>:room:<방 키>)을 지운다 — 저장본이 snap: 하나로 합쳐졌다. 옛 탭이 다시 쓸 수 있어 페이지를 열 때마다 본다 */
+function sweepLegacy(db: IDBDatabase) {
+  try {
+    const store = db.transaction(STORE, "readwrite").objectStore(STORE)
+    const keys = store.getAllKeys()
+    keys.onsuccess = () => {
+      for (const key of keys.result) if (isLegacyKey(String(key))) store.delete(key)
+    }
+  } catch {
+    // 못 지우면 다음에 연 때 지운다
+  }
+}
+
+export const isLegacyKey = (key: string) => /^[^:]+:room:/.test(key)
 
 async function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
   const db = await openDb()
@@ -84,12 +93,12 @@ export async function writeCache<T>(userId: string, key: string, value: T): Prom
   if (!userId) return
   await claim(userId)
   await tx("readwrite", (s) => s.put({ at: Date.now(), value }, k(userId, key)))
-  if (key.startsWith("room:")) void trimRooms(userId)
+  if (key.startsWith("snap:")) void trimRooms(userId)
 }
 
 /** 방 저장분이 MAX_ROOMS 를 넘으면 오래된 것부터 */
 async function trimRooms(userId: string) {
-  const prefix = k(userId, "room:")
+  const prefix = k(userId, "snap:")
   const all = await tx<IDBValidKey[]>("readonly", (s) => s.getAllKeys())
   const rooms = (all ?? []).map(String).filter((key) => key.startsWith(prefix))
   if (rooms.length <= MAX_ROOMS) return
@@ -103,6 +112,18 @@ async function trimRooms(userId: string) {
   })
 }
 
+/** 저장본 하나를 지운다 */
+export async function deleteCache(userId: string, key: string): Promise<void> {
+  await tx("readwrite", (s) => s.delete(k(userId, key)))
+}
+
+/** 이 사람의 저장 키(앞붙이로 거른다). 돌려주는 키에 사람 앞붙이는 없다 */
+export async function listCacheKeys(userId: string, prefix: string): Promise<string[]> {
+  const all = await tx<IDBValidKey[]>("readonly", (s) => s.getAllKeys())
+  const head = k(userId, "")
+  return (all ?? []).map(String).filter((key) => key.startsWith(head + prefix)).map((key) => key.slice(head.length))
+}
+
 /** 로그아웃 — 이 기기의 채팅 저장분을 모두 지운다 */
 export async function clearChatCache(): Promise<void> {
   try {
@@ -113,11 +134,4 @@ export async function clearChatCache(): Promise<void> {
   await tx("readwrite", (s) => s.clear())
 }
 
-/** 방 저장 키 — 목록의 방 키와 같다(room:<id> · task:<id>) */
-export const roomCacheKey = (roomKey: string) => `room:${roomKey}`
 export const LIST_CACHE_KEY = "list"
-
-/** 저장할 최근 글 — 끝에서 CACHE_MESSAGES 개 */
-export function recentForCache<T>(messages: T[]): T[] {
-  return messages.slice(-CACHE_MESSAGES)
-}

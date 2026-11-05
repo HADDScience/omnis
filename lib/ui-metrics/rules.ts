@@ -12,6 +12,8 @@ import { SHORTCUTS } from "@/lib/shortcuts"
 
 export const UI_EVENT_NAMES = [
   "room_open_to_send", // value: 방을 연 뒤 첫 전송까지 ms
+  "room_first_message", // value: 목록에서 방을 누른 뒤 첫 글이 보일 때까지 ms. 저장본 없이 연 방
+  "room_first_message_saved", // value: 같은 값, 저장본으로 연 방
   "attach_failed", // value: HTTP 상태(있을 때)
   "attach_retry",
   "attach_small_ms", // value: 4MB 이하 올리기 ms. 큰 첨부를 켠 뒤만
@@ -158,6 +160,9 @@ export interface UiMetricCounts {
 export interface UiMetricRow {
   medianMs: number | null
   sends: number
+  /** 방을 누른 뒤 첫 글까지 중앙값 — 저장본 없이 · 저장본으로 */
+  firstMessageMs: number | null
+  firstMessageSavedMs: number | null
   counts: UiMetricCounts
 }
 
@@ -198,7 +203,7 @@ export function summarize(input: {
   responses: { commitSha: string; userId: string; score: number | null; comment: string | null; createdAt: Date }[]
   names: ReadonlyMap<string, string>
 }): UiDeploymentRow[] {
-  type Person = { sends: number[]; counts: UiMetricCounts; score: number | null; dismissed: boolean; comment: string | null }
+  type Person = { sends: number[]; first: number[]; firstSaved: number[]; counts: UiMetricCounts; score: number | null; dismissed: boolean; comment: string | null }
   type Deployment = { first: number; people: Map<string, Person> }
   const deployments = new Map<string, Deployment>()
   const touch = (sha: string, userId: string, at: Date): Person => {
@@ -206,7 +211,7 @@ export function summarize(input: {
     if (!d) deployments.set(sha, (d = { first: at.getTime(), people: new Map() }))
     d.first = Math.min(d.first, at.getTime())
     let p = d.people.get(userId)
-    if (!p) d.people.set(userId, (p = { sends: [], counts: emptyCounts(), score: null, dismissed: false, comment: null }))
+    if (!p) d.people.set(userId, (p = { sends: [], first: [], firstSaved: [], counts: emptyCounts(), score: null, dismissed: false, comment: null }))
     return p
   }
 
@@ -214,6 +219,10 @@ export function summarize(input: {
     const p = touch(e.commitSha, e.userId, e.at)
     if (e.name === "room_open_to_send") {
       if (e.value !== null) p.sends.push(e.value)
+    } else if (e.name === "room_first_message") {
+      if (e.value !== null) p.first.push(e.value)
+    } else if (e.name === "room_first_message_saved") {
+      if (e.value !== null) p.firstSaved.push(e.value)
     } else if (e.name.startsWith("shortcut.")) {
       p.counts.shortcut++
     } else {
@@ -236,6 +245,8 @@ export function summarize(input: {
         name: input.names.get(userId) ?? "(지운 계정)",
         medianMs: median(p.sends),
         sends: p.sends.length,
+        firstMessageMs: median(p.first),
+        firstMessageSavedMs: median(p.firstSaved),
         counts: p.counts,
         score: p.score,
         dismissed: p.dismissed,
@@ -250,6 +261,8 @@ export function summarize(input: {
         firstSeenAt: new Date(d.first).toISOString(),
         medianMs: median(all.flatMap((p) => p.sends)),
         sends: all.reduce((n, p) => n + p.sends.length, 0),
+        firstMessageMs: median(all.flatMap((p) => p.first)),
+        firstMessageSavedMs: median(all.flatMap((p) => p.firstSaved)),
         counts,
         medianScore: median(scores),
         answers: scores.length,

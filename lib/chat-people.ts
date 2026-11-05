@@ -11,6 +11,7 @@ import { createNotification } from "@/lib/notifications"
 import { queueChatPush } from "@/lib/chat-push"
 import { roomKeyOf } from "@/lib/chat-list"
 import { checkAttachable } from "@/lib/file-access"
+import type { PeopleRoomView } from "@/lib/chat-people-rules"
 import { defaultGroupName, dmKeyOf, isSelfDmKey, mentionedMembers, peopleRoomTitle, planPeopleRoom, SELF_ROOM_TITLE, selfDmKeyOf } from "@/lib/chat-people-rules"
 import { ACTIVE_MEMBER_WHERE, isActiveMember } from "@/lib/active-members"
 
@@ -112,19 +113,7 @@ export async function openSelfRoom(me: { id: string }): Promise<{ roomId: string
   }
 }
 
-export interface PeopleRoomView {
-  id: string
-  kind: "DM" | "GROUP"
-  /** 나와의 대화 — 참여자가 나뿐인 방. 알림 끄기 · 두 사람 안내를 보이지 않는다 */
-  self: boolean
-  /** 보는 사람 기준 이름 — 1:1 은 상대 이름 */
-  title: string
-  /** 저장된 이름(단톡방 이름 바꾸기의 기본값) */
-  name: string
-  members: { id: string; name: string }[]
-  /** 그중 재직자 — @ 후보 · 멘션 알림. 떠난 사람은 참여자 이름으로는 남고 새로 부를 수 없다 */
-  activeMembers: { id: string; name: string }[]
-}
+export type { PeopleRoomView }
 
 /** 내가 참여한 사람끼리 방. 아니면 null — 호출자가 404 로 답한다(있는지조차 알리지 않는다) */
 export async function loadPeopleRoom(roomId: string, userId: string): Promise<PeopleRoomView | null> {

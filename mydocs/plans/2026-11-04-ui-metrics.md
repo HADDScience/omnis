@@ -16,6 +16,7 @@ last_verified: 2026-11-04
 | 이벤트 | 값 | 어디서 |
 |---|---|---|
 | `room_open_to_send` | 방을 연 뒤 첫 전송까지 ms(30분 초과는 버림) | `chat-panel` · `omnis-room` 보내기 |
+| `room_first_message` · `room_first_message_saved` | 목록에서 방을 누른 뒤 첫 글이 그려질 때까지 ms(저장본 없이 · 저장본으로) | 전사 · 사람 방의 `room-list` 탭 → `chat-panel`. 주소로 바로 연 방은 재지 않는다 |
 | `attach_failed` | HTTP 상태 | `reportIncident` |
 | `attach_retry` | — | 실패 뒤 10분 안에 다시 올릴 때 |
 | `menu_open` · `menu_dismiss` · `menu_act` | — | `DropdownMenu` 의 `onOpenChange` 사유 |

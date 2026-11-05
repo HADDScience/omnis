@@ -84,3 +84,18 @@ export function mentionedMembers(content: string, members: { id: string; name: s
   }
   return [...found]
 }
+
+/** 사람끼리 방의 머리줄 · @ 후보 — 방 화면과 기기 저장본이 함께 쓴다 */
+export interface PeopleRoomView {
+  id: string
+  kind: "DM" | "GROUP"
+  /** 나와의 대화 — 참여자가 나뿐인 방. 알림 끄기 · 두 사람 안내를 보이지 않는다 */
+  self: boolean
+  /** 보는 사람 기준 이름 — 1:1 은 상대 이름 */
+  title: string
+  /** 저장된 이름(단톡방 이름 바꾸기의 기본값) */
+  name: string
+  members: { id: string; name: string }[]
+  /** 그중 재직자 — @ 후보 · 멘션 알림. 떠난 사람은 참여자 이름으로는 남고 새로 부를 수 없다 */
+  activeMembers: { id: string; name: string }[]
+}

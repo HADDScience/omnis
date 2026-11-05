@@ -87,7 +87,9 @@ import { rememberRoomList } from "@/lib/chat-entry"
 import { FolderManager } from "./folder-manager"
 import { SwipeRow, type SwipeSide } from "./swipe-row"
 import { AuthorAvatar } from "@/components/chat/message-parts"
-import { useStartRoomEntry } from "./messenger-context"
+import { useOpenClientRoom, useStartRoomEntry } from "./messenger-context"
+import { isFastRoom, syncSnapshots } from "@/lib/room-snapshot"
+import { noteRoomTap } from "@/lib/ui-metrics/client"
 
 /** 전사방 · 업무방은 다른 사람이 글을 쓴다 — 목록을 열어 둔 동안 이 간격으로 다시 읽는다 */
 const POLL_MS = 30_000
@@ -378,6 +380,17 @@ export function RoomList({ version, userId }: { version: number; userId: string 
     ? sortByRecent(flatten(search?.data ?? null)).map(withActiveRead)
     : roomsInChip(rooms.map(withActiveRead), chip, folders)
   const unreadRooms = unreadRoomCount(rooms.map(withActiveRead))
+  // 받은 목록이 오면 놀 때 저장본을 맞춘다 — 빠진 방은 지우고 위쪽 방은 미리 받는다. 저장본이 최신이면 요청하지 않는다
+  useEffect(() => {
+    if (!data || data.query) return
+    const run = () => void syncSnapshots(userId, sortByRecent(rooms))
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(run, { timeout: 2000 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const timer = setTimeout(run, 300)
+    return () => clearTimeout(timer)
+  }, [data, rooms, userId])
   const loading = searching ? !search?.data && !search?.error : data === null && !error
   const currentFolder = chip.startsWith("folder:") ? folders.find((f) => `folder:${f.id}` === chip) : undefined
   // 업무방은 상태별 접는 묶음으로(groupTaskRooms). 기본은 모두 접힘. 검색 결과는 찾은 그대로 한 목록이다
@@ -799,6 +812,8 @@ function RoomRow({
   const removal = roomRemoval(room.kind)
   const manual = actions.folders.filter((f) => !f.rule)
   const startEntry = useStartRoomEntry()
+  const openClientRoom = useOpenClientRoom()
+  const fast = isFastRoom(room)
   return (
     <ContextMenu>
       <ContextMenuTrigger className="mx-2 rounded-xl">
@@ -884,12 +899,22 @@ function RoomRow({
           <div className={cn("rounded-xl hover:bg-muted/60 has-data-[pending]:bg-muted", active && ROW_ACTIVE)}>
             <Link
               href={roomHref(room)}
+              // 전사 · 사람 방은 서버 페이지를 부르지 않는다 — 미리 받을 까닭이 없다
+              prefetch={fast ? false : undefined}
               aria-current={active ? "page" : undefined}
               draggable={false}
               aria-keyshortcuts="Shift+F10"
               onClick={(e) => {
                 // 새 탭 · 새 창으로 여는 누르기는 이 화면을 바꾸지 않는다
                 if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                if (fast) {
+                  e.preventDefault()
+                  if (!active) {
+                    noteRoomTap(e.timeStamp)
+                    openClientRoom(room)
+                  }
+                  return
+                }
                 startEntry(room.key)
               }}
               onKeyDown={(e) => {

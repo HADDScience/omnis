@@ -26,7 +26,7 @@ import {
 } from "@/components/chat/message-parts"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
-import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
+import { writeSnapshot } from "@/lib/room-snapshot"
 
 interface Message {
   id: string
@@ -137,17 +137,10 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
     if (!roomKey || !currentUserId) return
     const people = messages.filter((m) => !m.deletedAt && eventKindOf(m) === null)
     if (people.length === 0) return
-    void writeCache(
-      currentUserId,
-      roomCacheKey(roomKey),
-      recentForCache(people).map((m) => ({
-        id: m.id,
-        author: m.author,
-        mine: m.author.id === currentUserId,
-        content: m.content,
-        createdAt: m.createdAt,
-      })),
-    )
+    writeSnapshot(currentUserId, roomKey, {
+      checkedAt: new Date().toISOString(),
+      messages: people.map((m) => ({ id: m.id, author: m.author, mine: m.author.id === currentUserId, content: m.content, createdAt: m.createdAt })),
+    })
   }, [roomKey, currentUserId, messages])
 
   // AI 재구성은 응답 뒤에 돈다. 끝날 때까지 「갱신 중」 한 줄을 두고 2초마다 묻는다 — 입력창은 막지 않는다

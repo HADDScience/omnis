@@ -267,16 +267,36 @@ test.describe("폰", () => {
   })
 })
 
-test("방을 여는 동안 쓴 글을 방 화면 입력창이 이어받고, 입력창 자리가 밀리지 않는다", async ({ page }) => {
+test("전사 · 사람 방은 입장 화면 없이 곧바로 진짜 입력창이다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await quickLogin(page, "팀장")
   await page.goto("/chat")
+  const link = page.locator(`aside a[href$="${COMPANY}"]`).first()
+  await link.waitFor({ timeout: 30_000 })
+  await expect.poll(() => link.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), { timeout: 30_000 }).toBe(true)
+  await link.click()
+  await expect(page.locator("[data-entry-composer]")).toHaveCount(0)
+  await expect(page.locator(`section ${PILL} textarea[aria-label="메시지 입력"]`)).toBeVisible()
+})
+
+test("업무방 — 방을 여는 동안 쓴 글을 방 화면 입력창이 이어받고, 입력창 자리가 밀리지 않는다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await quickLogin(page, "팀장")
+  const url = await taskRoom(page)
+  const taskId = url.split("/").at(-1)!
+  const { name } = (await (await page.request.get(`/api/tasks/${taskId}`)).json()) as { name: string }
+  await page.goto("/chat")
+  // 목록의 업무방은 상태별로 접혀 있다 — 검색하면 펼친 목록으로 나온다
+  await page.getByPlaceholder("방 · 업무 · 마지막 글 검색").fill(name)
+  const link = page.locator(`aside a[href$="${url}"]`).first()
+  await link.waitFor({ timeout: 15_000 })
+  await expect.poll(() => link.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), { timeout: 30_000 }).toBe(true)
   // 방 화면이 늦게 오게 해 입장 화면을 붙잡아 둔다
-  await page.route(`**${COMPANY}**`, async (route) => {
+  await page.route(`**${url}**`, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 2_500))
     await route.continue()
   })
-  await page.locator(`a[href$="${COMPANY}"]`).first().click()
+  await link.click()
   const entry = page.locator("[data-entry-composer]")
   await entry.waitFor({ timeout: 15_000 })
   await entry.fill("방이 오기 전에 쓴 글")

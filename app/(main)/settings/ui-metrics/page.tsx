@@ -14,12 +14,14 @@ const seconds = (ms: number | null) => (ms === null ? "–" : `${(ms / 1000).toF
 const dateTime = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "short", timeStyle: "short" })
 
 const CELL = "whitespace-nowrap px-2 py-1.5 text-right tabular-nums"
-const HEADERS = ["첫 전송 중앙값", "전송", "첨부 실패", "재시도", "메뉴 닫기/열기", "+ 닫기/열기", "+ 사용", "단축키"]
+const HEADERS = ["방 → 첫 글", "방 → 첫 글(저장본)", "첫 전송 중앙값", "전송", "첨부 실패", "재시도", "메뉴 닫기/열기", "+ 닫기/열기", "+ 사용", "단축키"]
 
 function MetricCells({ row }: { row: UiMetricRow }) {
   const c = row.counts
   return (
     <>
+      <td className={CELL}>{seconds(row.firstMessageMs)}</td>
+      <td className={CELL}>{seconds(row.firstMessageSavedMs)}</td>
       <td className={CELL}>{seconds(row.medianMs)}</td>
       <td className={CELL}>{row.sends}</td>
       <td className={CELL}>{c.attachFailed}</td>

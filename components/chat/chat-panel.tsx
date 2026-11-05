@@ -5,16 +5,17 @@ import { toast } from "sonner"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
-import { apiUrl } from "@/lib/base-path"
+import { apiUrl, BASE_PATH } from "@/lib/base-path"
+import { Spinner } from "@/components/ui/spinner"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { createSerialQueue } from "@/lib/serial-queue"
 import { reportIncident } from "@/lib/report-client-error"
 import { startLargeUpload, type UploadedFile } from "@/lib/large-upload/client"
 import { isLargeUpload, largeUploadClientEnabled } from "@/lib/large-upload/rules"
-import { noteAttachAttempt, noteUiSend, trackUi } from "@/lib/ui-metrics/client"
+import { noteRoomFirstMessage, noteAttachAttempt, noteUiSend, trackUi } from "@/lib/ui-metrics/client"
 import { ChatSearch } from "@/components/chat/chat-search"
-import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
+import { serverTimeOf, writeSnapshot } from "@/lib/room-snapshot"
 import { applyChanges, encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
 
 interface Message {
@@ -65,6 +66,13 @@ interface ChatPanelProps {
   people?: { members: User[] }
   /** 메신저 방 키 — loading 입력창에 쓴 글을 이어받는다(lib/chat-entry.ts). 오른쪽 패널은 비운다 */
   handoffKey?: string
+  /**
+   * initialMessages 가 이 서버 시각까지의 글이다. 비우지 않고 그대로 그린 채 새 글 · 고친 글만 받는다.
+   * 없으면(오른쪽 패널 — 레이아웃이 오래전에 준 글) 처음 읽기에서 최신 한 페이지로 갈아 끼운다
+   */
+  resume?: { checkedAt: string; fromSnapshot?: boolean }
+  /** 서버 페이지 없이 그린 방 — 권한이 빠졌으면 onRoomGone. 세션이 끝났으면 로그인으로 보낸다 */
+  live?: { onRoomGone: () => void; snapshotKey: string }
 }
 
 // 사람끼리 방은 업무 · 파일 후보가 없다. MessageInput 의 기본값([])은 그릴 때마다 새 배열이라
@@ -93,6 +101,8 @@ type SendPayload = {
 class SendStopped extends Error {}
 
 let tempSeq = 0
+/** 글 API 폴링 한 번의 상한(app/api/chat/messages/route.ts) */
+const POLL_LIMIT = 200
 
 /**
  * 폴링으로 진짜 글이 들어왔으면 그 글의 보내는 중 · 실패 말풍선을 걷는다.
@@ -117,6 +127,8 @@ export function ChatPanel({
   searchFocus = 0,
   people,
   handoffKey,
+  resume,
+  live,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
@@ -140,22 +152,38 @@ export function ChatPanel({
   const [loadingNewer, setLoadingNewer] = useState(false)
   const [highlight, setHighlight] = useState<{ id: string; n: number; typing?: boolean } | null>(null)
 
-  // 기기에 저장 — 다음에 이 방을 열 때 서버를 기다리지 않고 바로 그린다(lib/chat-cache.ts). 최근 30개 · 본문만.
+  const resumeRef = useRef(resume)
+  // 이어 받기의 첫 응답을 봤는가 — 그 응답이 한도(200건)에 걸렸으면 뒤의 글을 놓친다
+  const resumeChecked = useRef(false)
+  const fetchRef = useRef<(() => Promise<void>) | null>(null)
+  // 처음 읽기를 기다리는 동안 — 빈 방이라고 말하지 않는다
+  const [waitingFirst, setWaitingFirst] = useState(initialMessages.length === 0)
+  // 저장본을 보여 주는 동안 — 새 글을 받는 중임을 알린다
+  const [syncing, setSyncing] = useState(!!resume?.fromSnapshot && initialMessages.length > 0)
+  const liveRef = useRef(live)
+  // 저장본이 반영한 서버 시각. 서버에서 한 번 확인하기 전에는 저장하지 않는다.
+  // 글이 바뀔 때만 쓴다 — 폴링마다 쓰면 3초마다 IndexedDB 에 글 30개를 다시 적는다
+  const snapshotAt = useRef<string | null>(null)
+  const [confirmed, setConfirmed] = useState(false)
+
+  // 기기에 저장 — 다음에 이 방을 열 때 서버를 기다리지 않고 바로 그린다(lib/room-snapshot.ts).
   // 업무로 거른 목록 · 검색 점프 중의 목록은 「이 방의 최근 글」 이 아니라 저장하지 않는다
   useEffect(() => {
-    if (filterTaskId || jumped || messages.length === 0) return
-    void writeCache(
-      currentUserId,
-      roomCacheKey(`room:${roomId}`),
-      recentForCache(messages.filter((m) => !m.deletedAt)).map((m) => ({
-        id: m.id,
-        author: m.author,
-        mine: m.author.id === currentUserId,
-        content: m.content.startsWith("__TASK_CREATED__") ? "업무가 생성되었습니다" : m.content,
-        createdAt: m.createdAt,
-      })),
-    )
-  }, [messages, roomId, currentUserId, filterTaskId, jumped])
+    if (filterTaskId || jumped || !confirmed || !snapshotAt.current || messages.length === 0) return
+    writeSnapshot(currentUserId, liveRef.current?.snapshotKey ?? `room:${roomId}`, {
+      messages: messages.filter((m) => !isLocal(m)),
+      checkedAt: snapshotAt.current,
+      membersOnly: !!people,
+    })
+  }, [messages, confirmed, roomId, currentUserId, filterTaskId, jumped, people])
+
+  // 방을 누른 뒤 첫 글이 그려질 때까지 — 사용 기록(lib/ui-metrics). 숫자만 남는다
+  const hasMessages = messages.length > 0
+  useEffect(() => {
+    if (!hasMessages) return
+    const frame = requestAnimationFrame(() => noteRoomFirstMessage(!!resumeRef.current?.fromSnapshot))
+    return () => cancelAnimationFrame(frame)
+  }, [hasMessages])
 
   // 마지막으로 받은 글. 비어 있으면 다음 읽기가 최신 한 페이지로 갈아 끼운다
   const lastFetchedAt = useRef<CursorEdge | null>(
@@ -182,10 +210,30 @@ export function ChatPanel({
       if (filterTaskId) params.set("taskId", filterTaskId)
 
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`))
+      if (liveRef.current) {
+        if (res.status === 401) {
+          window.location.assign(`${BASE_PATH}/login`)
+          return
+        }
+        if (res.status === 403 || res.status === 404) {
+          liveRef.current.onRoomGone()
+          return
+        }
+      }
       if (!res.ok) return
       const body = await res.json()
       // 폴링(changes=1)은 { messages, changed, checkedAt }, 첫 읽기는 배열
       const newMsgs: Message[] = Array.isArray(body) ? body : body.messages
+      // 저장 시각 뒤로 글이나 고친 글이 응답 한도만큼 쌓였으면 이어 붙이지 않고 최신 한 페이지로 갈아 끼운다
+      if (resumeRef.current && !resumeChecked.current && !Array.isArray(body) && (newMsgs.length >= POLL_LIMIT || body.changed.length >= POLL_LIMIT)) {
+        resumeChecked.current = true
+        lastFetchedAt.current = null
+        void fetchRef.current?.()
+        return
+      }
+      resumeChecked.current = true
+      snapshotAt.current = Array.isArray(body) ? serverTimeOf(res) : body.checkedAt
+      setConfirmed(true)
       const unseen = newMsgs.filter((m) => !seenIds.has(m.id))
       if (unseen.length > 0) {
         for (const m of unseen) seenIds.add(m.id)
@@ -211,6 +259,9 @@ export function ChatPanel({
       }
     } catch {
       /* ignore */
+    } finally {
+      setWaitingFirst(false)
+      setSyncing(false)
     }
   }, [roomId, filterTaskId, seenIds, nudgeRoomList])
 
@@ -251,11 +302,26 @@ export function ChatPanel({
   }, [])
 
   useEffect(() => {
+    fetchRef.current = fetchMessages
+  }, [fetchMessages])
+
+  const resumedOnce = useRef(false)
+  useEffect(() => {
+    // 받은 글이 있으면 비우지 않는다 — 비우면 첫 글이 페이지 + 글 API 를 둘 다 기다리고, 그 사이 빈 칸이 보인다
+    if (resumeRef.current && !resumedOnce.current && initialMessages.length > 0) {
+      resumedOnce.current = true
+      changesCheckedAt.current = resumeRef.current.checkedAt
+      fetchMessages()
+      return
+    }
     endJump()
     lastFetchedAt.current = null
     setMessages([])
+    setWaitingFirst(true)
     setHasMoreOlder(true)
     fetchMessages()
+    // initialMessages 는 처음 값만 본다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterTaskId, fetchMessages, endJump])
 
   /** 「최신으로」 — 검색 결과 보기를 끝내고 최신 한 페이지부터 다시 */
@@ -264,6 +330,7 @@ export function ChatPanel({
     setHighlight(null)
     lastFetchedAt.current = null
     setMessages([])
+    setWaitingFirst(true)
     setHasMoreOlder(true)
     fetchMessages()
   }, [endJump, fetchMessages])
@@ -686,7 +753,7 @@ export function ChatPanel({
     : messages
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {searchOpen && (
         <ChatSearch
           roomId={roomId}
@@ -699,6 +766,17 @@ export function ChatPanel({
           onSearchTextChange={setSearchText}
         />
       )}
+      {syncing && (
+        <p data-room-syncing className="pointer-events-none absolute inset-x-0 top-2 z-[1] mx-auto flex w-fit items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-[12.5px] text-muted-foreground shadow-sm">
+          <Spinner className="size-3.5" />
+          새 글을 받는 중…
+        </p>
+      )}
+      {waitingFirst && visibleMessages.length === 0 ? (
+        <div data-room-loading className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+          대화를 불러오는 중…
+        </div>
+      ) : (
       <MessageList
         messages={visibleMessages}
         currentUserId={currentUserId}
@@ -719,6 +797,7 @@ export function ChatPanel({
         loadingNewer={loadingNewer}
         searchText={searchOpen ? searchText : ""}
       />
+      )}
 
       <div className="shrink-0 border-t">
         {/* 무엇에 답하는 중인지 입력창 바로 위에 둔다 — 보내고 나면 사라진다 */}

@@ -17,6 +17,22 @@ import {
 const SHA = "abcdef1"
 const good = { sha: SHA, events: [{ name: "menu_open", path: "/chat/:id" }] }
 
+test("방을 누른 뒤 첫 글 시간은 저장본 여부를 나눠 중앙값을 낸다", () => {
+  const at = new Date("2026-11-05T00:00:00Z")
+  const rows = summarize({
+    events: [
+      { commitSha: "abc1234", userId: "a", name: "room_first_message", value: 100, at },
+      { commitSha: "abc1234", userId: "a", name: "room_first_message", value: 300, at },
+      { commitSha: "abc1234", userId: "b", name: "room_first_message_saved", value: 50, at },
+    ],
+    responses: [],
+    names: new Map(),
+  })
+  assert.equal(rows[0].firstMessageMs, 200)
+  assert.equal(rows[0].firstMessageSavedMs, 50)
+  assert.equal(rows[0].people.find((p) => p.userId === "b")?.firstMessageMs, null)
+})
+
 test("이름 · 숫자 · 경로만 받는다", () => {
   assert.ok(uiEventBatchSchema.safeParse(good).success)
   assert.ok(uiEventBatchSchema.safeParse({ sha: SHA, events: [{ name: "room_open_to_send", value: 1200, path: "/chat/:id" }] }).success)

@@ -354,6 +354,11 @@ export function MessageList({
         ref={scrollRef}
         data-keep-bottom
         onScroll={handleScroll}
+        // 사진은 받은 뒤에야 높이가 정해진다 — 맨 아래에 있었으면 밀려난 만큼 따라간다. 검색으로 간 자리는 건드리지 않는다
+        onLoadCapture={() => {
+          const el = scrollRef.current
+          if (el && stuckRef.current && !highlightRef.current) el.scrollTop = el.scrollHeight
+        }}
         onWheel={userScrolled}
         onTouchMove={userScrolled}
         onKeyDown={userScrolled}
