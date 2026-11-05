@@ -18,6 +18,7 @@ import {
   roomKeyFromPath,
   roomKeyOf,
   roomsInChip,
+  unreadElsewhere,
   groupTaskRooms,
   unreadLabel,
   unreadRoomCount,
@@ -274,4 +275,14 @@ test("업무방은 상태별 묶음으로 — 진행 중 · 리뷰 · 할 일 ·
   // 빈 묶음(REVIEW)은 없다
   assert.equal(groups.some((g) => g.status === "REVIEW"), false)
   assert.deepEqual(groupTaskRooms([]), { open: [], groups: [] })
+})
+
+test("뒤로 캡슐의 수는 지금 보는 방을 뺀 안 읽은 글 합이다", () => {
+  const rooms = [{ key: "room:a", unread: 3 }, { key: "room:b", unread: 120 }, { key: "task:c", unread: 0 }]
+  assert.equal(unreadElsewhere(rooms, "room:a"), 120)
+  assert.equal(unreadElsewhere(rooms, "room:b"), 3)
+  assert.equal(unreadElsewhere(rooms, "task:c"), 123)
+  assert.equal(unreadElsewhere(rooms, null), 123)
+  assert.equal(unreadElsewhere([{ key: "room:a", unread: 5 }], "room:a"), 0)
+  assert.equal(unreadElsewhere([], null), 0)
 })
