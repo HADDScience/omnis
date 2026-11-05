@@ -206,7 +206,8 @@ for (const width of [390, 402]) {
         await page.goto(url)
         await page.locator(PILL).first().waitFor({ timeout: 30_000 })
         await expect(page.locator(HEADER).first(), url).not.toHaveCSS("position", "absolute")
-        expect(await page.locator("[data-main-scroll]").evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom)), url).toBeGreaterThanOrEqual(68)
+        // 대화방에는 nav 가 없어 안전 영역 몫만 비운다(시험 브라우저는 0)
+        expect(await page.locator("[data-main-scroll]").evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom)), url).toBe(0)
       }
     })
   })
