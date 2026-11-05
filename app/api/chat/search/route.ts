@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { roomAccess } from "@/lib/chat-rooms"
 import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
+import { countMatchingTextOrPhoto, matchedPhotos, messageIdsMatchingTextOrPhoto, photoSearchText } from "@/lib/chat-search-photo"
 
 /** 한 번에 내려보내는 결과 수. 더 있으면 마지막 결과 시각을 before 로 다시 부른다 */
 const PAGE = 20
@@ -15,6 +16,7 @@ const SNIPPET_PAD = 40
  * 의미 검색이 아니라 본문에 입력한 글자가 들어 있는지만 본다. 한국어는 `to_tsvector('simple')` 이
  * 어절째로 잘라 「견적」 으로 「견적서」 를 못 찾는다 — ILIKE 가 기대와 맞는다.
  * 지운 글 · 업무 카드 · 🤖 시스템 글은 빼고 사람이 쓴 NORMAL 글만 찾는다.
+ * 전사방 전체를 찾을 때만 글에 붙은 사진의 설명에서도 찾는다(lib/chat-search-photo.ts). 업무 대화 · 다른 방은 본문만.
  */
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -37,10 +39,17 @@ export async function GET(req: NextRequest) {
   const text = q || null
 
   const startedAt = Date.now()
+  const room = text && !taskId ? await prisma.chatRoom.findUnique({ where: { id: roomId }, select: { kind: true } }) : null
+  const searchPhotos = room?.kind === "COMPANY"
+  const pattern = text ? `%${escapeLike(text)}%` : null
+  const photoMatchIds =
+    searchPhotos && pattern
+      ? await messageIdsMatchingTextOrPhoto({ roomId, pattern, authorId, before: before ? new Date(before) : null, take: PAGE * 2 + 1 })
+      : null
   // 시스템 표식은 코드에서 거른다 — Prisma 의 startsWith: "__" 는 LIKE '__%' 가 되어 두 글자 이상인 글을 전부 거른다.
   // 그래서 걸러질 몫만큼 넉넉히 가져와 PAGE 를 채운다
   const rows = await prisma.chatMessage.findMany({
-    where: {
+    where: photoMatchIds ? { id: { in: photoMatchIds } } : {
       roomId,
       ...(taskId ? { taskId } : {}),
       ...(before ? { createdAt: { lt: new Date(before) } } : {}),
@@ -65,10 +74,11 @@ export async function GET(req: NextRequest) {
   // 「3/120」 의 120 — 첫 페이지에서만 센다. 시스템 표식 거르기를 SQL 로 같이 하려고 raw 로 센다
   // (left() 는 LIKE 와일드카드 함정이 없다. Postgres 의 left 는 글자 단위라 🤖 는 left(content, 1)).
   // 조건은 null 이면 꺼지는 고정 SQL 한 벌 — Prisma.sql 조각을 끼워 넣으면 next dev 번들에서 조각이 값으로 바인딩돼 문법 오류가 났다
-  const pattern = text ? `%${escapeLike(text)}%` : null
   const total = before
     ? null
-    : Number(
+    : searchPhotos && pattern
+      ? await countMatchingTextOrPhoto({ roomId, pattern, authorId })
+      : Number(
         (
           await prisma.$queryRaw<{ n: bigint }[]>`
             SELECT count(*) AS n FROM "ChatMessage"
@@ -84,6 +94,7 @@ export async function GET(req: NextRequest) {
   const visible = rows.filter((r) => !r.content.startsWith("__") && !r.content.startsWith("🤖"))
   const page = visible.slice(0, PAGE)
   const hasMore = visible.length > PAGE || rows.length === PAGE * 2 + 1
+  const photos = searchPhotos && pattern ? await matchedPhotos(page.map((r) => r.id), pattern) : null
 
   return NextResponse.json({
     results: page.map((r) => ({
@@ -92,6 +103,7 @@ export async function GET(req: NextRequest) {
       author: displayAuthor(r.author, r.externalSpeaker),
       task: r.task,
       snippet: snippetAround(r.content, text ?? ""),
+      ...photoResult(photos?.get(r.id), text ?? ""),
     })),
     hasMore,
     total,
@@ -99,6 +111,11 @@ export async function GET(req: NextRequest) {
     nextBefore: hasMore ? ((visible.length > PAGE ? page.at(-1) : rows.at(-1))?.createdAt ?? null) : null,
     elapsedMs: Date.now() - startedAt,
   })
+}
+
+function photoResult(found: { fileId: string; description: string } | undefined, q: string) {
+  if (!found) return {}
+  return { photo: { fileId: found.fileId, snippet: snippetAround(photoSearchText(found.description), q) } }
 }
 
 /** ILIKE 패턴 안에서 % · _ · \ 를 글자 그대로 */
