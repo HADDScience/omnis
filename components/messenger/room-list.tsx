@@ -467,7 +467,8 @@ export function RoomList({ version, userId }: { version: number; userId: string 
       <nav
         ref={listRef}
         aria-label="채팅방"
-        className="min-h-0 flex-1 overflow-y-auto max-md:snap-y max-md:snap-proximity overscroll-contain pb-28"
+        // 폰은 목록이 유리 nav 뒤로 지나간다 — 맨 아래 방이 nav · 새 대화 단추에 가리지 않게 끝을 그만큼 더 비운다
+        className="min-h-0 flex-1 overflow-y-auto max-md:snap-y max-md:snap-proximity overscroll-contain pb-28 max-md:pb-[calc(var(--nav-offset-bottom)+7rem)]"
       >
         <div ref={searchRef} className="snap-start pt-2">
           <SearchBox value={query} onChange={setQuery} />

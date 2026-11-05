@@ -136,6 +136,8 @@ export function FloatingNav() {
         aria-hidden
         className={cn(
           "nav-edge-bottom pointer-events-none fixed inset-x-0 bottom-0 z-[44] h-[calc(var(--nav-offset-bottom)+12px)] md:hidden",
+          // 채팅 목록은 방이 유리 너머로 보여야 한다 — 가장자리 띠를 옅게 둔다
+          pathname === "/chat" && "nav-edge-clear",
           keyboardOpen && "hidden"
         )}
       />

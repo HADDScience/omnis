@@ -44,8 +44,9 @@ export function MainWithChat({
       <div className="px-safe flex h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] min-h-0 flex-col overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
           {/* 떠 있는 nav 밑에 내용이 깔리지 않게 그 높이만큼 비운다. 업무 보드처럼 화면 높이에 묶인 화면도
-              이 칸 안에서 높이를 재므로, 여백은 각 화면이 아니라 여기 한 곳에서 준다 */}
-          <div data-main-scroll className="flex-1 overflow-auto pt-[var(--nav-offset-top)] pb-[var(--nav-offset-bottom)]">{children}</div>
+              이 칸 안에서 높이를 재므로, 여백은 각 화면이 아니라 여기 한 곳에서 준다.
+              폰의 채팅 목록만 예외다 — 목록이 유리 nav 뒤로 지나가고, 끝 여백은 목록이 스스로 둔다(MessengerShell · RoomList) */}
+          <div data-main-scroll className="flex-1 overflow-auto pt-[var(--nav-offset-top)] pb-[var(--nav-offset-bottom)] max-md:has-[[data-chat-at-list]]:pb-0">{children}</div>
         </div>
         <RightPanel
           currentUserId={currentUserId}

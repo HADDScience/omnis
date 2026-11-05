@@ -633,6 +633,11 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
   -webkit-mask-image: linear-gradient(0deg, #000 45%, transparent);
   mask-image: linear-gradient(0deg, #000 45%, transparent);
 }
+.nav-edge-bottom.nav-edge-clear {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: linear-gradient(0deg, color-mix(in oklab, var(--glass-fade) 30%, transparent), transparent);
+}
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass {
     background: var(--glass-solid);

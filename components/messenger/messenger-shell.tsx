@@ -77,7 +77,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
     <StartRoomEntry.Provider value={startEntry}>
     <RoomSurfaceReady.Provider value={surfaceReady}>
     <OpenClientRoom.Provider value={openClientRoom}>
-      <div data-messenger className="flex h-full min-h-0 flex-col md:pt-12">
+      <div data-messenger data-chat-at-list={atList ? "" : undefined} className="flex h-full min-h-0 flex-col md:pt-12">
         <div className="flex min-h-0 flex-1">
           <aside
             aria-label="채팅방 목록"
@@ -113,7 +113,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
  * 방이 생긴다) · 사람과 대화(/chat/new/people, 구성원을 고른다). 사람끼리 방에는 옴니스가 들어가지 않는다(5단계).
  *
  * 2026-10-29 제목줄의 「새 대화」 버튼을 여기로 옮겼다(작업지시자). 모양은 nav 의 리퀴드 글래스(.glass) —
- * 목록 칸 안에 두므로 셸(MainWithChat)이 비워 둔 --nav-offset-bottom 위에 뜬다. 하단 nav 와 겹치지 않는다.
+ * 폰의 목록 칸은 nav 뒤까지 닿으므로(셸이 --nav-offset-bottom 을 비우지 않는다) 그만큼 올려 nav 와 겹치지 않게 둔다.
  * 메뉴가 열리는 순간 두 항목을 미리 받아 둔다 — router.push 는 링크처럼 저절로 미리 받지 않는다
  */
 function NewChatFab() {
@@ -135,7 +135,7 @@ function NewChatFab() {
         title="새 대화"
         data-new-chat-fab
         className={cn(
-          "glass absolute! right-4 bottom-4 z-[var(--z-dock)] flex size-[60px] items-center justify-center rounded-full text-foreground transition-transform duration-150 active:scale-[0.94] data-[popup-open]:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "glass absolute! right-4 bottom-4 max-md:bottom-[calc(var(--nav-offset-bottom)+1rem)] z-[var(--z-dock)] flex size-[60px] items-center justify-center rounded-full text-foreground transition-transform duration-150 active:scale-[0.94] data-[popup-open]:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         )}
       >
         <HugeiconsIcon icon={PencilEdit02Icon} size={26} aria-hidden />

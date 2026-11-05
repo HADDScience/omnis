@@ -163,6 +163,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - **내용이 nav 밑에 깔리지 않게** 하는 일은 셸(`MainWithChat`)이 `--nav-offset-top` / `--nav-offset-bottom` 만큼 비워서 한다.
   화면 높이에 묶인 화면(업무 보드 · 채팅 · 캘린더)은 이 칸 안에서 `h-full` 로 높이를 잰다 — 화면마다 nav 높이를 빼지 않는다.
   화면 전체를 덮는 `fixed` 요소를 새로 만들면 이 두 변수를 직접 뺀다
+  **폰의 채팅 목록(`/chat`)만 예외다**(2026-11-05) — 셸이 하단을 비우지 않아 방이 유리 nav 뒤로 지나간다. 맨 아래 방이 가리지 않게 목록이 끝에 `--nav-offset-bottom` + 새 대화 단추 몫을 비우고, 단추는 그만큼 올려 둔다. 이 화면의 `.nav-edge-bottom` 은 블러 없이 옅게 둔다(`.nav-edge-clear`). 방을 열면 다시 셸이 비운다
 - 화면 키보드가 올라오면 하단 nav 를 내린다(md 이상은 하단 nav 가 없다). 판정은 `lib/keyboard-viewport.ts` — 터치 기기(폰 · 태블릿) + 글자 칸 포커스 + `visualViewport` 높이가 폭별 최대에서 120px 이상 줄었을 때. 포커스만 보지 않는다(물리 키보드)
 - 포커스가 메신저 입력창(`[data-composer]`)이면 입력창을 키보드 바로 위에 붙인다(`hooks/use-keyboard-open.ts`) — `html[data-keyboard-docked]` 동안 `--app-vh` 를 보이는 높이로, `--nav-offset-bottom` · `--safe-bottom` 을 0 으로. 대화 스크롤 칸(`data-keep-bottom`)은 맨 아래까지 남은 거리를 지킨다
 - 폰의 알림 종은 제목줄 오른쪽의 같은 `.glass` 원이다(PC 는 nav 옆). 원 안 버튼이 원을 채워 아이콘이 가운데 온다
@@ -265,7 +266,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 
 **꾹 누르기** — base-ui `ContextMenu` 가 터치에서 0.5초로 연다(10px 넘게 움직이면 취소 — 밀기와 다투지 않는다). PC 는 우클릭, 키보드는 메뉴 키 · Shift+F10(브라우저가 contextmenu 를 안 낼 때를 위해 줄이 직접 연다)
 
-**FAB** — 떠 있는 동작 단추는 nav 와 같은 `.glass` 원. 화면 높이에 묶인 칸 안에 `absolute` 로 두면 셸이 비운 `--nav-offset-bottom` 위에 뜬다. 그 칸의 스크롤 끝에 단추 높이만큼 여백(`pb-20`)을 준다. `.glass` 가 `position: relative` 를 넣으므로 자리 유틸은 `!`(`absolute!` · `fixed!`)로 이긴다
+**FAB** — 떠 있는 동작 단추는 nav 와 같은 `.glass` 원. 화면 높이에 묶인 칸 안에 `absolute` 로 두면 셸이 비운 `--nav-offset-bottom` 위에 뜬다(폰 채팅 목록은 셸이 비우지 않아 단추가 직접 그만큼 올라간다). 그 칸의 스크롤 끝에 단추 높이만큼 여백(`pb-20`)을 준다. `.glass` 가 `position: relative` 를 넣으므로 자리 유틸은 `!`(`absolute!` · `fixed!`)로 이긴다
 
 **입력칸**
 - 한 줄일 때 글자와 보내기 단추의 세로 가운데가 같아야 한다 — 입력칸 최소 높이 = 단추 높이, 남는 높이는 위아래 여백. 높이는 px(rem 은 81.25% 배율을 탄다). 여러 줄로 늘면 단추는 아래(`items-end`)에 붙는다
