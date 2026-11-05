@@ -39,8 +39,9 @@ const ready = async (page: Page) => {
 const row = (page: Page, text: string) => page.locator("section [data-message-id]", { hasText: text }).first()
 const box = (page: Page, text: string) =>
   row(page, text).evaluate((el) => {
-    const r = el.querySelector("[data-message-body]")!.getBoundingClientRect()
-    const cs = getComputedStyle(el.querySelector("[data-message-body]")!)
+    // 말풍선은 글 칸이다 — 사진 · 파일은 그 아래 따로 놓인다
+    const r = el.querySelector("[data-message-body] > p")!.getBoundingClientRect()
+    const cs = getComputedStyle(el.querySelector("[data-message-body] > p")!)
     return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, w: r.width, h: r.height, font: cs.fontSize, padX: cs.paddingLeft, radius: cs.borderTopLeftRadius, rowTop: el.getBoundingClientRect().top, rowBottom: el.getBoundingClientRect().bottom }
   })
 
@@ -72,11 +73,11 @@ test.describe("폰 402px", () => {
     expect(time.bottom).toBeLessThanOrEqual(next.bottom)
   })
 
-  test("긴 글은 상대 70% · 내 글 75% 에서 줄을 바꾼다", async ({ page }) => {
+  test("긴 글은 화면 폭 70% 에서 줄을 바꾼다", async ({ page }) => {
     await ready(page)
     const [other, mine] = await page.locator("section [data-message-id]", { hasText: LONG }).evaluateAll((rows) => rows.map((el) => el.querySelector("[data-message-body]")!.getBoundingClientRect()).map((r) => ({ w: r.width, h: r.height })))
-    expect(other.w).toBeLessThanOrEqual(382 * 0.7 + 0.5)
-    expect(mine.w).toBeLessThanOrEqual(382 * 0.75 + 0.5)
+    expect(other.w).toBeLessThanOrEqual(402 * 0.7 + 0.5)
+    expect(mine.w).toBeLessThanOrEqual(402 * 0.7 + 0.5)
     expect(other.h).toBeGreaterThan(34)
   })
 
@@ -118,7 +119,7 @@ test.describe("PC", () => {
     await ready(page)
     const first = await box(page, "첫 글")
     expect(first.font).toBe("17px")
-    expect(first.radius).toBe("24px")
+    expect(await row(page, "첫 글").locator("[data-message-body]").evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("24px")
     await expect(row(page, "이어 쓴 글").locator("[data-bubble-time]")).toBeHidden()
     expect(await page.locator("section [data-composer-pill] textarea").first().evaluate((el) => getComputedStyle(el).fontSize)).toBe("17px")
     await expect(page.locator("section [data-room-header] p").first()).toBeVisible()

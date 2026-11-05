@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -165,6 +165,7 @@ export function MessageList({
   const stuckRef = useRef(true)
   // 따라 내려가는 부드러운 스크롤 중 — 그사이 scroll 이벤트는 아직 바닥이 아니어도 붙어 있는 것으로 본다
   const followingRef = useRef(false)
+  const lastScrollTopRef = useRef(0)
   // 위로 올려 읽는 동안 붙은 남의 글 수 — 「새 메시지 N개 ↓」
   const [unseen, setUnseen] = useState(0)
   const anchorRef = useRef<{ height: number; top: number } | null>(null)
@@ -312,6 +313,20 @@ export function MessageList({
     return () => clearTimeout(timer)
   }, [flashId, highlight])
 
+  // 사진은 받은 뒤에야 높이가 정해진다 — 맨 아래에 있었으면 늘어난 만큼 따라간다.
+  // 부드럽게 따라가는 중이거나 검색으로 간 자리는 건드리지 않는다
+  const hasRows = messages.length > 0
+  useEffect(() => {
+    const el = scrollRef.current
+    const content = el?.firstElementChild
+    if (!el || !content) return
+    const observer = new ResizeObserver(() => {
+      if (stuckRef.current && !followingRef.current && !highlightRef.current) el.scrollTop = el.scrollHeight
+    })
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [hasRows])
+
   function handleScroll() {
     const el = scrollRef.current
     if (!el) return
@@ -320,7 +335,10 @@ export function MessageList({
       followingRef.current = false
       if (unseen > 0) setUnseen(0)
     }
-    stuckRef.current = atBottom || followingRef.current
+    // 사진이 늘어나면 스크롤 없이도 맨 아래에서 멀어진다 — 위로 올린 때에만 떨어진 것으로 본다
+    const movedUp = el.scrollTop < lastScrollTopRef.current - 1
+    lastScrollTopRef.current = el.scrollTop
+    stuckRef.current = atBottom || followingRef.current || (stuckRef.current && !movedUp)
     if (onLoadNewer && hasMoreNewer && !loadingNewer && el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
       onLoadNewer()
     }
@@ -357,11 +375,6 @@ export function MessageList({
         ref={scrollRef}
         data-keep-bottom
         onScroll={handleScroll}
-        // 사진은 받은 뒤에야 높이가 정해진다 — 맨 아래에 있었으면 밀려난 만큼 따라간다. 검색으로 간 자리는 건드리지 않는다
-        onLoadCapture={() => {
-          const el = scrollRef.current
-          if (el && stuckRef.current && !highlightRef.current) el.scrollTop = el.scrollHeight
-        }}
         onWheel={userScrolled}
         onTouchMove={userScrolled}
         onKeyDown={userScrolled}
@@ -454,7 +467,7 @@ export function MessageList({
                   {/* 답장 인용 — 어떤 글에 답하는지 한 줄로만 보인다 */}
                   {msg.replyTo && (
                     <div
-                      className={`max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground in-data-[messenger]:px-3 in-data-[messenger]:py-1.5 in-data-[messenger]:text-[13.5px] ${
+                      className={`max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground max-md:in-data-[messenger]:hidden in-data-[messenger]:px-3 in-data-[messenger]:py-1.5 in-data-[messenger]:text-[13.5px] ${
                         mine ? "text-right" : ""
                       }`}
                       title={msg.replyTo.content}
@@ -465,8 +478,8 @@ export function MessageList({
                   <div className={`relative flex items-end gap-1 max-md:in-data-[messenger]:gap-[4px] ${mine ? "flex-row-reverse" : ""}`}>
                     <div
                       data-message-body
-                      className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:text-[15px] max-md:in-data-[messenger]:leading-[22px] ${
-                        mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.75)]" : "bg-muted max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.7)]"
+                      className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] max-md:in-data-[messenger]:flex max-md:in-data-[messenger]:flex-col max-md:in-data-[messenger]:gap-[6px] max-md:in-data-[messenger]:bg-transparent! max-md:in-data-[messenger]:p-0 max-md:in-data-[messenger]:text-[15px] max-md:in-data-[messenger]:leading-[22px] ${mine ? "max-md:in-data-[messenger]:items-end" : "max-md:in-data-[messenger]:items-start"} ${
+                        mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground max-md:in-data-[messenger]:max-w-[calc(var(--app-vw)*0.7)]" : "bg-muted max-md:in-data-[messenger]:max-w-[calc(var(--app-vw)*0.7)]"
                       } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:[&_a]:max-w-full max-md:in-data-[messenger]:[&_a]:rounded-[13px] ${
                         msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
                       } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}
@@ -498,7 +511,14 @@ export function MessageList({
                         </div>
                       ) : (
                         <>
-                          <p className="whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">
+                          {/* 폰 메신저는 글 칸이 말풍선이고 사진 · 파일은 그 아래 따로 놓는다. 글 없는 첨부면 말풍선이 없다 */}
+                          <p className={`whitespace-pre-wrap break-keep [overflow-wrap:anywhere] max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:empty:hidden ${msg.deletedAt ? "max-md:in-data-[messenger]:bg-muted/50" : mine ? "max-md:in-data-[messenger]:bg-primary/10" : "max-md:in-data-[messenger]:bg-muted"}`}>
+                            {msg.replyTo && (
+                              <span data-reply-in-bubble className="hidden max-md:in-data-[messenger]:mb-[6px] max-md:in-data-[messenger]:block max-md:in-data-[messenger]:border-b max-md:in-data-[messenger]:border-foreground/10 max-md:in-data-[messenger]:pb-[6px] max-md:in-data-[messenger]:text-[13px] max-md:in-data-[messenger]:leading-[18px] max-md:in-data-[messenger]:whitespace-normal">
+                                <span className="block truncate font-semibold">{msg.replyTo.authorName}에게 답장</span>
+                                <span className="block truncate text-muted-foreground">{msg.replyTo.content}</span>
+                              </span>
+                            )}
                             {msg.deletedAt ? (
                               msg.content
                             ) : (
@@ -696,35 +716,94 @@ function fileKind(name: string): { icon: typeof File01Icon; label: string; tone:
 }
 
 /** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
-export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; onPrimary?: boolean }) {
-  return (
-    <div className="mt-1.5 flex flex-col gap-1.5">
-      {files.map((f) => {
-        // 그 자리에서 열리는 형식만 미리보기를 그린다 — 나머지(SVG 등)는 내려받기로 나가 이미지가 깨진다
-        // 큰 첨부 사진은 카드로 — 말풍선이 원본 수백 MB 를 부르지 않게
-        const isImage = safeInlineType(f.mimeType)?.startsWith("image/") && !isLargeUpload(f.size)
-        const uploading = f._uploading
+/** 받은 사진의 세로/가로 — 다시 그릴 때 받기 전부터 자리를 맞춘다. 파일 표에 크기가 없어 첫 표시는 4:3 으로 시작한다 */
+const imageRatios = new Map<string, number>()
 
-        if (isImage) {
+/**
+ * 메시지에 붙은 사진 한 장. 폰의 전사 · 사람 방은 말풍선 없는 카드(화면 폭 70% · 모서리 13)이고 이름을 감춘다.
+ * 비율은 받은 뒤 맞추고 높이 상한을 넘으면 잘라 보인다(찌그러지지 않는다). 묶음(tile)은 정사각.
+ */
+function ImageAttachment({ file: f, tile }: { file: FileInfo; tile: boolean }) {
+  const uploading = f._uploading
+  const [ratio, setRatio] = useState(() => imageRatios.get(f.id) ?? 0.75)
+  const [failed, setFailed] = useState(false)
+  const img = useRef<HTMLImageElement>(null)
+  const measure = useCallback((el: HTMLImageElement) => {
+    if (!el.naturalWidth) return
+    const next = el.naturalHeight / el.naturalWidth
+    imageRatios.set(f.id, next)
+    setRatio(next)
+  }, [f.id])
+  // 서버가 그린 사진은 React 가 붙기 전에 이미 받았을 수 있다
+  useEffect(() => {
+    if (img.current?.complete) {
+      if (img.current.naturalWidth) measure(img.current)
+      else if (img.current.src) setFailed(true)
+    }
+  }, [measure])
+  return (
+    <a
+      href={uploading ? undefined : apiUrl(f.path)}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-attachment-image
+      style={{ "--img-ratio": 1 / ratio } as React.CSSProperties}
+      className={`relative block rounded-md overflow-hidden max-w-[200px] in-data-[messenger]:max-w-[260px] border max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:border-0 max-md:in-data-[chat-room-chrome]:bg-muted ${tile ? "max-md:in-data-[chat-room-chrome]:aspect-square max-md:in-data-[chat-room-chrome]:w-full max-md:in-data-[chat-room-chrome]:max-w-none" : "max-md:in-data-[chat-room-chrome]:aspect-(--img-ratio) max-md:in-data-[chat-room-chrome]:max-h-[420px] max-md:in-data-[chat-room-chrome]:min-h-[90px] max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:max-w-none"} ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
+      onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- 인증이 필요한 첨부 라우트 */}
+      <img
+        ref={img}
+        src={apiUrl(f.path)}
+        alt={f.name}
+        className={`w-full h-auto max-md:in-data-[chat-room-chrome]:size-full max-md:in-data-[chat-room-chrome]:object-cover ${ratio > 1.5 ? "max-md:in-data-[chat-room-chrome]:object-top" : ""} ${failed ? "max-md:in-data-[chat-room-chrome]:hidden" : ""}`}
+        loading="lazy"
+        onLoad={(e) => measure(e.currentTarget)}
+        onError={() => setFailed(true)}
+      />
+      {failed && (
+        <span data-attachment-failed className="hidden items-center justify-center p-2 text-center text-[13px] leading-[18px] text-muted-foreground max-md:in-data-[chat-room-chrome]:flex max-md:in-data-[chat-room-chrome]:absolute max-md:in-data-[chat-room-chrome]:inset-0">
+          사진을 불러오지 못했어요
+        </span>
+      )}
+      <div className={`relative px-1.5 py-0.5 text-[10px] in-data-[messenger]:text-[12.5px] text-muted-foreground bg-background/80 truncate overflow-hidden ${uploading ? "max-md:in-data-[chat-room-chrome]:absolute max-md:in-data-[chat-room-chrome]:inset-x-0 max-md:in-data-[chat-room-chrome]:bottom-0" : "max-md:in-data-[chat-room-chrome]:hidden"}`}>
+        {uploading && (
+          <div className="absolute inset-0 bg-primary/20 animate-[gauge_1.5s_ease-in-out_infinite]" />
+        )}
+        <span className="relative">{uploading ? "업로드 중..." : f.name}</span>
+      </div>
+    </a>
+  )
+}
+
+/** 연달아 붙은 사진 묶음의 칸 수 — 둘 · 넷은 두 칸, 나머지는 세 칸 */
+const imageGridCols = (n: number) => (n === 2 || n === 4 ? "max-md:in-data-[chat-room-chrome]:grid-cols-2" : "max-md:in-data-[chat-room-chrome]:grid-cols-3")
+
+/** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
+export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; onPrimary?: boolean }) {
+  // 그 자리에서 열리는 형식만 미리보기를 그린다 — 나머지(SVG 등)는 내려받기로 나가 이미지가 깨진다
+  // 큰 첨부 사진은 카드로 — 말풍선이 원본 수백 MB 를 부르지 않게
+  const isImage = (f: FileInfo) => safeInlineType(f.mimeType)?.startsWith("image/") && !isLargeUpload(f.size)
+  // 연달아 붙은 사진은 한 묶음 — 폰의 전사 · 사람 방에서만 격자가 되고, 나머지 화면은 display: contents 라 예전처럼 한 줄씩이다
+  const groups: FileInfo[][] = []
+  for (const f of files) {
+    const last = groups.at(-1)
+    if (last && isImage(f) && isImage(last[0])) last.push(f)
+    else groups.push([f])
+  }
+  return (
+    <div className="mt-1.5 flex flex-col gap-1.5 max-md:in-data-[chat-room-chrome]:mt-0 max-md:in-data-[chat-room-chrome]:gap-[6px]">
+      {groups.map((group) => {
+        const f = group[0]
+        if (isImage(f)) {
+          if (group.length === 1) return <ImageAttachment key={f.id} file={f} tile={false} />
           return (
-            <a
-              key={f.id}
-              href={uploading ? undefined : apiUrl(f.path)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`block rounded-md overflow-hidden max-w-[200px] in-data-[messenger]:max-w-[260px] border ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
-              onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
-            >
-              <img src={apiUrl(f.path)} alt={f.name} className="w-full h-auto" loading="lazy" />
-              <div className="relative px-1.5 py-0.5 text-[10px] in-data-[messenger]:text-[12.5px] text-muted-foreground bg-background/80 truncate overflow-hidden">
-                {uploading && (
-                  <div className="absolute inset-0 bg-primary/20 animate-[gauge_1.5s_ease-in-out_infinite]" />
-                )}
-                <span className="relative">{uploading ? "업로드 중..." : f.name}</span>
-              </div>
-            </a>
+            <div key={f.id} data-attachment-grid className={`contents max-md:in-data-[chat-room-chrome]:grid max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:gap-[2px] ${imageGridCols(group.length)}`}>
+              {group.map((g) => <ImageAttachment key={g.id} file={g} tile />)}
+            </div>
           )
         }
+        const uploading = f._uploading
         const kind = fileKind(f.name)
         return (
           <a
@@ -733,7 +812,8 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
             target="_blank"
             rel="noopener noreferrer"
             title={f.name}
-            className={`relative flex max-w-[280px] items-center gap-2.5 overflow-hidden rounded-lg border px-2.5 py-2 in-data-[messenger]:max-w-[340px] in-data-[messenger]:gap-3 in-data-[messenger]:rounded-xl in-data-[messenger]:px-3 in-data-[messenger]:py-2.5 transition-colors ${
+            data-attachment-file
+            className={`relative flex max-w-[280px] items-center gap-2.5 overflow-hidden rounded-lg border px-2.5 py-2 in-data-[messenger]:max-w-[340px] in-data-[messenger]:gap-3 in-data-[messenger]:rounded-xl max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:max-w-none max-md:in-data-[chat-room-chrome]:flex-row-reverse max-md:in-data-[chat-room-chrome]:gap-[10px] max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:border-0 max-md:in-data-[chat-room-chrome]:bg-muted max-md:in-data-[chat-room-chrome]:p-[10px] ${
               onPrimary ? "border-white/25 bg-white/10 hover:bg-white/15 in-data-[messenger]:border-border in-data-[messenger]:bg-background in-data-[messenger]:hover:bg-muted/60" : "bg-background hover:bg-muted/60"
             } ${uploading ? "opacity-70" : ""}`}
             onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
@@ -741,12 +821,12 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
             {uploading && (
               <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />
             )}
-            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md in-data-[messenger]:size-[44px] in-data-[messenger]:[&_svg]:size-[22px] ${onPrimary ? "bg-white/20 text-white in-data-[messenger]:bg-muted in-data-[messenger]:text-foreground" : kind.tone}`}>
+            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md in-data-[messenger]:size-[44px] in-data-[messenger]:[&_svg]:size-[22px] max-md:in-data-[chat-room-chrome]:size-[40px] max-md:in-data-[chat-room-chrome]:rounded-full ${onPrimary ? "bg-white/20 text-white in-data-[messenger]:bg-muted in-data-[messenger]:text-foreground" : kind.tone}`}>
               <HugeiconsIcon icon={kind.icon} size={17} aria-hidden />
             </span>
             <span className="relative min-w-0 flex-1">
-              <span className={`block truncate text-[12.5px] in-data-[messenger]:text-[15px] font-medium ${onPrimary ? "text-white in-data-[messenger]:text-foreground" : "text-foreground"}`}>{f.name}</span>
-              <span className={`block text-[11px] in-data-[messenger]:text-[13px] ${onPrimary ? "text-white/70 in-data-[messenger]:text-muted-foreground" : "text-muted-foreground"}`}>
+              <span data-attachment-name className={`block truncate text-[12.5px] in-data-[messenger]:text-[15px] font-medium max-md:in-data-[chat-room-chrome]:line-clamp-2 max-md:in-data-[chat-room-chrome]:whitespace-normal max-md:in-data-[chat-room-chrome]:font-normal max-md:in-data-[chat-room-chrome]:leading-[20px] max-md:in-data-[chat-room-chrome]:[overflow-wrap:anywhere] ${onPrimary ? "text-white in-data-[messenger]:text-foreground" : "text-foreground"}`}>{f.name}</span>
+              <span className={`block text-[11px] in-data-[messenger]:text-[13px] max-md:in-data-[chat-room-chrome]:mt-[2px] max-md:in-data-[chat-room-chrome]:leading-[18px] ${onPrimary ? "text-white/70 in-data-[messenger]:text-muted-foreground" : "text-muted-foreground"}`}>
                 {uploading ? "업로드 중..." : `${kind.label} · ${fileSizeLabel(f.size)}`}
               </span>
             </span>
