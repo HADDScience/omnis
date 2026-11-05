@@ -97,6 +97,7 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [working/2026-09-18-domain-cutover.md](working/2026-09-18-domain-cutover.md) | snapshot | Omnis 를 omnis.haddscience.com 루트로 · 주소 지도 · 배포 순서 · 회계 백필 운영 반영 |
 | [working/2026-09-21-pnpm-and-stale-redeploy.md](working/2026-09-21-pnpm-and-stale-redeploy.md) | snapshot | 옛 배포가 운영을 덮은 사고와 복구 · pnpm 통일 · 파비콘 |
 | [troubleshootings/narrow-viewport-traps.md](troubleshootings/narrow-viewport-traps.md) | reference | 좁은 뷰포트·터치 타깃에서 밟은 함정 (min-w-0 · rem 축소 · coarse 측정) |
+| [troubleshootings/room-open-latency.md](troubleshootings/room-open-latency.md) | reference | 채팅방이 늦게 열리던 원인 · A/B 측정 · 실험 중 찾은 버그 |
 | [troubleshootings/pr-traps-2026-09.md](troubleshootings/pr-traps-2026-09.md) | reference | PR #7~#17 에서 밟은 함정 (next start 운영 DB 사고 · zoom 좌표계 · 늦게 끝난 AI 재구성 · MCP GET 재연결 루프 · 요청 한도 · 🤖 작성자 · 외부 API 가 죽어야 통과하던 검증) |
 | [tech/calendar.md](tech/calendar.md) | canonical | 캘린더 — 옴니스 날짜 데이터 집계 · 웍스 CalDAV 실측(증분 동기화 됨 · 쓰기 막힘 · 반복은 우리가 펼친다) · 폴링 계층 · 폰으로 내보내는 ICS 구독 피드 |
 | [working/2026-10-28-calendar-works-sync.md](working/2026-10-28-calendar-works-sync.md) | snapshot | 캘린더 1~5단계 구현 실측 · 계획과 달라진 것 · 머지 전에 할 것(운영 마이그레이션 · 환경변수 넷) |
