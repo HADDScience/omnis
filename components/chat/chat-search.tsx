@@ -20,8 +20,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { apiUrl } from "@/lib/base-path"
 import { cn } from "@/lib/utils"
 
+interface PhotoHit {
+  fileId: string
+  snippet: string
+}
+
 interface Page {
-  results: { id: string }[]
+  results: { id: string; photo?: PhotoHit }[]
   hasMore: boolean
   nextBefore: string | null
   total: number | null
@@ -46,6 +51,9 @@ interface ChatSearchProps {
 // 한 글자도 찾는다 — 「넵」 처럼 짧은 답장을 찾는 일이 많다(2026-10-06 작업지시자)
 const MIN_QUERY = 1
 
+const photoHitsOf = (page: Page) =>
+  Object.fromEntries(page.results.flatMap((r) => (r.photo ? [[r.id, r.photo] as const] : [])))
+
 /**
  * 채팅 검색 줄 — 카톡 PC 검색처럼 (2026-10-06, mydocs/plans/archives/2026-10-06-chat-search-inline.md).
  *
@@ -65,6 +73,7 @@ export function ChatSearch({
   const [query, setQuery] = useState("")
   const [author, setAuthor] = useState<{ id: string; name: string } | null>(null)
   const [ids, setIds] = useState<string[]>([])
+  const [photoHits, setPhotoHits] = useState<Record<string, PhotoHit>>({})
   const [index, setIndex] = useState(0)
   const [total, setTotal] = useState(0)
   const [nextBefore, setNextBefore] = useState<string | null>(null)
@@ -101,6 +110,7 @@ export function ChatSearch({
   useEffect(() => {
     if (!active) {
       setIds([])
+      setPhotoHits({})
       setTotal(0)
       setNextBefore(null)
       setSearched(false)
@@ -115,6 +125,7 @@ export function ChatSearch({
         .then((page) => {
           const found = page.results.map((r) => r.id)
           setIds(found)
+          setPhotoHits(photoHitsOf(page))
           setTotal(page.total ?? found.length)
           setNextBefore(page.nextBefore)
           setIndex(0)
@@ -139,6 +150,8 @@ export function ChatSearch({
 
   const canOlder = index + 1 < ids.length || !!nextBefore
   const canNewer = index > 0
+  const currentId = ids[index]
+  const currentPhoto = currentId ? photoHits[currentId] : undefined
 
   async function older() {
     if (loading) return
@@ -157,6 +170,7 @@ export function ChatSearch({
       const page = await fetchPage(nextBefore)
       const fresh = page.results.map((r) => r.id).filter((id) => !ids.includes(id))
       setNextBefore(page.nextBefore)
+      setPhotoHits((prev) => ({ ...prev, ...photoHitsOf(page) }))
       if (fresh.length === 0) return
       setIds([...ids, ...fresh])
       setIndex(index + 1)
@@ -320,6 +334,23 @@ export function ChatSearch({
           <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden />
         </button>
       </div>
+
+      {/* 지금 결과가 사진으로 걸렸으면 어느 사진인지 보인다. 누르면 그 글로 다시 간다 */}
+      {currentPhoto && (
+        <button
+          type="button"
+          onClick={() => onGo(currentId)}
+          aria-label="사진으로 찾은 글로 이동"
+          className="touch-target flex w-full min-w-0 items-center gap-2 rounded-md p-1 text-left hover:bg-muted"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={apiUrl(`/api/files/${currentPhoto.fileId}/raw?w=96`)} alt="" className="size-11 shrink-0 rounded bg-muted object-cover" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-medium text-primary in-data-[messenger]:text-[13px]">사진으로 찾음</span>
+            <span className="block break-words text-[12px] text-muted-foreground in-data-[messenger]:text-[14px]">{currentPhoto.snippet}</span>
+          </span>
+        </button>
+      )}
     </div>
   )
 }
