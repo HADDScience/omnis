@@ -1,11 +1,10 @@
 import { after, NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
-import type { Prisma } from "@/generated/prisma/client"
 import { auth } from "@/lib/auth"
 import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
-import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
+import { MESSAGE_INCLUDE, shapeMessage, type MessageRow } from "@/lib/chat-message-shape"
 import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
 import { AttachFileIdsSchema, ChatClientIdSchema } from "@/lib/schemas/chat-room"
 import { decideClientId, isUniqueViolation } from "@/lib/chat-client-id"
@@ -13,45 +12,6 @@ import { changedSince, FIRST_CHANGE_LOOKBACK_MS, newerThan, olderThan, parseCurs
 
 // 응답 뒤 AI 재구성(after)이 이 함수 수명 안에서 돈다 — 실측 8~13초, 넉넉히 둔다
 export const maxDuration = 60
-
-const MESSAGE_INCLUDE = {
-  author: { select: { id: true, name: true } },
-  externalSpeaker: EXTERNAL_SPEAKER_SELECT,
-  // TASK_CREATED 메시지가 생성된 업무의 프리뷰 카드를 그릴 수 있도록 핵심 필드 포함
-  task: {
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      status: true,
-      priority: true,
-      deadline: true,
-      assignees: { select: { user: { select: { id: true, name: true } } } },
-      _count: { select: { checklists: true } },
-    },
-  },
-  files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
-  replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT } },
-} satisfies Prisma.ChatMessageInclude
-
-type MessageRow = Prisma.ChatMessageGetPayload<{ include: typeof MESSAGE_INCLUDE }>
-
-// 지운 글은 자리만 남긴다 — 본문과 첨부는 내려보내지 않는다(행은 DB 에 그대로 있다)
-function shape({ externalSpeaker, ...m }: MessageRow) {
-  return {
-    ...m,
-    author: displayAuthor(m.author, externalSpeaker),
-    content: m.deletedAt ? CHAT_DELETED_TEXT : m.content,
-    files: m.deletedAt ? [] : m.files,
-    replyTo: m.replyTo
-      ? {
-          id: m.replyTo.id,
-          authorName: displayAuthor({ id: "", name: m.replyTo.author.name }, m.replyTo.externalSpeaker).name,
-          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
-        }
-      : null,
-  }
-}
 
 /** 사람끼리 방 글 한 줄 상한 — 전사방 글에는 상한이 없었다. 새 길이라 둔다 */
 const PEOPLE_MESSAGE_MAX = 4000
@@ -135,7 +95,7 @@ export async function GET(req: NextRequest) {
     ])
     return NextResponse.json({
       targetId: target.id,
-      messages: [...older.reverse(), target, ...newer].map(shape),
+      messages: [...older.reverse(), target, ...newer].map(shapeMessage),
       hasMoreOlder: older.length === AROUND_SIZE,
       hasMoreNewer: newer.length === AROUND_SIZE,
     })
@@ -172,7 +132,7 @@ export async function GET(req: NextRequest) {
     include: MESSAGE_INCLUDE,
   })
 
-  const shaped = messages.map(shape)
+  const shaped = messages.map(shapeMessage)
 
   // 폴링이 changes=1 을 실으면 남이 고치거나 지운 글도 함께 — 새 글만 받으면 그 글들이 옛 모습으로 남는다.
   // 받는 모양이 배열에서 객체로 바뀌므로 묻는 화면에만 준다(설치된 앱이 캐시한 옛 번들은 배열을 기대한다)
@@ -188,7 +148,7 @@ export async function GET(req: NextRequest) {
       take: 200,
       include: MESSAGE_INCLUDE,
     })
-    return NextResponse.json({ messages: shaped, changed: changed.map(shape), checkedAt: checkedAt.toISOString() })
+    return NextResponse.json({ messages: shaped, changed: changed.map(shapeMessage), checkedAt: checkedAt.toISOString() })
   }
 
   // 초기 로드·이전 메시지는 desc로 가져왔으므로 화면 표시용 오름차순으로 정렬
@@ -205,7 +165,7 @@ async function replayByClientId(clientId: string | undefined, userId: string, ro
   const decision = decideClientId(prior, { userId, roomId })
   if (decision === "new") return null
   if (decision === "conflict") return NextResponse.json({ error: "이미 쓰인 clientId 입니다" }, { status: 409 })
-  return NextResponse.json({ ...shape(prior!), _taskUpdate: null, _rebuild: null, _replayed: true }, { status: 200 })
+  return NextResponse.json({ ...shapeMessage(prior!), _taskUpdate: null, _rebuild: null, _replayed: true }, { status: 200 })
 }
 
 /** 저장하다 같은 clientId 가 먼저 들어간 것을 알면(동시에 두 번 보냄) 먼저 들어간 글로 답한다 */

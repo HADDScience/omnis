@@ -21,12 +21,15 @@ export function CompanyRoom({
   roomName,
   currentUserId,
   initialMessages,
+  resume,
   muted,
 }: {
   roomId: string
   roomName: string
   currentUserId: string
   initialMessages: Messages
+  /** initialMessages 가 반영한 서버 시각 — ChatPanel 이 비우지 않고 그 뒤의 변경만 받는다 */
+  resume?: ComponentProps<typeof ChatPanel>["resume"]
   /** 이 방의 채팅 푸시를 껐는가(머리줄 「알림 끄기 / 켜기」 첫 상태) */
   muted: boolean
 }) {
@@ -62,6 +65,7 @@ export function CompanyRoom({
           // 방을 여는 동안 쓴 글을 이어받는다 — 사람 방 · 업무 방과 같다(lib/chat-entry.ts)
           handoffKey={`room:${roomId}`}
           initialMessages={initialMessages}
+          resume={resume}
           currentUserId={currentUserId}
           onTaskUpdated={() => router.refresh()}
           searchOpen={searchOpen}

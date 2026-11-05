@@ -40,11 +40,14 @@ export function PeopleRoom({
   room: initialRoom,
   currentUserId,
   initialMessages,
+  resume,
   muted,
 }: {
   room: PeopleRoomView
   currentUserId: string
   initialMessages: Messages
+  /** initialMessages 가 반영한 서버 시각 — ChatPanel 이 비우지 않고 그 뒤의 변경만 받는다 */
+  resume?: ComponentProps<typeof ChatPanel>["resume"]
   /** 이 방의 채팅 푸시를 껐는가 */
   muted: boolean
 }) {
@@ -98,6 +101,7 @@ export function PeopleRoom({
         <ChatPanel
           roomId={room.id}
           initialMessages={initialMessages}
+          resume={resume}
           currentUserId={currentUserId}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
