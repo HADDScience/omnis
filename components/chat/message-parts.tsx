@@ -12,12 +12,14 @@ import { avatarText, avatarTone, fullTimeLabel, timeLabel } from "@/lib/chat-lay
 import { cn } from "@/lib/utils"
 
 /** 날이 바뀔 때 한 줄 — 가운데 날짜, 양옆 가는 선 */
-export function DayDivider({ label }: { label: string }) {
+export function DayDivider({ label, pillOnPhone = false }: { label: string; pillOnPhone?: boolean }) {
+  // pillOnPhone: 폰의 전사 · 사람 방은 선 없이 가운데 알약(높이 26)
+  const line = cn("h-px flex-1 bg-border", pillOnPhone && "max-md:in-data-[messenger]:hidden")
   return (
-    <div role="separator" aria-label={label} className="flex items-center gap-3 py-2 in-data-[messenger]:gap-4 in-data-[messenger]:py-3">
-      <div className="h-px flex-1 bg-border" />
-      <span className="text-[11px] font-medium text-muted-foreground in-data-[messenger]:text-[13px]">{label}</span>
-      <div className="h-px flex-1 bg-border" />
+    <div role="separator" aria-label={label} className={cn("flex items-center gap-3 py-2 in-data-[messenger]:gap-4 in-data-[messenger]:py-3", pillOnPhone && "max-md:in-data-[messenger]:justify-center max-md:in-data-[messenger]:py-[10px]")}>
+      <div className={line} />
+      <span className={cn("text-[11px] font-medium text-muted-foreground in-data-[messenger]:text-[13px]", pillOnPhone && "max-md:in-data-[messenger]:flex max-md:in-data-[messenger]:h-[26px] max-md:in-data-[messenger]:items-center max-md:in-data-[messenger]:rounded-full max-md:in-data-[messenger]:bg-muted max-md:in-data-[messenger]:px-[12px] max-md:in-data-[messenger]:font-normal")}>{label}</span>
+      <div className={line} />
     </div>
   )
 }

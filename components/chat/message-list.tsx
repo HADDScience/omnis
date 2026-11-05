@@ -260,7 +260,10 @@ export function MessageList({
     if (first && el) {
       const r = first.getBoundingClientRect()
       const box = el.getBoundingClientRect()
-      el.scrollTop += r.top - box.top - box.height / 2 + r.height / 2
+      // 머리 · 입력창이 글 위에 떠 있으면 그 사이의 가운데로 — 글 칸 여백이 위아래 같으면(PC) 칸 가운데와 같다
+      const inner = el.firstElementChild ? getComputedStyle(el.firstElementChild) : null
+      const offset = inner ? (parseFloat(inner.paddingTop) - parseFloat(inner.paddingBottom)) / 2 : 0
+      el.scrollTop += r.top - box.top - box.height / 2 - offset + r.height / 2
     } else {
       target.scrollIntoView({ block: "center" })
     }
@@ -345,7 +348,7 @@ export function MessageList({
           type="button"
           onClick={jumpToLatest}
           aria-live="polite"
-          className="absolute bottom-3 left-1/2 z-10 inline-flex min-h-11 -translate-x-1/2 items-center gap-1 rounded-full bg-primary px-4 text-[12px] font-medium text-primary-foreground shadow-md hover:bg-primary/90 in-data-[messenger]:text-[14px]"
+          className="absolute bottom-3 max-md:in-data-[messenger]:bottom-[calc(var(--room-bottom-h,0px)+12px)] left-1/2 z-10 inline-flex min-h-11 -translate-x-1/2 items-center gap-1 rounded-full bg-primary px-4 text-[12px] font-medium text-primary-foreground shadow-md hover:bg-primary/90 in-data-[messenger]:text-[14px]"
         >
           {unseenLabel(unseen)} ↓
         </button>
@@ -362,9 +365,9 @@ export function MessageList({
         onWheel={userScrolled}
         onTouchMove={userScrolled}
         onKeyDown={userScrolled}
-        className="min-h-0 flex-1 overflow-y-auto px-4 in-data-[messenger]:px-[16px] max-md:in-data-[messenger]:px-[10px]"
+        className="min-h-0 flex-1 overflow-y-auto px-4 in-data-[messenger]:px-[16px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:scroll-pt-[calc(56px+var(--room-search-h,0px))] max-md:in-data-[messenger]:scroll-pb-[var(--room-bottom-h,0px)]"
       >
-        <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3 in-data-[messenger]:py-4 max-md:in-data-[messenger]:py-[10px]">
+        <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3 in-data-[messenger]:py-4 max-md:in-data-[messenger]:pt-[calc(56px+var(--room-search-h,0px)+6px)] max-md:in-data-[messenger]:pb-[calc(var(--room-bottom-h,0px)+8px)]">
           {loadingOlder && (
             <div className="flex justify-center py-1">
               <Spinner className="h-4 w-4" />
@@ -387,7 +390,7 @@ export function MessageList({
               nextTaskId: messages[i + 1]?.task?.id ?? null,
             })),
           ).map((row) => {
-            if (row.type === "day") return <DayDivider key={row.key} label={row.label} />
+            if (row.type === "day") return <DayDivider key={row.key} label={row.label} pillOnPhone />
             const msg = row.message
             const isMe = msg.author.id === currentUserId || msg.author.id === "me"
             const isSelected = selectedIds?.has(msg.id) ?? false
@@ -464,7 +467,7 @@ export function MessageList({
                       data-message-body
                       className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:text-[15px] max-md:in-data-[messenger]:leading-[22px] ${
                         mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.75)]" : "bg-muted max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.7)]"
-                      } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} max-md:in-data-[messenger]:rounded-[13px] ${
+                      } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:[&_a]:max-w-full max-md:in-data-[messenger]:[&_a]:rounded-[13px] ${
                         msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
                       } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}
                     >

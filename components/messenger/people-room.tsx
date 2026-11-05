@@ -80,7 +80,7 @@ export function PeopleRoom({
   }, [liveRoom])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div data-chat-room-chrome className="relative flex min-h-0 flex-1 flex-col">
       <RoomHeader
         capsule
         title={room.title}

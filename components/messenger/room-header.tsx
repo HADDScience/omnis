@@ -29,7 +29,9 @@ export function RoomHeader({
 }) {
   const startEntry = useStartRoomEntry()
   return (
-    <div className={cn("flex min-h-[64px] shrink-0 items-center gap-2 border-b px-2 py-1.5 md:px-5", capsule && "max-md:min-h-[56px] max-md:border-b-0 max-md:px-[10px]")} data-room-header>
+    <div className={cn("flex min-h-[64px] shrink-0 items-center gap-2 border-b px-2 py-1.5 md:px-5", capsule && "max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:z-[3] max-md:isolate max-md:h-[56px] max-md:min-h-[56px] max-md:border-b-0 max-md:px-[10px]")} data-room-header>
+      {/* 글이 머리 뒤로 지나간다 — 위는 바탕으로 덮어 제목 대비를 지키고 아래로 흐려진다 */}
+      {capsule && <div aria-hidden className="room-edge-top pointer-events-none absolute inset-x-0 top-0 -z-10 hidden h-[76px] max-md:block" />}
       <Link
         href="/chat"
         // 목록(/chat)에서 방을 막 누른 입장 화면이면 주소가 그대로라 이동만으로는 화면이 안 바뀐다 — 덮개를 걷는다

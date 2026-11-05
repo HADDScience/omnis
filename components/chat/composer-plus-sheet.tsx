@@ -49,7 +49,7 @@ export function ComposerPlusSheet({
         className="pb-[calc(var(--safe-bottom)+16px)] pl-[var(--safe-left)] pr-[var(--safe-right)]"
       >
         <DrawerTitle className="sr-only">추가</DrawerTitle>
-        <div className="grid grid-cols-4 gap-x-1 gap-y-3 px-3 pt-4">
+        <div className="flex flex-col px-2 pt-3">
           {items.map((item) => (
             <button
               key={item.key}
@@ -59,13 +59,11 @@ export function ComposerPlusSheet({
                 flushSync(() => onOpenChange(false))
                 item.onSelect()
               }}
-              className="touch-target flex min-w-0 flex-col items-center gap-1.5 rounded-xl px-0.5 py-1.5 text-center text-[12.5px] leading-tight text-foreground active:bg-accent"
+              className="flex min-h-[46px] min-w-0 items-center gap-3 rounded-xl px-3 text-left text-[15px] text-foreground active:bg-accent"
             >
-              <span className="flex size-[52px] items-center justify-center rounded-full bg-muted">
-                <HugeiconsIcon icon={item.icon} size={24} aria-hidden />
-              </span>
-              <span className="break-keep">{item.label}</span>
-              {item.hint && <span className="text-[11px] text-muted-foreground">{item.hint}</span>}
+              <HugeiconsIcon icon={item.icon} size={20} aria-hidden className="shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {item.hint && <span className="shrink-0 text-[12.5px] text-muted-foreground">{item.hint}</span>}
             </button>
           ))}
         </div>

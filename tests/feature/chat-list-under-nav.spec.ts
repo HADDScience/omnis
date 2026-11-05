@@ -85,6 +85,18 @@ test.describe("폰", () => {
     expect(fab.bottom).toBeLessThanOrEqual(nav.top)
   })
 
+  test("목록 줄 · 사진 · 칩 크기가 목표 값이다", async ({ page }) => {
+    await openList(page)
+    const g = await page.locator(rowOf(rooms[15])).evaluate((el) => {
+      const icon = el.querySelector("span[aria-hidden]")!.getBoundingClientRect()
+      const r = el.getBoundingClientRect()
+      return { h: Math.round(r.height), icon: icon.width, left: icon.left - r.left }
+    })
+    expect(g).toEqual({ h: 66, icon: 47, left: 16 })
+    const chip = page.getByRole("button", { name: "전체" }).first()
+    expect((await chip.boundingBox())!.height).toBe(37)
+  })
+
   test("칩 줄은 위에 남고 새 대화 메뉴가 열린다", async ({ page }) => {
     await openList(page)
     await page.locator(LIST).evaluate((el) => {
@@ -98,7 +110,7 @@ test.describe("폰", () => {
     await expect(page.getByRole("menuitem", { name: /옴니스와 대화/ })).toBeVisible()
   })
 
-  test("방을 열면 셸이 nav 자리를 다시 비우고, 돌아오면 다시 닿는다", async ({ page }) => {
+  test("방을 열어도 입력창은 nav 위에 있고, 돌아오면 목록이 다시 닿는다", async ({ page }) => {
     await openList(page)
     const row = page.locator(rowOf(rooms[15]))
     await row.scrollIntoViewIfNeeded()
@@ -107,7 +119,6 @@ test.describe("폰", () => {
     await page.waitForURL(`**/chat/${rooms[15]}`)
     const main = page.locator(MAIN)
     await page.locator("section [data-composer-pill]").first().waitFor({ timeout: 15_000 })
-    expect(await main.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThanOrEqual(68)
     const pill = await rect(page, "section [data-composer-pill]")
     const nav = await rect(page, BOTTOM_NAV)
     expect(pill.bottom).toBeLessThanOrEqual(nav.top)

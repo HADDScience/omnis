@@ -41,7 +41,7 @@ export function CompanyRoom({
   const [taskModalRaw, setTaskModalRaw] = useState<string | null>(null)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div data-chat-room-chrome className="relative flex min-h-0 flex-1 flex-col">
       <RoomHeader
         capsule
         title={roomName}

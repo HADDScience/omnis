@@ -534,6 +534,12 @@
 html[data-keyboard-docked] [data-composer] {
   padding-bottom: 6px;
 }
+/* 키보드 위에서는 입력창이 좌우로 더 넓다. 공통 입력창의 유틸리티보다 앞서야 해서 레이어 안에 둔다 */
+@layer utilities {
+  html[data-keyboard-docked] [data-messenger] [data-composer] {
+    padding-inline: 10px !important;
+  }
+}
 html[data-keyboard-docked] [data-composer-foot][data-empty] {
   display: none;
 }
@@ -633,6 +639,17 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
   -webkit-mask-image: linear-gradient(0deg, #000 45%, transparent);
   mask-image: linear-gradient(0deg, #000 45%, transparent);
 }
+/* 폰 전사 · 사람 방 — 글이 머리 · 입력창 뒤로 지나간다. 바탕으로 덮어 글자 대비를 지키고 가장자리만 흐린다 */
+.room-edge-top {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  background: linear-gradient(180deg, var(--background) 62%, color-mix(in oklab, var(--background) 55%, transparent) 82%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
+  mask-image: linear-gradient(180deg, #000 70%, transparent);
+}
+@utility room-edge-bottom {
+  background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--background) 80%, transparent) 24px, var(--background) 48px);
+}
 .nav-edge-bottom.nav-edge-clear {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -713,6 +730,23 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
     width: max(100%, 44px);
     height: max(100%, 44px);
     transform: translate(-50%, -50%);
+  }
+}
+
+/* 폰 채팅 목록의 칩 — 보이는 높이는 37, 누르는 자리는 44(규칙 30) */
+@media (max-width: 767px) and (pointer: coarse) {
+  .list-chip.touch-target {
+    position: relative;
+    min-height: 37px;
+  }
+  .list-chip.touch-target::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
   }
 }
 

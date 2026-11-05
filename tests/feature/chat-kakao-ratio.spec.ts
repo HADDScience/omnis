@@ -89,6 +89,7 @@ test.describe("폰 402px", () => {
       return { h: r.height, left: r.left, right: innerWidth - r.right, font: getComputedStyle(el.querySelector("textarea")!).fontSize, send: size('button[aria-label="보내기"]'), plus: size('button[aria-label="추가"]') }
     })
     expect(g).toEqual({ h: 47, left: 20, right: 20, font: "16px", send: [44, 44], plus: [44, 44] })
+    await expect(page.locator("section [data-room-header]")).toHaveCSS("position", "absolute")
     const back = await page.locator('section a[aria-label="채팅방 목록으로"]').boundingBox()
     expect(back?.height).toBe(44)
     for (const b of await page.locator("[data-room-actions] button").all()) expect((await b.boundingBox())!.height).toBe(44)

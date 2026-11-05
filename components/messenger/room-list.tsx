@@ -587,7 +587,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
 // justify-center: 터치 기기에서 .touch-target 이 칸을 44px 로 넓히면 아이콘만 든 칩(폴더 관리)의 아이콘이
 // 왼쪽에 붙어 원 가운데에서 벗어났다(2026-10-29 작업지시자 스크린샷)
 const CHIP =
-  "touch-target inline-flex h-[36px] [@media(pointer:coarse)]:h-[48px] shrink-0 items-center justify-center gap-1.5 rounded-full border px-4 text-[14.5px] font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+  "list-chip touch-target inline-flex h-[36px] [@media(pointer:coarse)]:h-[48px] max-md:h-[37px]! shrink-0 items-center justify-center gap-1.5 rounded-full border px-4 text-[14.5px] font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 const CHIP_ON = "border-foreground bg-foreground text-background"
 const CHIP_OFF = "border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground"
 
@@ -664,7 +664,7 @@ function ChipBar({
 
   // 폴더 관리는 칩 줄 끝에 붙여 두되 스크롤 밖에 둔다 — 칩이 넘쳐도 늘 보인다
   return (
-    <div className="flex min-w-0 items-center gap-1.5 pr-3">
+    <div className="flex min-w-0 items-center gap-1.5 max-md:gap-[6px] pr-3">
       <div className="relative flex min-w-0 flex-1">
         <div
           ref={barRef}
@@ -674,7 +674,7 @@ function ChipBar({
           data-overflow-right={edge.right || undefined}
           style={{ maskImage: fadeMask(edge), WebkitMaskImage: fadeMask(edge) }}
           className={cn(
-            "flex min-w-0 flex-1 [scrollbar-width:none] items-center gap-1.5 overflow-x-auto overscroll-x-contain pl-3 [&::-webkit-scrollbar]:hidden",
+            "flex min-w-0 flex-1 [scrollbar-width:none] items-center gap-1.5 max-md:gap-[6px] max-md:py-[3.5px] overflow-x-auto overscroll-x-contain pl-3 [&::-webkit-scrollbar]:hidden",
             dimmed && "opacity-60",
           )}
         >
@@ -739,12 +739,12 @@ function ScrollNudge({ side, onClick }: { side: "left" | "right"; onClick: () =>
 // 줄 높이 88px = 아이콘 52px + 위아래 18px. 폰에서 Gemini · 카톡 목록처럼 한 줄이 손가락 크기가 되게 키웠다(2026-10-30 작업지시자).
 // 크기는 모두 px — size-8 같은 rem 유틸리티는 html 81.25% 를 타 의도한 크기가 안 나온다
 const ROW =
-  "touch-target flex min-w-0 flex-1 items-center gap-3.5 rounded-xl px-3 py-[18px] text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+  "touch-target flex min-w-0 flex-1 items-center gap-3.5 max-md:gap-[13px] rounded-xl max-md:rounded-none px-3 max-md:px-[16px] py-[18px] max-md:py-[9.5px] text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 const ROW_ACTIVE = "bg-muted hover:bg-muted"
 
 function RoomIcon({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <span aria-hidden className={cn("flex size-[52px] shrink-0 items-center justify-center rounded-full", className)}>
+    <span aria-hidden className={cn("flex size-[52px] max-md:size-[47px] shrink-0 items-center justify-center rounded-full max-md:rounded-[17px]", className)}>
       {children}
     </span>
   )
@@ -778,7 +778,7 @@ function kindIcon(kind: RoomListItem["kind"]) {
 
 /** 목록 한 줄 머리 — 사람끼리 1:1 은 상대 아바타(이름 색 · 두 글자), 나머지는 방 종류 아이콘 */
 function roomIcon(room: RoomListItem) {
-  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={52} />
+  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={52} className="max-md:in-data-[messenger]:size-[47px] max-md:in-data-[messenger]:rounded-[17px] max-md:in-data-[messenger]:text-[16px]" />
   return kindIcon(room.kind)
 }
 
@@ -817,7 +817,7 @@ function RoomRow({
   const fast = isFastRoom(room)
   return (
     <ContextMenu>
-      <ContextMenuTrigger className="mx-2 rounded-xl">
+      <ContextMenuTrigger className="mx-2 max-md:mx-0 rounded-xl max-md:rounded-none">
         <SwipeRow
           open={swiped}
           onOpenChange={onSwipe}
@@ -952,7 +952,7 @@ function RoomRowContent({ room }: { room: RoomListItem }) {
       {roomIcon(room)}
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-[16.5px]", unread ? "font-semibold" : "font-medium")}>
+          <span className={cn("min-w-0 flex-1 truncate text-[16.5px] max-md:text-[17px]", unread ? "font-semibold" : "font-medium")}>
             {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
             {room.name}
           </span>
@@ -972,21 +972,21 @@ function RoomRowContent({ room }: { room: RoomListItem }) {
               className="shrink-0 self-center text-muted-foreground"
             />
           )}
-          <time dateTime={room.lastAt} className="shrink-0 text-[12.5px] text-muted-foreground tabular-nums">
+          <time dateTime={room.lastAt} className="shrink-0 text-[12.5px] max-md:text-[13px] text-muted-foreground tabular-nums">
             {listTime(room.lastAt)}
           </time>
         </span>
-        <span className="mt-0.5 flex items-center gap-2">
+        <span className="mt-0.5 flex items-center max-md:items-start gap-2">
           {room.status && (
             <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-[12px] text-muted-foreground">
               {TASK_STATUS_LABELS[room.status] ?? room.status}
             </span>
           )}
-          <span className={cn("min-w-0 flex-1 truncate text-[14.5px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
+          <span className={cn("min-w-0 flex-1 truncate text-[14.5px] max-md:line-clamp-2 max-md:whitespace-normal max-md:text-[15px] max-md:leading-[20px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
             {room.preview ?? "아직 글이 없어요"}
           </span>
           {unread && (
-            <Badge className="h-[22px] min-w-[22px] shrink-0 px-1.5 text-[12px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
+            <Badge className="h-[22px] min-w-[22px] max-md:h-[19px] max-md:min-w-[19px] max-md:text-[11px] shrink-0 px-1.5 text-[12px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>
               {unreadLabel(room.unread)}
             </Badge>
           )}
