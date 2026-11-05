@@ -1,7 +1,8 @@
 # python3 -m unittest import-tools/test_kakao_folder.py — 카톡 없이 돈다. 이름은 지어낸 값이다.
-import os, sys, unittest
+import csv, os, sys, tempfile, unittest
+from datetime import date
 sys.path.insert(0, os.path.dirname(__file__))
-from kakao_folder import FolderError, can_skip, check_folder, csv_name_for, csv_room, duplicates, env_fingerprint, leftovers, parse_report, remember_import, room_key, safe_key, summary, switch_to_folder
+from kakao_folder import FolderError, dedupe_scrolled, excluded_file_times, file_baseline, file_lines, file_report, file_stamp_dir, file_summary, parse_expiry, parse_size, plan_files, saved_name_ok, size_matches, can_skip, check_folder, csv_name_for, csv_room, duplicates, env_fingerprint, leftovers, parse_report, remember_import, room_key, safe_key, summary, switch_to_folder
 
 ROOMS = {"전사방": {"kind": "COMPANY"}, "Group Chat": {"kind": "GROUP", "listName": "갑, 을, 병"}}
 
@@ -185,6 +186,178 @@ class Report(unittest.TestCase):
         s = summary([{"room": "새 방", "inserted": 3, "newRoom": True, "newExternals": ["외부갑"]}], {"실패방": "시간 초과"}, ["남은방"], False)
         for want in ("새 방: 넣은 글 3건", "새 방 1", "새 외부 발화자 1: 외부갑", "실패 방 1: 실패방 (시간 초과)", "시작 못 한 방 1: 남은방"):
             self.assertIn(want, s)
+
+
+def csv_file(rows):
+    f = tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8-sig", newline="")
+    w = csv.writer(f)
+    w.writerow(["Date", "User", "Message"])
+    w.writerows(rows)
+    f.close()
+    return f.name
+
+
+def line(t, name, **kw):
+    return {"t": t, "name": name, "deleted": False, "multi": False, **kw}
+
+
+def cell(name, expiry, size="1.0MB"):
+    return {"name": name, "expiry": expiry, "size": size}
+
+
+TODAY = date(2026, 11, 5)
+
+
+class FileLines(unittest.TestCase):
+    def test_파일_줄만_읽고_삭제된_글도_센다(self):
+        path = csv_file([
+            ["2026-11-01 10:00:00", "갑", "안녕"],
+            ["2026-11-01 10:01:00", "갑", "File: 가.pdf"],
+            ["2026-11-01 10:02:00", "을", "Photo"],
+            ["2026-11-01 10:03:00", "을", "File: 나.hwp\nThe message has been deleted."],
+        ])
+        got = file_lines(path)
+        self.assertEqual([(g["name"], g["deleted"]) for g in got], [("가.pdf", False), ("나.hwp", True)])
+
+    def test_기준점은_지난_CSV_줄_수이고_기록이_우선이다(self):
+        lines = [line("2026-11-01 10:00:00", "가.pdf")] * 5
+        self.assertEqual(file_baseline(None, lines, 3), 3)
+        self.assertEqual(file_baseline(None, lines, None), 5)
+        self.assertEqual(file_baseline(None, lines, 9), 5)
+        self.assertEqual(file_baseline({"seen": 4, "pending": []}, lines, 3), 4)
+
+    def test_제외_목록의_파일_줄(self):
+        ex = [{"room": "방", "t": "2026-11-01 10:01:00", "m": "File: 가.pdf"}, {"room": "다른 방", "t": "2026-11-01 10:01:00", "m": "File: 나.pdf"}, {"room": "방", "t": "2026-11-01 10:02:00", "m": "그냥 글"}]
+        self.assertEqual(excluded_file_times(ex, "방"), {("2026-11-01 10:01:00", "가.pdf")})
+
+
+class FileLabels(unittest.TestCase):
+    def test_크기(self):
+        self.assertEqual(parse_size("1.0KB"), 1024)
+        self.assertIsNone(parse_size("모름"))
+        self.assertTrue(size_matches("65.7KB", 67311))
+        self.assertFalse(size_matches("65.7KB", 70000))
+        self.assertFalse(size_matches("모름", 1))
+        self.assertTrue(size_matches("12B", 12))
+        self.assertFalse(size_matches("12B", 13))
+
+    def test_만료일(self):
+        self.assertEqual(parse_expiry("Expiry: 11/19/2026"), date(2026, 11, 19))
+        self.assertIsNone(parse_expiry(""))
+
+    def test_저장된_이름(self):
+        self.assertTrue(saved_name_ok("가 나.pptx", "가 나.pptx"))
+        self.assertTrue(saved_name_ok("가 나 (1).pptx", "가 나.pptx"))
+        self.assertTrue(saved_name_ok("확장자없음 (2)", "확장자없음"))
+        self.assertFalse(saved_name_ok("다른 파일.pptx", "가 나.pptx"))
+        self.assertFalse(saved_name_ok("가 나.pdf", "가 나.pptx"))
+        self.assertTrue(saved_name_ok("가\u1100\u1161.pdf", "가\uac00.pdf"))  # Downloads 는 NFD
+
+    def test_같은_초의_폴더(self):
+        self.assertEqual(file_stamp_dir("2026-11-05 10:29:54", set()), "20261105_102954")
+        self.assertEqual(file_stamp_dir("2026-11-05 10:29:54", {"20261105_102954"}), "20261105_102954_2")
+
+    def test_겹쳐_읽은_칸을_뺀다(self):
+        a, b = cell("가.pdf", date(2026, 11, 19)), cell("나.pdf", date(2026, 11, 18))
+        self.assertEqual(dedupe_scrolled([a, b, dict(b)]), [a, b])
+
+
+class PlanFiles(unittest.TestCase):
+    T = "2026-11-05 10:00:00"
+    E = date(2026, 11, 19)
+
+    def plan(self, todo, items, lines=None, today=TODAY, excluded=frozenset()):
+        return plan_files(todo, lines if lines is not None else todo, items, today, excluded)
+
+    def test_이름과_만료일이_맞으면_받는다(self):
+        p = self.plan([line(self.T, "가.pdf")], [cell("가.pdf", self.E)])
+        self.assertEqual(len(p["get"]), 1)
+        self.assertEqual((p["wait"], p["gone"]), ([], []))
+
+    def test_같은_이름은_시각_순서로_가른다(self):
+        new, old = line("2026-11-05 10:00:00", "같은.pdf"), line("2026-11-03 10:00:00", "같은.pdf")
+        items = [cell("같은.pdf", date(2026, 11, 19), "2.0MB"), cell("같은.pdf", date(2026, 11, 17), "1.0MB")]
+        p = self.plan([new, old], items)
+        self.assertEqual([(l["t"], it["size"]) for l, it in p["get"]], [(new["t"], "2.0MB"), (old["t"], "1.0MB")])
+
+    def test_내보낸_뒤_같은_이름이_또_오면_받지_않고_기다린다(self):
+        old = line("2026-11-03 10:00:00", "같은.pdf")
+        p = self.plan([old], [cell("같은.pdf", date(2026, 11, 19)), cell("같은.pdf", date(2026, 11, 17))])
+        self.assertEqual((p["get"], p["wait"]), ([], [old]))
+
+    def test_서랍에_아직_없으면_기다리고_보존기간이_지나면_버린다(self):
+        l = line(self.T, "가.pdf")
+        self.assertEqual(self.plan([l], [])["wait"], [l])
+        self.assertEqual(self.plan([l], [], today=date(2026, 11, 21))["gone"], [(l, "만료")])
+
+    def test_만료된_칸은_받지_않는다(self):
+        l = line("2026-10-01 10:00:00", "가.pdf")
+        self.assertEqual(self.plan([l], [cell("가.pdf", date(2026, 10, 15))])["gone"], [(l, "만료")])
+
+    def test_이름이_다르면_붙이지_않는다(self):
+        l = line(self.T, "가.pdf")
+        p = self.plan([l], [cell("다른.pdf", self.E)])
+        self.assertEqual((p["get"], p["wait"]), ([], [l]))
+
+    def test_삭제된_글_제외된_글은_받지_않는다(self):
+        d = line(self.T, "가.pdf", deleted=True)
+        self.assertEqual(self.plan([d], [cell("가.pdf", self.E)])["gone"], [(d, "삭제된 글")])
+        e = line(self.T, "나.pdf")
+        p = self.plan([e], [cell("나.pdf", self.E)], excluded={(self.T, "나.pdf")})
+        self.assertEqual((p["get"], p["gone"]), ([], [(e, "제외 목록")]))
+
+    def test_제외된_글은_같은_이름_순서에서도_빠진다(self):
+        kept, ex = line("2026-11-03 10:00:00", "같은.pdf"), line("2026-11-05 10:00:00", "같은.pdf")
+        # 서랍에는 둘 다 있다 — 제외 줄을 순서에서 빼면 최신 칸이 kept 와 짝지어져 만료일이 어긋나 받지 않는다
+        p = self.plan([kept], [cell("같은.pdf", date(2026, 11, 19)), cell("같은.pdf", date(2026, 11, 17))], lines=[kept, ex], excluded={(ex["t"], "같은.pdf")})
+        self.assertEqual(p["get"], [])
+        self.assertEqual(p["wait"], [kept])
+
+    def test_상한을_넘으면_받지_않는다(self):
+        l = line(self.T, "큰.zip")
+        self.assertEqual(self.plan([l], [cell("큰.zip", self.E, "301.0MB")])["gone"], [(l, "300MB 초과")])
+        self.assertEqual(len(self.plan([l], [cell("큰.zip", self.E, "299.0MB")])["get"]), 1)
+
+    def test_여러_번_실패하면_목록에서_뺀다(self):
+        l = line(self.T, "가.pdf", tries=5)
+        self.assertEqual(self.plan([l], [cell("가.pdf", self.E)])["gone"], [(l, "5번 실패")])
+
+    def test_크기를_못_읽으면_기다린다(self):
+        l = line(self.T, "가.pdf")
+        self.assertEqual(self.plan([l], [cell("가.pdf", self.E, "?")])["wait"], [l])
+
+
+class FileState(unittest.TestCase):
+    def test_받지_못한_파일이_남으면_건너뛰지_않는다(self):
+        st, left = remember_import({"files": {"seen": 3, "pending": [line("2026-11-05 10:00:00", "가.pdf")]}}, "csv", "env", {"leftover": {}})
+        self.assertEqual(left, {})
+        self.assertTrue(st["mediaPending"])
+        self.assertFalse(can_skip(st, "csv", "env", 0))
+
+    def test_다_받으면_건너뛴다(self):
+        st, _ = remember_import({"mediaPending": True, "files": {"seen": 3, "pending": []}}, "csv", "env", {"leftover": {}})
+        self.assertNotIn("mediaPending", st)
+        self.assertTrue(can_skip(st, "csv", "env", 0))
+
+    def test_올리기_실패는_다음_실행에서_다시_돈다(self):
+        st, left = remember_import({"mediaPending": True}, "csv", "env", {"leftover": {"media": 1}})
+        self.assertEqual(left, {"media": 1})
+        self.assertTrue(st["mediaPending"])
+        self.assertNotIn("importedCsv", st)
+
+
+class FileSummary(unittest.TestCase):
+    def test_건식은_받을_목록을_보여_준다(self):
+        r = file_report(wait=1, gone=["만료"], listed=[("가.pdf", "1.0MB", "2026-11-05 10:00:00")], oldest="2026-11-05 10:00:00", newest="2026-11-05 10:00:00")
+        text = "\n".join(file_summary({"방": r}, True))
+        self.assertIn("받을 파일 1개", text)
+        self.assertIn("가.pdf", text)
+        self.assertIn("다음에 다시 1", text)
+        self.assertIn("못 받음 1 (만료)", text)
+
+    def test_summary_에_파일_줄이_붙는다(self):
+        self.assertIn("받은 파일 2개", summary([], {}, [], False, {"방": file_report(got=2)}))
+        self.assertNotIn("파일", summary([], {}, [], False))
 
 
 if __name__ == "__main__":

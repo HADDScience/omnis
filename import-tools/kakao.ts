@@ -17,13 +17,13 @@ import { existsSync } from "fs"
 import { pointAtProd } from "./prod-env"
 
 interface Args {
-  csv: string[]; mobile: { path: string; room: string }[]; media: string | null; mediaRoom: string | null; dry: boolean; target: "local" | "prod"
+  csv: string[]; mobile: { path: string; room: string }[]; media: string | null; mediaRoom: string | null; mediaNamesOnly: boolean; dry: boolean; target: "local" | "prod"
   autoRooms: boolean; noEmbed: boolean; noStructure: boolean; workers: number; classifyModel: string; structureModel: string
 }
 
 function parseArgs(argv: string[]): Args {
   const a: Args = {
-    csv: [], mobile: [], media: null, mediaRoom: null, dry: false, autoRooms: false, target: "local", noEmbed: false, noStructure: false,
+    csv: [], mobile: [], media: null, mediaRoom: null, mediaNamesOnly: false, dry: false, autoRooms: false, target: "local", noEmbed: false, noStructure: false,
     workers: 4, classifyModel: "sonnet", structureModel: "opus",
   }
   for (let i = 0; i < argv.length; i++) {
@@ -32,6 +32,7 @@ function parseArgs(argv: string[]): Args {
     else if (v === "--mobile-room") { const last = a.mobile.at(-1); if (!last) throw new Error("--mobile-room 은 --mobile 뒤에"); last.room = argv[++i] }
     else if (v === "--media") a.media = argv[++i]
     else if (v === "--media-room") a.mediaRoom = argv[++i]
+    else if (v === "--media-names-only") a.mediaNamesOnly = true
     else if (v === "--dry") a.dry = true
     else if (v === "--auto-rooms") a.autoRooms = true
     else if (v === "--target") a.target = argv[++i] === "prod" ? "prod" : "local"
@@ -108,8 +109,8 @@ async function main() {
   step(5, "첨부 — 실물 파일 붙이기")
   const mediaRoom = args.mediaRoom ?? [...rooms.keys()][0]
   if (args.media) console.log(`  첨부 폴더의 방: ${mediaRoom}`)
-  if (args.media) await attachMedia(sessions.filter((x) => x.room === mediaRoom), args.media, { dry: args.dry })
-  else console.log("  --media 가 없어 건너뜀 (카톡 채팅방 서랍에서 저장한 폴더를 주면 붙는다)")
+  const media = args.media ? await attachMedia(sessions.filter((x) => x.room === mediaRoom), args.media, { dry: args.dry, namesOnly: args.mediaNamesOnly }) : { failed: 0 }
+  if (!args.media) console.log("  --media 가 없어 건너뜀 (카톡 채팅방 서랍에서 저장한 폴더를 주면 붙는다)")
 
   step(6, "사진 설명 — Codex·Claude 구독")
   const photos = await describeImportedPhotos(args.csv, { dry: args.dry, workers: args.workers })
@@ -131,7 +132,7 @@ async function main() {
     newRoom: registered.some((r) => r.newRoom),
     newExternals: registered.flatMap((r) => r.newExternals),
     newMembers: registered.flatMap((r) => r.newMembers),
-    leftover: { classify: c.failed.length, structure: s.failedRounds, photos: photos.left, photoIndex: photosLeft },
+    leftover: { classify: c.failed.length, structure: s.failedRounds, media: media.failed, photos: photos.left, photoIndex: photosLeft },
     seconds,
   }))
   await prisma.$disconnect()
