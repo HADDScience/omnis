@@ -42,6 +42,8 @@ for (const [name, use] of [
         await expect(panel(page), url).toBeHidden()
         await expect(page.getByRole("button", { name: "패널 닫기" }), url).toHaveCount(0)
       }
+      // 앞 화면이 남긴 요청(목록의 미리 받기)은 세지 않는다 — 패널이 있으면 3초마다 돈다
+      polls = 0
       await page.waitForTimeout(4_000)
       expect(polls).toBe(0)
     })
