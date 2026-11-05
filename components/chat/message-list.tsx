@@ -24,6 +24,7 @@ import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { arrivals, followOnAppend, unseenLabel } from "@/lib/chat-follow"
 import { isStuckToBottom } from "@/lib/agent/scroll-follow"
 import { AuthorAvatar, DayDivider, MessageTime } from "@/components/chat/message-parts"
+import { SystemPill } from "@/components/chat/system-pill"
 
 import { apiUrl } from "@/lib/base-path"
 import { safeInlineType } from "@/lib/file-serving"
@@ -384,6 +385,7 @@ export function MessageList({
               isEvent:
                 m.content.startsWith("__TASK_CREATED__:") ||
                 !!m._isSystem ||
+                !!m.deletedAt ||
                 m.author.id === "system" ||
                 m.content.startsWith("🤖"),
               // 같은 업무 태그가 묶음 안 말풍선마다 반복되지 않게 — 다음 메시지가 다른 업무일 때만 붙인다
@@ -407,18 +409,12 @@ export function MessageList({
               )
             }
 
-            // 시스템 메시지 (구분선 스타일)
+            // 지운 글 — 자리만 남는다. 검색 · 답장이 가리키는 자리라 글 id 를 지킨다
+            if (msg.deletedAt) return <SystemPill key={msg.id} messageId={msg.id}>{msg.content}</SystemPill>
+
+            // 시스템 메시지. 재구성 요약은 한 줄을 넘어 알약 안에서 줄을 바꾼다
             if (msg._isSystem || msg.author.id === "system" || msg.content.startsWith("🤖")) {
-              return (
-                // 재구성 요약은 한 줄을 넘는다 — 줄바꿈 없이 두면 380px 패널 밖으로 잘렸다(2026-09-15 녹화)
-                <div key={msg.id} className="mt-2 flex items-center gap-3 py-1">
-                  <div className="min-w-4 flex-1 border-t border-dashed border-muted-foreground/20" />
-                  <span className="max-w-[80%] break-keep text-center text-[11px] leading-snug text-muted-foreground in-data-[messenger]:text-[13.5px] [overflow-wrap:anywhere]">
-                    {msg.content.startsWith("🤖") ? msg.content : `🤖 ${msg.content}`}
-                  </span>
-                  <div className="min-w-4 flex-1 border-t border-dashed border-muted-foreground/20" />
-                </div>
-              )
+              return <SystemPill key={msg.id}>{msg.content.startsWith("🤖") ? msg.content : `🤖 ${msg.content}`}</SystemPill>
             }
 
             const mine = isMe && !selectionMode
