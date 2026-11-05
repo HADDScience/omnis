@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
+import { visibleMessageWhere } from "@/lib/chat-rooms"
 import { deleteEmbeddingsSafe } from "@/lib/embeddings"
 import { apiError, parseJson, writeActivity } from "@/lib/api"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
@@ -23,6 +24,8 @@ export async function GET(_req: NextRequest, { params }: Props) {
       instructor: { select: { id: true, name: true } },
       checklists: { orderBy: { createdAt: "asc" } },
       messages: {
+        // 카드는 전원이 보지만 글은 그 방을 볼 수 있는 사람에게만
+        where: visibleMessageWhere(session.user.id),
         orderBy: { createdAt: "asc" },
         include: { author: { select: { id: true, name: true } } },
       },

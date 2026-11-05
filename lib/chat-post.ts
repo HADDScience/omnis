@@ -9,6 +9,7 @@
 //   - runTaskRebuild: AI 재구성 · 상태 변경 · 알림 · 시스템 메시지. 끝나면 활동 기록을 남겨 화면이 끝났음을 안다
 // 화면 경로는 응답 뒤(after)에 runTaskRebuild 를 돌리고, MCP 는 기다려서 결과를 글로 돌려준다.
 import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
+import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import { prisma } from "@/lib/db"
 import { createNotification } from "@/lib/notifications"
 import { rebuildTask } from "@/lib/ai"
@@ -222,7 +223,8 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
       // 이 업무에 연결된 모든 메시지 + 파일 수집
       const allMessages = await prisma.chatMessage.findMany({
         // 지운 글은 넣지 않는다 — 지웠는데도 그 내용이 업무 카드에 남으면 지운 의미가 없다(2026-09-16)
-        where: { taskId: task.id, deletedAt: null, ...NOT_EXTERNAL_WHERE },
+        // 카드는 전원이 본다 — 참여자 전용 방의 글을 입력으로 넣으면 그 내용이 본문으로 옮겨 간다
+        where: { taskId: task.id, deletedAt: null, ...NOT_EXTERNAL_WHERE, ...PUBLIC_MESSAGE_WHERE },
         orderBy: { createdAt: "asc" },
         include: {
           author: { select: { name: true } },
@@ -256,6 +258,7 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
       const newer = await prisma.chatMessage.findFirst({
         where: {
           taskId: task.id,
+          ...PUBLIC_MESSAGE_WHERE,
           kind: "NORMAL",
           createdAt: { gt: job.messageCreatedAt },
           authorId: { not: systemUserId },

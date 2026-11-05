@@ -9,6 +9,7 @@
 //   - 종류가 다른 대상은 상위 3개, 같은 종류(업무↔업무)는 다른 프로젝트 것만 2개.
 // 설계: mydocs/plans/2026-09-14-company-context.md 「1. Context 를 어떻게 보여 줄까」
 import { prisma } from "@/lib/db"
+import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import { TASK_STATUS_LABELS } from "@/lib/constants"
 import { won } from "@/lib/crm"
 import { RECORD_KIND_LABEL, ymd } from "@/lib/company-context"
@@ -192,7 +193,7 @@ export async function loadNeighborhood(key: string, opts: { isAdmin: boolean }):
       if (t.product) b.link(N.product(t.product), "제품")
       // 채팅 조각은 이 업무 스레드의 메시지만 — 업무를 열 수 있는 사람은 이미 보는 내용이다
       const messageIds = (
-        await prisma.chatMessage.findMany({ where: { taskId: id, externalSpeakerId: null }, select: { id: true }, orderBy: { createdAt: "desc" }, take: 300 })
+        await prisma.chatMessage.findMany({ where: { taskId: id, externalSpeakerId: null, ...PUBLIC_MESSAGE_WHERE }, select: { id: true }, orderBy: { createdAt: "desc" }, take: 300 })
       ).map((m) => m.id)
       const [own, chat, total] = await Promise.all([
         chunksOf("TASK", id),

@@ -25,6 +25,14 @@ export const COMPANY_ROOM_ID = "default-room"
  */
 export const PUBLIC_MESSAGE_WHERE = { room: { kind: "COMPANY" } } satisfies Prisma.ChatMessageWhereInput
 
+/**
+ * 이 사람이 읽을 수 있는 글 — roomAccess 와 같은 규칙을 Prisma where 로(전사방이거나 지금 참여자인 방).
+ * 업무 카드는 전원이 보지만 카드에 연결된 글은 방 권한을 따른다. 카톡 이식이 참여자 전용 방 글을 카드에 잇는다.
+ */
+export function visibleMessageWhere(userId: string) {
+  return { OR: [PUBLIC_MESSAGE_WHERE, { room: { members: { some: { userId } } } }] } satisfies Prisma.ChatMessageWhereInput
+}
+
 export type RoomAccess = "ok" | "missing" | "forbidden"
 
 /** 방을 읽고 쓸 수 있는가. 없는 방은 missing — 새 DB 에서 default-room 이 아직 없을 수 있어 호출자가 정한다 */

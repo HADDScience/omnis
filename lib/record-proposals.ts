@@ -495,7 +495,8 @@ export async function proposeRecordsFromTask(taskId: string, opts: { userId?: st
       id: true,
       name: true,
       messages: {
-        where: { kind: "NORMAL", deletedAt: null },
+        // 기록 제안은 모두가 본다 — 참여자 전용 방의 글을 넘기지 않는다
+        where: { ...PUBLIC_MESSAGE_WHERE, kind: "NORMAL", deletedAt: null },
         orderBy: { createdAt: "asc" },
         take: 300,
         select: { id: true, content: true, createdAt: true, author: { select: { name: true } } },
