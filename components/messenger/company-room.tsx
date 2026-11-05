@@ -23,6 +23,7 @@ export function CompanyRoom({
   initialMessages,
   resume,
   muted,
+  live,
 }: {
   roomId: string
   roomName: string
@@ -32,6 +33,8 @@ export function CompanyRoom({
   resume?: ComponentProps<typeof ChatPanel>["resume"]
   /** 이 방의 채팅 푸시를 껐는가(머리줄 「알림 끄기 / 켜기」 첫 상태) */
   muted: boolean
+  /** 서버 페이지 없이 그린 방(client-room.tsx) */
+  live?: ComponentProps<typeof ChatPanel>["live"]
 }) {
   const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
@@ -62,6 +65,7 @@ export function CompanyRoom({
       <div className="flex min-h-0 flex-1 flex-col">
         <ChatPanel
           roomId={roomId}
+          live={live}
           // 방을 여는 동안 쓴 글을 이어받는다 — 사람 방 · 업무 방과 같다(lib/chat-entry.ts)
           handoffKey={`room:${roomId}`}
           initialMessages={initialMessages}

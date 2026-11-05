@@ -6,10 +6,15 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { BubbleChatSparkIcon, PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { BASE_PATH } from "@/lib/base-path"
 import { roomKeyFromPath } from "@/lib/chat-list"
 import { RoomList } from "./room-list"
 import { CachedRoomPreview } from "./cached-room-preview"
-import { ChatUser, RoomListReload, RoomSurfaceReady, StartRoomEntry } from "./messenger-context"
+import { ChatUser, OpenClientRoom, RoomListReload, RoomSurfaceReady, StartRoomEntry } from "./messenger-context"
+import { ClientRoom } from "./client-room"
+import { rememberedRoom } from "@/lib/chat-entry"
+import { isFastRoom } from "@/lib/room-snapshot"
+import type { RoomListItem } from "@/lib/chat-rooms"
 
 export { useChatUserId, useRoomListReload, useRoomSurfaceReady, useStartRoomEntry } from "./messenger-context"
 
@@ -40,24 +45,38 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
   // 그래서 주소가 아니라 그 방 화면(또는 loading 화면)이 실제로 그려졌다는 알림(RoomSurfaceReady)을 받고 걷는다.
   // 다른 곳으로 옮기면(뒤로 가기 · 다른 링크) 바로 걷는다
   const [entering, setEntering] = useState<string | null>(null)
+  // 목록에서 누른 전사 · 사람 방은 서버 페이지 없이 그린다. 주소는 pushState 로 바꾼다(주소를 직접 열거나 새로고침하면 서버 페이지다).
+  // 뒤로 · 앞으로 가서 다른 방 주소가 되면 그 방을 그린다 — 라우터의 화면은 pushState 전 그대로라 children 에 맡길 수 없다
+  const [clientRoom, setClientRoom] = useState<RoomListItem | null>(null)
   const [seenPath, setSeenPath] = useState(pathname)
   if (seenPath !== pathname) {
     // 그리는 중에 맞춘다(effect 로 미루면 떠난 방의 입장 화면이 한 번 더 그려진다)
     setSeenPath(pathname)
     if (entering && roomKeyFromPath(pathname) !== entering) setEntering(null)
+    if (!clientRoom || `/chat/${clientRoom.id}` !== pathname) {
+      const key = roomKeyFromPath(pathname)
+      const known = key ? rememberedRoom(key) : null
+      setClientRoom(known && isFastRoom(known) ? known : null)
+    }
   }
+  const openClientRoom = useCallback((room: RoomListItem) => {
+    setEntering(null)
+    setClientRoom(room)
+    window.history.pushState(null, "", `${BASE_PATH}/chat/${room.id}`)
+  }, [])
   const startEntry = useCallback(
     (key: string | null) => setEntering(key === roomKeyFromPath(pathname) ? null : key),
     [pathname],
   )
   const surfaceReady = useCallback((key: string) => setEntering((e) => (e === key ? null : e)), [])
-  const atList = pathname === "/chat" && !entering
+  const atList = pathname === "/chat" && !entering && !clientRoom
 
   return (
     <ChatUser.Provider value={userId}>
     <RoomListReload.Provider value={reload}>
     <StartRoomEntry.Provider value={startEntry}>
     <RoomSurfaceReady.Provider value={surfaceReady}>
+    <OpenClientRoom.Provider value={openClientRoom}>
       <div data-messenger className="flex h-full min-h-0 flex-col md:pt-12">
         <div className="flex min-h-0 flex-1">
           <aside
@@ -71,7 +90,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
             <NewChatFab />
           </aside>
           <section className={cn("relative min-h-0 min-w-0 flex-1 flex-col md:flex", atList ? "hidden" : "flex")}>
-            {children}
+            {clientRoom ? <ClientRoom key={clientRoom.key} room={clientRoom} userId={userId} /> : children}
             {/* 방 화면은 그 아래에서 그대로 받아 그린다 — 다 그려지면 입력창이 글을 이어받고 이 덮개를 걷는다 */}
             {entering && (
               <div className="absolute inset-0 z-[1] flex flex-col bg-background">
@@ -81,6 +100,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
           </section>
         </div>
       </div>
+    </OpenClientRoom.Provider>
     </RoomSurfaceReady.Provider>
     </StartRoomEntry.Provider>
     </RoomListReload.Provider>

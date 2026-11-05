@@ -9,7 +9,8 @@ import { RoomComposer } from "@/components/chat/room-composer"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { roomKeyFromPath } from "@/lib/chat-list"
-import { LIST_CACHE_KEY, readCache, roomCacheKey, type CachedMessage } from "@/lib/chat-cache"
+import { LIST_CACHE_KEY, readCache } from "@/lib/chat-cache"
+import { readSnapshot, type SnapshotLine } from "@/lib/room-snapshot"
 import { peekHandoff, queuedIsFresh, rememberedRoom, roomFromList, writeHandoff } from "@/lib/chat-entry"
 import { tidyBody } from "@/lib/chat-layout"
 import { IS_DEMO } from "@/lib/demo"
@@ -64,7 +65,7 @@ function RoomEntry({ roomKey, overlay }: { roomKey: string; overlay: boolean }) 
     if (!overlay) surfaceReady(roomKey)
   }, [overlay, roomKey, surfaceReady])
   const [room, setRoom] = useState<RoomListItem | null>(() => rememberedRoom(roomKey))
-  const [cached, setCached] = useState<CachedMessage[] | null>(null)
+  const [cached, setCached] = useState<SnapshotLine[] | null>(null)
   /** 보내기를 눌러 둔 글 — 방 화면이 오면 그쪽이 보낸다. 그때까지 내 말풍선으로 옅게.
    *  셸이 먼저 그린 입장 화면에서 눌렀으면 loading.tsx 로 갈아 끼워진 뒤에도 이어 보인다 */
   const [queued, setQueued] = useState<string | null>(() => {
@@ -75,8 +76,12 @@ function RoomEntry({ roomKey, overlay }: { roomKey: string; overlay: boolean }) 
   useEffect(() => {
     if (!userId) return
     let alive = true
-    void readCache<CachedMessage[]>(userId, roomCacheKey(roomKey)).then((m) => {
-      if (alive && m?.length) setCached(m)
+    void readSnapshot<SnapshotLine>(userId, roomKey).then((s) => {
+      // 전사 · 사람 방의 저장본은 글 그대로라 내 글 표시가 없고 지운 글 자리 · 업무 카드 표식도 있다
+      const lines = s?.messages
+        .filter((m) => !m.deletedAt && !m.content.startsWith("__"))
+        .map((m) => ({ ...m, mine: m.mine ?? m.author.id === userId }))
+      if (alive && lines?.length) setCached(lines)
     })
     // 목록을 아직 못 받았으면(새로고침 직후 방 주소로 바로 들어옴) 기기에 저장한 목록에서 이름을 찾는다
     if (!room) {
@@ -127,7 +132,7 @@ function RoomEntry({ roomKey, overlay }: { roomKey: string; overlay: boolean }) 
   )
 }
 
-function CachedMessages({ messages }: { messages: CachedMessage[] }) {
+function CachedMessages({ messages }: { messages: SnapshotLine[] }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden" data-cached-preview>
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3 px-4 py-4 opacity-80 sm:px-6">

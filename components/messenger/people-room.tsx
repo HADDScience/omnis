@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ComponentProps } from "react"
+import { useEffect, useState, type ComponentProps } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -24,6 +24,7 @@ import { AuthorAvatar } from "@/components/chat/message-parts"
 import { apiUrl } from "@/lib/base-path"
 import { PEOPLE_ROOM_NAME_MAX } from "@/lib/chat-people-rules"
 import type { PeopleRoomView } from "@/lib/chat-people"
+import { writeSnapshotPeople } from "@/lib/room-snapshot"
 import { RoomHeader } from "./room-header"
 import { RoomMuteButton } from "./room-mute-button"
 import { PeoplePicker, type Person } from "./people-picker"
@@ -42,6 +43,7 @@ export function PeopleRoom({
   initialMessages,
   resume,
   muted,
+  live,
 }: {
   room: PeopleRoomView
   currentUserId: string
@@ -50,6 +52,8 @@ export function PeopleRoom({
   resume?: ComponentProps<typeof ChatPanel>["resume"]
   /** 이 방의 채팅 푸시를 껐는가 */
   muted: boolean
+  /** 서버 페이지 없이 그린 방(client-room.tsx) */
+  live?: ComponentProps<typeof ChatPanel>["live"]
 }) {
   const [room, setRoom] = useState(initialRoom)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -58,8 +62,22 @@ export function PeopleRoom({
 
   async function refresh() {
     const res = await fetch(apiUrl(`/api/chat/people-rooms/${room.id}`))
-    if (res.ok) setRoom(await res.json())
+    if (res.ok) {
+      setRoom(await res.json())
+    } else if (res.status === 403 || res.status === 404) live?.onRoomGone()
   }
+
+  // 머리줄 · @ 후보도 저장본에 둔다 — 다음에 열 때 단톡방 참여자 수가 비어 보이지 않게. 아직 모르면(처음 여는 방) 쓰지 않는다
+  useEffect(() => {
+    if (room.members.length > 0) void writeSnapshotPeople(currentUserId, `room:${room.id}`, room)
+  }, [room, currentUserId])
+
+  // 서버 페이지 없이 그렸으면 참여자는 저장본이나 목록이 아는 만큼이다 — 받아 온다
+  const liveRoom = !!live
+  useEffect(() => {
+    if (liveRoom) void refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRoom])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -100,6 +118,7 @@ export function PeopleRoom({
       <div className="flex min-h-0 flex-1 flex-col">
         <ChatPanel
           roomId={room.id}
+          live={live}
           initialMessages={initialMessages}
           resume={resume}
           currentUserId={currentUserId}

@@ -19,7 +19,7 @@ import type { AgentCard as AgentCardData, AgentRoomState } from "@/lib/agent/ser
 import type { ToolUse } from "@/lib/agent/tool-trail"
 import { answeredAfter, mergeLatest, prependOlder, showPendingBubble, unansweredQuestion } from "@/lib/agent/room-view"
 import { isStuckToBottom, prependScrollDelta } from "@/lib/agent/scroll-follow"
-import { recentForCache, roomCacheKey, writeCache } from "@/lib/chat-cache"
+import { writeSnapshot } from "@/lib/room-snapshot"
 import { resolveHandoff } from "@/lib/chat-entry"
 import { useComposerHandoff } from "@/hooks/use-composer-handoff"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
@@ -190,10 +190,9 @@ export function OmnisRoom({
   // 기기에 저장 — 다음에 이 방을 열 때 서버를 기다리지 않고 바로 그린다(lib/chat-cache.ts). 최근 30개만
   useEffect(() => {
     if (!roomId || !userId || messages.length === 0) return
-    void writeCache(
-      userId,
-      roomCacheKey(`room:${roomId}`),
-      recentForCache(messages).map((m) => ({
+    writeSnapshot(userId, `room:${roomId}`, {
+      checkedAt: new Date().toISOString(),
+      messages: messages.map((m) => ({
         id: m.id,
         author: m.fromOmnis ? { id: "omnis", name: "옴니스" } : { id: userId, name: "나" },
         mine: !m.fromOmnis,
@@ -201,7 +200,7 @@ export function OmnisRoom({
         content: m.content,
         createdAt: m.createdAt,
       })),
-    )
+    })
   }, [roomId, userId, messages])
 
   /** 방 상태를 DB 에서 다시 — 스트림이 끝날 때마다. 돌고 있는 실행도 함께 안다 */
