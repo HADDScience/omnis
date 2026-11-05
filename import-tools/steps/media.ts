@@ -17,17 +17,23 @@
 // 제외 목록의 줄 ±2분 안에 있는 사진·영상은 붙이지 않는다. 가린 대화의 대상이 사진인 경우가 많다
 // — 글만 가리고 사진을 붙이면 가린 의미가 없다. 문서 파일은 붙인다.
 // 그 사진도 「쓴 것」으로 쳐서 옆 사진 메시지에 잘못 붙지 않게 한다.
-// 크기 상한(앱 업로드의 4MB)은 두지 않는다. 그 상한은 Vercel 요청 본문 때문이고, 여기서는 NAS 에 바로 올리며
-// 내려받기(`/api/files/[id]/raw`)는 NAS 에서 스트리밍한다.
+// 앱 업로드의 4MB 상한은 Vercel 요청 본문 때문이라 여기에는 없다. 여기서는 NAS 에 바로 올리고, 내려받기(`/api/files/[id]/raw`)는
+// NAS 에서 스트리밍한다 — 둘 다 큰 첨부 플래그(LARGE_UPLOAD_ENABLED)와 무관하다. 파일당 300MB 를 넘으면 올리지 않고,
+// 16MB 를 넘으면 나눠 올린다(NAS 요청은 30초 무응답이면 끊긴다).
+// 한 파일이 실패해도 나머지를 올리고, 실패 수를 돌려줘 다음 실행에서 다시 돈다.
+//
+// kakao-sync.py 는 서랍 「파일」 칸의 것을 media/files/<보낸 시각>/<원래 이름> 에 둔다. 이 파일은 같은 이름의 자리표시에만 붙고,
+// 같은 이름이 여럿이면 시각으로 가른다. --media-names-only 면 확장자 · 시각으로 어림잡아 붙이지 않는다(휴대폰 zip 만 그럴 필요가 있다).
 import { randomUUID } from "crypto"
-import { readdirSync, readFileSync, statSync } from "fs"
+import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from "fs"
 import { extname, join } from "path"
 import { prisma, ROOMS, messageSourceId, parseKst, type RawSession } from "../kakao-common"
 import { importedFilePrivateTo } from "../rooms-config"
 import { loadExclude } from "../redaction"
-import { putObject, objectKeyFor } from "../../lib/storage"
+import { deleteObject, objectKeyFor, putObject, putObjectRange, statObjectSize } from "../../lib/storage"
+import { CHUNK_BYTES, IMPORT_MAX_BYTES, WINDOW_MS, pickNamed, stampOfNamedDir, uploadInChunks, type Candidate } from "./media-match"
 
-const MIME: Record<string, string> = {
+export const MIME: Record<string, string> = {
   ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
   ".heic": "image/heic", ".mp4": "video/mp4", ".mov": "video/quicktime", ".zip": "application/zip",
   ".hwp": "application/x-hwp", ".hwpx": "application/x-hwp", ".ai": "application/postscript",
@@ -39,8 +45,6 @@ const MIME: Record<string, string> = {
 const mimeOf = (name: string) => MIME[extname(name).toLowerCase()] ?? "application/octet-stream"
 const IMAGE = /\.(png|jpe?g|gif|heic|webp)$/i
 const VIDEO = /\.(mp4|mov|m4v)$/i
-
-interface Candidate { path: string; name: string; size: number; stamp: Date | null }
 
 /** 카톡이 저장할 때 붙이는 이름에서 시각을 읽는다. 없으면 null. */
 function stampOf(name: string): Date | null {
@@ -56,13 +60,37 @@ function stampOf(name: string): Date | null {
 
 function scan(dir: string): Candidate[] {
   const out: Candidate[] = []
+  const namedStamp = stampOfNamedDir(dir)
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name.startsWith(".")) continue
     const p = join(dir, e.name)
     if (e.isDirectory()) out.push(...scan(p))
-    else out.push({ path: p, name: e.name.normalize("NFC"), size: statSync(p).size, stamp: stampOf(e.name) })
+    else out.push({ path: p, name: e.name.normalize("NFC"), size: statSync(p).size, stamp: namedStamp ?? stampOf(e.name), named: namedStamp !== null })
   }
   return out
+}
+
+/** NAS 로 올린다. 작은 파일은 한 번에, 큰 파일은 조각으로. 실패하면 남은 조각을 지운다 */
+async function upload(key: string, file: Candidate, mimeType: string) {
+  if (file.size <= CHUNK_BYTES) return putObject(key, readFileSync(file.path), mimeType)
+  const fd = openSync(file.path, "r")
+  try {
+    await uploadInChunks({
+      size: file.size,
+      read: async (start, length) => {
+        const body = Buffer.alloc(length)
+        readSync(fd, body, 0, length, start)
+        return body
+      },
+      putRange: (body, start, total) => putObjectRange(key, body, start, total),
+      stat: () => statObjectSize(key),
+    })
+  } catch (e) {
+    await deleteObject(key).catch(() => {})
+    throw e
+  } finally {
+    closeSync(fd)
+  }
 }
 
 /** 사진 자리표시가 몇 장인지. 사진·영상이 아니면 0. */
@@ -74,14 +102,14 @@ function photoCount(m: string): { n: number; video: boolean } {
   return k ? { n: Number(k[1]), video: false } : { n: 0, video: false }
 }
 const fileNameOf = (m: string) => (m.startsWith("File: ") ? m.slice(6).trim().normalize("NFC") : null)
-const WINDOW_MS = 3 * 60 * 1000
 const NEAR_EXCLUDED_MS = 2 * 60 * 1000
 
-export async function attachMedia(sessions: RawSession[], dir: string, opts: { dry: boolean }) {
+export async function attachMedia(sessions: RawSession[], dir: string, opts: { dry: boolean; namesOnly?: boolean }) {
   const files = scan(dir)
   const byName = new Map<string, Candidate>()
-  for (const f of files) byName.set(f.name, f)
-  const stamped = files.filter((f) => f.stamp)
+  for (const f of files) if (!f.named) byName.set(f.name, f)
+  // 서랍에서 이름으로 받은 파일은 사진 자리표시나 다른 이름의 자리표시에 어림으로 붙지 않는다
+  const stamped = files.filter((f) => f.stamp && !f.named)
   console.log(`  폴더 파일 ${files.length}개 (시각 있는 것 ${stamped.length})`)
 
   // 자리표시 메시지 목록 — DB 에 있는 것만 (메시지 이식이 먼저다).
@@ -112,18 +140,29 @@ export async function attachMedia(sessions: RawSession[], dir: string, opts: { d
     stamped
       .filter((f) => !used.has(f.path) && ok(f) && Math.abs(f.stamp!.getTime() - t.getTime()) <= WINDOW_MS)
       .sort((a, b) => Math.abs(a.stamp!.getTime() - t.getTime()) - Math.abs(b.stamp!.getTime() - t.getTime()) || a.name.localeCompare(b.name, "en", { numeric: true }))
-  let alreadyAttached = 0, unmatchedFiles = 0, unmatchedPhotos = 0, shortPhotos = 0, skippedNear = 0
+  let alreadyAttached = 0, unmatchedFiles = 0, unmatchedPhotos = 0, shortPhotos = 0, skippedNear = 0, tooBig = 0
 
   for (const p of [...placeholders].sort((a, b) => a.t.getTime() - b.t.getTime())) {
     const msg = msgBySource.get(p.sourceId)
     if (!msg) continue
     if (p.name) {
-      if (msg.files.some((f) => f.name.normalize("NFC") === p.name)) { alreadyAttached++; continue }
+      const named = pickNamed(p.name, p.t, files, used)
+      // 이미 올린 파일은 다시 올리지 않는다. 그 실물은 썼다고 쳐서 같은 이름의 다른 글에 붙지 않게 한다
+      if (msg.files.some((f) => f.name.normalize("NFC") === p.name)) { alreadyAttached++; if (named) used.add(named.path); continue }
+      if (named) {
+        used.add(named.path)
+        if (named.size > IMPORT_MAX_BYTES) { tooBig++; continue }
+        plan.push({ messageId: msg.id, file: named, name: p.name, how: "이름" })
+        continue
+      }
       const exact = byName.get(p.name)
       const ext = extname(p.name).toLowerCase()
-      const f = exact && !used.has(exact.path) ? exact : ext ? nearest(p.t, (c) => extname(c.name).toLowerCase() === ext)[0] : undefined
+      const fuzzy = opts.namesOnly ? undefined : ext ? nearest(p.t, (c) => extname(c.name).toLowerCase() === ext)[0] : undefined
+      const f = exact && !used.has(exact.path) ? exact : fuzzy
       if (!f) { unmatchedFiles++; continue }
-      plan.push({ messageId: msg.id, file: f, name: p.name, how: f === exact ? "이름" : "시각" }); used.add(f.path)
+      used.add(f.path)
+      if (f.size > IMPORT_MAX_BYTES) { tooBig++; continue }
+      plan.push({ messageId: msg.id, file: f, name: p.name, how: f === exact ? "이름" : "시각" })
     } else {
       if (msg.files.length > 0) { alreadyAttached++; continue }
       const near = nearest(p.t, (c) => (p.video ? VIDEO : IMAGE).test(c.name)).slice(0, p.n)
@@ -134,25 +173,30 @@ export async function attachMedia(sessions: RawSession[], dir: string, opts: { d
     }
   }
   const leftover = files.filter((f) => !used.has(f.path))
+  if (tooBig > 0) console.log(`  300MB 를 넘어 올리지 않은 파일 ${tooBig}개`)
   if (skippedNear > 0) console.log(`  제외한 대화 옆이라 붙이지 않은 사진·영상 ${skippedNear}개`)
   const mb = (n: number) => (n / 1048576).toFixed(0)
   console.log(`  붙일 것 ${plan.length}개 · ${mb(plan.reduce((a, p) => a + p.file.size, 0))}MB (이름 ${plan.filter((p) => p.how === "이름").length} · 시각 ${plan.filter((p) => p.how === "시각").length}) · 이미 붙음 ${alreadyAttached}`)
   console.log(`  못 맞춘 것 — 파일 자리표시 ${unmatchedFiles} · 사진 자리표시 ${unmatchedPhotos} (장수 모자람 ${shortPhotos}) · 폴더에 남은 파일 ${leftover.length}`)
   if (leftover.length > 0 && leftover.length <= 40) for (const f of leftover) console.log(`    - ${f.name}`)
-  if (opts.dry || plan.length === 0) return { attached: 0 }
+  if (opts.dry || plan.length === 0) return { attached: 0, failed: 0 }
 
-  let attached = 0
+  let attached = 0, failed = 0
   for (const { messageId, file, name } of plan) {
     const id = randomUUID()
-    const body = readFileSync(file.path)
     const mimeType = mimeOf(name)
-    // NAS에 먼저 올리고, 성공한 뒤에만 DB에 기록한다 (앱의 업로드 경로와 같은 순서).
-    await putObject(objectKeyFor(id, name), body, mimeType)
-    const msg = await prisma.chatMessage.findUniqueOrThrow({ where: { id: messageId }, select: { authorId: true, room: { select: { kind: true } } } })
-    await prisma.file.create({ data: { id, name, path: `/api/files/${id}/raw`, size: file.size, mimeType, messageId, privateToUserId: importedFilePrivateTo(msg) } })
-    attached++
-    process.stdout.write(`\r  올리는 중 ${attached}/${plan.length}`)
+    try {
+      // NAS에 먼저 올리고, 성공한 뒤에만 DB에 기록한다 (앱의 업로드 경로와 같은 순서).
+      await upload(objectKeyFor(id, name), file, mimeType)
+      const msg = await prisma.chatMessage.findUniqueOrThrow({ where: { id: messageId }, select: { authorId: true, room: { select: { kind: true } } } })
+      await prisma.file.create({ data: { id, name, path: `/api/files/${id}/raw`, size: file.size, mimeType, messageId, privateToUserId: importedFilePrivateTo(msg) } })
+      attached++
+      process.stdout.write(`\r  올리는 중 ${attached}/${plan.length}`)
+    } catch (e) {
+      failed++
+      console.log(`\n  올리지 못함 (다음 실행에서 다시): ${file.size}바이트 — ${e instanceof Error ? e.message : e}`)
+    }
   }
   console.log()
-  return { attached }
+  return { attached, failed }
 }

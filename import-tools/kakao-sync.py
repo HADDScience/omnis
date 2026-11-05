@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 카톡 Mac 앱에서 대화 CSV 와 새로 올라온 사진을 받아 kakao.ts 로 옴니스에 이식한다.
+# 카톡 Mac 앱에서 대화 CSV 와 새로 올라온 사진 · 파일을 받아 kakao.ts 로 옴니스에 이식한다.
 #
 #   python3 import-tools/kakao-sync.py                       두 방을 지금 돌린다 (로컬 DB)
 #   python3 import-tools/kakao-sync.py --target prod         프로덕션에 이식
@@ -20,11 +20,15 @@
 # 휴대폰 zip 꼴(20261008_103758_1.png) 이름을 다시 붙인다. 번호(-1, -2 …)는 보관함 순서가 아니라
 # 체크한 순서를 따른다(같은 날 실측) — 그래서 위에서부터 차례로 체크한다.
 #
+# 파일은 「채팅방 서랍 → 파일」 에서 받는다. 칸에 이름 · 만료일 · 크기가 있어 이름으로 짝짓는다(kakao_folder.py plan_files).
+# 한 번에 하나씩 받아 sync/<방>/media/files/<보낸 시각>/<원래 이름> 에 둔다. 못 받은 것은 글은 이식하고 다음 실행에서 다시 본다.
+# 건식은 파일을 받지 않고 받을 목록만 보고한다.
+#
 # 체크박스 · 폴더 탭 · 방 열기는 접근성 동작이 듣지 않아 실제 마우스를 쓴다(방을 선택하고 Return 은 열리지 않는 방이
 # 있었다, 2026-11-03 실측). 그 사이 사람이 마우스를 움직이면 멈춘다.
 # 실행 주체(터미널 또는 python)에 「손쉬운 사용」 권한과 ~/Downloads 접근 권한이 있어야 한다.
 import argparse, csv, hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile, time, unicodedata
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import AppKit, Quartz
@@ -35,7 +39,8 @@ from ApplicationServices import (
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from kakao_folder import (
-    FolderError, can_skip, check_folder, csv_name_for, csv_room, duplicates, env_fingerprint, parse_report, remember_import, room_key, summary, switch_to_folder,
+    FolderError, can_skip, check_folder, csv_name_for, csv_room, dedupe_scrolled, duplicates, env_fingerprint, excluded_file_times, file_baseline, file_lines, file_report,
+    file_stamp_dir, parse_expiry, parse_report, plan_files, remember_import, room_key, saved_name_ok, size_matches, summary, switch_to_folder,
 )
 
 BUNDLE = "com.kakao.KakaoTalkMac"
@@ -520,67 +525,258 @@ def download_top(w, skip, units, mouse: Mouse):
     return out
 
 
+# ── 파일 보관함 ─────────────────────────────────────────
+
+def file_cells(w):
+    """화면에 온전히 보이는 파일 칸 [(이름, 만료일, 크기 글자, 칸)] — 위에서부터. 달 구분 줄 · 빈 칸은 글자가 없어 빠진다."""
+    area = child(w, Identifier="_NS:88")
+    _, ay, _, ah = geo(area)
+    out = []
+    for sec in kids(kids(area)[0]):
+        if attr(sec, "AXSubrole") != "AXSectionList":
+            continue
+        for g in kids(sec):
+            if attr(g, "AXRole") != "AXGroup":
+                continue
+            texts = [attr(c, "AXValue") or "" for c in kids(g) if attr(c, "AXRole") == "AXStaticText"]
+            if len(texts) >= 3 and geo(g)[1] >= ay and geo(g)[1] + geo(g)[3] <= ay + ah:
+                out.append((nfc(texts[0]), parse_expiry(texts[1]), texts[2], g))
+    return out
+
+
+def scroll_files(w, value):
+    bar = next((k for k in kids(child(w, Identifier="_NS:88")) if attr(k, "AXRole") == "AXScrollBar"), None)
+    if bar is None:
+        return False
+    AXUIElementSetAttributeValue(bar, "AXValue", value)
+    time.sleep(0.5)
+    return True
+
+
+FILE_SCROLL_STEPS = 12
+
+
+def read_file_items(w, oldest_sent):
+    """서랍을 굴리며 칸을 읽는다. 최신순이므로 찾는 줄보다 오래된 칸만 보이면 멈춘다."""
+    items = []
+    for i in range(FILE_SCROLL_STEPS + 1):
+        if i and not scroll_files(w, i / FILE_SCROLL_STEPS):
+            break
+        cells = file_cells(w)
+        items += [{"name": n, "expiry": e, "size": s} for n, e, s, _ in cells]
+        if cells and all(c[1] is not None and c[1] < oldest_sent for c in cells):
+            break
+    scroll_files(w, 0.0)
+    return dedupe_scrolled(items)
+
+
+def find_cell(w, item):
+    """칸을 찾아 화면에 보이게 한다. 같은 이름 · 만료일 · 크기가 둘이면 어느 칸인지 가를 수 없으므로 받지 않는다."""
+    for i in range(FILE_SCROLL_STEPS + 1):
+        if i:
+            scroll_files(w, i / FILE_SCROLL_STEPS)
+        same = [c for c in file_cells(w) if (c[0], c[1], c[2]) == (nfc(item["name"]), item["expiry"], item["size"])]
+        if len(same) > 1:
+            raise Abort("이름 · 만료일 · 크기가 같은 칸이 둘")
+        if same:
+            return same[0][3]
+    raise Abort("파일 칸을 다시 찾지 못함")
+
+
+def download_file(w, item, dest_dir, mouse):
+    """파일 하나를 받아 dest_dir 에 원래 이름으로 둔다. 체크는 받은 뒤 풀어 다음 파일에 묻어가지 않게 한다."""
+    if selected(w):
+        raise Abort("보관함에 이미 체크된 항목이 있다")
+    while (stale := window(lambda x: attr(x, "AXTitle") == "Save")) is not None:
+        close(stale)
+        time.sleep(0.3)
+    g = find_cell(w, item)
+    before = {p.name for p in DOWNLOADS.iterdir()}
+    activate()
+    x, y, _, _ = geo(g)
+    mouse.move(x + 60, y + 60)
+    time.sleep(0.4)
+    mouse.click(x + 14, y + 14)
+    wait_for(lambda: selected(w) == 1, "파일 체크")
+    try:
+        press(child(w, Identifier="_NS:68"))
+
+        def saved():
+            s = window(lambda z: attr(z, "AXTitle") == "Save")
+            texts = [attr(k, "AXValue") or "" for k in kids(s)] if s else []
+            line = next((t for t in texts if t.startswith("Saved:")), None)
+            return (s, line) if line else None
+        s, line = wait_for(saved, "다운로드 끝", timeout=600)
+        close(s)
+        ok, failed = map(int, re.findall(r"\d+", line)[:2])
+        if ok != 1 or failed:
+            raise Abort(f"다운로드 실패: {line}")
+        new = wait_for(lambda: [p for p in DOWNLOADS.iterdir() if p.name not in before and not p.name.endswith((".download", ".crdownload", ".part"))], "받은 파일", timeout=30)
+        matched = [p for p in new if saved_name_ok(p.name, item["name"])]
+        if len(matched) != 1:
+            raise Abort(f"받은 파일 이름이 다름 (새 파일 {len(new)}개)")
+        src = matched[0]
+        actual = src.stat().st_size
+        if not size_matches(item["size"], actual):
+            src.unlink()
+            raise Abort(f"받은 파일 크기가 다름: 서랍 {item['size']} · 실제 {actual}바이트")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        out = dest_dir / nfc(item["name"]).replace("/", ":")
+        shutil.move(src, out)
+        return out
+    finally:
+        if selected(w):
+            mouse.click(x + 14, y + 14)
+            wait_for(lambda: not selected(w), "체크 풀기")
+
+
+def read_exclude():
+    path = DATA_ROOT / "exclude.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+
+def sync_files(key, w, csv_path, prev_count, state, mouse, args):
+    """파일 탭. 돌려주는 값: (받은 수, 화면 조작이 실패했는가, 보고). 글 이식을 막지 않는다 — 사람이 마우스를 움직인 때만 멈춘다."""
+    st = state.get(key) or {}
+    fs = st.get("files")
+    lines = file_lines(csv_path)
+    keep = (fs or {}).get("pending", [])
+    if args.rebase:
+        state[key] = {**st, "files": {"seen": len(lines), "pending": keep}}
+        return 0, False, file_report()
+    seen = file_baseline(fs, lines, prev_count)
+    if seen > len(lines):
+        log(f"⚠ {key}: CSV 파일 줄({len(lines)})이 기준점({seen})보다 적다 — 기준점을 다시 잡는다")
+        state[key] = {**st, "files": {"seen": len(lines), "pending": keep}}
+        return 0, False, file_report()
+    # 건식도 처음 잡은 기준점은 적는다. 그 뒤의 진행은 적지 않는다
+    if fs is None:
+        st = state[key] = {**st, "files": {"seen": seen, "pending": []}}
+    known = {(p["t"], p["name"]) for p in keep}
+    todo = list(keep) + [l for l in lines[seen:] if (l["t"], l["name"]) not in known]
+    if not todo:
+        if not args.dry:
+            state[key] = {**st, "files": {"seen": len(lines), "pending": []}}
+        return 0, False, file_report()
+    with limit("파일 탭 열기", args.step_timeout):
+        press(wait_for(lambda: child(w, Title="Files"), "파일 탭 단추"))
+        time.sleep(1.0)
+        w = wait_for(archive_window, "파일 보관함")
+        wait_for(lambda: file_cells(w), "파일 칸")
+        items = read_file_items(w, min(datetime.strptime(l["t"], "%Y-%m-%d %H:%M:%S").date() for l in todo))
+    plan = plan_files(todo, lines, items, date.today(), excluded_file_times(read_exclude(), key))
+    times = [l["t"] for l, _ in plan["get"]]
+    report = file_report(wait=len(plan["wait"]), gone=[why for _, why in plan["gone"]], oldest=min(times, default=None), newest=max(times, default=None))
+    for line, why in plan["gone"]:
+        log(f"  {key}: 못 받는 파일 {line['t']} ({why})")
+    if args.dry:
+        report["listed"] = [(l["name"], it["size"], l["t"]) for l, it in plan["get"]]
+        return 0, False, report
+    next_pending = [dict(l) for l in plan["wait"]]
+    got, in_row, ui_failed = 0, 0, False
+    taken = set()
+    try:
+        for i, (line, item) in enumerate(plan["get"]):
+            if in_row >= 2:
+                next_pending += [dict(l) for l, _ in plan["get"][i:]]
+                log(f"⚠ {key}: 파일을 연달아 못 받아 {len(plan['get']) - i}개를 다음 실행으로 넘긴다")
+                ui_failed = True
+                break
+            stamp = file_stamp_dir(line["t"], taken)
+            taken.add(stamp)
+            try:
+                with limit("파일 받기", max(args.step_timeout, 600)):
+                    download_file(w, item, DATA / key / "media" / "files" / stamp, mouse)
+                got += 1
+                in_row = 0
+            except Abort as e:
+                if "마우스" in str(e):
+                    next_pending += [dict(l) for l, _ in plan["get"][i:]]
+                    raise
+                in_row += 1
+                log(f"  {key}: 파일 못 받음 {line['t']} — {e}")
+                next_pending.append({**line, "tries": line.get("tries", 0) + 1})
+    finally:
+        state[key] = {**st, "files": {"seen": len(lines), "pending": next_pending}, **({"mediaPending": True} if got or next_pending else {})}
+    report["got"], report["wait"] = got, len(next_pending)
+    log(f"{key}: 새 파일 {got}개 받음" + (f" · 다음에 다시 {len(next_pending)}개" if next_pending else ""))
+    return got, ui_failed, report
+
+
 # ── 한 방 ───────────────────────────────────────────────
 
 def sync_room(room, key, state, mouse, args):
-    """room: 채팅 목록 이름 · key: 설정 · 상태 · 폴더의 방 키. 둘은 이름 없는 단체방에서만 다르다."""
-    st = state.get(key)
+    """room: 채팅 목록 이름 · key: 설정 · 상태 · 폴더의 방 키. 둘은 이름 없는 단체방에서만 다르다.
+    돌려주는 값: (CSV, 받은 사진 · 파일 수, 파일 탭 조작 실패, 파일 보고)"""
     room_dir = DATA / key
     step = args.step_timeout
+    # 지난 실행의 CSV 는 내보내면 지워진다. 파일 기준점이 없는 방은 그 줄 수를 기준점으로 삼는다
+    old_csv = sorted((room_dir / "csv").glob("*.csv")) if (room_dir / "csv").exists() else []
+    prev_count = len(file_lines(old_csv[-1])) if old_csv else None
     with limit("방 열기", step):
         opened = open_room(room, mouse)
     try:
         with limit("CSV 내보내기", step * 2):
             csv_path = export_csv(room, room_dir / "csv", key)
-        ph = placeholders(csv_path)
         with limit("보관함 열기", step):
             w = open_archive(room)
         try:
-            count = archive_count(w)
-            seen = sum(u[2] for u in ph)  # state 의 seen 은 장 수
-            log(f"{key}: 보관함 {count}칸 · CSV 사진 자리표시 {len(ph)}줄 {seen}장")
-            if st is None or args.rebase:
-                state[key] = {**(st or {}), "count": count, "seen": seen}
-                log(f"{key}: 기준점만 적었다 — 다음 실행부터 새 사진을 받는다")
-                return csv_path, 0
-            new_ph = after_seen(ph, st["seen"])
-            k = len(new_ph) if new_ph is not None else -1
-            d = count - st["count"]
-            if d < k or k < 0:
-                state[key] = {**(st or {}), "count": count, "seen": seen}
-                log(f"⚠ {key}: 보관함 +{d}칸 · 자리표시 +{k}줄 — 짝이 안 맞아 이번 것은 건너뛰고 기준점을 다시 잡는다")
-                for t, v, n in new_ph or []:
-                    log(f"    손으로 확인할 것: {t} {'영상' if v else f'사진 {n}장'}")
-                return csv_path, 0
-            if k == 0:
-                state[key] = {**(st or {}), "count": st["count"], "seen": seen}
-                return csv_path, 0
-            extra = d - k  # CSV 를 내보낸 뒤 올라온 것 — 맨 위에 있다. 다음 실행에서 받는다.
-            units = new_ph[::-1]  # 보관함 i 번째(최신순) ↔ 새 자리표시의 뒤에서 i 번째
-            with limit("사진 받기", max(step, 600)):
-                files = download_top(w, extra, units, mouse)
+            got = sync_photos(key, w, csv_path, state, mouse, args)
+            got_files, file_failed, report = sync_files(key, w, csv_path, prev_count, state, mouse, args)
         finally:
-            close_quietly(w)
-        media = room_dir / "media"
-        media.mkdir(parents=True, exist_ok=True)
-        for (t, is_video, _), fs in zip(units, files):
-            for f in fs:
-                if (f.suffix.lower() in VIDEO_EXT) != is_video:
-                    raise Abort(f"짝이 어긋남: {t} 는 {'영상' if is_video else '사진'}인데 받은 파일은 {f.name}")
-        stamp_n = {}
-        for (t, _, _), fs in zip(units, files):
-            base = datetime.strptime(t, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d_%H%M%S")
-            for f in fs:
-                stamp_n[base] = stamp_n.get(base, 0) + 1
-                shutil.move(f, media / f"{base}_{stamp_n[base]}{f.suffix.lower()}")
-        got = sum(len(fs) for fs in files)
-        # 건식 · --no-import 로 받기만 하면 다음 실행의 CSV 가 같아도 넣어야 한다
-        state[key] = {**(st or {}), "count": count - extra, "seen": seen, "mediaPending": True}
-        log(f"{key}: 새 사진·영상 {got}장({k}칸) 받음" + (f" (내보낸 뒤 올라온 {extra}칸은 다음에)" if extra else ""))
-        return csv_path, got
+            close_quietly(archive_window() or w)
+        return csv_path, got + got_files, file_failed, report
     finally:
         if opened and room_window(room):
             close_quietly(room_window(room))
+
+
+def sync_photos(key, w, csv_path, state, mouse, args):
+    """사진 · 영상 칸을 받아 media/ 에 둔다. 받은 장 수를 돌려준다."""
+    st = state.get(key)
+    room_dir = DATA / key
+    step = args.step_timeout
+    ph = placeholders(csv_path)
+    count = archive_count(w)
+    seen = sum(u[2] for u in ph)  # state 의 seen 은 장 수
+    log(f"{key}: 보관함 {count}칸 · CSV 사진 자리표시 {len(ph)}줄 {seen}장")
+    if st is None or args.rebase:
+        state[key] = {**(st or {}), "count": count, "seen": seen}
+        log(f"{key}: 기준점만 적었다 — 다음 실행부터 새 사진을 받는다")
+        return 0
+    new_ph = after_seen(ph, st["seen"])
+    k = len(new_ph) if new_ph is not None else -1
+    d = count - st["count"]
+    if d < k or k < 0:
+        state[key] = {**(st or {}), "count": count, "seen": seen}
+        log(f"⚠ {key}: 보관함 +{d}칸 · 자리표시 +{k}줄 — 짝이 안 맞아 이번 것은 건너뛰고 기준점을 다시 잡는다")
+        for t, v, n in new_ph or []:
+            log(f"    손으로 확인할 것: {t} {'영상' if v else f'사진 {n}장'}")
+        return 0
+    if k == 0:
+        state[key] = {**(st or {}), "count": st["count"], "seen": seen}
+        return 0
+    extra = d - k  # CSV 를 내보낸 뒤 올라온 것 — 맨 위에 있다. 다음 실행에서 받는다.
+    units = new_ph[::-1]  # 보관함 i 번째(최신순) ↔ 새 자리표시의 뒤에서 i 번째
+    with limit("사진 받기", max(step, 600)):
+        files = download_top(w, extra, units, mouse)
+    media = room_dir / "media"
+    media.mkdir(parents=True, exist_ok=True)
+    for (t, is_video, _), fs in zip(units, files):
+        for f in fs:
+            if (f.suffix.lower() in VIDEO_EXT) != is_video:
+                raise Abort(f"짝이 어긋남: {t} 는 {'영상' if is_video else '사진'}인데 받은 파일은 {f.name}")
+    stamp_n = {}
+    for (t, _, _), fs in zip(units, files):
+        base = datetime.strptime(t, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d_%H%M%S")
+        for f in fs:
+            stamp_n[base] = stamp_n.get(base, 0) + 1
+            shutil.move(f, media / f"{base}_{stamp_n[base]}{f.suffix.lower()}")
+    got = sum(len(fs) for fs in files)
+    # 건식 · --no-import 로 받기만 하면 다음 실행의 CSV 가 같아도 넣어야 한다
+    state[key] = {**(st or {}), "count": count - extra, "seen": seen, "mediaPending": True}
+    log(f"{key}: 새 사진·영상 {got}장({k}칸) 받음" + (f" (내보낸 뒤 올라온 {extra}칸은 다음에)" if extra else ""))
+    return got
 
 
 def run_import(key, csv_path, args, data_dir=None):
@@ -588,7 +784,7 @@ def run_import(key, csv_path, args, data_dir=None):
     media = DATA / key / "media"
     cmd = ["npx", "tsx", "import-tools/kakao.ts", str(csv_path), "--auto-rooms"]
     if media.exists() and any(media.iterdir()):
-        cmd += ["--media", str(media), "--media-room", key]
+        cmd += ["--media", str(media), "--media-room", key, "--media-names-only"]
     if args.target == "prod":
         cmd += ["--target", "prod"]
     if data_dir:
@@ -709,7 +905,7 @@ def main():
     front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
     mouse = Mouse()
     start_pos = mouse.pos()
-    todo, failed, not_started = [], {}, []
+    todo, failed, not_started, file_reports = [], {}, [], {}
     stopped = False
     fails_in_row = 0
     try:
@@ -737,10 +933,15 @@ def main():
             key = room_key(room, config.get("rooms", {}))
             try:
                 t0 = time.time()
-                csv_path, got = sync_room(room, key, state, mouse, args)
+                csv_path, got, file_failed, report = sync_room(room, key, state, mouse, args)
                 log(f"{key}: 카톡 {round(time.time() - t0)}초")
                 todo.append((key, csv_path, got))
-                fails_in_row = 0
+                file_reports[key] = report
+                # 파일 탭을 연달아 못 다루면 방이 실패한 것과 같게 친다 — 글은 이미 받았으니 이식은 한다
+                fails_in_row = fails_in_row + 1 if file_failed else 0
+                if fails_in_row >= 2:
+                    not_started = [r for r in rooms[i + 1:]]
+                    break
             except Exception as e:
                 failed[key] = str(e)[:200]
                 log(f"✗ {key}: {e!r}" if not isinstance(e, Abort) else f"✗ {key}: {e}")
@@ -762,7 +963,7 @@ def main():
     if not args.no_import:
         results, import_failed = import_rooms(todo, state, state_path, args, args.dry)
         failed.update(import_failed)
-    print(summary(results, failed, not_started, args.dry), flush=True)
+    print(summary(results, failed, not_started, args.dry, file_reports), flush=True)
     if stopped:
         log("사람이 마우스를 움직여 멈췄다. 받은 방까지만 이식했다")
     sys.exit(1 if failed else 0)
