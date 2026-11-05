@@ -776,10 +776,22 @@ function kindIcon(kind: RoomListItem["kind"]) {
   )
 }
 
-/** 목록 한 줄 머리 — 사람끼리 1:1 은 상대 아바타(이름 색 · 두 글자), 나머지는 방 종류 아이콘 */
+const ROW_AVATAR = "max-md:in-data-[messenger]:size-[47px] max-md:in-data-[messenger]:rounded-[17px] max-md:in-data-[messenger]:text-[16px]"
+const FACE_AVATAR = "absolute max-md:in-data-[messenger]:size-[31px] max-md:in-data-[messenger]:rounded-[11px] max-md:in-data-[messenger]:text-[11px]"
+
+/** 목록 한 줄 머리 — 사람끼리 1:1 은 상대 아바타(이름 색 · 두 글자), 단톡방은 참여자 둘을 겹쳐서, 나머지는 방 종류 아이콘 */
 function roomIcon(room: RoomListItem) {
-  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={52} className="max-md:in-data-[messenger]:size-[47px] max-md:in-data-[messenger]:rounded-[17px] max-md:in-data-[messenger]:text-[16px]" />
-  return kindIcon(room.kind)
+  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={52} className={ROW_AVATAR} />
+  const [first, second] = room.faceNames ?? []
+  // 다른 참여자가 다 나간 방 · 저장해 둔 옛 목록은 이름이 없다 — 방 종류 아이콘으로 둔다
+  if (!first) return kindIcon(room.kind)
+  if (!second) return <AuthorAvatar name={first} size={52} className={ROW_AVATAR} />
+  return (
+    <span aria-hidden data-group-faces className="relative size-[52px] shrink-0 max-md:size-[47px]">
+      <AuthorAvatar name={first} size={34} className={cn(FACE_AVATAR, "top-0 left-0")} />
+      <AuthorAvatar name={second} size={34} className={cn(FACE_AVATAR, "right-0 bottom-0 ring-2 ring-background")} />
+    </span>
+  )
 }
 
 interface RowActions {
@@ -952,9 +964,17 @@ function RoomRowContent({ room }: { room: RoomListItem }) {
       {roomIcon(room)}
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-[16.5px] max-md:text-[17px]", unread ? "font-semibold" : "font-medium")}>
-            {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
-            {room.name}
+          {/* 이름이 길어도 인원 수는 잘리지 않는다 — 이름만 줄임표가 된다 */}
+          <span className={cn("flex min-w-0 flex-1 items-baseline gap-1.5 text-[16.5px] max-md:text-[17px]", unread ? "font-semibold" : "font-medium")}>
+            <span className="min-w-0 truncate">
+              {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
+              {room.name}
+            </span>
+            {room.kind === "GROUP" && room.memberCount ? (
+              <span data-member-count aria-label={`참여자 ${room.memberCount}명`} className="shrink-0 font-normal text-muted-foreground tabular-nums">
+                {room.memberCount}
+              </span>
+            ) : null}
           </span>
           {room.favorite && (
             <HugeiconsIcon

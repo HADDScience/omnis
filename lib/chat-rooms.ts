@@ -13,7 +13,7 @@ import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { EXTERNAL_SPEAKER_SELECT, externalSpeakerLabel } from "@/lib/external-speaker"
 import { filterRooms, hiddenFromList, normalizeQuery, parseRoomKey, READ_BASELINE_KEY, roomKeyOf, type ChatFolderView } from "@/lib/chat-list"
 import { ensureReadBaseline, listFolders } from "@/lib/chat-prefs"
-import { peopleRoomTitle } from "@/lib/chat-people-rules"
+import { groupFaceNames, peopleRoomTitle } from "@/lib/chat-people-rules"
 
 /** 「전체」 팀 채팅. 채팅 패널 · 업무 생성 · MCP 가 이 id 로 쓴다 */
 export const COMPANY_ROOM_ID = "default-room"
@@ -71,6 +71,10 @@ export interface RoomListItem {
   favorite: boolean
   /** 이 방의 채팅 푸시를 껐다 — 목록에 종 꺼짐 표시 */
   muted: boolean
+  /** 단톡방만 — 나를 포함한 지금 참여자 수. 기기에 저장해 둔 옛 목록에는 없다 */
+  memberCount?: number
+  /** 단톡방만 — 목록 사진에 겹쳐 그릴 참여자 이름 최대 둘(나 빼고). 이 방 참여자에게만 간다 */
+  faceNames?: string[]
 }
 
 export interface RoomList {
@@ -251,8 +255,12 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       take: 100,
       select: {
         id: true, kind: true, name: true, dmKey: true, createdAt: true, lastMessageAt: true,
-        // 1:1 이름(상대 이름)을 정하려고 — 사람끼리 1:1 만 쓴다
-        members: { where: { room: { kind: "DM" } }, select: { user: { select: { id: true, name: true } } } },
+        // 1:1 이름(상대 이름) · 단톡방 겹친 사진과 인원 수. 방마다 묻지 않고 이 질의 하나로 읽는다
+        members: {
+          where: { room: { kind: { in: ["DM", "GROUP"] } } },
+          orderBy: [{ joinedAt: "asc" }, { userId: "asc" }],
+          select: { user: { select: { id: true, name: true } } },
+        },
         messages: {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
@@ -284,16 +292,18 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
   const groups: RoomListItem[] = []
   for (const r of mine) {
     const last = r.messages[0]
+    const people = r.members.map((m) => m.user)
     const item: RoomListItem = {
       id: r.id,
       key: roomKeyOf({ kind: r.kind, id: r.id }),
       kind: r.kind,
-      name: peopleRoomTitle(r, r.members.map((m) => m.user), userId),
+      name: peopleRoomTitle(r, people, userId),
       lastAt: (r.lastMessageAt ?? r.createdAt).toISOString(),
       preview: last ? `${last.externalSpeaker ? externalSpeakerLabel(last.externalSpeaker) : authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
       unread: 0,
       favorite: false,
       muted: false,
+      ...(r.kind === "GROUP" ? { memberCount: people.length, faceNames: groupFaceNames(people, userId) } : {}),
     }
     if (hiddenFromList(item, hidden.get(item.key) ?? null)) continue
     if (r.kind === "OMNIS_DM") omnis.push(item)
