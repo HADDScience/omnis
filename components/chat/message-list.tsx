@@ -362,9 +362,9 @@ export function MessageList({
         onWheel={userScrolled}
         onTouchMove={userScrolled}
         onKeyDown={userScrolled}
-        className="min-h-0 flex-1 overflow-y-auto px-4 in-data-[messenger]:px-[16px]"
+        className="min-h-0 flex-1 overflow-y-auto px-4 in-data-[messenger]:px-[16px] max-md:in-data-[messenger]:px-[10px]"
       >
-        <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3 in-data-[messenger]:py-4">
+        <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3 in-data-[messenger]:py-4 max-md:in-data-[messenger]:py-[10px]">
           {loadingOlder && (
             <div className="flex justify-center py-1">
               <Spinner className="h-4 w-4" />
@@ -426,8 +426,8 @@ export function MessageList({
               <div
                 key={msg.id}
                 data-message-id={msg.id}
-                className={`group/msg flex gap-2.5 rounded-lg transition-colors duration-700 in-data-[messenger]:gap-3 motion-reduce:transition-none ${mine ? "flex-row-reverse" : ""} ${
-                  row.groupStart ? "mt-3 in-data-[messenger]:mt-5" : "mt-0.5 in-data-[messenger]:mt-1"
+                className={`group/msg flex gap-2.5 rounded-lg transition-colors duration-700 in-data-[messenger]:gap-3 max-md:in-data-[messenger]:gap-[8px] motion-reduce:transition-none ${mine ? "flex-row-reverse" : ""} ${
+                  row.groupStart ? "mt-3 in-data-[messenger]:mt-5 max-md:in-data-[messenger]:mt-[12px]" : "mt-0.5 in-data-[messenger]:mt-1 max-md:in-data-[messenger]:mt-[6px]"
                 } ${fresh ? MESSAGE_ENTER : ""} ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "bg-primary/5 ring-1 ring-primary/20 p-1" : ""} ${flashing ? "bg-amber-200/50 ring-2 ring-amber-400/60 dark:bg-amber-400/15" : ""}`}
                 onClick={selectionMode ? () => onToggleSelect?.(msg.id) : undefined}
               >
@@ -438,13 +438,13 @@ export function MessageList({
                 )}
                 {!mine && !selectionMode && (
                   // 묶음 안 줄은 아바타 자리를 비워 본문 줄을 맞춘다
-                  row.groupStart ? <AuthorAvatar name={msg.author.name} size={30} lgSize={38} className="mt-5 in-data-[messenger]:mt-[27px]" /> : <span className="w-[30px] shrink-0 in-data-[messenger]:w-[38px]" />
+                  row.groupStart ? <AuthorAvatar name={msg.author.name} size={30} lgSize={38} className="mt-5 in-data-[messenger]:mt-[27px] max-md:in-data-[messenger]:mt-0 max-md:in-data-[messenger]:size-[34px] max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:text-[12px]" /> : <span className="w-[30px] shrink-0 in-data-[messenger]:w-[38px] max-md:in-data-[messenger]:w-[34px]" />
                 )}
                 <div
-                  className={`flex min-w-0 max-w-[78%] flex-col gap-1 ${mine ? "items-end in-data-[messenger]:max-w-[85%]" : "in-data-[messenger]:max-w-[calc(100%-50px)]"}`}
+                  className={`flex min-w-0 max-w-[78%] flex-col gap-1 max-md:in-data-[messenger]:gap-[4px] ${mine ? "items-end in-data-[messenger]:max-w-[85%] max-md:in-data-[messenger]:max-w-full" : "in-data-[messenger]:max-w-[calc(100%-50px)] max-md:in-data-[messenger]:max-w-[calc(100%-42px)]"}`}
                 >
                   {!isMe && row.groupStart && (
-                    <span className="px-0.5 text-[12px] font-semibold text-foreground/80 in-data-[messenger]:text-[15.5px] in-data-[messenger]:text-foreground">
+                    <span className="px-0.5 text-[12px] font-semibold text-foreground/80 in-data-[messenger]:text-[15.5px] in-data-[messenger]:text-foreground max-md:in-data-[messenger]:px-0 max-md:in-data-[messenger]:text-[12px] max-md:in-data-[messenger]:leading-[15px] max-md:in-data-[messenger]:font-normal">
                       {msg.author.name}
                     </span>
                   )}
@@ -459,12 +459,12 @@ export function MessageList({
                       <span className="font-medium">{msg.replyTo.authorName}</span> · {msg.replyTo.content}
                     </div>
                   )}
-                  <div className={`flex items-end gap-1 ${mine ? "flex-row-reverse" : ""}`}>
+                  <div className={`relative flex items-end gap-1 max-md:in-data-[messenger]:gap-[4px] ${mine ? "flex-row-reverse" : ""}`}>
                     <div
                       data-message-body
-                      className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] ${
-                        mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground" : "bg-muted"
-                      } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} ${
+                      className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:text-[15px] max-md:in-data-[messenger]:leading-[22px] ${
+                        mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.75)]" : "bg-muted max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.7)]"
+                      } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} max-md:in-data-[messenger]:rounded-[13px] ${
                         msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
                       } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}
                     >
@@ -508,9 +508,17 @@ export function MessageList({
                         </>
                       )}
                     </div>
+                    {/* 폰 메신저는 시각을 말풍선 옆 아래에 둔다 */}
+                    {row.groupEnd && !pending && (
+                      <span data-bubble-time className="hidden shrink-0 flex-col max-md:in-data-[messenger]:flex max-md:in-data-[messenger]:items-start">
+                        {msg.editedAt && !msg.deletedAt && <span className="text-[10.5px] leading-[13px] text-muted-foreground">수정됨</span>}
+                        <MessageTime iso={msg.createdAt} className="max-md:in-data-[messenger]:text-[10.5px] max-md:in-data-[messenger]:leading-[13px]" />
+                      </span>
+                    )}
                     {/* 말풍선에 겹치지 않게 옆에 둔다. 손이 닿는 화면에서는 늘 보인다 */}
                     {!selectionMode && !pending && !msg.deletedAt && editingId !== msg.id && (
-                      <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
+                      // 폰 메신저에서는 자리를 차지하면 말풍선 폭이 줄어 위에 겹쳐 띄운다. 안 보일 때는 눌리지 않게 한다
+                      <div className={`flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 max-md:in-data-[messenger]:pointer-events-none max-md:in-data-[messenger]:absolute max-md:in-data-[messenger]:bottom-full max-md:in-data-[messenger]:z-10 max-md:in-data-[messenger]:rounded-lg max-md:in-data-[messenger]:bg-background max-md:in-data-[messenger]:shadow-sm max-md:in-data-[messenger]:group-hover/msg:pointer-events-auto max-md:in-data-[messenger]:focus-within:pointer-events-auto ${mine ? "max-md:in-data-[messenger]:right-0" : "max-md:in-data-[messenger]:left-0"}`}>
                         {onReply && (
                           <button
                             type="button"
@@ -558,7 +566,7 @@ export function MessageList({
                     )}
                   </div>
                   {(row.groupEnd || (msg.task && msg.nextTaskId !== msg.task.id)) && (
-                    <div className="flex items-center gap-2 px-0.5">
+                    <div className={`flex items-center gap-2 px-0.5 ${!pending && !msg.task ? "max-md:in-data-[messenger]:hidden" : ""}`}>
                       {row.groupEnd &&
                         (pending && msg._failed ? (
                           // 보내지 못했다 — 예전에는 「보내는 중」 으로 영원히 남아 다시 보낼 길이 없었다
@@ -589,7 +597,7 @@ export function MessageList({
                             보내는 중…
                           </span>
                         ) : (
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1 max-md:in-data-[messenger]:hidden">
                             <MessageTime iso={msg.createdAt} className="text-[10.5px]" />
                             {/* 고친 글임을 알린다 — 나중에 읽는 사람이 원문과 다름을 알아야 한다 */}
                             {msg.editedAt && !msg.deletedAt && (

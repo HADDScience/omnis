@@ -18,30 +18,39 @@ export function RoomHeader({
   subtitle,
   actions,
   link,
+  capsule = false,
 }: {
   title: ReactNode
   subtitle?: ReactNode
   actions?: ReactNode
   link?: { href: string; label: string }
+  /** 폰에서 뒤로 · 동작을 유리 캡슐로 두고 제목을 가운데에 둔다(전사 · 사람 방). PC 모양은 그대로다 */
+  capsule?: boolean
 }) {
   const startEntry = useStartRoomEntry()
   return (
-    <div className="flex min-h-[64px] shrink-0 items-center gap-2 border-b px-2 py-1.5 md:px-5">
+    <div className={cn("flex min-h-[64px] shrink-0 items-center gap-2 border-b px-2 py-1.5 md:px-5", capsule && "max-md:min-h-[56px] max-md:border-b-0 max-md:px-[10px]")} data-room-header>
       <Link
         href="/chat"
         // 목록(/chat)에서 방을 막 누른 입장 화면이면 주소가 그대로라 이동만으로는 화면이 안 바뀐다 — 덮개를 걷는다
         onClick={() => startEntry(null)}
         aria-label="채팅방 목록으로"
-        className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "touch-target size-11 md:hidden")}
+        className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "touch-target size-11 md:hidden", capsule && "glass rounded-full")}
       >
         <HugeiconsIcon icon={ArrowLeft01Icon} size={26} aria-hidden className="size-[26px]" />
       </Link>
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate text-[18px] leading-tight font-semibold">{title}</h1>
-        {subtitle && <p className="mt-0.5 truncate text-[13.5px] text-muted-foreground">{subtitle}</p>}
+      <div className={cn("min-w-0 flex-1", capsule && "max-md:text-center")}>
+        <h1 className={cn("truncate text-[18px] leading-tight font-semibold", capsule && "max-md:text-[16px]")}>{title}</h1>
+        {subtitle && <p className={cn("mt-0.5 truncate text-[13.5px] text-muted-foreground", capsule && "max-md:hidden")}>{subtitle}</p>}
       </div>
       {(actions || link) && (
-        <div className="flex shrink-0 items-center gap-1 [&_button]:min-h-[46px] [&_button]:min-w-[46px] [&_button]:text-[14.5px] [&_button_svg]:size-[22px]!">
+        <div
+          data-room-actions
+          className={cn(
+            "flex shrink-0 items-center gap-1 [&_button]:min-h-[46px] [&_button]:min-w-[46px] [&_button]:text-[14.5px] [&_button_svg]:size-[22px]!",
+            capsule && "max-md:glass max-md:gap-0 max-md:rounded-full max-md:[&_button]:min-h-[44px] max-md:[&_button]:min-w-[44px] max-md:[&_button]:rounded-full",
+          )}
+        >
           {actions}
           {link && (
             <Link href={link.href} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "touch-target h-[42px] px-3.5 text-[14px]")}>

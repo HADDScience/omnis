@@ -73,9 +73,15 @@ for (const [label, viewport] of [
     expect(seen.업무).toEqual(seen.전사)
     // 데모에는 첨부가 없어 옴니스 방에 ＋ 가 없다 — 글자가 시작하는 자리만 다르다
     expect({ ...seen.옴니스, textLeft: 0 }).toEqual({ ...seen.전사, textLeft: 0 })
-    // 화면 전체 배율(--ui-zoom)을 타므로 정확한 px 대신 메신저 크기(48px 이상)인지 본다
-    expect(seen.전사.sendSize).toBeGreaterThanOrEqual(48)
-    expect(seen.전사.textSize).toBe("17px")
+    // 폰은 카톡 비율로 줄였다(tests/feature/chat-kakao-ratio.spec.ts). 입력 글자는 iOS 확대 방지로 16px 밑으로 내리지 않는다.
+    // PC 는 화면 전체 배율(--ui-zoom)을 타므로 정확한 px 대신 메신저 크기(48px 이상)인지 본다
+    if (viewport.width < 768) {
+      expect(seen.전사.sendSize).toBe(44)
+      expect(seen.전사.textSize).toBe("16px")
+    } else {
+      expect(seen.전사.sendSize).toBeGreaterThanOrEqual(48)
+      expect(seen.전사.textSize).toBe("17px")
+    }
   })
 }
 
