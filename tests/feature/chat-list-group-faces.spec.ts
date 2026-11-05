@@ -77,9 +77,11 @@ for (const dark of [false, true]) {
   const label = dark ? "다크" : "라이트"
   test.describe(`폰 ${label}`, () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, colorScheme: dark ? "dark" : "light" })
+    if (dark) test.beforeEach(async ({ page }) => page.addInitScript(() => localStorage.setItem("theme", "dark")))
 
     test("긴 이름은 줄고 인원 수는 남으며, 사진은 둘이 겹친다", async ({ page }) => {
       await openList(page)
+      expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(dark)
       await checkFaces(page, 47)
       await expect(page.locator(row(wide)).locator("[data-member-count]")).toHaveAttribute("aria-label", "참여자 4명")
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

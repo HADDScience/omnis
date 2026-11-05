@@ -17,9 +17,11 @@ async function openList(page: Page) {
 for (const dark of [false, true]) {
   test.describe(`폰 ${dark ? "다크" : "라이트"}`, () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, colorScheme: dark ? "dark" : "light" })
+    if (dark) test.beforeEach(async ({ page }) => page.addInitScript(() => localStorage.setItem("theme", "dark")))
 
     test("제목 24 · 아이콘 셋 44 · 칩까지 합쳐 위 칸이 110 을 넘지 않는다", async ({ page }) => {
       await openList(page)
+      expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(dark)
       const heading = page.getByRole("heading", { level: 1, name: "채팅" })
       await expect(heading).toBeVisible()
       expect(await heading.evaluate((el) => getComputedStyle(el).fontSize)).toBe("24px")
@@ -59,6 +61,19 @@ for (const dark of [false, true]) {
       const item = page.getByRole("menuitem", { name: /사람과 대화/ })
       await expect(item).toBeVisible()
       const box = (await item.boundingBox())!
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(390)
+    })
+
+    test("알림 아이콘은 다른 아이콘과 같은 크기이고 목록을 화면 안에 연다", async ({ page }) => {
+      await openList(page)
+      const bell = page.locator(TITLE).getByRole("button", { name: "알림" })
+      const sizes = await page.locator(`${TITLE} button svg`).evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width))
+      expect(new Set(sizes).size).toBe(1)
+      await bell.tap()
+      const pop = page.getByRole("dialog").first()
+      await expect(pop).toBeVisible()
+      const box = (await pop.boundingBox())!
       expect(box.x).toBeGreaterThanOrEqual(0)
       expect(box.x + box.width).toBeLessThanOrEqual(390)
     })

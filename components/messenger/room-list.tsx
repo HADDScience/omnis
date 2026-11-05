@@ -463,7 +463,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
         </button>
         <NewChatMenu data-new-chat-title side="bottom" iconSize={22} className={TITLE_ICON} />
         {!isMdUp && (
-          <div className="size-[44px] shrink-0 [&_button]:size-full! [&_button]:rounded-full [&_svg]:size-[22px]">
+          <div className="size-[44px] shrink-0 [&_button]:size-full! [&_button]:rounded-full [&_button_svg]:size-[22px]!">
             <NotificationBell />
           </div>
         )}
