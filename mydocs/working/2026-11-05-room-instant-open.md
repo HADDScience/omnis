@@ -20,6 +20,8 @@ last_verified: 2026-11-05
 
 업무 · 옴니스 방은 서버 페이지와 입장 화면 그대로다.
 
+원인 · 측정 수치 · 실험 중 찾은 버그: [`troubleshootings/room-open-latency.md`](../troubleshootings/room-open-latency.md)
+
 ## 알고 넘어가는 것
 
 - 빠진 방의 저장본은 서버 응답이 오기 전까지 잠깐 보인다. 떠난 사이 지운 글 · 고친 글도 같다
