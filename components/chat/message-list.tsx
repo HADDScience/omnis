@@ -465,8 +465,10 @@ export function MessageList({
                   <div className={`relative flex items-end gap-1 max-md:in-data-[messenger]:gap-[4px] ${mine ? "flex-row-reverse" : ""}`}>
                     <div
                       data-message-body
+                      // 묶음 첫 말풍선의 꼬리(폰 메신저, globals.css). 사진 · 파일이 든 말풍선 · 고치는 중에는 없다
+                      data-tail={row.groupStart && !msg.files?.length && editingId !== msg.id ? (mine ? "mine" : "other") : undefined}
                       className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:text-[15px] max-md:in-data-[messenger]:leading-[22px] ${
-                        mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.75)]" : "bg-muted max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.7)]"
+                        mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground max-md:in-data-[messenger]:bg-(--bubble-mine) max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.75)]" : "bg-muted max-md:in-data-[messenger]:max-w-[calc((var(--app-vw)-20px)*0.7)]"
                       } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:[&_a]:max-w-full max-md:in-data-[messenger]:[&_a]:rounded-[13px] ${
                         msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
                       } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}

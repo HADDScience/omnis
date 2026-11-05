@@ -660,6 +660,32 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
     display: none;
   }
 }
+/* 폰 전사 · 사람 방의 말풍선 꼬리. 꼬리가 말풍선에 조금 겹쳐 둥근 모서리와 이어지므로, 겹친 자리가 진해지지 않게 내 글 색을 불투명하게 섞는다.
+   테마에 따라 값이 달라 :root 가 아니라 여기서 정의한다 */
+@media (max-width: 767.98px) {
+  [data-messenger] {
+    --bubble-mine: color-mix(in srgb, var(--primary) 10%, var(--background));
+  }
+  [data-messenger] [data-message-body][data-tail] {
+    position: relative;
+  }
+  [data-messenger] [data-message-body][data-tail]::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    width: 9px;
+    height: 11px;
+    background: inherit;
+  }
+  [data-messenger] [data-message-body][data-tail="other"]::before {
+    left: -5px;
+    clip-path: polygon(0 0, 100% 15%, 100% 100%);
+  }
+  [data-messenger] [data-message-body][data-tail="mine"]::before {
+    right: -5px;
+    clip-path: polygon(100% 0, 0 15%, 0 100%);
+  }
+}
 .nav-edge-bottom.nav-edge-clear {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
