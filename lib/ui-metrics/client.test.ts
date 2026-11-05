@@ -25,7 +25,7 @@ Object.defineProperty(globalThis, "navigator", {
   },
 })
 
-const { flushUiEvents, noteAttachAttempt, noteUiPath, noteUiSend, trackUi } = await import("./client")
+const { flushUiEvents, noteAttachAttempt, noteRoomFirstMessage, noteRoomTap, noteUiPath, noteUiSend, trackUi } = await import("./client")
 const { reportIncident } = await import("../report-client-error")
 const { UI_BATCH_SIZE, uiEventBatchSchema } = await import("./rules")
 
@@ -97,6 +97,21 @@ test("전송 실패는 첨부 실패가 아니다", () => {
   reportIncident({ kind: "send_failed", message: "x", status: 500 })
   flushUiEvents()
   assert.equal(eventPosts().length, 0)
+})
+
+test("탭 → 첫 글은 탭 한 번에 한 번, 저장본 여부로 이름이 갈린다", () => {
+  noteUiPath("/chat/비밀방")
+  noteRoomFirstMessage(false)
+  noteRoomTap(performance.now() - 120)
+  noteRoomFirstMessage(true)
+  noteRoomFirstMessage(true)
+  noteRoomTap(performance.now() - 300)
+  noteRoomFirstMessage(false)
+  flushUiEvents()
+  const [body] = eventPosts()
+  assert.deepEqual(body.events.map((e: { name: string }) => e.name), ["room_first_message_saved", "room_first_message"])
+  assert.ok(body.events.every((e: { value: number }) => Number.isInteger(e.value) && e.value >= 100))
+  assert.equal(JSON.stringify(body).includes("비밀"), false)
 })
 
 test("첫 전송은 방을 연 뒤 한 번만, 방 밖에서는 재지 않는다", () => {

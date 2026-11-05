@@ -26,6 +26,7 @@ let currentPattern = "/"
 let queue: { name: UiEventName; value?: number; path: string }[] = []
 let roomOpenedAt: number | null = null
 let attachFailedAt: number | null = null
+let roomTappedAt: number | null = null
 
 function post(body: string, beacon: boolean) {
   const url = apiUrl("/api/ui-metrics/events")
@@ -64,6 +65,19 @@ export function noteUiSend() {
   const ms = Math.round(performance.now() - roomOpenedAt)
   roomOpenedAt = null
   if (ms <= ROOM_OPEN_MAX_MS) trackUi("room_open_to_send", ms)
+}
+
+/** 목록에서 방을 눌렀다. 인자는 탭 이벤트의 timeStamp — performance.now 와 같은 시계다 */
+export function noteRoomTap(timeStamp: number) {
+  roomTappedAt = timeStamp
+}
+
+/** 방 화면에 첫 글이 그려졌다. 탭 한 번에 한 번만 남는다 — 주소로 바로 연 방은 재지 않는다 */
+export function noteRoomFirstMessage(fromSnapshot: boolean) {
+  if (roomTappedAt === null) return
+  const ms = Math.round(performance.now() - roomTappedAt)
+  roomTappedAt = null
+  if (ms >= 0 && ms <= ROOM_OPEN_MAX_MS) trackUi(fromSnapshot ? "room_first_message_saved" : "room_first_message", ms)
 }
 
 /** 첨부가 실패했다(lib/report-client-error.ts 의 reportIncident 가 부른다) */
