@@ -12,7 +12,7 @@ import { recordTaskEvents } from "@/lib/task-events"
 import { assignmentTargets } from "@/lib/notify-rules"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
-import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
+import { PUBLIC_MESSAGE_WHERE, visibleMessageWhere } from "@/lib/chat-rooms"
 import type { Prisma, Priority } from "@/generated/prisma/client"
 import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 
@@ -48,7 +48,8 @@ export async function GET(req: NextRequest) {
           product: { select: { id: true, name: true, color: true } },
         },
       },
-      _count: { select: { messages: true, files: true } },
+      // 글 수도 볼 수 있는 방의 글만 센다 — 참여자 전용 방에서 카드에 이어진 줄 수가 드러나지 않게
+      _count: { select: { messages: { where: visibleMessageWhere(session.user.id) }, files: true } },
     },
   })
 

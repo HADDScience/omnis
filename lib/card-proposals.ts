@@ -7,6 +7,7 @@
 //
 // 배경·설계: mydocs/plans/2026-09-10-ai-maintained-cards.md
 import { prisma } from "@/lib/db"
+import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import type { Prisma } from "@/generated/prisma/client"
 import { detectKnowledge, draftCardUpdate, type KnowledgeTopic } from "@/lib/ai"
 import { retrieveHybrid, syncEmbeddingsSafe, sectionToText } from "@/lib/embeddings"
@@ -142,6 +143,8 @@ export async function proposeFromTask(
       id: true,
       name: true,
       messages: {
+        // 지식 카드는 전원이 본다 — 참여자 전용 방의 글을 근거로 쓰지 않는다
+        where: PUBLIC_MESSAGE_WHERE,
         select: { id: true, content: true, createdAt: true, author: { select: { name: true } } },
         orderBy: { createdAt: "asc" },
         take: 200,
