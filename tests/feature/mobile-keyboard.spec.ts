@@ -96,7 +96,9 @@ test.describe("폰", () => {
       expect(await navOnScreen(page), `${name} nav`).toBe(false)
       const bottom = await pillBottom(page)
       expect(bottom, `${name} 키보드에 가려지지 않는다`).toBeLessThanOrEqual(KEYBOARD_TOP)
-      expect(KEYBOARD_TOP - bottom, `${name} 키보드와의 틈`).toBeLessThanOrEqual(8)
+      expect(KEYBOARD_TOP - bottom, `${name} 키보드와의 틈`).toBeLessThanOrEqual(6)
+      // 키보드가 뜨면 입력창 좌우 여백이 줄어 폭이 넓어진다(20 → 10)
+      expect(await page.locator(PILL).first().evaluate((el) => { const r = el.getBoundingClientRect(); return [r.left, innerWidth - r.right] }), `${name} 좌우`).toEqual([10, 10])
       // 대화 내용 칸은 남은 높이를 쓴다 — 머리줄이 화면 밖으로 밀리지 않는다
       expect(await page.evaluate(() => document.documentElement.scrollHeight), name).toBeLessThanOrEqual(844)
 
@@ -111,6 +113,7 @@ test.describe("폰", () => {
       await expect.poll(() => docked(page), name).toBe(false)
       expect(await navOnScreen(page), `${name} 닫힘`).toBe(false)
       expect(await pillBottom(page), `${name} 닫힘`).toBe(bottomBefore)
+      expect(await page.locator(PILL).first().evaluate((el) => { const r = el.getBoundingClientRect(); return [r.left, innerWidth - r.right] }), `${name} 닫힘 좌우`).toEqual([20, 20])
     }
   })
 
