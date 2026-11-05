@@ -68,7 +68,7 @@ test.describe("폰", () => {
     expect(await page.locator(".nav-edge-bottom").evaluate((el) => getComputedStyle(el).backdropFilter)).toBe("none")
   })
 
-  test("맨 끝까지 내리면 맨 아래 방이 nav · 새 대화 단추에 가리지 않는다", async ({ page }) => {
+  test("맨 끝까지 내리면 맨 아래 방이 nav 에 가리지 않고 FAB 는 없다", async ({ page }) => {
     await openList(page)
     const list = page.locator(LIST)
     await list.evaluate((el) => {
@@ -78,11 +78,8 @@ test.describe("폰", () => {
     await page.waitForTimeout(200)
     const row = await rect(page, rowOf(rooms[0]))
     const nav = await rect(page, BOTTOM_NAV)
-    const fab = await rect(page, "[data-new-chat-fab]")
     expect(row.bottom).toBeLessThanOrEqual(nav.top)
-    expect(row.bottom).toBeLessThanOrEqual(fab.top)
-    // 새 대화 단추는 nav 위에 그대로 뜬다
-    expect(fab.bottom).toBeLessThanOrEqual(nav.top)
+    await expect(page.locator("[data-new-chat-fab]")).toBeHidden()
   })
 
   test("목록 줄 · 사진 · 칩 크기가 목표 값이다", async ({ page }) => {
@@ -104,7 +101,7 @@ test.describe("폰", () => {
     })
     const chips = await rect(page, 'aside [role="tablist"], aside [aria-label*="칩"], aside > div > div:first-child')
     expect(chips.top).toBeLessThan(120)
-    const fab = page.locator("[data-new-chat-fab]")
+    const fab = page.locator("[data-new-chat-title]")
     await expect.poll(() => fab.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), { timeout: 30_000 }).toBe(true)
     await fab.click()
     await expect(page.getByRole("menuitem", { name: /옴니스와 대화/ })).toBeVisible()

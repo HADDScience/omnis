@@ -1,14 +1,12 @@
 "use client"
 
 import { useCallback, useState, type ReactNode } from "react"
-import { usePathname, useRouter } from "next/navigation"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { BubbleChatSparkIcon, PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { BASE_PATH } from "@/lib/base-path"
 import { roomKeyFromPath } from "@/lib/chat-list"
 import { RoomList } from "./room-list"
+import { NewChatMenu } from "./new-chat-menu"
 import { CachedRoomPreview } from "./cached-room-preview"
 import { ChatUser, OpenClientRoom, RoomListReload, RoomSurfaceReady, StartRoomEntry } from "./messenger-context"
 import { ClientRoom } from "./client-room"
@@ -31,7 +29,7 @@ export { useChatUserId, useRoomListReload, useRoomSurfaceReady, useStartRoomEntr
  * TaskThread · OmnisAnswerBody · AuthorAvatar …)은 `in-data-[messenger]:…` 변형으로 크기를 더한다. 오른쪽 패널(MainWithChat 의 형제)·
  * 업무 상세·온보딩 시연은 이 셸 밖이라 그대로다. CSS zoom 은 쓰지 않는다(스크롤 · 좌표 계산이 어긋난다).
  *
- * 제목줄(「채팅」)은 두지 않는다(2026-10-29 작업지시자). 다만 PC 의 떠 있는 nav 는 화면 위 가운데에 겹쳐 뜨므로
+ * 폰의 제목 줄(「채팅」)은 목록(RoomList)이 그린다(2026-11-05). PC 는 제목줄을 두지 않는다(2026-10-29 작업지시자). 다만 PC 의 떠 있는 nav 는 화면 위 가운데에 겹쳐 뜨므로
  * (--nav-offset-top 이 PC 에서 0) 그 높이만큼은 위를 비운다 — 안 비우면 nav 가 목록 칩 줄과 대화 머리를 덮는다.
  */
 export function MessengerShell({ children, userId }: { children: ReactNode; userId: string }) {
@@ -87,7 +85,13 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
             )}
           >
             <RoomList version={version} userId={userId} />
-            <NewChatFab />
+            {/* PC 의 새 대화 — 폰은 제목 줄 아이콘이 같은 메뉴를 연다. 모양은 nav 의 리퀴드 글래스(.glass) */}
+            <NewChatMenu
+              data-new-chat-fab
+              side="top"
+              iconSize={26}
+              className="glass absolute! right-4 bottom-4 z-[var(--z-dock)] flex size-[60px] items-center justify-center rounded-full text-foreground transition-transform duration-150 active:scale-[0.94] data-[popup-open]:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 max-md:hidden"
+            />
           </aside>
           <section className={cn("relative min-h-0 min-w-0 flex-1 flex-col md:flex", atList ? "hidden" : "flex")}>
             {clientRoom ? <ClientRoom key={clientRoom.key} room={clientRoom} userId={userId} /> : children}
@@ -105,57 +109,5 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
     </StartRoomEntry.Provider>
     </RoomListReload.Provider>
     </ChatUser.Provider>
-  )
-}
-
-/**
- * 「새 대화」 — 채팅 목록 오른쪽 아래의 둥근 유리 단추(FAB). 누르면 두 갈래: 옴니스와 대화(/chat/new, 첫 글을 보내면
- * 방이 생긴다) · 사람과 대화(/chat/new/people, 구성원을 고른다). 사람끼리 방에는 옴니스가 들어가지 않는다(5단계).
- *
- * 2026-10-29 제목줄의 「새 대화」 버튼을 여기로 옮겼다(작업지시자). 모양은 nav 의 리퀴드 글래스(.glass) —
- * 폰의 목록 칸은 nav 뒤까지 닿으므로(셸이 --nav-offset-bottom 을 비우지 않는다) 그만큼 올려 nav 와 겹치지 않게 둔다.
- * 메뉴가 열리는 순간 두 항목을 미리 받아 둔다 — router.push 는 링크처럼 저절로 미리 받지 않는다
- */
-function NewChatFab() {
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
-  return (
-    <DropdownMenu
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next)
-        if (next) {
-          router.prefetch("/chat/new")
-          router.prefetch("/chat/new/people")
-        }
-      }}
-    >
-      <DropdownMenuTrigger
-        aria-label="새 대화"
-        title="새 대화"
-        data-new-chat-fab
-        className={cn(
-          "glass absolute! right-4 bottom-4 max-md:bottom-[calc(var(--nav-offset-bottom)+1rem)] z-[var(--z-dock)] flex size-[60px] items-center justify-center rounded-full text-foreground transition-transform duration-150 active:scale-[0.94] data-[popup-open]:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        )}
-      >
-        <HugeiconsIcon icon={PencilEdit02Icon} size={26} aria-hidden />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="top" sideOffset={8} className="w-72 rounded-2xl p-1.5">
-        <DropdownMenuItem className="touch-target gap-3 rounded-xl py-2.5" onClick={() => router.push("/chat/new")}>
-          <HugeiconsIcon icon={BubbleChatSparkIcon} size={22} aria-hidden className="text-primary" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[15.5px] font-medium">옴니스와 대화</span>
-            <span className="block text-[13px] text-muted-foreground">회사 일을 묻고 업무를 맡겨요</span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem className="touch-target gap-3 rounded-xl py-2.5" onClick={() => router.push("/chat/new/people")}>
-          <HugeiconsIcon icon={UserGroupIcon} size={22} aria-hidden />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[15.5px] font-medium">사람과 대화</span>
-            <span className="block text-[13px] text-muted-foreground">1:1 이나 단톡방 — 참여자만 봐요</span>
-          </span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
