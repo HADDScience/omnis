@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
 import { IS_DEMO } from "@/lib/demo"
@@ -22,51 +22,21 @@ function writeDismissCookie() {
   document.cookie = `${COOKIE_NAME}=1; expires=${expires.toUTCString()}; path=/; SameSite=Lax`
 }
 
+/** 높이 · 고정은 TopBanners 가 맡는다 */
 export function DemoBanner() {
-  const bannerRef = useRef<HTMLDivElement>(null)
   const [dismissed, setDismissed] = useState(true)
 
   useEffect(() => {
     setDismissed(readDismissCookie())
   }, [])
 
-  useEffect(() => {
-    if (!IS_DEMO || dismissed) {
-      document.documentElement.style.setProperty("--demo-banner-height", "0px")
-      return
-    }
-
-    const banner = bannerRef.current
-    if (!banner) return
-
-    const updateBannerHeight = () => {
-      document.documentElement.style.setProperty(
-        "--demo-banner-height",
-        `${banner.getBoundingClientRect().height}px`
-      )
-    }
-
-    updateBannerHeight()
-    const resizeObserver = new ResizeObserver(updateBannerHeight)
-    resizeObserver.observe(banner)
-    window.addEventListener("resize", updateBannerHeight)
-
-    return () => {
-      resizeObserver.disconnect()
-      window.removeEventListener("resize", updateBannerHeight)
-      document.documentElement.style.setProperty("--demo-banner-height", "0px")
-    }
-  }, [dismissed])
-
   if (!IS_DEMO || dismissed) return null
 
   return (
     <div
-      ref={bannerRef}
       role="status"
       aria-label="시연용 데모 사이트 안내"
-      className="sticky top-0 flex items-center justify-center gap-3 border-b border-blue-400/40 bg-blue-600 px-4 py-1.5 text-xs font-medium text-white shadow-sm sm:text-sm dark:border-blue-300/30 dark:bg-blue-700"
-      style={{ zIndex: "var(--z-banner)" }}
+      className="flex items-center justify-center gap-3 border-b border-blue-400/40 bg-blue-600 px-4 py-1.5 text-xs font-medium text-white shadow-sm sm:text-sm dark:border-blue-300/30 dark:bg-blue-700"
     >
       <span aria-hidden className="text-base leading-none">🚀</span>
       <span>시연용 데모 사이트 — 모든 데이터는 익명 더미입니다.</span>

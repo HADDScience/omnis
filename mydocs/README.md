@@ -89,6 +89,7 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [manual/ai-pairing.md](manual/ai-pairing.md) | guide | AI 와 함께 이 저장소에서 일하는 법 |
 | [manual/ux-rules.md](manual/ux-rules.md) | canonical | UI·구조 규칙 11~30 · viewport 책임 표 · 데모 환경 |
 | [manual/e2e-local.md](manual/e2e-local.md) | guide | 로컬에서 feature e2e 를 돌리는 법 |
+| [manual/maintenance-switch.md](manual/maintenance-switch.md) | guide | 재배포 없이 공지 띠 · 점검 화면 켜고 끄기 |
 | [manual/hyper-waterfall.md](manual/hyper-waterfall.md) | decision | 이 저장소가 AI 와 일하는 방식 |
 | [troubleshootings/domain-migration-traps.md](troubleshootings/domain-migration-traps.md) | reference | 도메인 이전에서 밟은 함정 (DNS 캐시 · basePath 제거 · 저장소 셋의 순서 · SSO 오리진 · 메일 레코드) |
 | [troubleshootings/kakao-import-traps.md](troubleshootings/kakao-import-traps.md) | reference | 카톡 이식 파이프라인에서 밟은 함정 (LIKE `_` · 파서 바이트 일치 · 청크 시각) |
