@@ -28,7 +28,8 @@ import { askOmnis, buildCrmOverview, SOURCE_LABEL } from "@/lib/omnis-ask"
 import { postChatMessage } from "@/lib/chat-post"
 import { listWeeklyReports, updateWeeklyReport, upsertThisWeekReport } from "@/lib/weekly-report"
 import { createOmnisCard, updateOmnisCard } from "@/lib/omnis-cards"
-import { readChatFeed, type FeedView } from "@/lib/chat-feed"
+import { listReadableRooms, readableRooms, readRoomFeed, readChatFeed, ROOM_KIND_LABEL, type FeedView } from "@/lib/chat-feed"
+import { pickByMembers, pickByRef, type PickableRoom } from "@/lib/chat-room-pick"
 import type { Prisma } from "@/generated/prisma/client"
 import { createNotification } from "@/lib/notifications"
 import { getIpAccess, type IpMembership } from "@/lib/ip-data"
@@ -110,6 +111,7 @@ export const INSTRUCTIONS = [
   "파일은 upload_file(텍스트·작은 파일) 또는 create_upload_link(셸에서 curl 로 올리는 링크)로 올리고, 받은 파일 ID 를 post_message 의 files 에 넣어 채팅·업무 스레드에 붙입니다. 첨부를 읽을 때는 get_task 에 보이는 파일 ID 로 read_file.",
   "「나한테 온 거」는 list_notifications. 업무 수락·완료 확인은 respond_notification 으로 — 사용자 본인에게 온 알림에만 응답할 수 있습니다.",
   "주간보고는 list_weekly_reports·write_weekly_report, 사내 지식 카드 작성은 write_omnis_card, 업무 밖 채팅은 list_chat 입니다.",
+  "단톡방·1:1 대화는 list_rooms 로 내가 든 방을 보고 list_chat(view=room, room 또는 members)으로 읽습니다. 내가 참여자가 아닌 방은 누구도 읽을 수 없습니다.",
   "업무 카드의 상태·마감·우선순위는 update_task, 체크리스트는 update_checklist. 진행 보고라면 post_message 가 먼저입니다(담당자 확인과 AI 재구성이 따라옵니다).",
   "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
   "웍스 캘린더 일정(행사·미팅·외근)은 list_calendar — 날짜는 서울 기준이고, 결과의 마지막 동기화 시각만큼 웍스와 늦을 수 있습니다.",
@@ -125,7 +127,7 @@ export const OMNIS_TOOLS = [
   {
     name: "ask_omnis",
     description:
-      "옴니스 AI 에게 묻는다. 질문에 맞춰 검색·업무·CRM·지식재산권 도구를 스스로 골라 부르고 답한다. 「X 어디까지 됐어」「지연된 업무」「재고 얼마 남았어」처럼 현황을 묻는 질문에 먼저 쓴다. 화면의 「Omnis AI 에게 질문하기」와 같은 것이다.",
+      "옴니스 AI 에게 묻는다. 질문에 맞춰 검색·업무·CRM·지식재산권 도구를 스스로 골라 부르고 답한다. 「X 어디까지 됐어」「지연된 업무」「재고 얼마 남았어」처럼 현황을 묻는 질문에 먼저 쓴다. 화면의 「Omnis AI 에게 질문하기」와 같은 것이다. 전사방 · 업무 글만 근거로 삼는다 — 단톡방 · 1:1 대화는 list_chat(view=room)으로 직접 읽는다.",
     inputSchema: {
       type: "object",
       properties: { question: { type: "string", description: "한국어 질문. 500자 이내." } },
@@ -135,7 +137,7 @@ export const OMNIS_TOOLS = [
   {
     name: "search_knowledge",
     description:
-      "의미 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권·사진(설명) 조각을 유사도 순으로 돌려준다. ask_omnis 가 답을 만들기 전에 무엇을 근거로 삼는지 직접 보고 싶을 때, 또는 원문 조각이 필요할 때.",
+      "의미 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권·사진(설명) 조각을 유사도 순으로 돌려준다. ask_omnis 가 답을 만들기 전에 무엇을 근거로 삼는지 직접 보고 싶을 때, 또는 원문 조각이 필요할 때. 단톡방 · 1:1 · 옴니스 1:1 글은 색인에 없다 — 그 방 글은 list_rooms 로 방을 찾고 list_chat(view=room, query)로 찾는다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -418,16 +420,36 @@ export const OMNIS_TOOLS = [
   {
     name: "list_chat",
     description: [
-      "업무 밖 채팅까지 읽는다. view=all 최근 전체 · task 업무 하나에 걸린 글(스레드 + #멘션) · dm 나와 그 사람이 서로 @부른 글 · ai 옴니스 AI 가 쓰거나 불린 글.",
+      "채팅을 읽는다. view=all 전사방 최근 글 · task 업무 하나에 걸린 글(스레드 + #멘션) · dm 전사방에서 나와 그 사람이 서로 @부른 글(1:1 방 아님) · ai 옴니스 AI 가 쓰거나 불린 글 · room 방 하나(단톡방 · 1:1 · 전사방)의 글.",
+      "all · task · dm · ai 는 전사방 글만 본다. 단톡방 · 1:1 대화는 view=room 에 room(방 이름 일부 · ID, list_rooms 참고) 또는 members(참여자 이름 목록 — 정확히 그 구성, 나는 빼도 된다)를 준다. 내가 참여자인 방만 읽힌다.",
       "특정 업무의 대화만 필요하면 get_task 가 더 짧다.",
     ].join(" "),
     inputSchema: {
       type: "object",
       properties: {
-        view: { type: "string", enum: ["all", "task", "dm", "ai"], description: "기본 all" },
+        view: { type: "string", enum: ["all", "task", "dm", "ai", "room"], description: "기본 all" },
         task: { type: "string", description: "view=task 일 때 업무 슬러그·ID·이름 일부" },
         user: { type: "string", description: "view=dm 일 때 상대 이름" },
-        limit: { type: "integer", description: "기본 40, 최대 200" },
+        room: { type: "string", description: "view=room 일 때 방 이름 일부 또는 방 ID (list_rooms)" },
+        members: { type: "array", items: { type: "string" }, description: "view=room 일 때 room 대신 — 참여자 이름 목록. 정확히 그 사람들(과 나)만 있는 방을 고른다" },
+        since: { type: "string", description: "view=room — 이 시각 이후(YYYY-MM-DD 또는 ISO, 서울 기준)" },
+        until: { type: "string", description: "view=room — 이 시각 전까지(날짜만 주면 그 날 끝까지)" },
+        query: { type: "string", description: "view=room — 본문에 이 말이 든 글만(대소문자 무시)" },
+        limit: { type: "integer", description: "기본 40, 최대 200. view=room 은 범위 안에서 최근 것부터 이만큼" },
+      },
+    },
+  },
+  {
+    name: "list_rooms",
+    description: [
+      "내가 참여자인 채팅방 목록(전사방 · 단톡방 · 1:1 · 옴니스 1:1) — 이름 · 종류 · 참여자 · 마지막 글 시각 · 안 읽은 수 · 방 ID. 최근 글 순.",
+      "단톡방 · 1:1 대화를 읽으려면 여기서 방을 찾고 list_chat(view=room)에 room 을 준다. 업무방은 list_tasks · get_task.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "방 이름 · 참여자 이름 일부로 거른다" },
+        limit: { type: "integer", description: "기본 50, 최대 200" },
       },
     },
   },
@@ -790,6 +812,55 @@ const clip = (s: string) =>
   s.length > TEXT_LIMIT ? `${s.slice(0, TEXT_LIMIT)}\n\n… (${s.length.toLocaleString()}자 중 앞 ${TEXT_LIMIT.toLocaleString()}자)` : s
 
 // ─── 실행 ───────────────────────────────────────────────────────────
+
+/** 방 한 줄 — 「이름 (종류) · 참여자 … · ID …」 */
+function roomLine(r: PickableRoom): string {
+  const people = r.kind === "COMPANY" ? "구성원 전체" : r.members.map((m) => m.name).join(", ") || "참여자 없음"
+  return `${r.title} (${ROOM_KIND_LABEL[r.kind] ?? r.kind}) · 참여자 ${people} · ID ${r.id}`
+}
+
+/** since/until — 날짜만 주면 서울 기준 그 날 0시. until 이 날짜만이면 그 다음 날 0시(그 날 끝까지) */
+function kstBound(raw: string, endOfDay: boolean): Date | null {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+  const d = new Date(day ? `${raw}T00:00:00+09:00` : raw)
+  if (Number.isNaN(d.getTime())) return null
+  return day && endOfDay ? new Date(d.getTime() + 86_400_000) : d
+}
+
+/** list_chat view=room — 방을 고르고(읽을 수 있는 방 안에서만) 그 방 글을 읽는다 */
+async function listRoomChat(args: Record<string, unknown>, caller: Caller): Promise<ToolResult> {
+  const ref = str(args.room)
+  const names = Array.isArray(args.members) ? args.members.map(String).map((x) => x.trim()).filter(Boolean) : []
+  if (!ref && names.length === 0) return { error: "view=room 에는 room(방 이름 일부 · ID) 또는 members(참여자 이름 목록)가 필요합니다. list_rooms 로 방을 찾을 수 있습니다." }
+  const rooms = await readableRooms(caller.userId)
+  // 고르기는 읽을 수 있는 방 안에서만 — 남의 방은 ID 를 알아도 「없음」 과 같게 답한다(이름이 새지 않게)
+  const hits = ref ? pickByRef(rooms, ref) : pickByMembers(rooms, names, caller.userId)
+  const asked = ref ? `「${ref}」` : `참여자 ${names.join(", ")}`
+  if (hits.length === 0) return { error: `${asked} 에 맞는 방이 없거나 볼 수 없는 방입니다. list_rooms 로 내가 든 방을 확인하세요.` }
+  if (hits.length > 1) {
+    return { error: [`${asked} 에 맞는 방이 ${hits.length}개입니다. room 에 방 ID 를 주세요.`, ...hits.slice(0, 10).map(roomLine)].join("\n") }
+  }
+  const room = hits[0]
+  const since = str(args.since) ? kstBound(str(args.since), false) : undefined
+  const until = str(args.until) ? kstBound(str(args.until), true) : undefined
+  if (since === null || until === null) return { error: "since · until 은 YYYY-MM-DD 또는 ISO 시각입니다." }
+  const query = str(args.query)
+  const r = await readRoomFeed({ currentUserId: caller.userId, roomId: room.id, since, until, query: query || undefined, take: clampInt(args.limit, 40, 200) })
+  if ("error" in r) return { error: r.error }
+  const head = roomLine(room)
+  if (r.messages.length === 0) return { text: `${head}\n글이 없습니다${query || since || until ? " (조건에 맞는 글)" : ""}.` }
+  return {
+    text: [
+      `${head}`,
+      `글 ${r.messages.length}건 (오래된 것부터)`,
+      ...r.messages.map((m) =>
+        `[${kst(m.createdAt, true)}] ${m.author}${m.taskSlug ? ` · #${m.taskSlug}` : ""}: ` +
+        `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
+        `${m.files.length ? ` [첨부: ${m.files.map((f) => `${f.name} (${f.id})`).join(", ")}]` : ""}`
+      ),
+    ].join("\n"),
+  }
+}
 
 export async function runTool(
   name: string, args: Record<string, unknown>, caller: Caller, ctx: { base: string } = { base: "" }
@@ -1459,9 +1530,25 @@ export async function runTool(
       }
     }
 
+    case "list_rooms": {
+      const q = str(args.query).replace(/\s+/g, "").toLowerCase()
+      const rooms = (await listReadableRooms(caller.userId)).filter(
+        (r) => !q || [r.title, ...r.members.map((m) => m.name)].some((n) => n.replace(/\s+/g, "").toLowerCase().includes(q)),
+      )
+      if (rooms.length === 0) return { text: q ? "그 말에 맞는 방이 없습니다." : "방이 없습니다." }
+      const shown = rooms.slice(0, clampInt(args.limit, 50, 200))
+      return {
+        text: [
+          `방 ${rooms.length}개${shown.length < rooms.length ? ` 중 ${shown.length}개` : ""} (최근 글 순)`,
+          ...shown.map((r) => roomLine(r) + ` · 마지막 ${kst(r.lastAt, true)}${r.unread ? ` · 안 읽음 ${r.unread}` : ""}`),
+        ].join("\n"),
+      }
+    }
+
     case "list_chat": {
-      const view = (str(args.view) || "all") as FeedView
-      if (!["all", "task", "dm", "ai"].includes(view)) return { error: "view 는 all · task · dm · ai 중 하나입니다." }
+      const view = (str(args.view) || "all") as FeedView | "room"
+      if (view === "room") return listRoomChat(args, caller)
+      if (!["all", "task", "dm", "ai"].includes(view)) return { error: "view 는 all · task · dm · ai · room 중 하나입니다." }
       let id: string | undefined
       let userId: string | undefined
       if (view === "task") {
