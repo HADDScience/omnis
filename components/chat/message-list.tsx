@@ -28,6 +28,7 @@ import { SystemPill } from "@/components/chat/system-pill"
 
 import { apiUrl } from "@/lib/base-path"
 import { thumbSrcSet, thumbUrl } from "@/lib/thumb"
+import { usePhotoViewer } from "@/components/photo-viewer/context"
 import { safeInlineType } from "@/lib/file-serving"
 import { isLargeUpload } from "@/lib/large-upload/rules"
 import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arrival"
@@ -528,7 +529,7 @@ export function MessageList({
                             )}
                           </p>
                           {!msg.deletedAt && msg.files && msg.files.length > 0 && (
-                            <MessageFiles files={msg.files} onPrimary={mine} />
+                            <MessageFiles files={msg.files} onPrimary={mine} messageId={msg.id} />
                           )}
                         </>
                       )}
@@ -727,7 +728,7 @@ const IMAGE_CSS_WIDTH = 280
  * 메시지에 붙은 사진 한 장. 폰의 전사 · 사람 방은 말풍선 없는 카드(화면 폭 70% · 모서리 13)이고 이름을 감춘다.
  * 비율은 받은 뒤 맞추고 높이 상한을 넘으면 잘라 보인다(찌그러지지 않는다). 묶음(tile)은 정사각.
  */
-function ImageAttachment({ file: f, tile }: { file: FileInfo; tile: boolean }) {
+function ImageAttachment({ file: f, tile, onOpen }: { file: FileInfo; tile: boolean; onOpen?: () => void }) {
   const uploading = f._uploading
   const [ratio, setRatio] = useState(() => imageRatios.get(f.id) ?? 0.75)
   // WebP 미리보기 → 못 받으면 원본 → 그것도 안 되면 「불러오지 못했어요」. 올리는 중에는 아직 미리보기가 없다
@@ -757,7 +758,12 @@ function ImageAttachment({ file: f, tile }: { file: FileInfo; tile: boolean }) {
       data-attachment-image
       style={{ "--img-ratio": 1 / ratio } as React.CSSProperties}
       className={`relative block rounded-md overflow-hidden max-w-[200px] in-data-[messenger]:max-w-[260px] border max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:border-0 max-md:in-data-[chat-room-chrome]:bg-muted ${tile ? "max-md:in-data-[chat-room-chrome]:aspect-square max-md:in-data-[chat-room-chrome]:w-full max-md:in-data-[chat-room-chrome]:max-w-none" : "max-md:in-data-[chat-room-chrome]:aspect-(--img-ratio) max-md:in-data-[chat-room-chrome]:max-h-[420px] max-md:in-data-[chat-room-chrome]:min-h-[90px] max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:max-w-none"} ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
-      onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
+      onClick={(e) => {
+        e.stopPropagation()
+        // 채팅방은 뷰어로 연다. ⌘ · Ctrl · 가운데 단추는 예전처럼 새 탭
+        if (uploading || (onOpen && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0)) e.preventDefault()
+        if (!uploading && onOpen && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) onOpen()
+      }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- 인증이 필요한 첨부 라우트 */}
       <img
@@ -790,7 +796,9 @@ function ImageAttachment({ file: f, tile }: { file: FileInfo; tile: boolean }) {
 const imageGridCols = (n: number) => (n === 2 || n === 4 ? "max-md:in-data-[chat-room-chrome]:grid-cols-2" : "max-md:in-data-[chat-room-chrome]:grid-cols-3")
 
 /** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
-export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; onPrimary?: boolean }) {
+export function MessageFiles({ files, onPrimary = false, messageId }: { files: FileInfo[]; onPrimary?: boolean; messageId?: string }) {
+  const viewer = usePhotoViewer()
+  const openOf = (f: FileInfo) => (viewer && messageId ? () => viewer.open(messageId, f.id) : undefined)
   // 그 자리에서 열리는 형식만 미리보기를 그린다 — 나머지(SVG 등)는 내려받기로 나가 이미지가 깨진다
   // 큰 첨부 사진은 카드로 — 말풍선이 원본 수백 MB 를 부르지 않게
   const isImage = (f: FileInfo) => safeInlineType(f.mimeType)?.startsWith("image/") && !isLargeUpload(f.size)
@@ -806,10 +814,10 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
       {groups.map((group) => {
         const f = group[0]
         if (isImage(f)) {
-          if (group.length === 1) return <ImageAttachment key={f.id} file={f} tile={false} />
+          if (group.length === 1) return <ImageAttachment key={f.id} file={f} tile={false} onOpen={openOf(f)} />
           return (
             <div key={f.id} data-attachment-grid className={`contents max-md:in-data-[chat-room-chrome]:grid max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:gap-[2px] ${imageGridCols(group.length)}`}>
-              {group.map((g) => <ImageAttachment key={g.id} file={g} tile />)}
+              {group.map((g) => <ImageAttachment key={g.id} file={g} tile onOpen={openOf(g)} />)}
             </div>
           )
         }
