@@ -381,7 +381,7 @@ export function MessageList({
         onKeyDown={userScrolled}
         className="min-h-0 flex-1 overflow-y-auto px-4 in-data-[messenger]:px-[16px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:scroll-pt-[calc(56px+var(--room-search-h,0px))] max-md:in-data-[messenger]:scroll-pb-[var(--room-bottom-h,0px)]"
       >
-        <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3 in-data-[messenger]:py-4 max-md:in-data-[messenger]:pt-[calc(56px+var(--room-search-h,0px)+6px)] max-md:in-data-[messenger]:pb-[calc(var(--room-bottom-h,0px)+8px)]">
+        <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3 in-data-[messenger]:py-4 max-md:in-data-[messenger]:pt-[calc(56px+var(--room-search-h,0px)+6px)] max-md:in-data-[messenger]:pb-[calc(var(--room-bottom-h,0px)+8px+var(--notice-reserve,0px))]">
           {loadingOlder && (
             <div className="flex justify-center py-1">
               <Spinner className="h-4 w-4" />
