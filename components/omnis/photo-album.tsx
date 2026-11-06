@@ -2,10 +2,8 @@
 
 // 옴니스 답의 사진 묶음 — 카톡 「묶어 보내기」처럼 정사각 격자 한 덩어리. 누르면 큰 화면에서 넘겨 본다.
 // 묶을 사진 고르기 · 줄 나누기는 lib/photo-album.ts.
-import { useRef, useState } from "react"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { useState } from "react"
+import { PhotoViewer } from "@/components/photo-viewer/photo-viewer"
 import { apiUrl } from "@/lib/base-path"
 import { ThumbImage } from "@/components/chat/thumb-image"
 import { albumRows } from "@/lib/photo-album"
@@ -64,64 +62,13 @@ export function PhotoAlbum({ photos }: { photos: AlbumPhoto[] }) {
           </div>
         ))}
       </div>
-      <PhotoViewer photos={photos} index={open} onIndex={setOpen} />
+      {/* 채팅 사진과 같은 뷰어. 답의 사진은 글이 아니라 근거라 이름 · 시각 · 삭제 · 공유가 없다 */}
+      <PhotoViewer
+        photos={photos.map((p) => ({ fileId: p.sourceId, name: p.title, original: apiUrl(`/api/files/${p.sourceId}/raw`) }))}
+        index={open}
+        onIndex={setOpen}
+        onClose={() => setOpen(null)}
+      />
     </>
-  )
-}
-
-/** 큰 화면 — 좌우 버튼 · 화살표 키 · 밀어 넘기기. 원본은 새 탭으로도 연다 */
-function PhotoViewer({ photos, index, onIndex }: { photos: AlbumPhoto[]; index: number | null; onIndex: (i: number | null) => void }) {
-  const touchX = useRef<number | null>(null)
-  const p = index === null ? null : photos[index]
-  const go = (d: number) => {
-    if (index === null) return
-    onIndex((index + d + photos.length) % photos.length)
-  }
-
-  return (
-    <Dialog open={index !== null} onOpenChange={(o) => !o && onIndex(null)}>
-      <DialogContent
-        className="max-w-[calc(100%-1rem)] gap-3 bg-black p-3 text-white ring-0 sm:max-w-3xl [&>[data-slot=dialog-close]]:min-h-[44px] [&>[data-slot=dialog-close]]:min-w-[44px]"
-        onKeyDown={(e) => {
-          if (e.key === "ArrowLeft") go(-1)
-          if (e.key === "ArrowRight") go(1)
-        }}
-      >
-        {p && (
-          <>
-            <DialogTitle className="pr-10 text-[13px] font-normal text-white/80">
-              {index! + 1} / {photos.length} · {p.title}
-            </DialogTitle>
-            <div
-              // 사진이 아직 안 왔거나 납작해도 넘기기 단추가 위의 닫기 단추를 덮지 않게 높이를 남긴다
-              className="relative flex min-h-40 items-center justify-center"
-              onTouchStart={(e) => { touchX.current = e.touches[0].clientX }}
-              onTouchEnd={(e) => {
-                if (touchX.current === null) return
-                const dx = e.changedTouches[0].clientX - touchX.current
-                touchX.current = null
-                if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1)
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={apiUrl(`/api/files/${p.sourceId}/raw`)} alt={p.title} className="max-h-[75vh] w-auto max-w-full object-contain" />
-              {photos.length > 1 && (
-                <>
-                  <button type="button" onClick={() => go(-1)} aria-label="이전 사진" className="touch-target absolute left-1 flex size-9 items-center justify-center rounded-full bg-black/50 hover:bg-black/70">
-                    <HugeiconsIcon icon={ArrowLeft01Icon} size={20} />
-                  </button>
-                  <button type="button" onClick={() => go(1)} aria-label="다음 사진" className="touch-target absolute right-1 flex size-9 items-center justify-center rounded-full bg-black/50 hover:bg-black/70">
-                    <HugeiconsIcon icon={ArrowRight01Icon} size={20} />
-                  </button>
-                </>
-              )}
-            </div>
-            <a href={apiUrl(`/api/files/${p.sourceId}/raw`)} target="_blank" rel="noreferrer" className="touch-target flex items-center justify-self-end text-[12px] text-white/70 underline-offset-2 hover:underline">
-              원본 열기
-            </a>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
   )
 }

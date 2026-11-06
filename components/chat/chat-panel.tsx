@@ -15,6 +15,7 @@ import { startLargeUpload, type UploadedFile } from "@/lib/large-upload/client"
 import { isLargeUpload, largeUploadClientEnabled } from "@/lib/large-upload/rules"
 import { noteRoomFirstMessage, noteAttachAttempt, noteUiSend, trackUi } from "@/lib/ui-metrics/client"
 import { ChatSearch } from "@/components/chat/chat-search"
+import { ChatPhotoViewer } from "@/components/photo-viewer/chat-photo-viewer"
 import { serverTimeOf, writeSnapshot } from "@/lib/room-snapshot"
 import { applyChanges, encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
 
@@ -802,6 +803,14 @@ export function ChatPanel({
           대화를 불러오는 중…
         </div>
       ) : (
+      <ChatPhotoViewer
+        roomId={roomId}
+        messages={visibleMessages}
+        currentUserId={currentUserId}
+        onGoToMessage={(id) => void jumpTo(id)}
+        onDelete={handleDelete}
+        onNeedMessage={(id) => void jumpTo(id)}
+      >
       <MessageList
         messages={visibleMessages}
         currentUserId={currentUserId}
@@ -822,6 +831,7 @@ export function ChatPanel({
         loadingNewer={loadingNewer}
         searchText={searchOpen ? searchText : ""}
       />
+      </ChatPhotoViewer>
       )}
 
       {/* 폰 메신저는 입력창이 글 위에 뜬다. 높이는 답장 줄 · 첨부 · 여러 줄에 따라 변해 재서 글 끝 여백에 넘긴다 */}

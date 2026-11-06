@@ -98,15 +98,22 @@ test.describe("옴니스 답의 사진 묶음", () => {
     await album
       .getByRole("button", { name: "시험 사진 1 크게 보기", exact: true })
       .click()
-    const dialog = page.getByRole("dialog")
-    await expect(dialog).toContainText("1 / 10")
+    const dialog = page.getByRole("dialog", { name: "사진 보기" })
+    await expect(dialog).toContainText("10장 중 1번")
     await dialog.getByRole("button", { name: "다음 사진" }).click()
-    await expect(dialog).toContainText("2 / 10")
+    await expect(dialog).toContainText("10장 중 2번")
     await page.keyboard.press("ArrowLeft")
-    await expect(dialog).toContainText("1 / 10")
-    // 처음에서 뒤로 가면 끝으로 — 보이지 않던 10번째까지 뷰어로는 닿는다
+    await expect(dialog).toContainText("10장 중 1번")
+    // 처음에서 더 뒤로 가지 않는다(카톡처럼)
     await page.keyboard.press("ArrowLeft")
-    await expect(dialog).toContainText("10 / 10")
+    await expect(dialog).toContainText("10장 중 1번")
+    // 보이지 않던 10번째까지 뷰어로는 닿는다 — 썸네일 줄
+    await dialog.getByRole("button", { name: "10번째 사진" }).click()
+    await expect(dialog).toContainText("10장 중 10번")
+    // 답의 사진은 글이 아니라 근거 — 지우기 · 공유 · 모아보기가 없다
+    await expect(dialog.getByRole("button", { name: "삭제" })).toHaveCount(0)
+    await expect(dialog.getByRole("button", { name: "공유" })).toHaveCount(0)
+    await expect(dialog.getByRole("button", { name: "이 방 사진 모아보기" })).toHaveCount(0)
     await page.keyboard.press("Escape")
     await expect(dialog).toHaveCount(0)
   })
@@ -130,16 +137,15 @@ test.describe("옴니스 답의 사진 묶음", () => {
         await album
           .getByRole("button", { name: "시험 사진 1 크게 보기", exact: true })
           .click()
-        const dialog = page.getByRole("dialog")
-        await dialog.getByRole("button", { name: "다음 사진" }).waitFor()
-        // 열리는 동안은 확대 애니메이션이라 실제보다 작게 재진다
-        await dialog.evaluate((el) =>
-          Promise.all(el.getAnimations().map((a) => a.finished))
-        )
+        const dialog = page.getByRole("dialog", { name: "사진 보기" })
+        await dialog.getByRole("button", { name: "닫기" }).waitFor()
+        // 터치 화면은 밀어 넘긴다 — 이전 · 다음 단추를 그리지 않는다
+        await expect(dialog.getByRole("button", { name: "다음 사진" })).toBeHidden()
         for (const control of [
-          dialog.getByRole("button", { name: "이전 사진" }),
-          dialog.getByRole("button", { name: "다음 사진" }),
-          dialog.getByRole("link", { name: "원본 열기" }),
+          dialog.getByRole("button", { name: "닫기" }),
+          dialog.getByRole("link", { name: "내려받기" }),
+          dialog.getByRole("button", { name: "더보기" }),
+          dialog.getByRole("button", { name: "1번째 사진" }),
         ]) {
           const size = await control.evaluate((el) => {
             const box = el.getBoundingClientRect()
