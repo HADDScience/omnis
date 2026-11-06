@@ -647,8 +647,31 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
   -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
   mask-image: linear-gradient(180deg, #000 70%, transparent);
 }
+/* 입력창 칸은 하단 nav 처럼 글이 캡슐 둘레(좌우 · 아래 안전 영역)로 비쳐 지나간다 — 바탕은 옅은 띠만, 캡슐은 유리.
+   끝 글은 글 칸 끝 여백(--room-bottom-h, ChatPanel 이 잰다)으로 캡슐 위에 멈춘다 */
 @utility room-edge-bottom {
-  background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--background) 80%, transparent) 24px, var(--background) 48px);
+  background: linear-gradient(0deg, color-mix(in oklab, var(--glass-fade) 30%, transparent), transparent);
+}
+@media (max-width: 767.98px) {
+  [data-messenger] [data-chat-room-chrome] [data-room-composer-chrome] [data-composer-pill] {
+    background: linear-gradient(180deg, var(--glass-top), var(--glass-bottom));
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    backdrop-filter: blur(18px) saturate(170%);
+    border-color: transparent;
+    box-shadow: 0 0 0 1px var(--glass-edge), var(--glass-shadow);
+  }
+}
+@media (max-width: 767.98px) and (prefers-reduced-transparency: reduce) {
+  [data-messenger] [data-chat-room-chrome] [data-room-composer-chrome] [data-composer-pill] {
+    background: var(--glass-solid);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (max-width: 767.98px) {
+    [data-messenger] [data-chat-room-chrome] [data-room-composer-chrome] [data-composer-pill] {
+      background: var(--glass-solid);
+    }
+  }
 }
 /* 폰 대화방에는 하단 nav 가 없다 — 뒤로 캡슐로 목록에 돌아간다. 셸이 방을 그릴 때 다는 표식으로 가르므로 첫 화면부터 맞고,
    nav 자리 여백은 홈 인디케이터만 남아 입력창이 화면 아래 안전 영역에 붙는다. 키보드가 뜨면 use-keyboard-open 의 인라인 값이 이긴다 */

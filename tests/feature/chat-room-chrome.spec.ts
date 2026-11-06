@@ -82,6 +82,44 @@ for (const width of [390, 402]) {
       expect(counts.shown).toBeGreaterThan(3)
     })
 
+    test("입력창 둘레(좌우 · 아래)로도 글이 비쳐 지나가고, 캡슐은 유리다", async ({ page }) => {
+      await openRoom(page)
+      await expect.poll(() => fromBottom(page)).toBeLessThanOrEqual(1)
+      // 조금 올려 끝 글들이 입력창 자리로 내려오게 한다
+      await page.locator(LIST).first().evaluate((el) => el.scrollBy(0, -150))
+      await page.waitForTimeout(300)
+      const pill = await rect(page, PILL)
+      // 글 줄은 글 칸 폭 전체(좌우 10 안쪽)라 캡슐 옆 여백까지 걸친다. 줄 사이 틈이 있어 점이 아니라 겹침으로 본다
+      const list = await rect(page, LIST)
+      const behind = await page.locator("section [data-message-id]").evaluateAll(
+        (rows, { pill, list }) => {
+          const boxes = rows.map((r) => r.getBoundingClientRect())
+          return {
+            sides: boxes.some((b) => b.top < pill.bottom && b.bottom > pill.top && b.left < pill.left && b.right > pill.right),
+            below: boxes.some((b) => b.bottom > pill.bottom && b.top < list.bottom),
+          }
+        },
+        { pill, list },
+      )
+      expect(behind).toEqual({ sides: true, below: true })
+      expect(Math.round(list.bottom)).toBe(844)
+      // 바탕 띠 · 캡슐 어느 색도 불투명하지 않다 — 글이 비친다
+      const look = await page.evaluate(() => {
+        const chrome = document.querySelector("section [data-room-composer-chrome]")!
+        const cap = document.querySelector("section [data-composer-pill]")!
+        return { chrome: getComputedStyle(chrome).backgroundImage, cap: getComputedStyle(cap).backgroundImage, capColor: getComputedStyle(cap).backgroundColor, blur: getComputedStyle(cap).backdropFilter }
+      })
+      const opaque = (css: string) => (css.match(/(rgba?|oklab|oklch|lab|color)\([^()]*\)/g) ?? []).some((c) => !/\/\s*0?\.\d|,\s*0?\.\d+\)$|,\s*0\)$/.test(c))
+      expect(opaque(look.chrome), look.chrome).toBe(false)
+      expect(opaque(look.cap), look.cap).toBe(false)
+      expect(look.capColor).toBe("rgba(0, 0, 0, 0)")
+      expect(look.blur).toContain("blur")
+      // 맨 아래로 돌아가면 끝 글은 여전히 캡슐 위에 멈춘다
+      await page.locator(LIST).first().evaluate((el) => el.scrollTo(0, el.scrollHeight))
+      await expect.poll(() => fromBottom(page)).toBeLessThanOrEqual(1)
+      expect((await rowRect(page, `지나가기 글 ${TOTAL - 1}`)).bottom).toBeLessThanOrEqual((await rect(page, PILL)).top)
+    })
+
     test("날짜 구분은 가운데 알약이다", async ({ page }) => {
       await openRoom(page)
       const pill = page.locator("section [role=separator] span:visible").first()
