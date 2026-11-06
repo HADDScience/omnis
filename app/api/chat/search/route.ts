@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { roomAccess } from "@/lib/chat-rooms"
 import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
+import { recordServerUiEventLater } from "@/lib/ui-metrics/server-later"
 import { countMatchingTextOrPhoto, matchedPhotos, messageIdsMatchingTextOrPhoto, photoSearchText } from "@/lib/chat-search-photo"
 
 /** 한 번에 내려보내는 결과 수. 더 있으면 마지막 결과 시각을 before 로 다시 부른다 */
@@ -42,6 +43,11 @@ export async function GET(req: NextRequest) {
   const room = text && !taskId ? await prisma.chatRoom.findUnique({ where: { id: roomId }, select: { kind: true } }) : null
   const searchPhotos = room?.kind === "COMPANY"
   const pattern = text ? `%${escapeLike(text)}%` : null
+  // 시범 운영 측정 — 첫 쪽만 센다(더 보기는 같은 검색이다). 검색어는 남기지 않는다
+  if (!before) {
+    recordServerUiEventLater(session.user.id, "search_chat", "/chat/:id")
+    if (searchPhotos && pattern) recordServerUiEventLater(session.user.id, "search_photo", "/chat/:id")
+  }
   const photoMatchIds =
     searchPhotos && pattern
       ? await messageIdsMatchingTextOrPhoto({ roomId, pattern, authorId, before: before ? new Date(before) : null, take: PAGE * 2 + 1 })

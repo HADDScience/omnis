@@ -11,9 +11,18 @@ import vm from "node:vm"
 type Shown = { title: string; options: Record<string, unknown> }
 type FakeClient = { url: string; focused: boolean; visibilityState: "visible" | "hidden" }
 
-function loadWorker(scope: string, clients: FakeClient[]) {
+type Posted = { url: string; body: { sha: string; events: { name: string; value: number; path: string }[] } }
+
+function loadWorker(scope: string, clients: FakeClient[], opts: { fetchFails?: boolean } = {}) {
   const handlers: Record<string, (e: unknown) => void> = {}
   const shown: Shown[] = []
+  const posted: Posted[] = []
+  const opened: string[] = []
+  const fetch = async (url: string, init: { body: string }) => {
+    if (opts.fetchFails) throw new Error("offline")
+    posted.push({ url, body: JSON.parse(init.body) })
+    return { ok: true }
+  }
   const self = {
     addEventListener: (name: string, fn: (e: unknown) => void) => (handlers[name] = fn),
     skipWaiting: () => {},
@@ -23,15 +32,20 @@ function loadWorker(scope: string, clients: FakeClient[]) {
         shown.push({ title, options })
       },
     },
-    clients: { matchAll: async () => clients, claim: async () => {} },
+    clients: { matchAll: async () => clients, claim: async () => {}, openWindow: async (u: string) => void opened.push(u) },
   }
-  vm.runInNewContext(readFileSync(join(process.cwd(), "public/sw.js"), "utf8"), { self, URL })
+  vm.runInNewContext(readFileSync(join(process.cwd(), "public/sw.js"), "utf8"), { self, URL, fetch })
   async function push(payload: unknown) {
     let done: Promise<unknown> = Promise.resolve()
     handlers.push({ data: { json: () => payload, text: () => "" }, waitUntil: (p: Promise<unknown>) => (done = p) })
     await done
   }
-  return { push, shown }
+  async function click(data: unknown) {
+    let done: Promise<unknown> = Promise.resolve()
+    handlers.notificationclick({ notification: { data, close: () => {} }, waitUntil: (p: Promise<unknown>) => (done = p) })
+    await done
+  }
+  return { push, click, shown, posted, opened }
 }
 
 const ROOM = { title: "하드사이언스", body: "김하드: 안녕", url: "/chat/default-room", roomPath: "/chat/default-room", tag: "omnis:chat:room:default-room", renotify: true }
@@ -68,4 +82,37 @@ test("방이 없는 알림(업무 지정)은 보고 있는 화면과 상관없�
   await w.push({ title: "새 업무: 시약", body: "정우창님이 업무를 지시했습니다.", url: "/tasks/t1?from=notification", tag: "omnis:t1" })
   assert.equal(w.shown.length, 1)
   assert.equal(w.shown[0].options.renotify, false)
+})
+
+test("시범 운영 측정 — sentAt 이 있으면 받은 초 · 연 초를 보낸다. 띄우지 않은 알림도 받은 것으로 센다", async () => {
+  const sentAt = Date.now() - 4_000
+  const w = loadWorker("https://x.app/omnis/", [{ url: "https://x.app/omnis/chat/default-room", focused: true, visibilityState: "visible" }])
+  await w.push({ ...ROOM, sentAt, sha: "abc1234" })
+  assert.equal(w.shown.length, 0)
+  assert.equal(w.posted.length, 1)
+  assert.equal(w.posted[0].url, "https://x.app/omnis/api/ui-metrics/events")
+  assert.equal(w.posted[0].body.sha, "abc1234")
+  const [ev] = w.posted[0].body.events
+  assert.equal(ev.name, "push_recv_s")
+  assert.ok(ev.value >= 3 && ev.value <= 6, String(ev.value))
+  assert.deepEqual(Object.keys(w.posted[0].body.events[0]).sort(), ["name", "path", "value"]) // 제목 · 본문은 싣지 않는다
+
+  await w.click({ url: "https://x.app/omnis/chat/default-room", sentAt, sha: "abc1234" })
+  assert.equal(w.posted[1].body.events[0].name, "push_open_s")
+})
+
+test("시범 운영 측정 — sentAt 이 없으면 보내지 않고, 보내기가 실패해도 알림은 뜬다 · 기기 시계가 앞서면 0 · 이상한 sha 는 dev", async () => {
+  const off = loadWorker("https://x.app/", [])
+  await off.push(ROOM)
+  assert.equal(off.posted.length, 0)
+  assert.equal(off.shown.length, 1)
+
+  const failing = loadWorker("https://x.app/", [], { fetchFails: true })
+  await failing.push({ ...ROOM, sentAt: Date.now() })
+  assert.equal(failing.shown.length, 1)
+
+  const skew = loadWorker("https://x.app/", [])
+  await skew.push({ ...ROOM, sentAt: Date.now() + 60_000, sha: "<script>" })
+  assert.equal(skew.posted[0].body.events[0].value, 0)
+  assert.equal(skew.posted[0].body.sha, "dev")
 })

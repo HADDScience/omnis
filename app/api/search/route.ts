@@ -5,6 +5,7 @@ import { assigneeLabel } from "@/lib/task-assignees"
 import { getCardVersion } from "@/lib/omnis-git"
 import { apiError } from "@/lib/api"
 import { retrieveContext } from "@/lib/embeddings"
+import { recordServerUiEventLater } from "@/lib/ui-metrics/server-later"
 
 export const runtime = "nodejs"
 
@@ -30,6 +31,9 @@ export async function GET(req: NextRequest) {
       elapsedMs: Date.now() - started,
     })
   }
+
+  // 시범 운영 측정 — 횟수만. 입력 중 이어 온 요청은 화면 쪽 집계가 한 번으로 묶는다(lib/ui-metrics/pilot.ts)
+  if (session.user.id) recordServerUiEventLater(session.user.id, "search_global", "/search")
 
   const cardRows = await prisma.$queryRaw<CardSearchRow[]>`
     SELECT id,
