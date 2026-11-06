@@ -12,6 +12,7 @@ import { DEMO_PASSWORD } from "./_setup"
 const stamp = Date.now()
 const LOCK_USER = `잠금시험${stamp}`
 const RESET_USER = `초기화시험${stamp}`
+const RESET_USER_2 = `초기화위치${stamp}`
 const PASSWORD = `first pass ${stamp}`
 const NEXT_PASSWORD = `second pass ${stamp}`
 const ipFor = (n: number) => `203.0.113.${(stamp + n) % 250}`
@@ -33,13 +34,13 @@ test.describe("비밀번호 로그인 보호", () => {
   const ips = [ipFor(1), ipFor(2), ipFor(3)]
 
   test.beforeAll(async () => {
-    for (const name of [LOCK_USER, RESET_USER]) {
+    for (const name of [LOCK_USER, RESET_USER, RESET_USER_2]) {
       const u = await prisma.user.create({ data: { name, passwordHash: hashSync(PASSWORD, 10), role: "MEMBER", onboardingCompletedAt: new Date() } })
       userIds.push(u.id)
     }
-    await prisma.activityLog.create({
-      data: { userId: userIds[1], entity: PASSWORD_ENTITY, entityId: userIds[1], action: "reset", title: "비밀번호 초기화" },
-    })
+    for (const id of [userIds[1], userIds[2]]) {
+      await prisma.activityLog.create({ data: { userId: id, entity: PASSWORD_ENTITY, entityId: id, action: "reset", title: "비밀번호 초기화" } })
+    }
   })
 
   test.afterAll(async () => {
@@ -47,7 +48,7 @@ test.describe("비밀번호 로그인 보호", () => {
       where: {
         OR: [
           { userId: { in: userIds } },
-          { entity: LOGIN_ENTITY, entityId: { in: [accountKey(LOCK_USER), accountKey(RESET_USER), accountKey("사원3"), ...ips.map(ipKey)] } },
+          { entity: LOGIN_ENTITY, entityId: { in: [accountKey(LOCK_USER), accountKey(RESET_USER), accountKey(RESET_USER_2), accountKey("사원3"), ...ips.map(ipKey)] } },
         ],
       },
     })
@@ -130,6 +131,46 @@ test.describe("비밀번호 로그인 보호", () => {
     await submitLogin(p2, RESET_USER, NEXT_PASSWORD)
     await p2.waitForURL("**/chat", { timeout: 15_000 })
     await again.close()
+  })
+
+  test("임시 비밀번호 안내는 아래쪽에 떠서 폰 nav · 입력창과 겹치지 않는다", async ({ browser }) => {
+    const below = async (page: Page, upper: string, lower: string) => {
+      const a = await page.locator(upper).first().boundingBox()
+      const b = await page.locator(lower).first().boundingBox()
+      expect(a!.y + a!.height, `${upper} 가 ${lower} 위에 있다`).toBeLessThanOrEqual(b!.y + 1)
+    }
+    const notice = '[role="status"][aria-label="비밀번호 변경 안내"]'
+
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, extraHTTPHeaders: { "x-forwarded-for": ips[0] } })
+    const page = await phone.newPage()
+    await submitLogin(page, RESET_USER_2, PASSWORD)
+    await page.waitForURL("**/chat", { timeout: 15_000 })
+    await expect(page.locator(notice)).toBeVisible()
+    await below(page, notice, 'nav[aria-label="주 메뉴"]:visible')
+    const top = await page.locator(notice).boundingBox()
+    expect(top!.y, "화면 위쪽 탭을 덮지 않는다").toBeGreaterThan(844 / 2)
+
+    await page.goto("/chat/default-room")
+    const composer = page.locator("[data-room-composer-chrome]:visible").first()
+    await expect(composer).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator(notice)).toBeVisible()
+    await below(page, notice, "[data-room-composer-chrome]:visible")
+    await phone.close()
+
+    const pc = await browser.newContext({ viewport: { width: 1280, height: 800 }, extraHTTPHeaders: { "x-forwarded-for": ips[0] } })
+    const desk = await pc.newPage()
+    await submitLogin(desk, RESET_USER_2, PASSWORD)
+    await desk.waitForURL("**/chat", { timeout: 15_000 })
+    const box = await desk.locator(notice).boundingBox()
+    expect(box!.y, "아래쪽에 뜬다").toBeGreaterThan(800 / 2)
+    expect(box!.x + box!.width / 2, "오른쪽에 뜬다").toBeGreaterThan(1280 / 2)
+    // 입력창(글 쓰는 칸)과 겹치지 않는다
+    for (const field of await desk.locator("textarea:visible").all()) {
+      const f = (await field.boundingBox())!
+      const overlap = box!.x < f.x + f.width && f.x < box!.x + box!.width && box!.y < f.y + f.height && f.y < box!.y + box!.height
+      expect(overlap, "입력창과 겹치지 않는다").toBe(false)
+    }
+    await pc.close()
   })
 
   for (const width of [1280, 390]) {
