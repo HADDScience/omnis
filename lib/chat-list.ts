@@ -287,3 +287,11 @@ export function hiddenFromList(room: { kind: RoomKind; lastAt: string }, hiddenA
   if (room.kind === "OMNIS_DM") return true
   return new Date(room.lastAt).getTime() <= new Date(hiddenAt).getTime()
 }
+
+/** 글 없이 첨부만 있는 글의 목록 미리보기 — 「사진」 · 「사진 3장」 · 「동영상」 · 「파일」. 첨부가 없으면 빈 말 */
+export function attachmentPreview(files: { mimeType: string }[]): string {
+  if (files.length === 0) return ""
+  if (files.every((f) => f.mimeType.startsWith("image/"))) return files.length > 1 ? `사진 ${files.length}장` : "사진"
+  if (files.length === 1 && files[0].mimeType.startsWith("video/")) return "동영상"
+  return files.length > 1 ? `파일 ${files.length}개` : "파일"
+}

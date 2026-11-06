@@ -24,6 +24,10 @@
 //
 // kakao-sync.py 는 서랍 「파일」 칸의 것을 media/files/<보낸 시각>/<원래 이름> 에 둔다. 이 파일은 같은 이름의 자리표시에만 붙고,
 // 같은 이름이 여럿이면 시각으로 가른다. --media-names-only 면 확장자 · 시각으로 어림잡아 붙이지 않는다(휴대폰 zip 만 그럴 필요가 있다).
+//
+// 붙이고 나면 그 글 본문의 자리표시 줄(`Photo` · `File: 이름` …)을 뺀다 — 사진·파일 칸이 이미 보여 준다.
+// 못 붙인 글은 그대로 둔다. 무엇이 있었는지는 자리표시로라도 보여야 한다.
+// 메시지 sourceId 는 CSV 원문으로 셈하므로 DB 본문을 고쳐도 다시 넣지 않는다. 이미 들어간 글은 strip-placeholders.ts 로 고친다.
 import { randomUUID } from "crypto"
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from "fs"
 import { extname, join } from "path"
@@ -31,7 +35,7 @@ import { prisma, ROOMS, messageSourceId, parseKst, type RawSession } from "../ka
 import { importedFilePrivateTo } from "../rooms-config"
 import { loadExclude } from "../redaction"
 import { deleteObject, objectKeyFor, putObject, putObjectRange, statObjectSize } from "../../lib/storage"
-import { CHUNK_BYTES, IMPORT_MAX_BYTES, WINDOW_MS, pickNamed, stampOfNamedDir, uploadInChunks, type Candidate } from "./media-match"
+import { CHUNK_BYTES, IMPORT_MAX_BYTES, WINDOW_MS, pickNamed, stampOfNamedDir, stripAttachmentPlaceholder, uploadInChunks, type Candidate } from "./media-match"
 
 export const MIME: Record<string, string> = {
   ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
@@ -129,7 +133,7 @@ export async function attachMedia(sessions: RawSession[], dir: string, opts: { d
   }
   const dbMsgs = await prisma.chatMessage.findMany({
     where: { sourceId: { in: placeholders.map((p) => p.sourceId) }, deletedAt: null },
-    select: { id: true, sourceId: true, files: { select: { name: true } } },
+    select: { id: true, sourceId: true, content: true, files: { select: { name: true } } },
   })
   const msgBySource = new Map(dbMsgs.map((m) => [m.sourceId!, m]))
 
@@ -179,9 +183,13 @@ export async function attachMedia(sessions: RawSession[], dir: string, opts: { d
   console.log(`  붙일 것 ${plan.length}개 · ${mb(plan.reduce((a, p) => a + p.file.size, 0))}MB (이름 ${plan.filter((p) => p.how === "이름").length} · 시각 ${plan.filter((p) => p.how === "시각").length}) · 이미 붙음 ${alreadyAttached}`)
   console.log(`  못 맞춘 것 — 파일 자리표시 ${unmatchedFiles} · 사진 자리표시 ${unmatchedPhotos} (장수 모자람 ${shortPhotos}) · 폴더에 남은 파일 ${leftover.length}`)
   if (leftover.length > 0 && leftover.length <= 40) for (const f of leftover) console.log(`    - ${f.name}`)
+  const contentOf = new Map(dbMsgs.map((m) => [m.id, m.content]))
+  const willStrip = new Set(plan.map((p) => p.messageId).filter((id) => stripAttachmentPlaceholder(contentOf.get(id)!) !== contentOf.get(id)))
+  console.log(`  붙이면 본문의 자리표시를 뺄 글 ${willStrip.size}건`)
   if (opts.dry || plan.length === 0) return { attached: 0, failed: 0 }
 
   let attached = 0, failed = 0
+  const done = new Set<string>()
   for (const { messageId, file, name } of plan) {
     const id = randomUUID()
     const mimeType = mimeOf(name)
@@ -191,6 +199,7 @@ export async function attachMedia(sessions: RawSession[], dir: string, opts: { d
       const msg = await prisma.chatMessage.findUniqueOrThrow({ where: { id: messageId }, select: { authorId: true, room: { select: { kind: true } } } })
       await prisma.file.create({ data: { id, name, path: `/api/files/${id}/raw`, size: file.size, mimeType, messageId, privateToUserId: importedFilePrivateTo(msg) } })
       attached++
+      done.add(messageId)
       process.stdout.write(`\r  올리는 중 ${attached}/${plan.length}`)
     } catch (e) {
       failed++
@@ -198,5 +207,15 @@ export async function attachMedia(sessions: RawSession[], dir: string, opts: { d
     }
   }
   console.log()
+  // 하나라도 붙은 글만. 알림·재구성을 타지 않고, 고친 표시(editedAt)도 달지 않는다 — 사람이 고친 게 아니다
+  let stripped = 0
+  for (const id of done) {
+    const before = contentOf.get(id)!
+    const after = stripAttachmentPlaceholder(before)
+    if (after === before) continue
+    await prisma.chatMessage.update({ where: { id }, data: { content: after } })
+    stripped++
+  }
+  if (stripped > 0) console.log(`  본문의 자리표시를 뺀 글 ${stripped}건`)
   return { attached, failed }
 }

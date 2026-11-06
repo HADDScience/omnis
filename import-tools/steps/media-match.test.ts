@@ -2,7 +2,19 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { fileResponseHeaders } from "../../lib/file-serving"
-import { CHUNK_BYTES, IMPORT_MAX_BYTES, pickNamed, stampOfNamedDir, uploadInChunks, type Candidate } from "./media-match"
+import { CHUNK_BYTES, IMPORT_MAX_BYTES, pickNamed, stampOfNamedDir, stripAttachmentPlaceholder, uploadInChunks, type Candidate } from "./media-match"
+
+test("첨부가 붙은 글에서 자리표시 줄만 뺀다", () => {
+  assert.equal(stripAttachmentPlaceholder("Photo"), "")
+  assert.equal(stripAttachmentPlaceholder("3 photos"), "")
+  assert.equal(stripAttachmentPlaceholder("Video"), "")
+  assert.equal(stripAttachmentPlaceholder("File: 보고서 v2 (최종).pdf"), "")
+  // 사람이 쓴 줄 · 삭제 표시는 남는다
+  assert.equal(stripAttachmentPlaceholder("Photo\nThe message has been deleted."), "The message has been deleted.")
+  assert.equal(stripAttachmentPlaceholder("보내드립니다\nFile: 견적서.xlsx"), "보내드립니다")
+  // 자리표시가 아닌 글은 그대로 — 첫머리가 닮아도
+  for (const s of ["Photo 다시 보내주세요", "Photos", "사진", "File:", "Emoticon", "Voice Call", "3 photos 보냈어요"]) assert.equal(stripAttachmentPlaceholder(s), s)
+})
 
 const named = (dir: string, name: string): Candidate => ({ path: `${dir}/${name}`, name, size: 1, stamp: stampOfNamedDir(dir), named: true })
 const at = (s: string) => new Date(`${s}+09:00`)

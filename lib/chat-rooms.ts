@@ -11,7 +11,7 @@ import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { EXTERNAL_SPEAKER_SELECT, externalSpeakerLabel } from "@/lib/external-speaker"
-import { filterRooms, hiddenFromList, normalizeQuery, parseRoomKey, READ_BASELINE_KEY, roomKeyOf, type ChatFolderView } from "@/lib/chat-list"
+import { attachmentPreview, filterRooms, hiddenFromList, normalizeQuery, parseRoomKey, READ_BASELINE_KEY, roomKeyOf, type ChatFolderView } from "@/lib/chat-list"
 import { ensureReadBaseline, listFolders } from "@/lib/chat-prefs"
 import { groupFaceNames, peopleRoomTitle } from "@/lib/chat-people-rules"
 
@@ -95,8 +95,11 @@ const TASK_ROOM_LIMIT = 30
 const TASK_SEARCH_LIMIT = 50
 const PREVIEW_MAX = 60
 
-/** 목록 한 줄 미리보기. 시스템 표식은 사람이 읽을 말로, 옴니스 답의 마크다운 기호(**, #, 표 칸, 각주)는 뗀다 */
-export function previewText(content: string, kind: string): string {
+/**
+ * 목록 한 줄 미리보기. 시스템 표식은 사람이 읽을 말로, 옴니스 답의 마크다운 기호(**, #, 표 칸, 각주)는 뗀다.
+ * 글 없이 사진 · 파일만 있으면 「사진」 · 「파일」 — 카톡 자리표시를 뺀 이식 글과 앱에서 사진만 보낸 글이 이 꼴이다
+ */
+export function previewText(content: string, kind: string, files: { mimeType: string }[] = []): string {
   if (kind === "TASK_CREATED" || content.startsWith("__TASK_CREATED__")) return "업무가 생성되었습니다"
   const flat = content
     .replace(/^🤖\s*/, "")
@@ -104,6 +107,7 @@ export function previewText(content: string, kind: string): string {
     .replace(/\s?\[\d+(?:\s*[,，~–-]\s*\d+)*\]/g, "")
     .replace(/\s+/g, " ")
     .trim()
+  if (!flat) return attachmentPreview(files)
   return flat.length > PREVIEW_MAX ? `${flat.slice(0, PREVIEW_MAX)}…` : flat
 }
 
@@ -265,7 +269,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { content: true, kind: true, authorId: true, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT },
+          select: { content: true, kind: true, authorId: true, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT, files: { select: { mimeType: true }, take: 20 } },
         },
       },
     }),
@@ -278,7 +282,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { content: true, kind: true, createdAt: true, authorId: true, author: { select: { name: true } } },
+          select: { content: true, kind: true, createdAt: true, authorId: true, author: { select: { name: true } }, files: { select: { mimeType: true }, take: 20 } },
         },
       },
     }),
@@ -299,7 +303,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       kind: r.kind,
       name: peopleRoomTitle(r, people, userId),
       lastAt: (r.lastMessageAt ?? r.createdAt).toISOString(),
-      preview: last ? `${last.externalSpeaker ? externalSpeakerLabel(last.externalSpeaker) : authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
+      preview: last ? `${last.externalSpeaker ? externalSpeakerLabel(last.externalSpeaker) : authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind, last.files)}` : null,
       unread: 0,
       favorite: false,
       muted: false,
@@ -319,7 +323,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
         kind: "COMPANY" as const,
         name: r.name,
         lastAt: (last?.createdAt ?? r.createdAt).toISOString(),
-        preview: last ? `${authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind)}` : null,
+        preview: last ? `${authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind, last.files)}` : null,
         unread: 0,
         favorite: false,
         muted: false,

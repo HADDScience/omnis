@@ -95,8 +95,8 @@ test.describe("폰 402px", () => {
     expect(long.h).toBe(420)
     expect(long.w).toBeCloseTo(281.4, 0)
     expect(long.fit).toBe("cover")
-    // 글 없는 첨부는 빈 말풍선이 없다
-    await expect(page.locator(`[data-message-id="${ids.wide}"] [data-message-body] > p`)).toBeHidden()
+    // 글 없는 첨부는 빈 말풍선이 없다 — 카톡 자리표시(Photo · File: 이름)를 뺀 이식 글이 이 꼴이다
+    for (const id of [ids.wide, ids.grid, ids.pdf]) await expect(page.locator(`[data-message-id="${id}"] [data-message-body] > p`)).toBeHidden()
   })
 
   test("글과 사진이 한 메시지면 글 말풍선 아래 사진이 따로 놓이고 시각은 옆 아래다", async ({ page }) => {
@@ -192,5 +192,7 @@ test.describe("PC", () => {
     expect(inside.caption).not.toBe("none")
     expect(await page.locator(`[data-message-id="${ids.reply}"] [data-reply-in-bubble]`).isVisible()).toBe(false)
     expect(await page.locator(`[data-message-id="${ids.grid}"] [data-attachment-grid]`).evaluate((el) => getComputedStyle(el).display)).toBe("contents")
+    // 글 없는 첨부는 빈 글 줄이 자리를 차지하지 않는다
+    for (const id of [ids.wide, ids.pdf]) expect(await page.locator(`[data-message-id="${id}"] [data-message-body] > p`).evaluate((el) => el.getBoundingClientRect().height)).toBe(0)
   })
 })
