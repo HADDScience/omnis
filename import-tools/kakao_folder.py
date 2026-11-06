@@ -281,6 +281,19 @@ def plan_files(todo, lines, items, today, excluded=frozenset()):
     return plan
 
 
+def settle(read, timeout=15.0, gap=0.7, sleep=time.sleep, clock=time.monotonic):
+    """비지 않은 값이 gap 초 간격으로 두 번 연달아 같게 읽히면 그 값, 끝내 아니면 None.
+    서랍은 탭을 바꾼 뒤 칸을 몇 번에 나눠 그린다 — 처음 읽은 것만 믿으면 칸이 모자란다."""
+    t0, last = clock(), None
+    while clock() - t0 < timeout:
+        now = read()
+        if now and now == last:
+            return now
+        last = now
+        sleep(gap)
+    return None
+
+
 def dedupe_scrolled(items):
     """서랍을 굴리는 동안 겹쳐 읽은 칸을 뺀다. 칸에는 고유한 값이 없어 이름 · 만료일 · 크기로 가른다.
     셋이 모두 같은 칸은 하나로 줄어 뒤의 줄이 대기로 남는다 — 어느 칸인지 가를 수 없으므로 그렇게 둔다."""
