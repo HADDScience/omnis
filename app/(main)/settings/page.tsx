@@ -60,7 +60,18 @@ export default async function SettingsPage() {
             <PushNotifications />
             <NotificationKinds />
           </TabsContent>
-          <TabsContent value="accounts" className="mt-3">
+          <TabsContent value="accounts" className="mt-3 flex flex-col gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">비밀번호</CardTitle>
+              </CardHeader>
+              <CardContent className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                <span>이름·비밀번호 로그인에 쓰는 비밀번호입니다.</span>
+                <Link href="/account/password" className="touch-target shrink-0 font-medium text-foreground underline underline-offset-4">
+                  비밀번호 변경
+                </Link>
+              </CardContent>
+            </Card>
             <LinkedAccounts />
           </TabsContent>
           <TabsContent value="ai" className="mt-3">
