@@ -1,6 +1,6 @@
 /**
  * 관리자가 계정의 비밀번호를 무작위 값으로 바꾼다. 바뀐 계정은 처음 로그인할 때
- * 변경 화면으로 간다(lib/password-state.ts 의 "reset" 기록).
+ * 바꾸라는 안내를 본다(lib/password-state.ts 의 "reset" 기록). 막지는 않는다.
  *
  *   OUT=<새 비밀번호 파일> BACKUP=<기존 해시 백업> npx tsx scripts/reset-password.ts <이름>... [--apply]
  *
@@ -8,8 +8,8 @@
  * - 바꾸기 전에 기존 해시를 BACKUP 에 쓴다. 두 파일 모두 권한 600 이고, 이미 있으면 멈춘다.
  * - 새 비밀번호는 OUT 에만 쓴다. 화면에 내지 않는다.
  * - 로컬이 아닌 DB 는 `RESET_ALLOW_REMOTE=1` 이 있어야 돈다.
- * - 열려 있는 세션은 끊지 않는다 — 세션을 무효로 만드는 장치가 아직 없다. 화면은 변경 화면으로
- *   막히지만 이미 받은 세션으로 API 를 부르는 것은 남는다.
+ * - 열려 있는 세션은 끊지 않는다 — 세션을 무효로 만드는 장치가 아직 없다. 이미 받은 세션은
+ *   화면도 API 도 그대로 쓸 수 있다.
  */
 import "dotenv/config"
 import { existsSync, writeFileSync } from "node:fs"
@@ -61,7 +61,7 @@ async function main() {
     ])
     lines.push(`${u.name}\t${password}`)
   }
-  writeFileSync(out, `# ${at} 관리자 초기화. 처음 로그인하면 변경 화면이 뜬다.\n${lines.join("\n")}\n`, { mode: 0o600 })
+  writeFileSync(out, `# ${at} 관리자 초기화. 로그인하면 바꾸라는 안내가 뜬다.\n${lines.join("\n")}\n`, { mode: 0o600 })
   console.log(`바꿈 ${lines.length}개. 새 비밀번호는 OUT 파일에만 있다`)
 }
 
