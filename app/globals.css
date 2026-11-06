@@ -677,11 +677,11 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
     height: 11px;
     background: inherit;
   }
-  [data-messenger] [data-message-body][data-tail="other"]::before {
+  [data-messenger] [data-bubble][data-tail="other"]::before {
     left: -5px;
     clip-path: polygon(0 0, 100% 15%, 100% 100%);
   }
-  [data-messenger] [data-message-body][data-tail="mine"]::before {
+  [data-messenger] [data-bubble][data-tail="mine"]::before {
     right: -5px;
     clip-path: polygon(100% 0, 0 15%, 0 100%);
   }
