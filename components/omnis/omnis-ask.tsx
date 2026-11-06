@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/tooltip"
 
 import { apiUrl } from "@/lib/base-path"
+import { ThumbImage } from "@/components/chat/thumb-image"
 import { albumPhotos } from "@/lib/photo-album"
 import { PhotoAlbum } from "@/components/omnis/photo-album"
 /**
@@ -580,11 +581,11 @@ function SourceRow({ index, source }: { index: number; source: Source }) {
         {index + 1}
       </span>
       {photo && (
-        // 줄인 썸네일(?w=) — 원본은 평균 1.4MB 라 목록에 그대로 띄우지 않는다
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={apiUrl(`/api/files/${source.sourceId}/raw?w=96`)}
-          alt=""
+        // WebP 미리보기 — 원본은 평균 1.4MB 라 목록에 그대로 띄우지 않는다
+        <ThumbImage
+          fileId={source.sourceId}
+          original={apiUrl(`/api/files/${source.sourceId}/raw?w=96`)}
+          cssWidth={44}
           loading="lazy"
           className="h-8 w-8 shrink-0 rounded object-cover in-data-[messenger]:size-11"
         />

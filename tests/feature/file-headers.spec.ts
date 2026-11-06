@@ -150,7 +150,8 @@ test.describe("파일 응답 헤더", () => {
       // 스트리밍 중의 숨은 조각에도 같은 사진이 있다 — 보이는 것만 본다
       const image = page.locator('img[alt="미리보기.png"]').filter({ visible: true })
       await expect(image).toBeVisible({ timeout: 15_000 })
-      await expect.poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0)
+      // 미리보기는 srcset(480w)이라 1px 시험 그림의 naturalWidth 는 0 으로 내려간다 — 그려졌는지는 decode 로 본다
+      await expect.poll(() => image.evaluate((el: HTMLImageElement) => el.decode().then(() => el.currentSrc, () => "")), { timeout: 10_000 }).toContain("/thumb?w=")
       await expect(page.locator('img[alt="카드.svg"]')).toHaveCount(0)
       await expect(page.getByRole("link", { name: /카드\.svg/ })).toBeVisible()
       await prisma.file.updateMany({ where: { messageId: message.id }, data: { messageId: null } })
