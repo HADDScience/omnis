@@ -6,12 +6,14 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   AndroidIcon,
   AppleIcon,
-  Cancel01Icon,
+  ArrowRight01Icon,
   Download04Icon,
+  LinkSquare02Icon,
   SmartPhone01Icon,
 } from "@hugeicons/core-free-icons"
 
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -22,95 +24,91 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { OmnisMark } from "@/components/brand/omnis-mark"
 import {
+  detectInstalled,
   getInstallPrompt,
-  isIos,
   isStandalone,
   onInstallPromptChange,
   promptInstall,
 } from "@/lib/pwa"
-
-const DISMISS_KEY = "omnis:install-card-dismissed"
+import { detectBrowser, handoffUrl, type BrowserEnv, type Handoff } from "@/lib/install-handoff"
 
 /**
- * 마이 탭 위쪽의 앱 설치 안내.
+ * 마이 화면 메뉴의 「앱 설치」 줄(2026-11-06, 검색 줄 자리). 누르면 설치 안내가 열린다.
  *
- * 브라우저가 설치 이벤트(`beforeinstallprompt`)를 줬으면 **바로 설치** 버튼이 뜬다 —
- * 안드로이드 크롬·PC 크롬/엣지가 여기 해당한다. iOS 는 그 이벤트가 없어 코드로 설치를 띄울
- * 수 없으므로(lib/pwa.ts) 사람이 따라 할 순서를 그림과 함께 보인다.
- *
- * 홈 화면 아이콘으로 열린 상태면 이미 설치한 것이라 그리지 않는다. 닫으면 이 브라우저에서는
- * 다시 뜨지 않는다 — 설정 › 기기 알림 1단계에서 같은 설치를 할 수 있다.
+ * 홈 화면 아이콘으로 열었으면(standalone) 「설치됨」 이다. 1단계 버튼으로 넘어온 브라우저(`?install=continue`)는
+ * 어느 화면이든 AppNudge 가 2단계를 이어서 띄운다.
  */
-export function InstallAppCard() {
-  const [visible, setVisible] = useState(false)
+export function InstallAppRow() {
+  const [installed, setInstalled] = useState<"standalone" | "elsewhere" | null>(null)
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    // 기기 판정은 브라우저에서만 가능하다 — 서버 렌더와 어긋나지 않게 마운트 뒤에 채운다.
-    let dismissed = false
-    try {
-      dismissed = localStorage.getItem(DISMISS_KEY) === "1"
-    } catch {}
-    setVisible(!isStandalone() && !dismissed)
+    // 기기 판정은 브라우저에서만 가능하다 — 서버 렌더와 어긋나지 않게 마운트 뒤에 채운다
+    if (isStandalone()) {
+      setInstalled("standalone")
+      return
+    }
+    void detectInstalled().then((yes) => yes && setInstalled("elsewhere"))
   }, [])
 
-  function dismiss() {
-    try {
-      localStorage.setItem(DISMISS_KEY, "1")
-    } catch {}
-    setVisible(false)
-  }
-
-  if (!visible) return null
-
+  const standalone = installed === "standalone"
   return (
-    <>
-      <div className="relative rounded-lg border border-border bg-muted/40 p-3">
-        <button
-          type="button"
-          onClick={dismiss}
-          aria-label="앱 설치 안내 닫기"
-          className="touch-target absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <HugeiconsIcon icon={Cancel01Icon} size={12} aria-hidden />
-        </button>
-        <div className="pr-6 text-[12.5px] font-semibold">Omnis 앱 설치</div>
-        <p className="mt-1 text-[11.5px] leading-[1.45] text-muted-foreground">
-          홈 화면에 추가하면 주소창 없이 앱처럼 열리고, 휴대폰으로 업무 알림을 받을 수 있습니다.
-        </p>
-        <Button
-          size="sm"
-          className="touch-target mt-2.5 h-8 w-full text-[12px]"
-          onClick={() => setOpen(true)}
-        >
-          <HugeiconsIcon icon={SmartPhone01Icon} size={14} aria-hidden />
-          설치 방법 보기
-        </Button>
-      </div>
-
-      <InstallGuideDialog open={open} onOpenChange={setOpen} onInstalled={() => setVisible(false)} />
-    </>
+    <li>
+      <button
+        type="button"
+        data-install-row
+        disabled={standalone}
+        onClick={() => setOpen(true)}
+        className="relative flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left text-[13px] transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:hover:bg-transparent"
+      >
+        <HugeiconsIcon icon={SmartPhone01Icon} size={16} className="text-muted-foreground" aria-hidden />
+        <span className="flex-1">앱 설치</span>
+        {installed ? (
+          <span data-install-state className="text-[11.5px] text-muted-foreground">
+            {standalone ? "설치됨" : "이 기기에 설치됨"}
+          </span>
+        ) : (
+          <HugeiconsIcon icon={ArrowRight01Icon} size={14} className="text-muted-foreground" aria-hidden />
+        )}
+      </button>
+      <InstallGuideDialog
+        open={open}
+        onOpenChange={setOpen}
+        onInstalled={() => setInstalled("elsewhere")}
+      />
+    </li>
   )
 }
 
+const TARGET_LABEL = { safari: "Safari", chrome: "Chrome" } as const
+
 /**
- * 설치 방법 대화상자 — 마이 탭 카드와 첫 화면 권유(app-nudge.tsx)가 같이 연다.
- * 브라우저가 설치 이벤트를 줬으면 **바로 설치** 가 맨 위에 뜬다. 아니면 기기별 순서(iOS 는 이것이 유일한 길이다).
+ * 설치 방법 대화상자 — 마이 화면 「앱 설치」 줄과 첫 화면 권유(app-nudge.tsx)가 같이 연다.
+ *
+ * 1단계 · 설치가 되는 브라우저로 열기 — 인앱 브라우저 등이면 버튼 한 번으로 Safari(iOS) · Chrome(Android)에서
+ *   같은 페이지를 연다(lib/install-handoff.ts). 이미 그 브라우저이거나 PC 면 건너뛴다.
+ * 2단계 · 홈 화면에 추가 — 브라우저가 설치 이벤트를 줬으면 **바로 설치**, 아니면 기기별 순서(iOS 는 이것이 유일한 길이다).
  */
 export function InstallGuideDialog({
   open,
   onOpenChange,
   onInstalled,
+  continued = false,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onInstalled?: () => void
+  /** 1단계 버튼으로 넘어온 브라우저에서 열렸다 — 2단계부터 보인다 */
+  continued?: boolean
 }) {
-  const [ios, setIos] = useState(false)
+  const [env, setEnv] = useState<BrowserEnv | null>(null)
+  const [handoff, setHandoff] = useState<Handoff | null>(null)
   const [installable, setInstallable] = useState(false)
 
   useEffect(() => {
-    setIos(isIos())
+    const found = detectBrowser(navigator.userAgent, navigator.maxTouchPoints)
+    setEnv(found)
+    setHandoff(handoffUrl(window.location.href, found))
     setInstallable(getInstallPrompt() !== null)
     return onInstallPromptChange(() => setInstallable(getInstallPrompt() !== null))
   }, [])
@@ -125,44 +123,71 @@ export function InstallGuideDialog({
     setInstallable(getInstallPrompt() !== null)
   }
 
+  const ios = env?.os === "ios"
+  // 넘어온 뒤에도 아직 설치되는 브라우저가 아니면(스킴이 다른 브라우저를 열었다) 1단계를 다시 보인다
+  const showStep1 = handoff !== null && !(continued && env?.canInstallHere)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(var(--app-vh,100dvh)-2rem)] overflow-y-auto">
+      <DialogContent data-install-guide className="max-h-[calc(var(--app-vh,100dvh)-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Omnis 앱 설치</DialogTitle>
           <DialogDescription>
-            휴대폰 홈 화면에 Omnis 아이콘을 만들어 앱처럼 씁니다.
+            {continued && !showStep1
+              ? "이어서 홈 화면에 추가하면 끝입니다."
+              : "휴대폰 홈 화면에 Omnis 아이콘을 만들어 앱처럼 씁니다."}
           </DialogDescription>
         </DialogHeader>
 
-        {installable && (
-          <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
-            <p className="text-sm">이 브라우저에서는 버튼 하나로 바로 설치됩니다.</p>
-            <Button className="touch-target h-10 w-full" onClick={install}>
-              <HugeiconsIcon icon={Download04Icon} size={15} aria-hidden />
-              바로 설치
-            </Button>
-          </div>
+        {showStep1 && handoff && (
+          <section data-install-step="1" className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <StepTitle n={1}>{TARGET_LABEL[handoff.target]}에서 열기</StepTitle>
+            <p className="text-sm text-muted-foreground">
+              {env?.inApp ? "앱 안의 브라우저에서는 홈 화면에 추가할 수 없습니다. " : ""}
+              버튼을 누르면 {TARGET_LABEL[handoff.target]}에서 이 페이지가 열리고, 다음 단계가 이어서 뜹니다.
+            </p>
+            {/* 스킴 이동은 누름에서 바로 해야 한다(비동기 뒤에 부르면 막힌다는 보고) — 그래서 링크다 */}
+            <a href={handoff.href} data-install-handoff={handoff.target} className={cn(buttonVariants(), "touch-target h-10 w-full")}>
+              <HugeiconsIcon icon={LinkSquare02Icon} size={15} aria-hidden />
+              {TARGET_LABEL[handoff.target]}에서 열기
+            </a>
+            <p className="text-xs text-muted-foreground">
+              안 열리면 오른쪽 위 메뉴의 「다른 브라우저로 열기」 를 누릅니다.
+            </p>
+          </section>
         )}
 
-        <Tabs defaultValue={ios ? "ios" : "android"}>
-          <TabsList className="w-full">
-            <TabsTrigger value="android" className="touch-target">
-              <HugeiconsIcon icon={AndroidIcon} size={14} aria-hidden />
-              Android
-            </TabsTrigger>
-            <TabsTrigger value="ios" className="touch-target">
-              <HugeiconsIcon icon={AppleIcon} size={14} aria-hidden />
-              iPhone
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="android">
-            <AndroidSteps />
-          </TabsContent>
-          <TabsContent value="ios">
-            <IosSteps />
-          </TabsContent>
-        </Tabs>
+        <section data-install-step="2" className="flex flex-col gap-2">
+          <StepTitle n={showStep1 ? 2 : null}>홈 화면에 추가</StepTitle>
+          {installable && (
+            <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="text-sm">이 브라우저에서는 버튼 하나로 바로 설치됩니다.</p>
+              <Button className="touch-target h-10 w-full" onClick={install}>
+                <HugeiconsIcon icon={Download04Icon} size={15} aria-hidden />
+                바로 설치
+              </Button>
+            </div>
+          )}
+
+          <Tabs key={ios ? "ios" : "android"} defaultValue={ios ? "ios" : "android"}>
+            <TabsList className="w-full">
+              <TabsTrigger value="android" className="touch-target">
+                <HugeiconsIcon icon={AndroidIcon} size={14} aria-hidden />
+                Android
+              </TabsTrigger>
+              <TabsTrigger value="ios" className="touch-target">
+                <HugeiconsIcon icon={AppleIcon} size={14} aria-hidden />
+                iPhone
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="android">
+              <AndroidSteps />
+            </TabsContent>
+            <TabsContent value="ios">
+              <IosSteps />
+            </TabsContent>
+          </Tabs>
+        </section>
 
         <div className="flex items-center gap-3 rounded-lg border border-border p-3">
           <div className="flex shrink-0 flex-col items-center gap-1">
@@ -178,20 +203,26 @@ export function InstallGuideDialog({
   )
 }
 
-/** 안드로이드 탭. 다른 탭과 보여주는 순서가 달라 따로 둔다 (ux-rules 25). */
+function StepTitle({ n, children }: { n: number | null; children: React.ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-2 text-sm font-semibold">
+      {n !== null && <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] text-primary-foreground">{n}단계</span>}
+      {children}
+    </h3>
+  )
+}
+
+/** 안드로이드 탭. 다른 탭과 보여주는 순서가 달라 따로 둔다 (ux-rules 25). Chrome 에서 여는 것은 1단계다 */
 function AndroidSteps() {
   return (
     <ol className="flex flex-col gap-3 pt-2 text-sm">
       <GuideStep n={1}>
-        <b>크롬</b>으로 이 페이지를 엽니다.
+        Chrome 오른쪽 위 더보기 <MoreVerticalGlyph /> 를 누릅니다.
       </GuideStep>
       <GuideStep n={2}>
-        오른쪽 위 더보기 <MoreVerticalGlyph /> 를 누릅니다.
-      </GuideStep>
-      <GuideStep n={3}>
         <b>&ldquo;홈 화면에 추가&rdquo;</b> 또는 <b>&ldquo;앱 설치&rdquo;</b> 를 누릅니다.
       </GuideStep>
-      <GuideStep n={4}>
+      <GuideStep n={3}>
         <b>&ldquo;설치&rdquo;</b> 를 누릅니다.
       </GuideStep>
       <p className="text-xs text-muted-foreground">
@@ -201,26 +232,23 @@ function AndroidSteps() {
   )
 }
 
-/** iPhone 탭. iOS 는 설치를 코드로 띄울 수 없어 이 순서가 유일한 길이다. */
+/** iPhone 탭. iOS 는 설치를 코드로 띄울 수 없어 이 순서가 유일한 길이다. Safari 에서 여는 것은 1단계다 */
 function IosSteps() {
   return (
     <ol className="flex flex-col gap-3 pt-2 text-sm">
       <GuideStep n={1}>
-        <b>사파리</b>로 이 페이지를 엽니다.
-      </GuideStep>
-      <GuideStep n={2}>
-        주소창 옆 더보기 <MoreHorizontalGlyph /> 를 누른 뒤 공유 <ShareGlyph /> 를 누릅니다.
+        Safari 주소창 옆 더보기 <MoreHorizontalGlyph /> 를 누른 뒤 공유 <ShareGlyph /> 를 누릅니다.
         <span className="block text-xs text-muted-foreground">
           화면 아래에 공유 <ShareGlyph /> 가 바로 보이면 그것을 누릅니다.
         </span>
       </GuideStep>
-      <GuideStep n={3}>
+      <GuideStep n={2}>
         목록을 내려 <b>&ldquo;홈 화면에 추가&rdquo;</b> <AddSquareGlyph /> 를 누릅니다.
         <span className="block text-xs text-muted-foreground">
           안 보이면 더 보기 <MoreHorizontalGlyph /> 를 눌러 찾습니다.
         </span>
       </GuideStep>
-      <GuideStep n={4}>
+      <GuideStep n={3}>
         오른쪽 위 <b>&ldquo;추가&rdquo;</b> 를 누릅니다.
       </GuideStep>
     </ol>

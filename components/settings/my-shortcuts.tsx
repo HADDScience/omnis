@@ -11,14 +11,13 @@ import {
   BookOpen01Icon,
   Logout01Icon,
   Moon01Icon,
-  Search01Icon,
   Sun01Icon,
 } from "@hugeicons/core-free-icons"
 import { Card, CardContent } from "@/components/ui/card"
 import { ShineBorder } from "@/components/magicui/shine-border"
 import { KeyboardShortcuts } from "@/components/settings/keyboard-shortcuts"
 import { useOnboarding } from "@/components/onboarding/onboarding-provider"
-import { useCommandPalette } from "@/components/layout/command-palette-context"
+import { InstallAppRow } from "@/components/layout/install-app-card"
 import { cn } from "@/lib/utils"
 
 function Row({
@@ -65,7 +64,6 @@ function Row({
  */
 export function MyShortcuts() {
   const onboarding = useOnboarding()
-  const commandPalette = useCommandPalette()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -99,13 +97,8 @@ export function MyShortcuts() {
             label="온보딩 튜토리얼 다시 보기"
             onClick={() => onboarding.replay()}
           />
-          {/* PC 는 ⌘K 로 연다(nav 에서 돋보기는 뺐다). 폰에는 단축키가 없어 여기 둔다 */}
-          <Row
-            itemClassName="md:hidden"
-            icon={<HugeiconsIcon icon={Search01Icon} size={16} className="text-muted-foreground" aria-hidden />}
-            label="검색"
-            onClick={() => commandPalette.open()}
-          />
+          {/* 검색 줄이 있던 자리(2026-11-06 ⌘K 검색을 걷었다) */}
+          <InstallAppRow />
           <Row
             icon={
               <HugeiconsIcon

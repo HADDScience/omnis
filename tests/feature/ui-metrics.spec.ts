@@ -117,9 +117,9 @@ test.describe("내용 비수집", () => {
     await page.getByRole("menuitem", { name: /사람 언급|@/ }).first().click()
     await page.keyboard.press("Escape")
     await box.fill("")
-    // 단축키
-    await page.keyboard.press("ControlOrMeta+k")
-    await page.keyboard.press("Escape")
+    // 단축키 — 테마 바꾸기는 입력칸 밖에서만 받는다(⌘K 검색 창은 2026-11-06 걷었다)
+    await box.blur()
+    await page.keyboard.press("Alt+Shift+KeyD")
 
     // 탭을 숨기기 전에는 나가지 않는다 — 타이머가 없다
     await page.waitForTimeout(1_000)
@@ -139,7 +139,7 @@ test.describe("내용 비수집", () => {
 
     const rows = await prisma.uiEvent.findMany({ where: { userId: me } })
     const names = rows.map((r) => r.name)
-    expect(names).toEqual(expect.arrayContaining(["room_open_to_send", "plus_open", "plus_dismiss", "plus_act", "shortcut.commandPalette"]))
+    expect(names).toEqual(expect.arrayContaining(["room_open_to_send", "plus_open", "plus_dismiss", "plus_act", "shortcut.toggleTheme"]))
     expect(JSON.stringify(rows)).not.toContain(secret)
     expect(rows.every((r) => r.path === "/chat/:id")).toBe(true)
     const send = rows.find((r) => r.name === "room_open_to_send")
@@ -258,10 +258,10 @@ test.describe("설문 — 꺼 둔 동안", () => {
   })
 })
 
-test("수집 안내 문구가 마이 > 시스템에 있다", async ({ page }) => {
+test("수집 안내 문구가 마이 > 앱 정보에 있다", async ({ page }) => {
   await login(page, "사원1")
   await page.goto("/settings")
-  await page.getByRole("tab", { name: "시스템" }).click()
+  await page.getByRole("tab", { name: "앱 정보" }).click()
   const notice = page.locator("[data-ui-metrics-notice]")
   await expect(notice).toContainText("모으는 것")
   await expect(notice).toContainText("대화 내용, 파일 이름, 방 이름")

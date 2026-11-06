@@ -29,7 +29,7 @@ test("한글 입력 중의 ㅊ 도 자리(code)로 잡힌다", () => {
 test("조합키가 다르면 맞지 않는다 — 키 하나로는 동작하지 않는다", () => {
   assert.equal(matchesCombo(key("KeyD"), DEFAULT_SHORTCUTS.toggleTheme), false)
   assert.equal(matchesCombo(key("KeyC"), DEFAULT_SHORTCUTS.togglePanel), false)
-  assert.equal(matchesCombo(key("KeyK", { metaKey: true, shiftKey: true }), DEFAULT_SHORTCUTS.commandPalette), false)
+  assert.equal(matchesCombo(key("KeyF", { metaKey: true }), DEFAULT_SHORTCUTS.panelSearch), false)
 })
 
 test("기본 단축키는 모두 규칙을 통과하고 서로 겹치지 않는다", () => {

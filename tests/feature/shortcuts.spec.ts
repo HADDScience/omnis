@@ -49,13 +49,21 @@ test("입력칸 안에서는 테마 · 패널 단축키가 동작하지 않는�
   await expect(panelInput(page)).toHaveCount(0)
 })
 
-test("검색 단축키는 입력칸 안에서도 받는다", async ({ page }) => {
+test("⌘K 검색 창은 걷었다 — 눌러도 아무것도 뜨지 않고, 단축키 설정에도 없다(2026-11-06)", async ({ page }) => {
   await ready(page, "/chat/new")
   const box = page.locator("[data-composer-pill] textarea").first()
   await box.waitFor({ timeout: 30_000 })
   await box.focus()
   await page.keyboard.press("ControlOrMeta+KeyK")
-  await expect(page.getByRole("dialog")).toBeVisible()
+  await page.keyboard.press("Escape")
+  await box.blur()
+  await page.keyboard.press("ControlOrMeta+KeyK")
+  await page.waitForTimeout(400)
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await page.goto("/settings")
+  await expect(row(page, "toggleTheme")).toBeVisible({ timeout: 30_000 })
+  await expect(row(page, "commandPalette")).toHaveCount(0)
+  await expect(page.locator("[data-keyboard-shortcuts]")).not.toContainText("검색 창")
 })
 
 test("설정에서 키를 바꾸면 저장되고, 겹치거나 조합키 없는 키는 거부하며, 기본값으로 되돌린다", async ({ page }) => {

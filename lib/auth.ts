@@ -89,7 +89,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (!current?.user?.id) return "/login?error=notlinked"
 
       const result = await linkIdentity(current.user.id, social)
-      if (!result.ok) return `/settings?error=${result.reason}`
+      if (!result.ok) return `/settings/profile?error=${result.reason}`
       return true
     },
 

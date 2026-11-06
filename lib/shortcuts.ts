@@ -4,7 +4,8 @@
 // 키는 e.code(자판의 자리)로 잰다 — 한글 입력 중의 ㅊ, 맥 Option 조합의 특수문자도 같은 키로 잡힌다.
 // `Mod` 는 맥의 ⌘, 그 밖의 Ctrl 이다.
 
-export type ShortcutAction = "commandPalette" | "panelSearch" | "togglePanel" | "toggleTheme"
+// ⌘K 검색 창(commandPalette)은 2026-11-06 걷었다 — 저장돼 있던 키는 sanitizeShortcuts 가 버린다
+export type ShortcutAction = "panelSearch" | "togglePanel" | "toggleTheme"
 
 export interface ShortcutDefinition {
   id: ShortcutAction
@@ -12,14 +13,13 @@ export interface ShortcutDefinition {
   /** 기본 키 */
   combo: string
   /**
-   * 입력칸 안에서도 받는가. 글을 쓰다가 바로 찾는 검색 둘만 받는다(규칙: ux-rules 전체 검색).
+   * 입력칸 안에서도 받는가. 글을 쓰다가 바로 찾는 대화 패널 검색만 받는다(규칙: ux-rules 전체 검색).
    * 테마 · 패널은 입력칸에서 동작하지 않는다.
    */
   inInput: boolean
 }
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
-  { id: "commandPalette", label: "검색 창 열기", combo: "Mod+KeyK", inInput: true },
   { id: "panelSearch", label: "대화 패널에서 전체 검색", combo: "Mod+Shift+KeyF", inInput: true },
   { id: "togglePanel", label: "대화 패널 열기 · 닫기", combo: "Alt+Shift+KeyC", inInput: false },
   { id: "toggleTheme", label: "라이트 · 다크 바꾸기", combo: "Alt+Shift+KeyD", inInput: false },

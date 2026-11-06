@@ -19,6 +19,7 @@ import { InstallGuideDialog } from "@/components/layout/install-app-card"
 import { useOnboarding } from "@/components/onboarding/onboarding-provider"
 import { apiUrl } from "@/lib/base-path"
 import { decideNudge, nudgeLaterKey, nudgeOffKey, type NudgeStage } from "@/lib/app-nudge"
+import { isInstallContinue, withoutInstallContinue } from "@/lib/install-handoff"
 import {
   currentSubscription,
   detectInstalled,
@@ -65,9 +66,19 @@ export function AppNudge() {
   const [stage, setStage] = useState<NudgeStage | null>(null)
   const [publicKey, setPublicKey] = useState<string | null>(null)
   const [guideOpen, setGuideOpen] = useState(false)
+  // 설치 1단계 버튼으로 Safari · Chrome 에 넘어왔다(lib/install-handoff.ts) — 권유 대신 2단계를 바로 잇는다
+  const [continued, setContinued] = useState(false)
 
   useEffect(() => {
-    if (touring) return
+    if (isStandalone() || !isInstallContinue(window.location.search)) return
+    // 새로고침마다 다시 뜨지 않게 표시를 뗀다
+    window.history.replaceState(window.history.state, "", withoutInstallContinue(window.location.href))
+    setContinued(true)
+    setGuideOpen(true)
+  }, [])
+
+  useEffect(() => {
+    if (touring || continued) return
     let alive = true
     const timer = setTimeout(async () => {
       const standalone = isStandalone()
@@ -101,7 +112,7 @@ export function AppNudge() {
       alive = false
       clearTimeout(timer)
     }
-  }, [touring])
+  }, [touring, continued])
 
   function later() {
     if (stage) writeFlag(session, nudgeLaterKey(stage))
@@ -137,7 +148,7 @@ export function AppNudge() {
           </div>
         </DialogContent>
       </Dialog>
-      <InstallGuideDialog open={guideOpen} onOpenChange={setGuideOpen} />
+      <InstallGuideDialog open={guideOpen} onOpenChange={setGuideOpen} continued={continued} />
     </>
   )
 }
