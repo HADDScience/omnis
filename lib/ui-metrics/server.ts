@@ -1,4 +1,3 @@
-import { runAfterResponse } from "@/lib/after-response"
 import { prisma } from "@/lib/db"
 import { SERVER_EVENT_NAMES, type ServerEventName } from "./pilot"
 import { DEV_SHA, pickSurveyTarget, retentionCutoff, summarize, type UiDeploymentRow } from "./rules"
@@ -24,12 +23,6 @@ export async function recordServerUiEvents(rows: { userId: string; name: ServerE
   await prisma.uiEvent
     .createMany({ data: rows.map((r) => ({ userId: r.userId, name: r.name, value: r.value ?? null, path, commitSha: SERVER_SHA })) })
     .catch((err) => console.error("[ui-metrics] 서버 기록 실패", err))
-}
-
-/** 응답 뒤에 남긴다 — 검색 응답을 늦추지 않게 */
-export function recordServerUiEventLater(userId: string, name: ServerEventName, path: string, value?: number): void {
-  if (!uiMetricsServerEnabled()) return
-  runAfterResponse("ui-metrics", () => recordServerUiEvents([{ userId, name, value }], path))
 }
 
 /** 90일 지난 사용 기록을 지운다. cron/daily 가 깨운 김에 부른다 */

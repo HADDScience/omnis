@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { roomAccess } from "@/lib/chat-rooms"
 import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
-import { recordServerUiEventLater } from "@/lib/ui-metrics/server"
+import { recordServerUiEventLater } from "@/lib/ui-metrics/server-later"
 import { countMatchingTextOrPhoto, matchedPhotos, messageIdsMatchingTextOrPhoto, photoSearchText } from "@/lib/chat-search-photo"
 
 /** 한 번에 내려보내는 결과 수. 더 있으면 마지막 결과 시각을 before 로 다시 부른다 */

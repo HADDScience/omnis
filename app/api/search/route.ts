@@ -5,7 +5,7 @@ import { assigneeLabel } from "@/lib/task-assignees"
 import { getCardVersion } from "@/lib/omnis-git"
 import { apiError } from "@/lib/api"
 import { retrieveContext } from "@/lib/embeddings"
-import { recordServerUiEventLater } from "@/lib/ui-metrics/server"
+import { recordServerUiEventLater } from "@/lib/ui-metrics/server-later"
 
 export const runtime = "nodejs"
 
