@@ -4,6 +4,8 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { TopBanners } from "@/components/layout/top-banners"
 import { Toaster } from "@/components/ui/sonner"
+import { apiUrl } from "@/lib/base-path"
+import { BRAND, brand } from "@/lib/brand"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
@@ -15,6 +17,15 @@ export const metadata: Metadata = {
    * (iOS 는 16.4 부터 manifest 를 본다 — 푸시가 되는 버전과 같다).
    */
   appleWebApp: { capable: true, title: "Omnis", statusBarStyle: "default" },
+  /*
+   * 탭 아이콘 · 홈 화면 아이콘은 lib/brand.ts 가 고른다(NEXT_PUBLIC_BRAND). 앱 라우터 파일 규칙
+   * (app/icon.png · app/apple-icon.png)은 env 를 못 읽어 public/brand/v1/ 로 옮기고 여기서 낸다.
+   * 로그인 화면은 app/(auth)/layout.tsx 가 HADD 마크로 덮는다.
+   */
+  icons: {
+    icon: brand.icon.map((i) => ({ ...i, url: apiUrl(i.url) })),
+    apple: [{ url: apiUrl(brand.apple.url), sizes: brand.apple.sizes }],
+  },
 }
 
 /**
@@ -40,6 +51,8 @@ export default function RootLayout({
       lang="ko"
       suppressHydrationWarning
       className={cn("antialiased", "font-sans")}
+      // 새 로고일 때만 붙는다 — globals.css 가 로고 타일 바탕(--brand-gradient)을 새 로고의 파랑으로 바꾼다
+      data-brand={BRAND === "v1" ? undefined : BRAND}
     >
       <head>
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />

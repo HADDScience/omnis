@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
+import { BrandLoader } from "@/components/brand/brand-loader"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon, Delete02Icon } from "@hugeicons/core-free-icons"
 import {
@@ -179,7 +180,7 @@ export function TaskInstructionDialog({
 
         {loading && (
           <div className="flex items-center justify-center gap-2 py-8">
-            <Spinner />
+            <BrandLoader size={24} />
             <span className="text-sm text-muted-foreground">
               Gemini가 업무를 구조화하는 중...
             </span>

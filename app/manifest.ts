@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next"
 
 import { BASE_PATH } from "@/lib/base-path"
+import { brand } from "@/lib/brand"
 
 /**
  * PWA manifest — `/manifest.webmanifest` 로 나간다.
@@ -21,20 +22,12 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: base,
     display: "standalone",
     background_color: "#ffffff",
-    theme_color: "#1447e6",
+    theme_color: brand.themeColor,
     lang: "ko",
     // 이 앱 자신 — 브라우저 탭에서 getInstalledRelatedApps 로 「이미 설치했는가」 를 묻게 한다(lib/pwa.ts detectInstalled).
     // 주소는 manifest 주소 기준으로 풀린다
     related_applications: [{ platform: "webapp", url: `${BASE_PATH}/manifest.webmanifest` }],
-    icons: [
-      { src: `${BASE_PATH}/icon-192.png`, sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: `${BASE_PATH}/icon-512.png`, sizes: "512x512", type: "image/png", purpose: "any" },
-      {
-        src: `${BASE_PATH}/icon-maskable-512.png`,
-        sizes: "512x512",
-        type: "image/png",
-        purpose: "maskable",
-      },
-    ],
+    // 아이콘은 lib/brand.ts 가 고른다. v2 는 주소가 바뀐다(public/brand/v2/) — 설치한 안드로이드 앱이 바뀐 아이콘을 알아챈다
+    icons: brand.manifestIcons.map((i) => ({ ...i, src: `${BASE_PATH}${i.src}` })),
   }
 }

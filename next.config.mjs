@@ -2,6 +2,8 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { withWorkflow } from "workflow/next"
 
+import { brandRewrites, resolveBrand } from "./lib/brand-static.mjs"
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** @type {import('next').NextConfig} */
@@ -121,7 +123,7 @@ const nextConfig = {
             destination: "/api/ip-mcp/.well-known/oauth-protected-resource",
           },
         ]
-    return [
+    const afterFiles = [
       ...legacy,
       {
         source: "/.well-known/oauth-authorization-server/api/ip-mcp",
@@ -140,6 +142,11 @@ const nextConfig = {
         destination: "/api/ip-mcp/.well-known/oauth-protected-resource",
       },
     ]
+    /*
+     * 새 로고(NEXT_PUBLIC_BRAND=v2) — 주소가 고정된 정적 로고를 public/brand/v2/ 로 돌린다(lib/brand-static.mjs).
+     * public 파일보다 먼저 걸려야 해서 beforeFiles 다. v1 이면 빈 목록이라 지금과 같다.
+     */
+    return { beforeFiles: brandRewrites(resolveBrand(process.env.NEXT_PUBLIC_BRAND)), afterFiles, fallback: [] }
   },
 }
 

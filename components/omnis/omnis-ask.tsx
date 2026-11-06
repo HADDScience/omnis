@@ -27,6 +27,7 @@ import {
 import type { EmbeddingSource } from "@/lib/embeddings"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import { BrandLoader } from "@/components/brand/brand-loader"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -473,7 +474,7 @@ function SkeletonAnswer({ caption }: { caption?: string }) {
     <div>
       {caption ? (
         <div className="mb-2.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
-          <Spinner />
+          <BrandLoader size={16} />
           {caption}
         </div>
       ) : (
