@@ -16,10 +16,11 @@ type Props = Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "srcSet" | "sizes
 export function ThumbImage({ fileId, original, cssWidth, onError, alt = "", ...rest }: Props) {
   const [failed, setFailed] = useState(false)
   const ref = useRef<HTMLImageElement>(null)
-  // React 가 onError 를 달기 전에 실패한 이미지는 이벤트를 놓친다 — 붙은 뒤 한 번 본다
+  // React 가 onError 를 달기 전에 실패한 이미지는 이벤트를 놓친다 — 붙은 뒤 한 번 본다.
+  // naturalWidth 로 가르지 않는다: srcset(480w)이면 아주 작은 그림은 잘 받아도 0 이다. 깨진 그림만 decode 가 거절한다
   useEffect(() => {
     const el = ref.current
-    if (el && el.complete && el.naturalWidth === 0 && el.currentSrc) setFailed(true)
+    if (el?.complete && el.currentSrc) el.decode().catch(() => setFailed(true))
   }, [])
   return (
     // eslint-disable-next-line @next/next/no-img-element
