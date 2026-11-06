@@ -298,6 +298,27 @@ export const ROUTE_READ_TOOLS = new Set([
   "list_market_companies", "get_context", "list_calendar",
 ])
 
+/**
+ * 질문 경로에서는 list_chat 의 방 보기(view=room)를 닫는다 — 이 경로의 근거는 전사방 · 업무 글뿐이다(검색 색인과 같다).
+ * 답은 옴니스 기록(OmnisQuery)으로 남고 화면에 따라 여러 사람이 보는 자리에 붙을 수 있어, 단톡 · 1:1 글이 들어오면 안 된다.
+ * 방 글은 MCP 에서 사용자가 직접 list_chat(view=room)으로 읽고, 앱 안에서는 요청한 사람만 보는 에이전트(lib/agent/tools.ts)가 읽는다.
+ */
+const ROUTE_ROOM_PROPS = ["room", "members", "since", "until", "query"]
+
+export function routeToolSchema(name: string, schema: { type: string; properties?: Record<string, unknown>; required?: string[] }) {
+  if (name !== "list_chat") return schema
+  const properties = { ...schema.properties }
+  for (const p of ROUTE_ROOM_PROPS) delete properties[p]
+  const view = properties.view as { enum?: string[] } | undefined
+  if (view?.enum) properties.view = { ...view, enum: view.enum.filter((v) => v !== "room") }
+  return { ...schema, properties }
+}
+
+export function routeArgsRefusal(name: string, args: Record<string, unknown>): string | null {
+  if (name === "list_chat" && args.view === "room") return "오류: 이 질문 경로에서는 단톡방 · 1:1 방 글을 읽지 않습니다."
+  return null
+}
+
 export function routeSystemPrompt(today: string, userName: string, withHistory = false): string {
   return `당신은 HADD Science 의 사내 지식 비서 "옴니스" 입니다. 오늘은 ${today} 이고, 질문한 사람은 ${userName} 입니다.
 직원의 질문에 답하려면 도구를 골라 부르세요. 한 번에 여러 도구를 불러도 됩니다. 최대 5번까지 부를 수 있습니다.
@@ -359,7 +380,7 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
       },
     },
     ...OMNIS_TOOLS.filter((t) => ROUTE_READ_TOOLS.has(t.name)).map((t) => {
-      const schema = t.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[] }
+      const schema = routeToolSchema(t.name, t.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[] })
       const hasProps = schema.properties && Object.keys(schema.properties).length > 0
       return { name: t.name, description: t.description, ...(hasProps ? { parameters: schema } : {}) }
     }),
@@ -387,6 +408,8 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
     if (call.name === "ip_overview") return (await buildIpOverview()) || "지식재산권 자료가 없습니다."
     // 내놓지 않은 이름을 모델이 지어 불러도 실행하지 않는다
     if (!ROUTE_READ_TOOLS.has(call.name)) return `오류: ${call.name} 은(는) 이 질문 경로에서 쓸 수 없는 도구입니다.`
+    const refused = routeArgsRefusal(call.name, call.args)
+    if (refused) return refused
     const r = await runTool(call.name, call.args, caller)
     return "error" in r ? `오류: ${r.error}` : r.text
   }

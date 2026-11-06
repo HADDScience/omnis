@@ -34,6 +34,8 @@ export const AGENT_READ_TOOLS = [
   "search_knowledge", "ip_overview",
   "list_tasks", "get_task", "list_projects", "list_members", "crm_overview", "find_org",
   "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat", "list_notifications",
+  // 내가 든 단톡방 · 1:1 — MCP 와 같은 함수(lib/chat-feed). 에이전트는 요청한 사람의 옴니스 1:1 방에서만 돌아 답도 그 사람만 본다
+  "list_rooms",
   "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
   "list_market_companies", "get_context",
   // 웍스 캘린더 — 캘린더 탭과 같은 함수 · 보기 권한(lib/calendar/agent-tool)
