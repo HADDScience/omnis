@@ -1,0 +1,32 @@
+import { useId } from "react"
+
+/*
+ * Omnis 로딩 표시 — 세 조각이 돌며 벌어졌다가 하나의 O 로 모인다(1.4s 반복).
+ * prefers-reduced-motion 이면 회전 · 벌어짐 없이 천천히 옅어졌다 돌아온다.
+ * 원본: ~/work/omnis-reports/logo-motion/OmnisLoader.tsx · public/brand/v2/omnis-loader.svg 와 같은 그림이다.
+ * 같은 화면에 여럿 그려도 된다 — 그라데이션 id 를 useId 로 겹치지 않게 바꾼다.
+ *
+ * 직접 쓰지 말고 BrandLoader(./brand-loader.tsx)를 쓴다 — 지금 로고(v1)에서는 기존 Spinner 가 나온다.
+ */
+
+const CSS = `.oml{display:block}.oml-spin{transform-box:view-box;transform-origin:256px 256px;animation:oml-rot 1.4s cubic-bezier(.65,0,.35,1) infinite}.oml-s{transform-box:view-box;animation:1.4s cubic-bezier(.45,0,.55,1) infinite}.oml-s0{animation-name:oml-b0}.oml-s1{animation-name:oml-b1}.oml-s2{animation-name:oml-b2}@keyframes oml-rot{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}@keyframes oml-b0{0%,100%{transform:translate(0px,0px)}50%{transform:translate(-17.60px,-17.60px)}}@keyframes oml-b1{0%,100%{transform:translate(0px,0px)}50%{transform:translate(24.05px,-6.44px)}}@keyframes oml-b2{0%,100%{transform:translate(0px,0px)}50%{transform:translate(-6.44px,24.05px)}}@media (prefers-reduced-motion:reduce){.oml-spin{animation:none}.oml-s{animation:oml-fade 2.4s ease-in-out infinite!important}@keyframes oml-fade{0%,100%{opacity:1}50%{opacity:.45}}}`
+
+const SVG = `<defs><linearGradient id="oml0" gradientUnits="userSpaceOnUse" x1="111.11" y1="294.82" x2="294.82" y2="111.11"><stop offset="0" stop-color="#03379E"/><stop offset="1" stop-color="#0A55D9"/></linearGradient><linearGradient id="oml1" gradientUnits="userSpaceOnUse" x1="294.82" y1="111.11" x2="362.07" y2="362.07"><stop offset="0" stop-color="#1C6EF0"/><stop offset="1" stop-color="#3FA0FF"/></linearGradient><linearGradient id="oml2" gradientUnits="userSpaceOnUse" x1="362.07" y1="362.07" x2="111.11" y2="294.82"><stop offset="0" stop-color="#38DCF2"/><stop offset="1" stop-color="#1F6FF5"/></linearGradient></defs><g class="oml-spin"><path class="oml-s oml-s0" fill="url(#oml0)" d="M60.15,263.69C57.71,201.45 84.99,141.75 133.66,102.87C182.32,63.99 246.56,50.56 306.73,66.68C331.27,73.25 345.83,98.48 339.26,123.02C332.68,147.56 307.46,162.12 282.92,155.54C252.47,147.38 219.96,153.48 194.53,172.11C169.10,190.74 153.50,219.90 152.10,251.39C139.01,239.04 121.04,233.24 103.20,235.63C85.35,238.02 69.54,248.32 60.15,263.69Z"/><path class="oml-s oml-s1" fill="url(#oml1)" d="M347.27,82.55C402.39,111.55 440.44,165.03 449.78,226.61C459.12,288.19 438.64,350.55 394.59,394.59C376.63,412.56 347.50,412.56 329.54,394.59C311.57,376.63 311.57,347.50 329.54,329.54C351.83,307.25 362.81,276.05 359.39,244.71C355.96,213.38 338.51,185.28 311.94,168.33C329.19,163.17 343.19,150.50 350.04,133.85C356.90,117.21 355.88,98.36 347.27,82.55Z"/><path class="oml-s oml-s2" fill="url(#oml2)" d="M360.58,421.77C307.90,455.00 242.56,461.22 184.56,438.52C126.56,415.81 82.80,366.89 66.68,306.73C60.10,282.19 74.67,256.97 99.21,250.39C123.74,243.81 148.97,258.38 155.54,282.92C163.70,313.37 185.23,338.47 214.08,351.18C242.93,363.88 275.99,362.82 303.96,348.28C299.80,365.80 303.77,384.26 314.76,398.52C325.75,412.78 342.58,421.32 360.58,421.77Z"/></g>`
+
+export function OmnisLoader({ size = 48, label = "불러오는 중", className }: { size?: number; label?: string; className?: string }) {
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "")
+  return (
+    <svg
+      className={className ? `oml ${className}` : "oml"}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 512 512"
+      width={size}
+      height={size}
+      role="status"
+      aria-label={label}
+    >
+      <style>{CSS}</style>
+      <g dangerouslySetInnerHTML={{ __html: SVG.replace(/oml(\d)/g, `oml-${uid}-$1`) }} />
+    </svg>
+  )
+}

@@ -6,7 +6,7 @@ import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
 import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { apiUrl, BASE_PATH } from "@/lib/base-path"
-import { Spinner } from "@/components/ui/spinner"
+import { BrandLoader } from "@/components/brand/brand-loader"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { createSerialQueue } from "@/lib/serial-queue"
@@ -794,7 +794,7 @@ export function ChatPanel({
       )}
       {syncing && (
         <p data-room-syncing className="pointer-events-none absolute inset-x-0 top-2 max-md:in-data-[messenger]:top-[calc(64px+var(--room-search-h,0px))] max-md:in-data-[messenger]:z-[2] z-[1] mx-auto flex w-fit items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-[12.5px] text-muted-foreground shadow-sm">
-          <Spinner className="size-3.5" />
+          <BrandLoader className="size-3.5" size={16} />
           새 글을 받는 중…
         </p>
       )}

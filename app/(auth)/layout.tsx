@@ -1,5 +1,8 @@
 import type { Metadata } from "next"
 
+import { apiUrl } from "@/lib/base-path"
+import { brand } from "@/lib/brand"
+
 /**
  * 로그인 화면의 탭 제목만 갈아 끼운다.
  *
@@ -11,6 +14,15 @@ import type { Metadata } from "next"
  */
 export const metadata: Metadata = {
   title: "로그인 — HADD SCIENCE",
+  /*
+   * 탭 아이콘도 회사(HADD) 마크다. 예전에는 이 폴더의 icon.png(파일 규칙)가 맡았는데, 루트 레이아웃이
+   * 로고 전환(lib/brand.ts) 때문에 metadata.icons 로 아이콘을 내면서 파일 규칙이 덮이지 않게 됐다 —
+   * 그래서 여기서도 metadata 로 낸다. icons 는 통째로 바뀌므로 홈 화면 아이콘(apple)은 루트 것을 그대로 싣는다.
+   */
+  icons: {
+    icon: [{ url: apiUrl("/brand/hadd/icon.png"), type: "image/png", sizes: "512x512" }],
+    apple: [{ url: apiUrl(brand.apple.url), sizes: brand.apple.sizes }],
+  },
 }
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {

@@ -299,6 +299,7 @@
    * 테마를 따라가지 않는다: 로고는 다크 모드에서도 같은 얼굴이어야 해서 .dark 에서 덮지 않는다.
    */
   --brand-gradient: linear-gradient(180deg, #225af8 0%, #0835d5 100%);
+  /* 새 로고(NEXT_PUBLIC_BRAND=v2)의 타일은 앱 아이콘(public/brand/v2/omnis-appicon.svg)과 같은 단색이다 — 아래 html[data-brand="v2"] */
 
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
@@ -333,6 +334,10 @@
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
     --border-strong: oklch(0.85 0 0);
+}
+
+html[data-brand="v2"] {
+  --brand-gradient: linear-gradient(#044abf, #044abf);
 }
 
 .dark {

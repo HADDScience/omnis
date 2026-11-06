@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { apiUrl } from "@/lib/base-path"
+import { brand } from "@/lib/brand"
 import { OmnisMark } from "@/components/brand/omnis-mark"
 import type { LandingStats } from "@/lib/landing-stats"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -70,7 +71,7 @@ function Mark({ className = "" }: { className?: string }) {
   return (
     <div className={`lv2-mark ${className}`} aria-hidden="true">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={apiUrl("/omnis-logo.png")} alt="" />
+      <img src={apiUrl(brand.tileMark)} alt="" />
     </div>
   )
 }

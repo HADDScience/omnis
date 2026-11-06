@@ -12,6 +12,7 @@ import {
   Legal01Icon,
 } from "@hugeicons/core-free-icons"
 import { apiUrl } from "@/lib/base-path"
+import { brand } from "@/lib/brand"
 import { TaskCard } from "@/components/tasks/task-card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -132,7 +133,7 @@ function Mark() {
   return (
     <div className="intro-mark">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={apiUrl("/omnis-logo.png")} alt="" />
+      <img src={apiUrl(brand.tileMark)} alt="" />
       <span className="intro-orbit" />
     </div>
   )

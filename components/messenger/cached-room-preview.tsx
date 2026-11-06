@@ -7,7 +7,7 @@ import { PlusSignIcon } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
 import { RoomComposer } from "@/components/chat/room-composer"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Spinner } from "@/components/ui/spinner"
+import { BrandLoader } from "@/components/brand/brand-loader"
 import { roomKeyFromPath } from "@/lib/chat-list"
 import { LIST_CACHE_KEY, readCache } from "@/lib/chat-cache"
 import { readSnapshot, type SnapshotLine } from "@/lib/room-snapshot"
@@ -116,7 +116,7 @@ function RoomEntry({ roomKey, overlay }: { roomKey: string; overlay: boolean }) 
       />
       <div className="relative flex min-h-0 flex-1 flex-col" aria-busy aria-label="대화를 불러오는 중">
         <p className="pointer-events-none absolute inset-x-0 top-2 z-[1] mx-auto flex w-fit items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-[13px] text-muted-foreground shadow-sm">
-          <Spinner className="size-3.5" />
+          <BrandLoader className="size-3.5" size={16} />
           {cached ? "새 글을 받는 중…" : "대화를 불러오는 중…"}
         </p>
         {cached ? <CachedMessages messages={cached} /> : <MessageSkeleton />}
