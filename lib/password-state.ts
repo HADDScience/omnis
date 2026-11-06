@@ -4,7 +4,7 @@
  * 스키마에 칸을 더하지 않고 `ActivityLog` 의 마지막 기록으로 판단한다:
  * `entity = "auth.password"`, `entityId = userId` 의 가장 최근 `action` 이
  * `"reset"`(관리자가 바꿈 — scripts/reset-password.ts)이면 본인이 바꿀 때까지
- * 화면이 변경 화면으로 보낸다. 본인이 바꾸면 `"changed"` 가 남는다.
+ * 앱 화면에 바꾸라는 안내를 띄운다(막지 않는다 — 2026-11-06 핫픽스). 본인이 바꾸면 `"changed"` 가 남는다.
  */
 import { prisma } from "./db"
 

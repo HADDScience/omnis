@@ -34,7 +34,7 @@ test.describe("비밀번호 로그인 보호", () => {
 
   test.beforeAll(async () => {
     for (const name of [LOCK_USER, RESET_USER]) {
-      const u = await prisma.user.create({ data: { name, passwordHash: hashSync(PASSWORD, 10), role: "MEMBER" } })
+      const u = await prisma.user.create({ data: { name, passwordHash: hashSync(PASSWORD, 10), role: "MEMBER", onboardingCompletedAt: new Date() } })
       userIds.push(u.id)
     }
     await prisma.activityLog.create({
@@ -86,25 +86,40 @@ test.describe("비밀번호 로그인 보호", () => {
     await other.close()
   })
 
-  test("관리자가 정한 비밀번호로 들어오면 바꾸기 전까지 변경 화면에 머문다", async ({ browser }) => {
+  test("관리자가 정한 비밀번호로 들어오면 막지 않고 바꾸라고 안내한다", async ({ browser }) => {
     const ctx = await contextFrom(browser, ips[2])
     const page = await ctx.newPage()
     await submitLogin(page, RESET_USER, PASSWORD)
-    await page.waitForURL("**/account/password", { timeout: 15_000 })
+    await page.waitForURL("**/chat", { timeout: 15_000 })
+    const notice = page.getByRole("status", { name: "비밀번호 변경 안내" })
+    await expect(notice).toBeVisible()
+
+    // 「나중에」 로 닫고 다른 화면을 그대로 쓸 수 있다
+    await notice.getByRole("button", { name: "나중에" }).click()
+    await expect(notice).toBeHidden()
     await page.goto("/tasks")
-    await expect(page).toHaveURL(/\/account\/password$/)
+    await expect(page).toHaveURL(/\/tasks$/)
+    await expect(notice).toBeHidden()
+
+    // 변경 화면에서도 「나중에」 로 앱에 돌아갈 수 있다
+    await page.goto("/account/password")
+    await page.getByRole("link", { name: "나중에" }).click()
+    await page.waitForURL("**/chat", { timeout: 15_000 })
+    await page.goto("/account/password")
 
     // 지금 비밀번호가 틀리면 바뀌지 않는다
     const wrong = await page.request.post("/api/account/password", { data: { current: "not it at all", next: NEXT_PASSWORD } })
     expect(wrong.status()).toBe(400)
 
-    await page.getByLabel("지금 비밀번호").fill(PASSWORD)
+    await page.getByLabel("지금 비밀번호", { exact: true }).fill(PASSWORD)
     await page.getByLabel("새 비밀번호", { exact: true }).fill(NEXT_PASSWORD)
-    await page.getByLabel("새 비밀번호 확인").fill(NEXT_PASSWORD)
+    await page.getByLabel("새 비밀번호 확인", { exact: true }).fill(NEXT_PASSWORD)
     await page.getByRole("button", { name: "비밀번호 바꾸기" }).click()
     await page.waitForURL("**/chat", { timeout: 15_000 })
-    await page.goto("/tasks")
-    await expect(page).toHaveURL(/\/tasks$/)
+    // 바꾼 뒤에는 새 탭에서도 안내가 뜨지 않는다
+    const fresh = await ctx.newPage()
+    await fresh.goto("/chat")
+    await expect(fresh.getByRole("status", { name: "비밀번호 변경 안내" })).toHaveCount(0)
     await ctx.close()
 
     // 옛 비밀번호는 더 이상 안 되고 새 비밀번호는 된다
@@ -116,6 +131,32 @@ test.describe("비밀번호 로그인 보호", () => {
     await p2.waitForURL("**/chat", { timeout: 15_000 })
     await again.close()
   })
+
+  for (const width of [1280, 390]) {
+    test(`변경 화면의 세 칸 모두 눈 아이콘으로 글자를 보이고 숨긴다 (${width}px)`, async ({ browser }) => {
+      const ctx = await browser.newContext({ viewport: { width, height: 844 }, extraHTTPHeaders: { "x-forwarded-for": ips[2] } })
+      const page = await ctx.newPage()
+      await submitLogin(page, "사원3", DEMO_PASSWORD)
+      await page.waitForURL("**/chat", { timeout: 15_000 })
+      await page.goto("/account/password")
+      for (const label of ["지금 비밀번호", "새 비밀번호", "새 비밀번호 확인"]) {
+        const input = page.getByLabel(label, { exact: true })
+        const toggle = page.getByRole("button", { name: `${label} 보기` })
+        await input.fill("sample text")
+        await expect(input).toHaveAttribute("type", "password")
+        await expect(toggle).toBeVisible()
+        // 아이콘이 칸 안에 들어가 있다(좁은 화면에서 밀려나지 않는다)
+        const [box, btn] = [await input.boundingBox(), await toggle.boundingBox()]
+        expect(btn!.x + btn!.width).toBeLessThanOrEqual(box!.x + box!.width + 1)
+        await toggle.click()
+        await expect(input).toHaveAttribute("type", "text")
+        await page.getByRole("button", { name: `${label} 숨기기` }).click()
+        await expect(input).toHaveAttribute("type", "password")
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await ctx.close()
+    })
+  }
 
   test("인증 기록은 활동 API 에 나오지 않는다", async ({ browser }) => {
     const ctx = await contextFrom(browser, ips[2])

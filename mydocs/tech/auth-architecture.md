@@ -101,7 +101,7 @@ ES256. 정적 앱이 비밀키를 들 수 없으므로 검증은 `/api/sso/verif
 | `lib/auth.ts` | NextAuth v5. Credentials + Google + Kakao |
 | `lib/auth-identity.ts` | 소셜 연결 규칙. 콜백에서 분리해 실 DB 로 검증 가능하게 |
 | `lib/login-guard.ts` | 비밀번호 로그인 시도 제한. 계정 5회 · IP 30회 / 15분. `ActivityLog`(`auth.login`)에 해시로 센다 |
-| `lib/password-state.ts` | 관리자가 정한 비밀번호인지. 마지막 `auth.password` 기록이 `reset` 이면 `(main)` 이 `/account/password` 로 보낸다 |
+| `lib/password-state.ts` | 관리자가 정한 비밀번호인지. 마지막 `auth.password` 기록이 `reset` 이면 `(main)` 이 바꾸라는 안내(「나중에」 가능)를 띄운다. 막지 않는다 |
 | `app/api/account/password/route.ts` | 본인 변경. 지금 비밀번호를 다시 받고, 틀리면 로그인 실패와 같이 센다 |
 | `scripts/reset-password.ts` | 관리자 초기화. 무작위 값을 파일(600)에만 쓰고 기존 해시를 먼저 백업한다 |
 
@@ -119,8 +119,9 @@ audience 격리, 만료, 1회용 강제. `verify-sso-live.ts` 는 배포본이 �
 ## 비밀번호 (2026-11-06)
 
 - 시드(`prisma/seed.ts`)는 개발용 가짜 계정만 만든다. 실제 구성원 계정과 비밀번호 규칙을 저장소에 두지 않는다.
-- 세션은 JWT(90일)이고 **무효화 장치가 없다.** 비밀번호를 바꾸거나 `isActive=false` 로 막아도 이미 받은 세션은
-  `(main)` 화면에서만 막힌다(레이아웃이 `isActive` 와 변경 요구를 본다). API·MCP 토큰은 그대로다.
+- 세션은 JWT(90일)이고 **무효화 장치가 없다.** `isActive=false` 로 막아도 이미 받은 세션은
+  `(main)` 화면에서만 막힌다(레이아웃이 `isActive` 를 본다). 비밀번호를 바꿔도 이미 받은 세션은 화면·API·MCP 모두 그대로다.
+  임시 비밀번호 안내는 권하기만 하고 막지 않는다(2026-11-06 핫픽스).
 - 인증 기록(`auth.*`)은 `/api/activity` 에 내보내지 않는다.
 
 ## 하지 말 것

@@ -9,7 +9,7 @@ const DEV_ADMIN_NAME = "개발관리자"
 async function main() {
   // ─── 사용자 시드 (개발용 가짜 계정) ──────────────
   // 실제 구성원 계정은 시드로 만들지 않는다. 공개 저장소라 이름·비밀번호 규칙이 그대로 드러난다.
-  // 비밀번호는 SEED_PASSWORD, 없으면 무작위로 만들어 한 번 출력한다. 처음 로그인하면 변경 화면이 뜬다.
+  // 비밀번호는 SEED_PASSWORD, 없으면 무작위로 만들어 한 번 출력한다. 로그인하면 바꾸라는 안내가 뜬다.
   // role: 업무 지시 권한 기준(직급 표시와 별개).
   const members = [
     { name: DEV_ADMIN_NAME, email: "dev-admin@example.com", position: "팀장", department: "개발팀", role: "ADMIN" as const },

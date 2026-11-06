@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic"
 export const metadata: Metadata = { title: "비밀번호 변경 — HADD SCIENCE" }
 
 /**
- * 비밀번호 변경. 마이 화면에서 들어오거나, 관리자가 정해 준 비밀번호로 로그인했을 때
- * (main)/layout.tsx 가 보낸다. 그래서 (main) 밖에 둔다 — 안에 두면 보내는 곳과 받는 곳이 같아 돈다.
+ * 비밀번호 변경. 마이 화면이나 임시 비밀번호 안내(components/auth/password-reset-notice.tsx)에서 들어온다.
+ * 막지 않는다 — 임시 비밀번호여도 「나중에」 로 앱으로 돌아갈 수 있다(2026-11-06 핫픽스).
  */
 export default async function ChangePasswordPage() {
   const session = await auth()
@@ -23,17 +23,18 @@ export default async function ChangePasswordPage() {
         <h1 className="text-[24px] font-semibold leading-tight">비밀번호 변경</h1>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
           {required
-            ? "관리자가 정해 준 비밀번호로 로그인했습니다. 계속하려면 본인만 아는 비밀번호로 바꾸세요."
+            ? "관리자가 정해 준 임시 비밀번호를 쓰고 있습니다. 본인만 아는 비밀번호로 바꾸기를 권합니다."
             : `${session.user.name ?? ""} 계정의 비밀번호를 바꿉니다.`}
         </p>
         <div className="mt-6">
           <ChangePasswordForm required={required} />
         </div>
-        {!required && (
-          <Link href="/settings?tab=accounts" className="mt-6 inline-block text-[12.5px] text-muted-foreground underline underline-offset-4">
-            마이로 돌아가기
-          </Link>
-        )}
+        <Link
+          href={required ? "/chat" : "/settings?tab=accounts"}
+          className="touch-target mt-6 inline-block text-[12.5px] text-muted-foreground underline underline-offset-4"
+        >
+          {required ? "나중에" : "마이로 돌아가기"}
+        </Link>
       </div>
     </main>
   )
