@@ -4,6 +4,7 @@ import assert from "node:assert/strict"
 
 import {
   acceptsHidden,
+  attachmentPreview,
   countsAsUnread,
   hiddenFromList,
   roomRemoval,
@@ -285,4 +286,14 @@ test("뒤로 캡슐의 수는 지금 보는 방을 뺀 안 읽은 글 합이다"
   assert.equal(unreadElsewhere(rooms, null), 123)
   assert.equal(unreadElsewhere([{ key: "room:a", unread: 5 }], "room:a"), 0)
   assert.equal(unreadElsewhere([], null), 0)
+})
+
+test("글 없는 첨부의 미리보기는 종류와 수를 말한다", () => {
+  const img = { mimeType: "image/png" }, pdf = { mimeType: "application/pdf" }
+  assert.equal(attachmentPreview([]), "")
+  assert.equal(attachmentPreview([img]), "사진")
+  assert.equal(attachmentPreview([img, img, img]), "사진 3장")
+  assert.equal(attachmentPreview([{ mimeType: "video/mp4" }]), "동영상")
+  assert.equal(attachmentPreview([pdf]), "파일")
+  assert.equal(attachmentPreview([img, pdf]), "파일 2개")
 })
