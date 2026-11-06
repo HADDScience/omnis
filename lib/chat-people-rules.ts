@@ -70,6 +70,11 @@ export function peopleRoomTitle(
   return room.name
 }
 
+/** 단톡방 목록 사진에 겹쳐 그릴 사람 — 나를 뺀 참여자 앞에서 둘. 넘겨받은 순서(들어온 순)를 지킨다 */
+export function groupFaceNames(members: { id: string; name: string }[], me: string): string[] {
+  return members.filter((m) => m.id !== me).slice(0, 2).map((m) => m.name)
+}
+
 /**
  * 글에서 알림을 보낼 사람 — `@이름` 이 **그 방 참여자**일 때만. 나 자신은 빼고, 이름이 겹치면 긴 이름부터 맞춘다
  * (「@김철수」 를 「김철」 로 잘못 잡지 않게). 방 밖 사람은 이름이 맞아도 받지 않는다 — 방 내용이 알림으로 새지 않게

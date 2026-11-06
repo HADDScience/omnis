@@ -102,6 +102,7 @@ function RoomEntry({ roomKey, overlay }: { roomKey: string; overlay: boolean }) 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-room-entry>
       <RoomHeader
+        roomKey={roomKey}
         title={
           room ? (
             <>
@@ -242,7 +243,7 @@ function EntryComposer({
       // 방 화면 입력창의 자리와 같게 — 메뉴는 방 화면에서 연다(옴니스는 데모에 ＋ 가 없다)
       plus={
         omnis && IS_DEMO ? undefined : (
-          <span aria-hidden className="flex size-[48px] shrink-0 items-center justify-center rounded-full text-muted-foreground/50">
+          <span aria-hidden className="flex size-[48px] max-md:size-[44px] shrink-0 items-center justify-center rounded-full text-muted-foreground/50">
             <HugeiconsIcon icon={PlusSignIcon} size={26} />
           </span>
         )

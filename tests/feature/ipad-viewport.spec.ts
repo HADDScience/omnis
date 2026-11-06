@@ -176,7 +176,10 @@ test.describe("iPhone", () => {
     await quickLogin(page, "팀장")
     await open(page)
     await expectShellFills(page, 844)
+    // 대화방에는 하단 nav 가 없다 — 목록에서 본다
+    await page.goto("/chat")
     const nav = page.locator('nav[aria-label="주 메뉴"]').last()
+    await expect(nav).toBeVisible({ timeout: 30_000 })
     expect(844 - (await nav.evaluate((el) => el.getBoundingClientRect().bottom))).toBeLessThanOrEqual(8)
   })
 })

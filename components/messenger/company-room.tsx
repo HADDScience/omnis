@@ -41,8 +41,9 @@ export function CompanyRoom({
   const [taskModalRaw, setTaskModalRaw] = useState<string | null>(null)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div data-chat-room-chrome className="relative flex min-h-0 flex-1 flex-col">
       <RoomHeader
+        capsule
         title={roomName}
         subtitle="전사방 · 구성원 모두 · #업무 로 업무 스레드에 글을 남깁니다"
         actions={

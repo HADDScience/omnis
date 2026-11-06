@@ -534,6 +534,12 @@
 html[data-keyboard-docked] [data-composer] {
   padding-bottom: 6px;
 }
+/* 키보드 위에서는 입력창이 좌우로 더 넓다. 공통 입력창의 유틸리티보다 앞서야 해서 레이어 안에 둔다 */
+@layer utilities {
+  html[data-keyboard-docked] [data-messenger] [data-composer] {
+    padding-inline: 10px !important;
+  }
+}
 html[data-keyboard-docked] [data-composer-foot][data-empty] {
   display: none;
 }
@@ -633,6 +639,81 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
   -webkit-mask-image: linear-gradient(0deg, #000 45%, transparent);
   mask-image: linear-gradient(0deg, #000 45%, transparent);
 }
+/* 폰 전사 · 사람 방 — 글이 머리 · 입력창 뒤로 지나간다. 바탕으로 덮어 글자 대비를 지키고 가장자리만 흐린다 */
+.room-edge-top {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  background: linear-gradient(180deg, var(--background) 62%, color-mix(in oklab, var(--background) 55%, transparent) 82%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
+  mask-image: linear-gradient(180deg, #000 70%, transparent);
+}
+/* 입력창 칸은 하단 nav 처럼 글이 캡슐 둘레(좌우 · 아래 안전 영역)로 비쳐 지나간다 — 바탕은 옅은 띠만, 캡슐은 유리.
+   끝 글은 글 칸 끝 여백(--room-bottom-h, ChatPanel 이 잰다)으로 캡슐 위에 멈춘다 */
+@utility room-edge-bottom {
+  background: linear-gradient(0deg, color-mix(in oklab, var(--glass-fade) 30%, transparent), transparent);
+}
+@media (max-width: 767.98px) {
+  [data-messenger] [data-chat-room-chrome] [data-room-composer-chrome] [data-composer-pill] {
+    background: linear-gradient(180deg, var(--glass-top), var(--glass-bottom));
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    backdrop-filter: blur(18px) saturate(170%);
+    border-color: transparent;
+    box-shadow: 0 0 0 1px var(--glass-edge), var(--glass-shadow);
+  }
+}
+@media (max-width: 767.98px) and (prefers-reduced-transparency: reduce) {
+  [data-messenger] [data-chat-room-chrome] [data-room-composer-chrome] [data-composer-pill] {
+    background: var(--glass-solid);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (max-width: 767.98px) {
+    [data-messenger] [data-chat-room-chrome] [data-room-composer-chrome] [data-composer-pill] {
+      background: var(--glass-solid);
+    }
+  }
+}
+/* 폰 대화방에는 하단 nav 가 없다 — 뒤로 캡슐로 목록에 돌아간다. 셸이 방을 그릴 때 다는 표식으로 가르므로 첫 화면부터 맞고,
+   nav 자리 여백은 홈 인디케이터만 남아 입력창이 화면 아래 안전 영역에 붙는다. 키보드가 뜨면 use-keyboard-open 의 인라인 값이 이긴다 */
+@media (max-width: 767.98px) {
+  html:has([data-chat-in-room]) {
+    --nav-offset-bottom: var(--safe-bottom);
+  }
+  html:has([data-chat-in-room]) [data-phone-bottom-nav] {
+    display: none;
+  }
+}
+/* 폰 전사 · 사람 방의 말풍선 꼬리. 꼬리가 말풍선에 조금 겹쳐 둥근 모서리와 이어지므로, 겹친 자리가 진해지지 않게 내 글 색을 불투명하게 섞는다.
+   테마에 따라 값이 달라 :root 가 아니라 여기서 정의한다 */
+@media (max-width: 767.98px) {
+  [data-messenger] {
+    --bubble-mine: color-mix(in srgb, var(--primary) 10%, var(--background));
+  }
+  [data-messenger] [data-bubble][data-tail] {
+    position: relative;
+  }
+  [data-messenger] [data-bubble][data-tail]::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    width: 9px;
+    height: 11px;
+    background: inherit;
+  }
+  [data-messenger] [data-bubble][data-tail="other"]::before {
+    left: -5px;
+    clip-path: polygon(0 0, 100% 15%, 100% 100%);
+  }
+  [data-messenger] [data-bubble][data-tail="mine"]::before {
+    right: -5px;
+    clip-path: polygon(100% 0, 0 15%, 0 100%);
+  }
+}
+.nav-edge-bottom.nav-edge-clear {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: linear-gradient(0deg, color-mix(in oklab, var(--glass-fade) 30%, transparent), transparent);
+}
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass {
     background: var(--glass-solid);
@@ -708,6 +789,23 @@ html[data-keyboard-docked] [data-composer-foot][data-empty] {
     width: max(100%, 44px);
     height: max(100%, 44px);
     transform: translate(-50%, -50%);
+  }
+}
+
+/* 폰 채팅 목록의 칩 — 보이는 높이는 37, 누르는 자리는 44(규칙 30) */
+@media (max-width: 767px) and (pointer: coarse) {
+  .list-chip.touch-target {
+    position: relative;
+    min-height: 37px;
+  }
+  .list-chip.touch-target::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
   }
 }
 

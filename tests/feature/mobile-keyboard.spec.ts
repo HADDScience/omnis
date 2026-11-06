@@ -41,7 +41,7 @@ const keyboard = (page: Page, top: number | null) =>
 const navOnScreen = (page: Page) =>
   page.evaluate(() => {
     const nav = Array.from(document.querySelectorAll('nav[aria-label="주 메뉴"]')).at(-1) as HTMLElement
-    return nav.getBoundingClientRect().top < window.innerHeight
+    return getComputedStyle(nav).display !== "none" && nav.getBoundingClientRect().top < window.innerHeight
   })
 
 const pillBottom = (page: Page) => page.locator(PILL).first().evaluate((el) => el.getBoundingClientRect().bottom)
@@ -72,7 +72,7 @@ async function open(page: Page, url: string) {
 test.describe("폰", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
 
-  test("입력창이 키보드 바로 위에 붙고, 닫으면 nav 가 돌아온다(네 방 공통)", async ({ page }) => {
+  test("입력창이 키보드 바로 위에 붙고, 대화방에는 nav 가 없다(네 방 공통)", async ({ page }) => {
     await mockViewport(page)
     await quickLogin(page, "팀장")
     for (const [name, url] of Object.entries(await roomUrls(page))) {
@@ -89,14 +89,16 @@ test.describe("폰", () => {
       // 포커스만으로는 판단하지 않는다 — 물리 키보드
       await page.waitForTimeout(100)
       expect(await docked(page), `${name} 포커스만`).toBe(false)
-      expect(await navOnScreen(page), `${name} 포커스만`).toBe(true)
+      expect(await navOnScreen(page), `${name} 포커스만`).toBe(false)
 
       await keyboard(page, KEYBOARD_TOP)
       await expect.poll(() => docked(page), name).toBe(true)
-      await expect.poll(() => navOnScreen(page), `${name} nav`).toBe(false)
+      expect(await navOnScreen(page), `${name} nav`).toBe(false)
       const bottom = await pillBottom(page)
       expect(bottom, `${name} 키보드에 가려지지 않는다`).toBeLessThanOrEqual(KEYBOARD_TOP)
-      expect(KEYBOARD_TOP - bottom, `${name} 키보드와의 틈`).toBeLessThanOrEqual(8)
+      expect(KEYBOARD_TOP - bottom, `${name} 키보드와의 틈`).toBeLessThanOrEqual(6)
+      // 키보드가 뜨면 입력창 좌우 여백이 줄어 폭이 넓어진다(20 → 10)
+      expect(await page.locator(PILL).first().evaluate((el) => { const r = el.getBoundingClientRect(); return [r.left, innerWidth - r.right] }), `${name} 좌우`).toEqual([10, 10])
       // 대화 내용 칸은 남은 높이를 쓴다 — 머리줄이 화면 밖으로 밀리지 않는다
       expect(await page.evaluate(() => document.documentElement.scrollHeight), name).toBeLessThanOrEqual(844)
 
@@ -109,8 +111,9 @@ test.describe("폰", () => {
 
       await keyboard(page, null)
       await expect.poll(() => docked(page), name).toBe(false)
-      await expect.poll(() => navOnScreen(page), `${name} 닫힘`).toBe(true)
+      expect(await navOnScreen(page), `${name} 닫힘`).toBe(false)
       expect(await pillBottom(page), `${name} 닫힘`).toBe(bottomBefore)
+      expect(await page.locator(PILL).first().evaluate((el) => { const r = el.getBoundingClientRect(); return [r.left, innerWidth - r.right] }), `${name} 닫힘 좌우`).toEqual([20, 20])
     }
   })
 

@@ -123,7 +123,8 @@ for (const [name, use] of [
       const target = await post(page, roomId, `${w} 움직임 줄이기`)
       await openSearch(page, roomId)
       await box(page).fill(w)
-      const row = page.locator(`[data-message-id="${target}"]`)
+      // 스트리밍이 끝나기 전에는 서버가 보낸 숨은 조각(<div hidden id="S:…">)에도 같은 줄이 있다 — 보이는 줄만 본다
+      const row = page.locator(`[data-message-id="${target}"]`).filter({ visible: true })
       await expect(row).toHaveClass(/ring-amber-400/)
       expect(await plays(page)).toEqual([])
       await expect(row).not.toHaveClass(/ring-amber-400/, { timeout: 3_000 })

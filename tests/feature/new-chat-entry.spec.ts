@@ -1,9 +1,10 @@
-/** 목록에 「새 대화」 줄을 두지 않는다 — 시작은 목록 칸 오른쪽 아래 FAB 로 한다 */
+/** 목록에 「새 대화」 줄을 두지 않는다 — 시작은 PC FAB · 폰 제목 줄 아이콘으로 한다 */
 import { expect, test, type Page } from "@playwright/test"
 import { quickLogin } from "./_setup"
 
 const LIST = 'aside[aria-label="채팅방 목록"]'
-const fab = (page: Page) => page.locator("[data-new-chat-fab]")
+// 폭마다 보이는 단추가 하나다(역할 조회는 display:none 을 뺀다)
+const fab = (page: Page) => page.getByRole("button", { name: "새 대화" })
 
 async function openList(page: Page) {
   await quickLogin(page, "팀장")
@@ -39,7 +40,7 @@ test("PC — 목록에 줄이 없고, /chat 가운데 칸은 옴니스 새 대�
 test.describe("폰", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
 
-  test("목록만 보이고 줄이 없으며, FAB 두 갈래로 시작한다", async ({ page }) => {
+  test("목록만 보이고 줄이 없으며, 제목 줄 아이콘 두 갈래로 시작한다", async ({ page }) => {
     await openList(page)
     await expect(page.getByRole("textbox", { name: "옴니스에게 보낼 글" })).toBeHidden()
     await expectStartPaths(page)

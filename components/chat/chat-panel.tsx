@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useRef, useLayoutEffect } from "react"
 import { toast } from "sonner"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
@@ -176,6 +176,29 @@ export function ChatPanel({
       membersOnly: !!people,
     })
   }, [messages, confirmed, roomId, currentUserId, filterTaskId, jumped, people])
+
+  // 폰 메신저는 머리 · 입력창이 글 위에 뜬다 — 검색 줄 · 입력창 높이를 재서 글 칸 위아래 여백(CSS 변수)으로 넘긴다.
+  // 높이가 바뀌어도 보던 자리를 지킨다(맨 아래였으면 맨 아래). 넓은 화면은 이 변수를 쓰지 않는다
+  const chromeRoot = useRef<HTMLDivElement>(null)
+  const composerBox = useRef<HTMLDivElement>(null)
+  const searchBox = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const root = chromeRoot.current
+    const composer = composerBox.current
+    if (!root || !composer || !root.closest("[data-messenger]")) return
+    const measure = () => {
+      const list = root.querySelector<HTMLElement>("[data-keep-bottom]")
+      const fromBottom = list ? list.scrollHeight - list.clientHeight - list.scrollTop : 0
+      root.style.setProperty("--room-bottom-h", `${composer.offsetHeight}px`)
+      root.style.setProperty("--room-search-h", `${searchBox.current?.offsetHeight ?? 0}px`)
+      if (list) list.scrollTop = list.scrollHeight - list.clientHeight - fromBottom
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(composer)
+    if (searchBox.current) observer.observe(searchBox.current)
+    return () => observer.disconnect()
+  }, [searchOpen])
 
   // 방을 누른 뒤 첫 글이 그려질 때까지 — 사용 기록(lib/ui-metrics). 숫자만 남는다
   const hasMessages = messages.length > 0
@@ -753,8 +776,9 @@ export function ChatPanel({
     : messages
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div ref={chromeRoot} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {searchOpen && (
+        <div ref={searchBox} className="max-md:in-data-[messenger]:absolute max-md:in-data-[messenger]:inset-x-0 max-md:in-data-[messenger]:top-[56px] max-md:in-data-[messenger]:z-[3] max-md:in-data-[messenger]:bg-background">
         <ChatSearch
           roomId={roomId}
           taskId={filterTaskId ?? null}
@@ -765,9 +789,10 @@ export function ChatPanel({
           onGoDate={(at) => void loadAround({ at })}
           onSearchTextChange={setSearchText}
         />
+        </div>
       )}
       {syncing && (
-        <p data-room-syncing className="pointer-events-none absolute inset-x-0 top-2 z-[1] mx-auto flex w-fit items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-[12.5px] text-muted-foreground shadow-sm">
+        <p data-room-syncing className="pointer-events-none absolute inset-x-0 top-2 max-md:in-data-[messenger]:top-[calc(64px+var(--room-search-h,0px))] max-md:in-data-[messenger]:z-[2] z-[1] mx-auto flex w-fit items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-[12.5px] text-muted-foreground shadow-sm">
           <Spinner className="size-3.5" />
           새 글을 받는 중…
         </p>
@@ -799,7 +824,8 @@ export function ChatPanel({
       />
       )}
 
-      <div className="shrink-0 border-t">
+      {/* 폰 메신저는 입력창이 글 위에 뜬다. 높이는 답장 줄 · 첨부 · 여러 줄에 따라 변해 재서 글 끝 여백에 넘긴다 */}
+      <div ref={composerBox} data-room-composer-chrome className="shrink-0 border-t max-md:in-data-[messenger]:room-edge-bottom max-md:in-data-[messenger]:absolute max-md:in-data-[messenger]:inset-x-0 max-md:in-data-[messenger]:bottom-0 max-md:in-data-[messenger]:z-[2] max-md:in-data-[messenger]:border-t-0 max-md:in-data-[messenger]:pb-[var(--nav-offset-bottom)] max-md:in-data-[messenger]:[&_[data-composer]]:bg-transparent">
         {/* 무엇에 답하는 중인지 입력창 바로 위에 둔다 — 보내고 나면 사라진다 */}
         {replyTo && (
           <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground in-data-[messenger]:px-4 in-data-[messenger]:py-2.5 in-data-[messenger]:text-[14px]">

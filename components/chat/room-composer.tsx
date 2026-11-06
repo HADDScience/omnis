@@ -115,7 +115,7 @@ export function RoomComposer({
     <div
       data-composer
       className={cn(
-        "relative shrink-0 bg-background px-2.5 pt-2 pb-3 in-data-[messenger]:px-3 in-data-[messenger]:sm:px-6",
+        "relative shrink-0 bg-background px-2.5 pt-2 pb-3 in-data-[messenger]:px-3 in-data-[messenger]:sm:px-6 max-md:in-data-[messenger]:px-[20px]! max-md:in-data-[messenger]:pt-[8px] max-md:in-data-[messenger]:pb-[8px]",
         bordered && "border-t",
         dragging && "bg-primary/5",
       )}
@@ -152,8 +152,8 @@ export function RoomComposer({
         <div
           data-composer-pill
           className={cn(
-            "flex items-end gap-2 rounded-[22px] border bg-card py-1 pr-1 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-[32px] in-data-[messenger]:py-1.5 in-data-[messenger]:pr-1.5",
-            plus ? "pl-1 in-data-[messenger]:pl-1.5" : "pl-3.5 in-data-[messenger]:pl-[22px]",
+            "flex items-end gap-2 rounded-[22px] border bg-card py-1 pr-1 shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus-within:border-border-strong in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-[32px] in-data-[messenger]:py-1.5 in-data-[messenger]:pr-1.5 max-md:in-data-[messenger]:gap-[4px] max-md:in-data-[messenger]:rounded-[24px] max-md:in-data-[messenger]:py-[0.5px] max-md:in-data-[messenger]:pr-[1px]",
+            plus ? "pl-1 in-data-[messenger]:pl-1.5 max-md:in-data-[messenger]:pl-[1px]" : "pl-3.5 in-data-[messenger]:pl-[22px] max-md:in-data-[messenger]:pl-[16px]",
           )}
         >
           {plus}
@@ -189,7 +189,7 @@ export function RoomComposer({
             aria-label={ariaLabel}
             placeholder={placeholder}
             className={cn(
-              "max-h-40 min-h-[32px] min-w-0 flex-1 resize-none bg-transparent py-[5px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:py-[11px] [@media(pointer:coarse)]:text-[16px] in-data-[messenger]:max-h-48 in-data-[messenger]:min-h-[48px]! in-data-[messenger]:py-[11px]! in-data-[messenger]:text-[17px]! in-data-[messenger]:leading-[26px]!",
+              "max-h-40 min-h-[32px] min-w-0 flex-1 resize-none bg-transparent py-[5px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:py-[11px] [@media(pointer:coarse)]:text-[16px] in-data-[messenger]:max-h-48 in-data-[messenger]:min-h-[48px]! in-data-[messenger]:py-[11px]! in-data-[messenger]:text-[17px]! in-data-[messenger]:leading-[26px]! max-md:in-data-[messenger]:min-h-[44px]! max-md:in-data-[messenger]:text-[16px]! max-md:in-data-[messenger]:leading-[22px]!",
               longPlaceholder && "in-data-[messenger]:placeholder:text-[15px]",
             )}
           />
@@ -202,7 +202,7 @@ export function RoomComposer({
               aria-label="답변 중지"
               title="답변 중지"
               data-agent-stop
-              className={cn("touch-target size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]", accent && "ai-rainbow-border")}
+              className={cn("touch-target size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px] max-md:in-data-[messenger]:size-[44px]", accent && "ai-rainbow-border")}
             >
               {stopping ? <Spinner /> : <span aria-hidden className="size-[10px] rounded-[2px] bg-current in-data-[messenger]:size-[15px]" />}
             </Button>
@@ -215,7 +215,7 @@ export function RoomComposer({
               disabled={!canSend || disabled}
               aria-label="보내기"
               title="보내기 (Enter)"
-              className={cn("touch-target size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]", accent && "ai-rainbow-border")}
+              className={cn("touch-target size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px] max-md:in-data-[messenger]:size-[44px]", accent && "ai-rainbow-border")}
             >
               {busy ? <Spinner /> : <HugeiconsIcon icon={ArrowUp01Icon} size={16} aria-hidden className="in-data-[messenger]:h-[24px]! in-data-[messenger]:w-[24px]!" />}
             </Button>
@@ -224,7 +224,7 @@ export function RoomComposer({
         <div
           data-composer-foot
           data-empty={showCount ? undefined : ""}
-          className="mt-1 flex justify-between gap-2 px-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]"
+          className="mt-1 flex justify-between gap-2 px-1 max-md:in-data-[messenger]:data-[empty]:hidden text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]"
         >
           {hint && <span className="hidden in-data-[messenger]:sm:inline [@media(pointer:coarse)]:hidden!">{hint}</span>}
           <span className={cn("ml-auto tabular-nums", tooLong && "font-medium text-destructive")}>
@@ -279,11 +279,11 @@ export function ComposerPlus({ files, disabled, actions = [] }: { files?: Compos
       variant="ghost"
       size="icon"
       aria-label="추가"
-      className="touch-target size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]!"
+      className="touch-target size-[32px] shrink-0 rounded-full in-data-[messenger]:size-[48px]! max-md:in-data-[messenger]:size-[44px]!"
       disabled={disabled}
     />
   )
-  const plusIcon = <HugeiconsIcon icon={PlusSignIcon} size={18} className="in-data-[messenger]:h-[26px]! in-data-[messenger]:w-[26px]!" />
+  const plusIcon = <HugeiconsIcon icon={PlusSignIcon} size={18} className="in-data-[messenger]:h-[26px]! in-data-[messenger]:w-[26px]! max-md:in-data-[messenger]:h-[22px]! max-md:in-data-[messenger]:w-[22px]!" />
 
   return (
     <>
