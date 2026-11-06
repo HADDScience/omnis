@@ -147,7 +147,8 @@ test.describe("파일 응답 헤더", () => {
       await prisma.file.updateMany({ where: { id: { in: [png.id, svg.id] } }, data: { messageId: message.id } })
 
       await page.goto(`/chat/${roomId}`)
-      const image = page.locator('img[alt="미리보기.png"]')
+      // 스트리밍 중의 숨은 조각에도 같은 사진이 있다 — 보이는 것만 본다
+      const image = page.locator('img[alt="미리보기.png"]').filter({ visible: true })
       await expect(image).toBeVisible({ timeout: 15_000 })
       await expect.poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0)
       await expect(page.locator('img[alt="카드.svg"]')).toHaveCount(0)
