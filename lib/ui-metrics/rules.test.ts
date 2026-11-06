@@ -153,7 +153,7 @@ test("배포별 · 사람별로 묶는다", () => {
       ev(SHA, "b", "plus_open"),
       ev(SHA, "b", "plus_dismiss"),
       ev(SHA, "b", "attach_failed", 500),
-      ev(SHA, "b", "shortcut.commandPalette"),
+      ev(SHA, "b", "shortcut.toggleTheme"),
       ev("1111111", "a", "menu_open", null, "2026-11-01T10:00:00"),
     ],
     responses: [

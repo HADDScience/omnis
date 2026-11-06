@@ -4,7 +4,6 @@ import type { ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { RightPanel } from "./right-panel"
 import { useRightPanel } from "./right-panel-context"
-import { CommandPalette } from "./command-palette"
 import { PanelDock } from "./panel-dock"
 import { NAV_DESKTOP_QUERY } from "./floating-nav"
 import { useShortcut } from "@/hooks/use-shortcuts"
@@ -55,7 +54,6 @@ export function MainWithChat({
         />
       </div>
       <PanelDock />
-      <CommandPalette />
     </>
   )
 }

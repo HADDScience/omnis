@@ -7,7 +7,6 @@ import type { MouseEvent } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   BookOpen01Icon,
-  Search01Icon,
   BubbleChatSparkIcon,
   ArrowRight02Icon,
   FolderLibraryIcon,
@@ -15,8 +14,6 @@ import {
   SparklesIcon,
   HierarchyIcon,
 } from "@hugeicons/core-free-icons"
-import { Kbd } from "@/components/ui/kbd"
-import { useCommandPalette } from "@/components/layout/command-palette-context"
 
 import { apiUrl } from "@/lib/base-path"
 interface CardSummary {
@@ -139,11 +136,7 @@ export function HaddDbLanding({
   recentViews,
   activityLogs,
 }: HaddDbLandingProps) {
-  const palette = useCommandPalette()
   const hasCards = totalCards > 0
-  /* 카드가 0건일 때 없는 카드 제목("HPLC 세척 주기")을 예시로 걸면 있는 것처럼 보인다.
-     그때는 검색이 실제로 훑는 범위를 적는다 — app/api/search/route.ts 기준. */
-  const searchHint = recent[0]?.title ?? null
 
   return (
     <div className="h-full overflow-auto">
@@ -181,22 +174,6 @@ export function HaddDbLanding({
           ))}
         </nav>
 
-        {/* 사람이 문서를 한 땀씩 쓰는 곳이 아니라 Context 를 살펴보는 곳이다(2026-09-14 결정) —
-            「새 카드」 버튼을 앞에서 뺐다. 카드는 AI 가 업무에서 뽑아 제안한다. */}
-        <div className="mt-3.5 flex items-stretch gap-2">
-          <button
-            type="button"
-            onClick={() => palette.open()}
-            className="flex flex-1 items-center gap-3 rounded-lg border bg-card px-5 py-3.5 text-[14px] text-muted-foreground transition-colors hover:border-border-strong"
-          >
-            <HugeiconsIcon icon={Search01Icon} size={16} />
-            <span className="flex-1 truncate text-left">
-              {searchHint ? `검색 · "${searchHint}"` : "검색 · 업무 · 보고서 · 지식재산권"}
-            </span>
-            {/* 물리 키보드가 없는 기기에선 단축키 힌트를 숨긴다 */}
-            <Kbd className="hidden md:inline-flex">⌘K</Kbd>
-          </button>
-        </div>
 
         {/*
           규칙 20 (omnis/CLAUDE.md): 상단 Input = 검색 전용. 카테고리 버튼은 라우트 직접 진입.

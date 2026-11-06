@@ -12,7 +12,7 @@ export const SERVER_EVENT_NAMES = [
   "push_sent", // value: 그 사람의 기기 중 푸시 서비스가 받아 간 수
   "search_chat", // 방 안 글 검색(첫 쪽만)
   "search_photo", // 그중 사진 설명까지 찾은 검색(전사방). value: 걸린 사진 수
-  "search_global", // 위쪽 통합 검색(⌘K)
+  "search_global", // 위쪽 통합 검색(⌘K) — 2026-11-06 걷었다. 그 전 기록을 읽으려고 이름은 남긴다
 ] as const
 
 export type ServerEventName = (typeof SERVER_EVENT_NAMES)[number]

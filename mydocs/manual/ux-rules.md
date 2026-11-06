@@ -153,7 +153,7 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
   제목은 왼쪽, 버튼은 오른쪽 칸에 둔다. md 는 아이콘만(16.25rem), lg 부터 글자까지(29.25rem) — 탭 폭을 바꾸면 이 값도 같이 고친다. 두 모양은 **CSS 로만** 가른다 — JS 로 가르면 서버 첫 화면과 어긋난다.
   단 알림 종처럼 두 번 그리면 일을 두 번 하는 것은 `NAV_DESKTOP_QUERY` 로 한 곳에만 그린다
 - 생김새는 Linear 의 리퀴드 글래스를 따른다([linear.app/now/linear-liquid-glass](https://linear.app/now/linear-liquid-glass)):
-  탭은 캡슐 하나, 알림·마이는 옆에 따로 뜬 원(검색은 nav 에 두지 않는다 — ⌘K 로 연다), 현재 탭은 캡슐 안에서 미끄러지는 한 겹 더 진한 유리(`.glass-pill`),
+  탭은 캡슐 하나, 알림·마이는 옆에 따로 뜬 원(따로 있는 검색 화면은 없다 — ⌘K 검색 창은 2026-11-06 걷었다. 검색은 채팅 목록 위 칸 · 방 안 · 대화 패널에서 한다), 현재 탭은 캡슐 안에서 미끄러지는 한 겹 더 진한 유리(`.glass-pill`),
   누르면 살짝 눌림, 스크롤 끝 가변 블러(`.nav-edge-*`). **굴절은 넣지 않는다** — 밀도 높은 업무 화면을 읽기 어렵게 하고 웹에서는 Chrome 전용이다
 - 유리는 `globals.css` 의 `.glass` 유틸과 `--glass-*` 토큰. 블러 바탕 + 위아래 그라데이션 + 가장자리 빛(1px 그라데이션 테두리).
   `backdrop-filter` 미지원 · `prefers-reduced-transparency` 에서는 불투명 판, `prefers-contrast: more` 에서는 불투명 판 + 실선 테두리
@@ -172,6 +172,14 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - 섹션 안의 하위 이동은 nav 가 아니라 제목줄 아래 띠로 한다 — 아카이브는 `ArchiveNav`(`/omnis` · `/crm` 레이아웃), CRM 은 그 아래 `CrmNav`
 
 ---
+
+## 마이 화면 (2026-11-06)
+
+- 맨 위 프로필 카드 → 누르면 **프로필 설정**(`/settings/profile`): 내 정보 확인 · 비밀번호 변경(화면은 `/account/password` 그대로) · 소셜 연결/해제
+- 카드에는 역할(ADMIN · MEMBER) 대신 **직급**(인력 표의 직급, 비면 겸직 직함, 둘 다 없으면 빈칸 — `lib/profile-title.ts`). 연결된 소셜만 이름 옆 18px 원 아이콘(구글 흰 원 · 카카오 노란 원)
+- 메뉴 줄: MCP 등록 · 튜토리얼 · **앱 설치**(검색 줄 자리) · 테마 · 로그아웃. 앱 설치 줄은 홈 화면으로 열었으면 「설치됨」 으로 눌리지 않는다
+- 탭은 **알림 설정 · 사용량 · 앱 정보** 셋(`?tab=notify|usage|info`). 옛 값(push · ai · system)은 새 탭으로, `accounts` 는 프로필 설정으로 redirect(`lib/settings-tab.ts`)
+- 설치 안내(`InstallGuideDialog`): 1단계 「Safari · Chrome 에서 열기」 — 인앱 브라우저 등이면 버튼 하나로 같은 페이지를 넘긴다(`lib/install-handoff.ts`: iOS 카카오톡 `kakaotalk://web/openExternal`, LINE `openExternalBrowser=1`, 그 밖 iOS `x-safari-https`, Android Chrome `intent://…;package=com.android.chrome`). 넘긴 주소의 `?install=continue` 를 받은 브라우저는 어느 화면이든 2단계(홈 화면에 추가)를 바로 띄우고 표시를 지운다(`AppNudge`). 이미 Safari · Chrome · PC 면 1단계는 없다. 카카오 · LINE · x-safari 는 공식 문서가 없는 길이다
 
 ## 메신저 — 첫 화면 (2026-10-28)
 

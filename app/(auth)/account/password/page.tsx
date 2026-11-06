@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic"
 export const metadata: Metadata = { title: "비밀번호 변경 — HADD SCIENCE" }
 
 /**
- * 비밀번호 변경. 마이 화면이나 임시 비밀번호 안내(components/auth/password-reset-notice.tsx)에서 들어온다.
+ * 비밀번호 변경. 프로필 설정(/settings/profile)이나 임시 비밀번호 안내(components/auth/password-reset-notice.tsx)에서 들어온다.
  * 막지 않는다 — 임시 비밀번호여도 「나중에」 로 앱으로 돌아갈 수 있다(2026-11-06 핫픽스).
  */
 export default async function ChangePasswordPage() {
@@ -30,10 +30,10 @@ export default async function ChangePasswordPage() {
           <ChangePasswordForm required={required} />
         </div>
         <Link
-          href={required ? "/chat" : "/settings?tab=accounts"}
+          href={required ? "/chat" : "/settings/profile"}
           className="touch-target mt-6 inline-block text-[12.5px] text-muted-foreground underline underline-offset-4"
         >
-          {required ? "나중에" : "마이로 돌아가기"}
+          {required ? "나중에" : "프로필 설정으로 돌아가기"}
         </Link>
       </div>
     </main>

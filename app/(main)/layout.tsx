@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db"
 import { FloatingNav } from "@/components/layout/floating-nav"
 import { CurrentUserProvider } from "@/components/layout/current-user"
 import { MainWithChat } from "@/components/layout/main-with-chat"
-import { CommandPaletteProvider } from "@/components/layout/command-palette-context"
 import { RightPanelProvider } from "@/components/layout/right-panel-context"
 import { OnboardingProvider } from "@/components/onboarding/onboarding-provider"
 import { PwaRegister } from "@/components/pwa-register"
@@ -59,7 +58,6 @@ export default async function MainLayout({
       <PwaRegister />
       <PushPresence />
       <CurrentUserProvider name={session.user.name ?? null}>
-      <CommandPaletteProvider>
         <RightPanelProvider>
         <OnboardingProvider key={session.user.id} initialState={{
           onboardingVideoSeenAt: onboarding.onboardingVideoSeenAt?.toISOString() ?? null,
@@ -81,7 +79,6 @@ export default async function MainLayout({
         <LargeUploadStatus />
         </OnboardingProvider>
         </RightPanelProvider>
-      </CommandPaletteProvider>
       </CurrentUserProvider>
     </div>
   )
