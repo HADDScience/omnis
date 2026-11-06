@@ -80,6 +80,10 @@ jobs:
       NEXT_PUBLIC_UI_METRICS: "1"
       E2E_PASSWORD: demo1234
       BASE_URL: http://localhost:3000
+      # 점검 스위치 시험(tests/feature/maintenance-switch.spec.ts) — 흉내 쿠키를 가진 브라우저 하나만 점검을 본다.
+      # 운영에는 두지 않는다. 우회 토큰은 시험 전용 자리값이다(운영 값은 Vercel 환경변수에만).
+      MAINTENANCE_ALLOW_SIMULATE: "1"
+      MAINTENANCE_BYPASS_TOKEN: ci-only-maintenance-bypass
 
     steps:
       - uses: actions/checkout@v4

@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { DemoBanner } from "@/components/layout/demo-banner"
+import { TopBanners } from "@/components/layout/top-banners"
 import { Toaster } from "@/components/ui/sonner"
 import { cn } from "@/lib/utils"
 
@@ -69,7 +69,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <div className="flex min-h-[var(--app-vh)] flex-col">
-            <DemoBanner />
+            <TopBanners />
             <div className="flex min-h-0 flex-1 flex-col">{children}</div>
           </div>
           <Toaster position="top-right" richColors />
