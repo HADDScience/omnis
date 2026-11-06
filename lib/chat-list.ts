@@ -197,6 +197,11 @@ export function unreadRoomCount(rooms: { unread: number }[]): number {
   return rooms.reduce((n, r) => n + (r.unread > 0 ? 1 : 0), 0)
 }
 
+/** 뒤로 캡슐의 수 — 지금 보는 방을 뺀 안 읽은 글 수 */
+export function unreadElsewhere(rooms: { key: string; unread: number }[], activeKey: string | null): number {
+  return rooms.reduce((n, r) => (r.key === activeKey ? n : n + r.unread), 0)
+}
+
 /** 배지 글자. 100 부터는 「99+」 */
 export function unreadLabel(n: number): string {
   return n > 99 ? "99+" : String(n)

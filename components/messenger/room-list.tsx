@@ -81,6 +81,7 @@ import {
   type RoomRemoval,
 } from "@/lib/chat-list"
 import type { RoomList as RoomListData, RoomListItem } from "@/lib/chat-rooms"
+import { usePublishUnreadRooms } from "./room-back-link"
 import { chatPrefs } from "./chat-prefs-client"
 import { LIST_CACHE_KEY, readCache, writeCache } from "@/lib/chat-cache"
 import { rememberRoomList } from "@/lib/chat-entry"
@@ -278,6 +279,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
   // ─── 방 동작 ───
   const folders = useMemo(() => data?.folders ?? [], [data])
   const rooms = useMemo(() => flatten(data), [data])
+  usePublishUnreadRooms(rooms)
 
   const toggleFavorite = useCallback(
     async (room: RoomListItem) => {

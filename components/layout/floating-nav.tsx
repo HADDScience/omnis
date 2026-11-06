@@ -134,6 +134,7 @@ export function FloatingNav() {
       {/* 폰: 하단 가장자리 가변 블러 — 목록 끝이 nav 밑으로 서서히 사라진다 */}
       <div
         aria-hidden
+        data-phone-bottom-nav
         className={cn(
           "nav-edge-bottom pointer-events-none fixed inset-x-0 bottom-0 z-[44] h-[calc(var(--nav-offset-bottom)+12px)] md:hidden",
           // 채팅 목록은 방이 유리 너머로 보여야 한다 — 가장자리 띠를 옅게 둔다
@@ -146,6 +147,7 @@ export function FloatingNav() {
           터치 기기에서 칸은 44px 이상 — 200px 폭에서 네 칸(176px)은 들어가지만, 넘치면 캡슐 안에서 민다 */}
       <nav
         aria-label="주 메뉴"
+        data-phone-bottom-nav
         className={cn(
           "fixed inset-x-3 bottom-[calc(var(--safe-bottom)+8px)] z-[var(--z-nav)] flex h-[54px] items-stretch gap-2 transition-transform duration-200 motion-reduce:transition-none md:hidden",
           keyboardOpen && "pointer-events-none translate-y-[calc(100%+24px)]"

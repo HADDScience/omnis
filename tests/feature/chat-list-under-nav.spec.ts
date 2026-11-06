@@ -110,8 +110,9 @@ test.describe("폰", () => {
     await expect(page.getByRole("menuitem", { name: /옴니스와 대화/ })).toBeVisible()
   })
 
-  test("방을 열어도 입력창은 nav 위에 있고, 돌아오면 목록이 다시 닿는다", async ({ page }) => {
+  test("방을 열면 nav 가 사라지고, 돌아오면 다시 보이며 목록이 다시 닿는다", async ({ page }) => {
     await openList(page)
+    await expect(page.locator(BOTTOM_NAV).last()).toBeVisible()
     const row = page.locator(rowOf(rooms[15]))
     await row.scrollIntoViewIfNeeded()
     await expect.poll(() => row.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), { timeout: 30_000 }).toBe(true)
@@ -119,12 +120,11 @@ test.describe("폰", () => {
     await page.waitForURL(`**/chat/${rooms[15]}`)
     const main = page.locator(MAIN)
     await page.locator("section [data-composer-pill]").first().waitFor({ timeout: 15_000 })
-    const pill = await rect(page, "section [data-composer-pill]")
-    const nav = await rect(page, BOTTOM_NAV)
-    expect(pill.bottom).toBeLessThanOrEqual(nav.top)
-    expect(await page.locator(".nav-edge-bottom").evaluate((el) => getComputedStyle(el).backdropFilter)).not.toBe("none")
+    await expect(page.locator(`${BOTTOM_NAV}:visible`)).toHaveCount(0)
+    await expect(page.locator(".nav-edge-bottom")).toBeHidden()
 
     await page.goBack()
+    await expect(page.locator(BOTTOM_NAV).last()).toBeVisible()
     await expect.poll(() => main.evaluate((el) => getComputedStyle(el).paddingBottom)).toBe("0px")
   })
 

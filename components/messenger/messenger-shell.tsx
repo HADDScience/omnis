@@ -12,6 +12,7 @@ import { RoomList } from "./room-list"
 import { CachedRoomPreview } from "./cached-room-preview"
 import { ChatUser, OpenClientRoom, RoomListReload, RoomSurfaceReady, StartRoomEntry } from "./messenger-context"
 import { ClientRoom } from "./client-room"
+import { UnreadElsewhereProvider } from "./room-back-link"
 import { rememberedRoom } from "@/lib/chat-entry"
 import { isFastRoom } from "@/lib/room-snapshot"
 import type { RoomListItem } from "@/lib/chat-rooms"
@@ -77,7 +78,8 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
     <StartRoomEntry.Provider value={startEntry}>
     <RoomSurfaceReady.Provider value={surfaceReady}>
     <OpenClientRoom.Provider value={openClientRoom}>
-      <div data-messenger data-chat-at-list={atList ? "" : undefined} className="flex h-full min-h-0 flex-col md:pt-12">
+    <UnreadElsewhereProvider>
+      <div data-messenger data-chat-at-list={atList ? "" : undefined} data-chat-in-room={atList ? undefined : ""} className="flex h-full min-h-0 flex-col md:pt-12">
         <div className="flex min-h-0 flex-1">
           <aside
             aria-label="채팅방 목록"
@@ -100,6 +102,7 @@ export function MessengerShell({ children, userId }: { children: ReactNode; user
           </section>
         </div>
       </div>
+    </UnreadElsewhereProvider>
     </OpenClientRoom.Provider>
     </RoomSurfaceReady.Provider>
     </StartRoomEntry.Provider>

@@ -102,6 +102,7 @@ function RoomEntry({ roomKey, overlay }: { roomKey: string; overlay: boolean }) 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-room-entry>
       <RoomHeader
+        roomKey={roomKey}
         title={
           room ? (
             <>
