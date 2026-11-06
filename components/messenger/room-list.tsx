@@ -86,6 +86,7 @@ import { chatPrefs } from "./chat-prefs-client"
 import { LIST_CACHE_KEY, readCache, writeCache } from "@/lib/chat-cache"
 import { rememberRoomList } from "@/lib/chat-entry"
 import { FolderManager } from "./folder-manager"
+import { NewChatMenu } from "./new-chat-menu"
 import { SwipeRow, type SwipeSide } from "./swipe-row"
 import { AuthorAvatar } from "@/components/chat/message-parts"
 import { useOpenClientRoom, useStartRoomEntry } from "./messenger-context"
@@ -126,11 +127,15 @@ function patchRoom(d: RoomListData, key: string, patch: Partial<RoomListItem>): 
   }
 }
 
+/** 폰 제목 줄 아이콘 — 누르는 자리 44px. 유리 없는 평면(규칙: 유리는 떠 있는 크롬에만) */
+const TITLE_ICON =
+  "flex size-[44px] shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+
 const chipStorageKey = (userId: string) => `omnis.chat.chip.${userId}`
 const taskGroupsStorageKey = (userId: string) => `omnis.chat.task-groups-open.${userId}`
 
 /**
- * 메신저 왼쪽 목록 — 칩 한 줄(전체 · 옴니스 · 안읽음 · 즐겨찾기 · 내 폴더 · 폴더 관리) · 검색칸 · 방 목록.
+ * 메신저 왼쪽 목록 — 폰 제목 줄(「채팅」 · 검색 · 새 대화 · 알림) · 칩 한 줄(전체 · 옴니스 · 안읽음 · 즐겨찾기 · 내 폴더 · 폴더 관리) · 검색칸 · 방 목록.
  * 검색칸은 목록 맨 위에 붙어 있다. 폰에서는 처음에 그 높이만큼 내려 둬 숨는다 — 끌어내리면 나온다(iOS 연락처).
  * PC 는 화면이 넉넉해 처음부터 보인다(2026-10-29 작업지시자).
  * 칩은 방 종류로 칸을 나누지 않고 최근 글 순 한 목록을 거른다. 검색은 칩과 상관없이 전체에서 찾는다.
@@ -153,7 +158,7 @@ export function RoomList({ version, userId }: { version: number; userId: string 
   const [searchTry, setSearchTry] = useState(0)
   const listRef = useRef<HTMLElement>(null)
   const searchRef = useRef<HTMLDivElement>(null)
-  // 폰의 알림 종 — 채팅 화면에는 제목줄이 없어 칩 줄 끝에 둔다. PC 는 떠 있는 nav 에 있다
+  // 폰의 알림 종은 제목 줄에 둔다. PC 는 떠 있는 nav 에 있다
   const isMdUp = useMediaQuery(NAV_DESKTOP_QUERY)
   const [manager, setManager] = useState<{
     open: boolean
@@ -444,9 +449,28 @@ export function RoomList({ version, userId }: { version: number; userId: string 
     if (nav && box && !window.matchMedia(NAV_DESKTOP_QUERY).matches) nav.scrollTop = box.offsetHeight
   }, [])
 
+  // 숨어 있던 검색칸을 꺼내 바로 입력하게 한다. 끌어내리기를 모르는 사람의 길이다
+  const openSearch = () => {
+    if (listRef.current) listRef.current.scrollTop = 0
+    searchRef.current?.querySelector("input")?.focus()
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center border-b pt-3 pb-2.5">
+      {/* 폰 제목 줄 — 오른쪽 아이콘은 옴니스에 있는 기능만. PC 는 nav 와 FAB 가 맡는다 */}
+      <div data-chat-list-title className="flex shrink-0 items-center pt-[var(--safe-top)] pr-1.5 pl-4 md:hidden">
+        <h1 className="min-w-0 flex-1 truncate text-[24px] leading-[48px] font-bold">채팅</h1>
+        <button type="button" onClick={openSearch} aria-label="채팅방 검색 열기" title="채팅방 검색" className={TITLE_ICON}>
+          <HugeiconsIcon icon={Search01Icon} size={22} aria-hidden />
+        </button>
+        <NewChatMenu data-new-chat-title side="bottom" iconSize={22} className={TITLE_ICON} />
+        {!isMdUp && (
+          <div className="size-[44px] shrink-0 [&_button]:size-full! [&_button]:rounded-full [&_button_svg]:size-[22px]!">
+            <NotificationBell />
+          </div>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center border-b pt-3 pb-2.5 max-md:pt-0 max-md:pb-1">
         <div className="min-w-0 flex-1">
           <ChipBar
             chip={chip}
@@ -457,20 +481,14 @@ export function RoomList({ version, userId }: { version: number; userId: string 
             onManage={() => setManager({ open: true })}
           />
         </div>
-        {!isMdUp && (
-          // 다른 화면 제목줄의 알림 종과 같은 유리 원(.glass, header.tsx) — 아이콘은 원 한가운데
-          <div className="glass mr-3 flex size-12 shrink-0 items-center justify-center rounded-full [@media(pointer:coarse)]:size-[50px] [&_button]:size-full! [&_button]:rounded-full">
-            <NotificationBell />
-          </div>
-        )}
       </div>
 
       {/* 폰: 검색칸 · 목록 두 곳에 걸쇠(snap)를 걸어, 검색칸이 반쯤 걸쳐 멈추지 않고 다 나오거나 다 숨는다 */}
       <nav
         ref={listRef}
         aria-label="채팅방"
-        // 폰은 목록이 유리 nav 뒤로 지나간다 — 맨 아래 방이 nav · 새 대화 단추에 가리지 않게 끝을 그만큼 더 비운다
-        className="min-h-0 flex-1 overflow-y-auto max-md:snap-y max-md:snap-proximity overscroll-contain pb-28 max-md:pb-[calc(var(--nav-offset-bottom)+7rem)]"
+        // 폰은 목록이 유리 nav 뒤로 지나간다 — 맨 아래 방이 nav 에 가리지 않게 끝을 그만큼 더 비운다
+        className="min-h-0 flex-1 overflow-y-auto max-md:snap-y max-md:snap-proximity overscroll-contain pb-28 max-md:pb-[calc(var(--nav-offset-bottom)+1rem)]"
       >
         <div ref={searchRef} className="snap-start pt-2">
           <SearchBox value={query} onChange={setQuery} />
@@ -778,10 +796,22 @@ function kindIcon(kind: RoomListItem["kind"]) {
   )
 }
 
-/** 목록 한 줄 머리 — 사람끼리 1:1 은 상대 아바타(이름 색 · 두 글자), 나머지는 방 종류 아이콘 */
+const ROW_AVATAR = "max-md:in-data-[messenger]:size-[47px] max-md:in-data-[messenger]:rounded-[17px] max-md:in-data-[messenger]:text-[16px]"
+const FACE_AVATAR = "absolute max-md:in-data-[messenger]:size-[31px] max-md:in-data-[messenger]:rounded-[11px] max-md:in-data-[messenger]:text-[11px]"
+
+/** 목록 한 줄 머리 — 사람끼리 1:1 은 상대 아바타(이름 색 · 두 글자), 단톡방은 참여자 둘을 겹쳐서, 나머지는 방 종류 아이콘 */
 function roomIcon(room: RoomListItem) {
-  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={52} className="max-md:in-data-[messenger]:size-[47px] max-md:in-data-[messenger]:rounded-[17px] max-md:in-data-[messenger]:text-[16px]" />
-  return kindIcon(room.kind)
+  if (room.kind === "DM") return <AuthorAvatar name={room.name} size={52} className={ROW_AVATAR} />
+  const [first, second] = room.faceNames ?? []
+  // 다른 참여자가 다 나간 방 · 저장해 둔 옛 목록은 이름이 없다 — 방 종류 아이콘으로 둔다
+  if (!first) return kindIcon(room.kind)
+  if (!second) return <AuthorAvatar name={first} size={52} className={ROW_AVATAR} />
+  return (
+    <span aria-hidden data-group-faces className="relative size-[52px] shrink-0 max-md:size-[47px]">
+      <AuthorAvatar name={first} size={34} className={cn(FACE_AVATAR, "top-0 left-0")} />
+      <AuthorAvatar name={second} size={34} className={cn(FACE_AVATAR, "right-0 bottom-0 ring-2 ring-background")} />
+    </span>
+  )
 }
 
 interface RowActions {
@@ -954,9 +984,17 @@ function RoomRowContent({ room }: { room: RoomListItem }) {
       {roomIcon(room)}
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-[16.5px] max-md:text-[17px]", unread ? "font-semibold" : "font-medium")}>
-            {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
-            {room.name}
+          {/* 이름이 길어도 인원 수는 잘리지 않는다 — 이름만 줄임표가 된다 */}
+          <span className={cn("flex min-w-0 flex-1 items-baseline gap-1.5 text-[16.5px] max-md:text-[17px]", unread ? "font-semibold" : "font-medium")}>
+            <span className="min-w-0 truncate">
+              {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
+              {room.name}
+            </span>
+            {room.kind === "GROUP" && room.memberCount ? (
+              <span data-member-count aria-label={`참여자 ${room.memberCount}명`} className="shrink-0 font-normal text-muted-foreground tabular-nums">
+                {room.memberCount}
+              </span>
+            ) : null}
           </span>
           {room.favorite && (
             <HugeiconsIcon

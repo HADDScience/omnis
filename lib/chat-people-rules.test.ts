@@ -3,7 +3,7 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { defaultGroupName, dmKeyOf, isSelfDmKey, SELF_ROOM_TITLE, selfDmKeyOf, mentionedMembers, peopleRoomTitle, planPeopleRoom, PEOPLE_PICK_MAX, PEOPLE_ROOM_NAME_MAX } from "./chat-people-rules"
+import { defaultGroupName, dmKeyOf, groupFaceNames, isSelfDmKey, SELF_ROOM_TITLE, selfDmKeyOf, mentionedMembers, peopleRoomTitle, planPeopleRoom, PEOPLE_PICK_MAX, PEOPLE_ROOM_NAME_MAX } from "./chat-people-rules"
 
 const active = new Set(["me", "a", "b", "c"])
 
@@ -70,4 +70,17 @@ test("이름이 겹치면 긴 이름부터 — 「@김철수」 를 「김철」
   const members = [{ id: "me", name: "나" }, { id: "s", name: "김철" }, { id: "l", name: "김철수" }]
   assert.deepEqual(mentionedMembers("@김철수 확인", members, "me"), ["l"])
   assert.deepEqual(mentionedMembers("@김철 확인", members, "me"), ["s"])
+})
+
+test("groupFaceNames — 나를 빼고 들어온 순으로 둘만", () => {
+  const members = [
+    { id: "me", name: "나" },
+    { id: "a", name: "갑" },
+    { id: "b", name: "을" },
+    { id: "c", name: "병" },
+  ]
+  assert.deepEqual(groupFaceNames(members, "me"), ["갑", "을"])
+  // 나만 남았거나 한 명만 남은 방은 그만큼만 — 없는 이름을 만들지 않는다
+  assert.deepEqual(groupFaceNames(members.slice(0, 2), "me"), ["갑"])
+  assert.deepEqual(groupFaceNames(members.slice(0, 1), "me"), [])
 })

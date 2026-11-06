@@ -155,11 +155,9 @@ if (want("list")) {
   await shot(page, "U-375-longpress-menu")
   await page.keyboard.press("Escape")
 
-  await page.locator("[data-new-chat-fab]").click()
+  await page.locator("[data-new-chat-title]").click()
   await page.getByRole("menuitem", { name: /옴니스와 대화/ }).waitFor()
-  const fab = await page.locator("[data-new-chat-fab]").boundingBox()
-  const nav = await page.locator('nav[aria-label="주 메뉴"]').last().boundingBox()
-  check("FAB 는 하단 nav 위에 뜬다(겹치지 않는다)", fab.y + fab.height <= nav.y, { fab, nav })
+  check("폰에 FAB 가 없다 — 새 대화는 제목 줄 아이콘", !(await page.locator("[data-new-chat-fab]").isVisible()))
   await shot(page, "U-375-fab-menu")
   await page.close()
 }
