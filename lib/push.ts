@@ -14,6 +14,7 @@ import webpush from "web-push"
 
 import { prisma } from "@/lib/db"
 import { PREF_FIELD, presenceTargets, pushAllowed, type NotifyCategory } from "@/lib/notify-rules"
+import { recordServerUiEvents, uiMetricsServerEnabled } from "@/lib/ui-metrics/server"
 
 export function pushConfigured(): boolean {
   return Boolean(
@@ -112,9 +113,12 @@ export async function deliverPush(
   if (subscriptions.length === 0) return { sent: 0, removed: 0 }
 
   configure()
-  const body = JSON.stringify(payload)
+  // 시범 운영 측정 — 기기가 받은 때 · 연 때를 이 시각과 견준다(public/sw.js). 숫자 두 개뿐이다
+  const metrics = uiMetricsServerEnabled() ? { sentAt: Date.now(), sha: process.env.VERCEL_GIT_COMMIT_SHA || "dev" } : {}
+  const body = JSON.stringify({ ...payload, ...metrics })
 
   let sent = 0
+  const sentByUser = new Map<string, number>()
   const dead: string[] = []
 
   await Promise.all(
@@ -127,6 +131,7 @@ export async function deliverPush(
           { TTL: category === "chat" ? 60 * 60 : 60 * 60 * 24, timeout: 10_000 }
         )
         sent += 1
+        sentByUser.set(sub.userId, (sentByUser.get(sub.userId) ?? 0) + 1)
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode
         if (status === 404 || status === 410) {
@@ -141,6 +146,8 @@ export async function deliverPush(
   if (dead.length > 0) {
     await prisma.pushSubscription.deleteMany({ where: { id: { in: dead } } })
   }
+  // 받아 간 기기가 없는 사람은 남기지 않는다 — 수신율의 분모는 푸시 서비스가 받아 간 기기 수다
+  await recordServerUiEvents([...sentByUser].map(([userId, value]) => ({ userId, name: "push_sent", value })), "/push")
 
   return { sent, removed: dead.length }
 }

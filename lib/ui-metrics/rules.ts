@@ -28,6 +28,8 @@ export const UI_EVENT_NAMES = [
   "plus_open",
   "plus_dismiss",
   "plus_act",
+  "push_recv_s", // value: 서버가 보낸 뒤 기기(service worker)가 받기까지 초. public/sw.js 가 보낸다
+  "push_open_s", // value: 서버가 보낸 뒤 알림을 눌러 열기까지 초
   ...SHORTCUTS.map((s) => `shortcut.${s.id}` as const),
 ] as const
 

@@ -1,10 +1,12 @@
 import type { Metadata } from "next"
 
 import { Header } from "@/components/layout/header"
+import { PilotMetrics } from "@/components/settings/pilot-metrics"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { auth } from "@/lib/auth"
 import { UI_METRICS_NOTICE } from "@/lib/ui-metrics/notice"
 import type { UiMetricRow } from "@/lib/ui-metrics/rules"
+import { loadPilotView, parsePilotFilter } from "@/lib/ui-metrics/pilot-server"
 import { loadUiMetricsSummary } from "@/lib/ui-metrics/server"
 
 export const metadata: Metadata = { title: "UI 변경 측정" }
@@ -35,7 +37,7 @@ function MetricCells({ row }: { row: UiMetricRow }) {
 }
 
 /** 배포별 · 사람별 측정. 관리자만 연다. 같은 값을 GET /api/ui-metrics/summary 로도 받는다 */
-export default async function UiMetricsPage() {
+export default async function UiMetricsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await auth()
   const isAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN"
 
@@ -55,13 +57,15 @@ export default async function UiMetricsPage() {
     )
   }
 
-  const deployments = await loadUiMetricsSummary()
+  const filter = parsePilotFilter(await searchParams)
+  const [deployments, pilot] = await Promise.all([loadUiMetricsSummary(), loadPilotView(filter)])
 
   return (
     <>
       <Header crumbs={["마이", "UI 변경 측정"]} />
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6">
         <p className="text-sm text-muted-foreground">{UI_METRICS_NOTICE.usage}</p>
+        <PilotMetrics view={pilot} filter={filter} />
         {deployments.length === 0 && (
           <Empty className="rounded-xl border border-dashed">
             <EmptyHeader>
