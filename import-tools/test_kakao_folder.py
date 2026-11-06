@@ -2,7 +2,7 @@
 import csv, os, sys, tempfile, unittest
 from datetime import date
 sys.path.insert(0, os.path.dirname(__file__))
-from kakao_folder import FolderError, dedupe_scrolled, excluded_file_times, file_baseline, file_lines, file_report, file_stamp_dir, file_summary, parse_expiry, parse_size, plan_files, saved_name_ok, size_matches, can_skip, check_folder, csv_name_for, csv_room, duplicates, env_fingerprint, leftovers, parse_report, remember_import, room_key, safe_key, summary, switch_to_folder
+from kakao_folder import FolderError, settle, dedupe_scrolled, excluded_file_times, file_baseline, file_lines, file_report, file_stamp_dir, file_summary, parse_expiry, parse_size, plan_files, saved_name_ok, size_matches, can_skip, check_folder, csv_name_for, csv_room, duplicates, env_fingerprint, leftovers, parse_report, remember_import, room_key, safe_key, summary, switch_to_folder
 
 ROOMS = {"전사방": {"kind": "COMPANY"}, "Group Chat": {"kind": "GROUP", "listName": "갑, 을, 병"}}
 
@@ -358,6 +358,24 @@ class FileSummary(unittest.TestCase):
     def test_summary_에_파일_줄이_붙는다(self):
         self.assertIn("받은 파일 2개", summary([], {}, [], False, {"방": file_report(got=2)}))
         self.assertNotIn("파일", summary([], {}, [], False))
+
+
+
+class Settle(unittest.TestCase):
+    def run_reads(self, reads, timeout=10):
+        it, clock = iter(reads), {"t": 0.0}
+        def sleep(s):
+            clock["t"] += s
+        return settle(lambda: next(it, reads[-1]), timeout=timeout, gap=1, sleep=sleep, clock=lambda: clock["t"])
+
+    def test_두_번_같게_읽힐_때까지_기다린다(self):
+        self.assertEqual(self.run_reads([[], ["가"], ["가", "나"], ["가", "나"]]), ["가", "나"])
+
+    def test_빈_목록은_자리_잡은_것으로_보지_않는다(self):
+        self.assertIsNone(self.run_reads([[], [], []], timeout=3))
+
+    def test_계속_바뀌면_포기한다(self):
+        self.assertIsNone(self.run_reads([["가"], ["나"], ["다"], ["라"]], timeout=3))
 
 
 if __name__ == "__main__":

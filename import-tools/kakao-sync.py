@@ -39,7 +39,7 @@ from ApplicationServices import (
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from kakao_folder import (
-    FolderError, can_skip, check_folder, csv_name_for, csv_room, dedupe_scrolled, duplicates, env_fingerprint, excluded_file_times, file_baseline, file_lines, file_report,
+    FolderError, can_skip, check_folder, csv_name_for, csv_room, dedupe_scrolled, duplicates, settle, env_fingerprint, excluded_file_times, file_baseline, file_lines, file_report,
     file_stamp_dir, parse_expiry, parse_report, plan_files, remember_import, room_key, saved_name_ok, size_matches, summary, switch_to_folder,
 )
 
@@ -529,8 +529,12 @@ def download_top(w, skip, units, mouse: Mouse):
 
 def file_cells(w):
     """화면에 온전히 보이는 파일 칸 [(이름, 만료일, 크기 글자, 칸)] — 위에서부터. 달 구분 줄 · 빈 칸은 글자가 없어 빠진다."""
+    # 사진 탭에서 넘어오는 동안은 영역 · 칸의 위치가 잠깐 비어 있다(2026-11-06 운영 실행에서 세 번). 그때는 빈 목록이다
     area = child(w, Identifier="_NS:88")
-    _, ay, _, ah = geo(area)
+    box = safe_geo(area)
+    if box is None or not kids(area):
+        return []
+    _, ay, _, ah = box
     out = []
     for sec in kids(kids(area)[0]):
         if attr(sec, "AXSubrole") != "AXSectionList":
@@ -539,9 +543,20 @@ def file_cells(w):
             if attr(g, "AXRole") != "AXGroup":
                 continue
             texts = [attr(c, "AXValue") or "" for c in kids(g) if attr(c, "AXRole") == "AXStaticText"]
-            if len(texts) >= 3 and geo(g)[1] >= ay and geo(g)[1] + geo(g)[3] <= ay + ah:
+            gb = safe_geo(g) if len(texts) >= 3 else None
+            if gb is not None and gb[1] >= ay and gb[1] + gb[3] <= ay + ah:
                 out.append((nfc(texts[0]), parse_expiry(texts[1]), texts[2], g))
     return out
+
+
+def safe_geo(el):
+    """위치를 아직 모르는 요소(그리는 중)는 None."""
+    if el is None or attr(el, "AXPosition") is None or attr(el, "AXSize") is None:
+        return None
+    try:
+        return geo(el)
+    except (AttributeError, TypeError):
+        return None
 
 
 def scroll_files(w, value):
@@ -660,9 +675,10 @@ def sync_files(key, w, csv_path, prev_count, state, mouse, args):
         return 0, False, file_report()
     with limit("파일 탭 열기", args.step_timeout):
         press(wait_for(lambda: child(w, Title="Files"), "파일 탭 단추"))
-        time.sleep(1.0)
         w = wait_for(archive_window, "파일 보관함")
-        wait_for(lambda: file_cells(w), "파일 칸")
+        # 다 그려지기 전에 읽으면 칸이 모자라 받을 파일을 「아직 없음」 으로 미룬다 — 두 번 연달아 같게 읽힐 때까지 기다린다
+        if not settle(lambda: [(n, e, s) for n, e, s, _ in file_cells(w)]):
+            raise Abort("파일 칸이 자리 잡지 않음")
         items = read_file_items(w, min(datetime.strptime(l["t"], "%Y-%m-%d %H:%M:%S").date() for l in todo))
     plan = plan_files(todo, lines, items, date.today(), excluded_file_times(read_exclude(), key))
     times = [l["t"] for l, _ in plan["get"]]
