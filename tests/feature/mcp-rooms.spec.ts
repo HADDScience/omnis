@@ -114,7 +114,10 @@ test.describe("MCP 방 읽기의 방 권한", () => {
         const r = await call(request, viewer, "list_chat", { view: "room", ...args })
         expect(r.isError, JSON.stringify(args)).toBe(true)
         expect(r.text, "글").not.toContain(ROOM_LINE)
-        expect(r.text, "방 이름").not.toContain(ROOM_NAME)
+        // 거절은 「없음」 과 같은 고정 문구 — 방 줄(이름 · 참여자 · ID)을 내주지 않는다. 물은 말은 그대로 되돌린다
+        expect(r.text, "거절 문구").toContain("맞는 방이 없거나 볼 수 없는 방입니다")
+        expect(r.text, "방 줄").not.toContain("· ID ")
+        expect(r.text, "참여자 이름").not.toContain("단톡방")
         expect(r.text, "첨부").not.toContain(fileId)
       }
       // 전사방 보기는 지금처럼 — 방 글은 섞이지 않는다
