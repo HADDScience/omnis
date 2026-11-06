@@ -72,7 +72,7 @@ test.describe("옴니스 답의 사진 묶음", () => {
   })
 
   async function openRoom(page: Page) {
-    await page.route("**/api/files/*/raw*", (route) =>
+    await page.route(/\/api\/files\/[^/]+\/(raw|thumb)/, (route) =>
       route.fulfill({ contentType: "image/png", body: PNG })
     )
     await quickLogin(page, "팀장")

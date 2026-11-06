@@ -18,6 +18,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { apiUrl } from "@/lib/base-path"
+import { ThumbImage } from "@/components/chat/thumb-image"
 import { cn } from "@/lib/utils"
 
 interface PhotoHit {
@@ -343,8 +344,7 @@ export function ChatSearch({
           aria-label="사진으로 찾은 글로 이동"
           className="touch-target flex w-full min-w-0 items-center gap-2 rounded-md p-1 text-left hover:bg-muted"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={apiUrl(`/api/files/${currentPhoto.fileId}/raw?w=96`)} alt="" className="size-11 shrink-0 rounded bg-muted object-cover" />
+          <ThumbImage fileId={currentPhoto.fileId} original={apiUrl(`/api/files/${currentPhoto.fileId}/raw?w=96`)} cssWidth={44} className="size-11 shrink-0 rounded bg-muted object-cover" />
           <span className="min-w-0 flex-1">
             <span className="block text-[11px] font-medium text-primary in-data-[messenger]:text-[13px]">사진으로 찾음</span>
             <span className="block break-words text-[12px] text-muted-foreground in-data-[messenger]:text-[14px]">{currentPhoto.snippet}</span>

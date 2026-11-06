@@ -27,6 +27,7 @@ import { AuthorAvatar, DayDivider, MessageTime } from "@/components/chat/message
 import { SystemPill } from "@/components/chat/system-pill"
 
 import { apiUrl } from "@/lib/base-path"
+import { thumbSrcSet, thumbUrl } from "@/lib/thumb"
 import { safeInlineType } from "@/lib/file-serving"
 import { isLargeUpload } from "@/lib/large-upload/rules"
 import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arrival"
@@ -719,6 +720,8 @@ function fileKind(name: string): { icon: typeof File01Icon; label: string; tone:
 /** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
 /** 받은 사진의 세로/가로 — 다시 그릴 때 받기 전부터 자리를 맞춘다. 파일 표에 크기가 없어 첫 표시는 4:3 으로 시작한다 */
 const imageRatios = new Map<string, number>()
+/** 사진 한 장이 그려지는 가장 넓은 폭(css px) — 말풍선 260, 폰 카드는 화면 폭 70%(390 폭에서 273) */
+const IMAGE_CSS_WIDTH = 280
 
 /**
  * 메시지에 붙은 사진 한 장. 폰의 전사 · 사람 방은 말풍선 없는 카드(화면 폭 70% · 모서리 13)이고 이름을 감춘다.
@@ -727,7 +730,10 @@ const imageRatios = new Map<string, number>()
 function ImageAttachment({ file: f, tile }: { file: FileInfo; tile: boolean }) {
   const uploading = f._uploading
   const [ratio, setRatio] = useState(() => imageRatios.get(f.id) ?? 0.75)
-  const [failed, setFailed] = useState(false)
+  // WebP 미리보기 → 못 받으면 원본 → 그것도 안 되면 「불러오지 못했어요」. 올리는 중에는 아직 미리보기가 없다
+  const [stage, setStage] = useState<"thumb" | "original" | "failed">(uploading ? "original" : "thumb")
+  const failed = stage === "failed"
+  const fail = useCallback(() => setStage((s) => (s === "thumb" ? "original" : "failed")), [])
   const img = useRef<HTMLImageElement>(null)
   const measure = useCallback((el: HTMLImageElement) => {
     if (!el.naturalWidth) return
@@ -736,12 +742,13 @@ function ImageAttachment({ file: f, tile }: { file: FileInfo; tile: boolean }) {
     setRatio(next)
   }, [f.id])
   // 서버가 그린 사진은 React 가 붙기 전에 이미 받았을 수 있다
+  // naturalWidth 로 실패를 가르지 않는다 — srcset(480w)이면 아주 작은 그림은 잘 받아도 0 이다. 깨진 그림만 decode 가 거절한다
   useEffect(() => {
-    if (img.current?.complete) {
-      if (img.current.naturalWidth) measure(img.current)
-      else if (img.current.src) setFailed(true)
-    }
-  }, [measure])
+    const el = img.current
+    if (!el?.complete || !el.currentSrc) return
+    if (el.naturalWidth) measure(el)
+    else el.decode().catch(fail)
+  }, [measure, fail])
   return (
     <a
       href={uploading ? undefined : apiUrl(f.path)}
@@ -755,12 +762,14 @@ function ImageAttachment({ file: f, tile }: { file: FileInfo; tile: boolean }) {
       {/* eslint-disable-next-line @next/next/no-img-element -- 인증이 필요한 첨부 라우트 */}
       <img
         ref={img}
-        src={apiUrl(f.path)}
+        src={stage === "thumb" ? thumbUrl(f.id, IMAGE_CSS_WIDTH) : apiUrl(f.path)}
+        srcSet={stage === "thumb" ? thumbSrcSet(f.id, IMAGE_CSS_WIDTH) : undefined}
+        sizes={stage === "thumb" ? `${IMAGE_CSS_WIDTH}px` : undefined}
         alt={f.name}
         className={`w-full h-auto max-md:in-data-[chat-room-chrome]:size-full max-md:in-data-[chat-room-chrome]:object-cover ${ratio > 1.5 ? "max-md:in-data-[chat-room-chrome]:object-top" : ""} ${failed ? "max-md:in-data-[chat-room-chrome]:hidden" : ""}`}
         loading="lazy"
         onLoad={(e) => measure(e.currentTarget)}
-        onError={() => setFailed(true)}
+        onError={fail}
       />
       {failed && (
         <span data-attachment-failed className="hidden items-center justify-center p-2 text-center text-[13px] leading-[18px] text-muted-foreground max-md:in-data-[chat-room-chrome]:flex max-md:in-data-[chat-room-chrome]:absolute max-md:in-data-[chat-room-chrome]:inset-0">

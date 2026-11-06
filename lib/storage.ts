@@ -202,6 +202,20 @@ export function getObject(key: string): Promise<DavResponse> {
   return getAt(absolutePathFor(key))
 }
 
+/** 있으면 객체, 없으면(404) null — 만들어 둔 사본(미리보기 캐시)을 찾을 때 */
+export async function getObjectIfExists(key: string): Promise<DavResponse | null> {
+  const res = await dav("GET", davUrl(absolutePathFor(key)))
+  if (res.status === 404) {
+    drain(res)
+    return null
+  }
+  if (res.status !== 200) {
+    drain(res)
+    throw new Error(`시놀로지 다운로드 실패 (HTTP ${res.status})`)
+  }
+  return res
+}
+
 /** 객체를 지운다. 이미 없으면(404) 성공으로 본다 — 지우려던 결과와 같다. */
 export function deleteObject(key: string): Promise<void> {
   return deleteAt(absolutePathFor(key))

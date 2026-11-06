@@ -7,6 +7,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { apiUrl } from "@/lib/base-path"
+import { ThumbImage } from "@/components/chat/thumb-image"
 import { albumRows } from "@/lib/photo-album"
 
 export interface AlbumPhoto {
@@ -46,11 +47,11 @@ export function PhotoAlbum({ photos }: { photos: AlbumPhoto[] }) {
                 className={`touch-target relative min-w-0 flex-1 bg-muted @max-[140px]:basis-[calc(50%-1px)] ${single ? "" : "aspect-square"}`}
                 aria-label={`${p.title} 크게 보기`}
               >
-                {/* 줄인 사본(?w=) — 원본은 평균 1.4MB. 한 장일 때만 원본을 띄운다 */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={apiUrl(single ? `/api/files/${p.sourceId}/raw` : `/api/files/${p.sourceId}/raw?w=${row.length === 2 ? 360 : 240}`)}
-                  alt=""
+                {/* WebP 미리보기 — 원본은 평균 1.4MB. 크게 보기 · 원본 열기만 원본 */}
+                <ThumbImage
+                  fileId={p.sourceId}
+                  original={apiUrl(`/api/files/${p.sourceId}/raw`)}
+                  cssWidth={single ? 360 : row.length === 1 ? 360 : row.length === 2 ? 180 : 120}
                   loading="lazy"
                   className={single ? "block max-h-[360px] w-full object-cover" : "absolute inset-0 h-full w-full object-cover"}
                 />

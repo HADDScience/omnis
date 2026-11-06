@@ -169,7 +169,7 @@ for (const [name, use] of [
           return original.apply(this, args)
         }
       })
-      await page.route("**/api/files/*/raw*", (route) => route.fulfill({ contentType: "image/png", body: PNG }))
+      await page.route(/\/api\/files\/[^/]+\/(raw|thumb)/, (route) => route.fulfill({ contentType: "image/png", body: PNG }))
       await quickLogin(page, "팀장")
       const w = uniq()
       const id = await message("Photo")
@@ -185,7 +185,7 @@ for (const [name, use] of [
       await expect(hit).toBeVisible()
       await expect(hit).toContainText("사진으로 찾음")
       await expect(hit).toContainText(w)
-      await expect(hit.locator("img")).toHaveAttribute("src", new RegExp(`/api/files/${fileId}/raw\\?w=96`))
+      await expect(hit.locator("img")).toHaveAttribute("src", new RegExp(`/api/files/${fileId}/thumb\\?w=120`))
       const plays = () => page.evaluate(() => (window as unknown as { __plays: (string | null)[] }).__plays)
       await expect.poll(plays).toEqual([id])
       await hit.click()
