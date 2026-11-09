@@ -181,6 +181,13 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - 탭은 **알림 설정 · 사용량 · 앱 정보** 셋(`?tab=notify|usage|info`). 옛 값(push · ai · system)은 새 탭으로, `accounts` 는 프로필 설정으로 redirect(`lib/settings-tab.ts`)
 - 설치 안내(`InstallGuideDialog`): 1단계 「Safari · Chrome 에서 열기」 — 인앱 브라우저 등이면 버튼 하나로 같은 페이지를 넘긴다(`lib/install-handoff.ts`: iOS 카카오톡 `kakaotalk://web/openExternal`, LINE `openExternalBrowser=1`, 그 밖 iOS `x-safari-https`, Android Chrome `intent://…;package=com.android.chrome`). 넘긴 주소의 `?install=continue` 를 받은 브라우저는 어느 화면이든 2단계(홈 화면에 추가)를 바로 띄우고 표시를 지운다(`AppNudge`). 이미 Safari · Chrome · PC 면 1단계는 없다. 카카오 · LINE · x-safari 는 공식 문서가 없는 길이다
 
+## Omnis 와 함께 업무 시작하기 (2026-11-09)
+
+- 업무 상세 위 단추(`components/tasks/start-with-omnis.tsx`, 높이 40) → 확인 창(「이 업무를 옴니스와 시작할까요?」 + 업무 이름) → 옴니스 **새 대화**에 첫 글이 저절로 보내진다
+- PC(md 이상)는 업무 화면에 남고 오른쪽 패널의 「옴니스」 탭이 새 대화로 열린다. 폰은 패널이 없어 `/chat/new?start=<키>` 로 간다(뒤로 가면 업무)
+- 첫 글은 짧은 요청 한 줄 + `#슬러그` · ID · 배경 · 기대 결과(160자까지) · 남은 체크리스트(8개까지, `lib/task-start.ts`). 옴니스는 `#슬러그` 로 get_task 를 불러 원문을 읽는다
+- 한 번만 보낸다 — 글은 sessionStorage 의 일회용 키(10분)로 넘기고, 옴니스 방이 **보내기 전에** 보냈다고 적는다. 더블탭 · 뒤로 갔다 다시 들어오기 · 새로고침은 다시 보내지 않는다. 보내다 실패하면 입력칸에 글이 남는다
+
 ## 메신저 — 첫 화면 (2026-10-28)
 
 로그인하면 `/` → `/chat`. 왼쪽 방 목록 + 가운데 대화. 계획: [`../plans/2026-10-28-omnis-messenger-agent.md`](../plans/2026-10-28-omnis-messenger-agent.md)

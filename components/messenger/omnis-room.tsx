@@ -21,6 +21,7 @@ import { answeredAfter, mergeLatest, prependOlder, showPendingBubble, unanswered
 import { isStuckToBottom, prependScrollDelta } from "@/lib/agent/scroll-follow"
 import { writeSnapshot } from "@/lib/room-snapshot"
 import { resolveHandoff } from "@/lib/chat-entry"
+import { claimTaskStart } from "@/lib/task-start"
 import { useComposerHandoff } from "@/hooks/use-composer-handoff"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
@@ -59,6 +60,8 @@ export function OmnisRoom({
   activeRun = null,
   embedded,
   muted = false,
+  autoStartKey,
+  onAutoStarted,
 }: {
   roomId: string | null
   roomName?: string
@@ -77,6 +80,13 @@ export function OmnisRoom({
   embedded?: { onRoomCreated?: (roomId: string) => void }
   /** 이 방의 옴니스 답 푸시를 껐는가 */
   muted?: boolean
+  /**
+   * 「Omnis 와 함께 업무 시작하기」 가 넘긴 일회용 키(lib/task-start.ts). 새 대화(roomId null)일 때만, 그 키의 글을 한 번 보낸다.
+   * 이미 보낸 키(더블탭 · 뒤로 가기 뒤 다시 들어옴)면 아무것도 하지 않는다. 보내다 실패하면 ask 가 입력칸에 글을 남긴다
+   */
+  autoStartKey?: string
+  /** 그 키를 받아 처리했다(보냈든 이미 보낸 것이든) — 패널이 요청을 지운다 */
+  onAutoStarted?: (key: string) => void
 }) {
   const reloadList = useRoomListReload()
   const nudgeRoomList = useRoomListNudge()
@@ -436,6 +446,20 @@ export function OmnisRoom({
     if (sendNow) send(queued)
     setDraft(queued !== null && !sendNow ? (text ? `${queued}\n${text}` : queued) : text)
   })
+
+  // 업무에서 넘어온 첫 글 — 화면이 뜬 뒤 한 번. 보냈다고 먼저 적고(claimTaskStart) 보낸다
+  const sendRef = useRef(send)
+  useLayoutEffect(() => {
+    sendRef.current = send
+  })
+  const autoStarted = useRef<string | null>(null)
+  useEffect(() => {
+    if (!autoStartKey || initialRoomId !== null || autoStarted.current === autoStartKey) return
+    autoStarted.current = autoStartKey
+    const text = claimTaskStart(autoStartKey)
+    if (text) sendRef.current(text)
+    onAutoStarted?.(autoStartKey)
+  }, [autoStartKey, initialRoomId, onAutoStarted])
 
   async function decide(card: AgentCardData, decision: "approve" | "reject") {
     // [확인] 을 같은 순간 두 번 눌러도 한 번만(서버도 조건부 갱신으로 하나만 받는다)

@@ -57,7 +57,7 @@ type View = "task" | "all" | "omnis"
  * ?taskId= 는 그 업무방으로 보낸다. 저장된 「열림」 값이 있어도 그리지 않는다(내용을 만들지 않아 폴링도 돌지 않는다).
  */
 export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Props) {
-  const { open: panelOpen, setOpen, task, requestedView, clearRequestedView } = useRightPanel()
+  const { open: panelOpen, setOpen, task, requestedView, clearRequestedView, omnisStartKey, clearOmnisStart } = useRightPanel()
   const isDesktop = useMediaQuery(NAV_DESKTOP_QUERY)
   const open = panelOpen && isDesktop
   const router = useRouter()
@@ -241,7 +241,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
           <div className="pb-safe mx-1.5 mb-1.5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border bg-background">
             {view === "omnis" ? (
               <div className="flex min-h-0 flex-1 flex-col pt-2">
-                <PanelOmnis userId={currentUserId} />
+                <PanelOmnis userId={currentUserId} startKey={omnisStartKey} onStarted={clearOmnisStart} />
               </div>
             ) : view === "task" && task ? (
               <TaskThread taskId={task.id} taskName={task.name} messages={task.messages} currentUserId={currentUserId} />

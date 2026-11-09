@@ -21,7 +21,16 @@ const lastRoomKey = (userId: string) => `omnis.panel.omnis.${userId}`
  * (에이전트 런타임 · 확인 카드 · 다시 붙기를 따로 만들지 않는다). 「크게 보기」 는 /chat/<방> 으로 간다.
  * 예전 「Omnis AI」 탭(Gemini 한 번 묻기, OmnisAsk)은 되살리지 않았다 — 쓰기를 확인 없이 열던 경로다.
  */
-export function PanelOmnis({ userId }: { userId: string }) {
+export function PanelOmnis({
+  userId,
+  startKey = null,
+  onStarted,
+}: {
+  userId: string
+  /** 「Omnis 와 함께 업무 시작하기」 의 일회용 키 — 오면 새 대화로 바꾸고 그 글을 보낸다 */
+  startKey?: string | null
+  onStarted?: (key: string) => void
+}) {
   const [rooms, setRooms] = useState<Room[] | null>(null)
   /** null = 새 대화 */
   const [roomId, setRoomId] = useState<string | null | undefined>(undefined)
@@ -29,6 +38,8 @@ export function PanelOmnis({ userId }: { userId: string }) {
   const [error, setError] = useState<string | null>(null)
   /** 패널에서 새 대화를 시작해 생긴 방 — 화면은 그대로 두고(스트림이 끊기지 않게) 「크게 보기」 만 그 방으로 */
   const [created, setCreated] = useState<string | null>(null)
+  /** 「Omnis 와 함께 업무 시작하기」 로 연 새 대화의 키. 다른 방을 고를 때까지 쥐고 있는다 — 요청이 지워져도 방을 다시 그리면 답 스트림이 끊긴다 */
+  const [startView, setStartView] = useState<string | null>(null)
 
   const loadRooms = useCallback(async () => {
     const res = await fetch(apiUrl("/api/chat/rooms")).catch(() => null)
@@ -60,6 +71,7 @@ export function PanelOmnis({ userId }: { userId: string }) {
     (id: string | null) => {
       setRoomId(id)
       setCreated(null)
+      setStartView(null)
       try {
         if (id) window.localStorage.setItem(lastRoomKey(userId), id)
       } catch {
@@ -68,6 +80,14 @@ export function PanelOmnis({ userId }: { userId: string }) {
     },
     [userId],
   )
+
+  // 업무에서 시작을 넘겨받았다 — 보던 방 대신 새 대화로(목록을 읽는 중이어도 이긴다)
+  useEffect(() => {
+    if (!startKey) return
+    setStartView(startKey)
+    setRoomId(null)
+    setCreated(null)
+  }, [startKey])
 
   // 고른 방의 글 · 카드 · 돌고 있는 실행
   useEffect(() => {
@@ -139,7 +159,7 @@ export function PanelOmnis({ userId }: { userId: string }) {
         <p role="alert" className="mx-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-[12px] text-destructive">
           {error}
         </p>
-      ) : roomId === undefined || (roomId && !state) ? (
+      ) : !startView && (roomId === undefined || (roomId && !state)) ? (
         <div className="flex flex-col gap-3 p-4" aria-hidden>
           <Skeleton className="ml-auto h-8 w-2/3 rounded-2xl" />
           <Skeleton className="h-20 w-full rounded-xl" />
@@ -147,8 +167,10 @@ export function PanelOmnis({ userId }: { userId: string }) {
         </div>
       ) : (
         <OmnisRoom
-          key={roomId ?? "new"}
-          roomId={roomId}
+          key={startView ? `start:${startView}` : (roomId ?? "new")}
+          roomId={startView ? null : (roomId ?? null)}
+          autoStartKey={startView ?? undefined}
+          onAutoStarted={onStarted}
           roomName={state?.room.name}
           initialMessages={state?.messages ?? []}
           initialCards={state?.cards ?? []}
