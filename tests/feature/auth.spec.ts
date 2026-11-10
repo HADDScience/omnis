@@ -24,7 +24,7 @@ test.describe("auth", { tag: "@auth" }, () => {
   for (const admin of ADMINS) {
     test(`관리자 계정 ${admin} 로그인 → 대시보드 진입`, async ({ page }) => {
       await login(page, admin)
-      await expect(page).toHaveURL(/\/tasks$/)
+      await expect(page).toHaveURL(/\/chat$/)
     })
   }
 
@@ -32,7 +32,7 @@ test.describe("auth", { tag: "@auth" }, () => {
   for (const member of MEMBERS) {
     test(`팀원 계정 ${member} 로그인 → 대시보드 진입`, async ({ page }) => {
       await login(page, member)
-      await expect(page).toHaveURL(/\/tasks$/)
+      await expect(page).toHaveURL(/\/chat$/)
     })
   }
 
@@ -43,7 +43,7 @@ test.describe("auth", { tag: "@auth" }, () => {
       "데모 모드에서만 보이는 카드",
     )
     await quickLogin(page, "사원1")
-    await expect(page).toHaveURL(/\/tasks$/)
+    await expect(page).toHaveURL(/\/chat$/)
   })
 
   // 지키는 것: e2e 가 쓰는 데모 비밀번호 설정이 비어 있지 않다

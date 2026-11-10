@@ -11,17 +11,19 @@ import {
   Task01Icon,
 } from "@hugeicons/core-free-icons"
 import { LinkPendingMark } from "@/components/ui/pending-link"
+import { tapHaptic } from "@/lib/haptics"
 import { cn } from "@/lib/utils"
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { MeAvatarLink } from "./current-user"
 import { useRightPanel } from "./right-panel-context"
 import { NotificationBell } from "./notification-bell"
 
 /**
- * 채팅 화면(홈)이 들어오기 전에는 채팅 탭이 오른쪽 채팅 패널을 연다 — 「전체」 팀 채팅이 거기 있다.
- * 홈 세션이 `/` 를 메신저로 바꾸면 이 값을 true 로 돌린다(mydocs/plans/2026-10-28-floating-nav.md).
+ * 채팅 화면(홈)이 들어오기 전에는 채팅 탭이 오른쪽 채팅 패널을 열었다 — 「전체」 팀 채팅이 거기 있다.
+ * 메신저(/chat, mydocs/plans/2026-10-28-omnis-messenger-agent.md 2단계)가 들어와 이제 탭은 그 화면으로 간다.
  */
-const CHAT_HOME_READY = false
+const CHAT_HOME_READY = true
 
 /** nav 가 상단으로 올라가는 폭. Tailwind md 와 globals.css 의 --nav-offset-* 기준과 같다 */
 export const NAV_DESKTOP_QUERY = "(min-width: 768px)"
@@ -38,9 +40,11 @@ type Tab = {
 
 /** 탭 정의는 여기 한 곳 — 사이드바의 메뉴 목록을 대신한다. 마이(계정·설정)는 탭이 아니라 아바타(MeAvatarLink)다. */
 const TABS: readonly Tab[] = [
-  { key: "chat", href: "/", label: "채팅", match: ["/chat"], onboarding: "ai" },
+  // `/` 는 /chat 으로 보내기만 한다(app/page.tsx 는 셸 밖 랜딩) — 누를 때마다 한 번 더 돌지 않게 /chat 으로 바로 간다.
+  // 방 주소(/chat/[roomId] · /chat/task/[taskId] · /chat/new)는 접두사 /chat 이 켠다
+  { key: "chat", href: "/chat", label: "채팅", match: ["/chat"], onboarding: "ai" },
   { key: "tasks", href: "/tasks", label: "업무", match: ["/tasks"], onboarding: "tasks" },
-  { key: "calendar", href: "/calendar", label: "캘린더", match: ["/calendar"] },
+  { key: "calendar", href: "/calendar", label: "캘린더", match: ["/calendar"], onboarding: "calendar" },
   // 아카이브 = 회사가 가진 것: 지식 카드 · 시놀로지 NAS · 지식재산권 · 고객·견적
   { key: "archive", href: "/omnis", label: "아카이브", match: ["/omnis", "/nas", "/crm"], onboarding: "resources" },
 ]
@@ -55,22 +59,6 @@ const ICONS = {
 function isActive(tab: Tab, pathname: string) {
   if (tab.key === "chat" && pathname === "/") return true
   return tab.match.some((p) => pathname === p || pathname.startsWith(p + "/"))
-}
-
-/**
- * 폰에서 키보드가 올라오면 하단 nav 가 입력창 위로 떠서 글 쓰는 자리를 가린다 — 그동안은 내린다.
- * visualViewport 가 화면의 3/4 밑으로 줄면 키보드가 열린 것으로 본다.
- */
-function useKeyboardOpen() {
-  const [open, setOpen] = useState(false)
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const check = () => setOpen(vv.height < window.innerHeight * 0.75)
-    vv.addEventListener("resize", check)
-    return () => vv.removeEventListener("resize", check)
-  }, [])
-  return open
 }
 
 /**
@@ -102,6 +90,7 @@ function useMainScrolled() {
 export function FloatingNav() {
   const pathname = usePathname()
   const rightPanel = useRightPanel()
+  // 폰에서 키보드가 올라오면 하단 nav 가 글 쓰는 자리를 가린다 — 그동안은 내린다
   const keyboardOpen = useKeyboardOpen()
   const scrolled = useMainScrolled()
   // 알림 종은 PC 에서는 nav, 폰에서는 페이지 헤더에 하나만 둔다 — 둘 다 그리면 알림을 두 번씩 불러온다
@@ -145,8 +134,11 @@ export function FloatingNav() {
       {/* 폰: 하단 가장자리 가변 블러 — 목록 끝이 nav 밑으로 서서히 사라진다 */}
       <div
         aria-hidden
+        data-phone-bottom-nav
         className={cn(
           "nav-edge-bottom pointer-events-none fixed inset-x-0 bottom-0 z-[44] h-[calc(var(--nav-offset-bottom)+12px)] md:hidden",
+          // 채팅 목록은 방이 유리 너머로 보여야 한다 — 가장자리 띠를 옅게 둔다
+          pathname === "/chat" && "nav-edge-clear",
           keyboardOpen && "hidden"
         )}
       />
@@ -155,6 +147,7 @@ export function FloatingNav() {
           터치 기기에서 칸은 44px 이상 — 200px 폭에서 네 칸(176px)은 들어가지만, 넘치면 캡슐 안에서 민다 */}
       <nav
         aria-label="주 메뉴"
+        data-phone-bottom-nav
         className={cn(
           "fixed inset-x-3 bottom-[calc(var(--safe-bottom)+8px)] z-[var(--z-nav)] flex h-[54px] items-stretch gap-2 transition-transform duration-200 motion-reduce:transition-none md:hidden",
           keyboardOpen && "pointer-events-none translate-y-[calc(100%+24px)]"
@@ -288,6 +281,8 @@ function TabCapsule({
             onClick={(e) => {
               // 새 탭·새 창으로 여는 클릭은 이 화면을 떠나지 않는다
               if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+              // 탭을 옮길 때만 — 켜진 탭을 다시 누르는 것은 전환이 아니다
+              if (variant === "bottom" && !active) tapHaptic()
               onSelect(tab.key)
             }}
             title={variant === "top" ? tab.label : undefined}

@@ -18,9 +18,10 @@ pnpm run test:e2e:local              # 전체 (약 3분)
 
 ## 쓰는 법
 
-- **`describe` 마다 영역 태그**: `@nav` `@tasks` `@archive` `@search` `@onboarding` `@auth` `@reports` `@chat` `@mobile`
+- **`describe` 마다 영역 태그**: `@nav` `@tasks` `@archive` `@settings` `@onboarding` `@auth` `@reports` `@chat` `@mobile`.
+  태그 없는 spec 은 `scripts/e2e-affected.mjs` 의 파일 이름 표로 영역을 정하고, 표에도 없으면 늘 돈다
 - **`test` 마다 위에 `// 지키는 것: …` 한 줄** — 사용자 입장의 약속 한 문장. 「버튼이 보인다」가 아니라 「검색을 열 수 있다」
-- **버튼을 직접 찾지 않고 [`_actions.ts`](_actions.ts) 의 함수를 쓴다** — `gotoTab` · `openSearch` · `openMy` · `openOmnisAi` ·
+- **버튼을 직접 찾지 않고 [`_actions.ts`](_actions.ts) 의 함수를 쓴다** — `gotoTab` · `openMy` · `openChatPanel` ·
   `replayTutorial` · `switchTasksView` · `toggleStalledTasks` … 없는 동작이면 함수를 하나 더한다. 이름은 의도로 짓는다
 - **같은 화면 안에서 옮겨 가는 흐름은 `page.goto` 를 쓰지 않는다** — 문서를 새로 읽어 작성 중인 상태가 지워진다
 - **폰 화면은 `@mobile` 태그를 단 테스트로** — `mobile` 프로젝트(390px 터치, Chromium)는 이 태그만 돈다. `feature` 프로젝트는 이 태그를 뺀다
@@ -38,3 +39,7 @@ pnpm run test:e2e:local              # 전체 (약 3분)
 - ⌘K 팔레트 — nav 의 검색 버튼을 뺐다. 약속(「검색을 열 수 있다」)은 그대로라 1번: `openSearch` 를 단축키 · 마이 화면 행으로
 - 온보딩 「작성 중인 질문 보존」 — 테스트를 `page.goto("/settings")` 로 고쳐 약속이 성립하지 않게 됐다. 3번을 놓친 실수였다
 - 관계도 더블클릭 — 맨 위 노드가 도구 막대에 깔려 사람도 못 눌렀다. 3번: 화면(fitView 여백)을 고쳤다
+
+2026-11-10 main 과 합칠 때(#109)의 예:
+- ⌘K 팔레트 — 11/06 마이 메뉴 개편에서 검색 자체를 걷었다. 2번: 약속이 없어져 `command-palette.spec.ts` · `openSearch` 를 지웠다
+- 대화 패널 — 「채팅 열기」 대신 오른쪽 아래 「대화 패널 열기」, 폰에는 패널이 없다. 1번: `openChatPanel` 만 고쳤다

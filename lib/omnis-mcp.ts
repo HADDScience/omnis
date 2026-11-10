@@ -12,6 +12,10 @@
 // 권한
 //  Omnis 계정이 살아 있으면 누구나 붙는다. 지식재산권 도구만 ip.members 로 한 번 더 건다.
 //  Prisma 는 DB 소유자로 붙으므로 이 파일이 곧 권한 경계다.
+import { ACTIVE_MEMBER_WHERE, isActiveMember } from "@/lib/active-members"
+import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
+import { visibleMessageWhere } from "@/lib/chat-rooms"
+import { listTasksWhere } from "@/lib/task-unassigned"
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
 
 import { prisma } from "@/lib/db"
@@ -24,10 +28,12 @@ import { askOmnis, buildCrmOverview, SOURCE_LABEL } from "@/lib/omnis-ask"
 import { postChatMessage } from "@/lib/chat-post"
 import { listWeeklyReports, updateWeeklyReport, upsertThisWeekReport } from "@/lib/weekly-report"
 import { createOmnisCard, updateOmnisCard } from "@/lib/omnis-cards"
-import { readChatFeed, type FeedView } from "@/lib/chat-feed"
+import { listReadableRooms, readableRooms, readRoomFeed, readChatFeed, ROOM_KIND_LABEL, searchRoomMessages, type FeedView } from "@/lib/chat-feed"
+import { formatRoomHit, mergeResults, roomLimit } from "@/lib/chat-room-search"
+import { pickByMembers, pickByRef, type PickableRoom } from "@/lib/chat-room-pick"
 import type { Prisma } from "@/generated/prisma/client"
 import { createNotification } from "@/lib/notifications"
-import { getMembership, type IpMembership } from "@/lib/ip-data"
+import { getIpAccess, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
@@ -36,7 +42,11 @@ import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
 import { recordTaskEvents } from "@/lib/task-events"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { assignmentTargets } from "@/lib/notify-rules"
 import * as XLSX from "xlsx"
+import { PUBLIC_FILE_WHERE, visibleFileWhere } from "@/lib/file-access"
+import { listCalendarText } from "@/lib/calendar/agent-tool"
+import { findVisibleFile } from "@/lib/file-access-server"
 import {
   TOOLS as IP_TOOLS,
   INSTRUCTIONS as IP_INSTRUCTIONS,
@@ -89,7 +99,7 @@ export async function resolveCaller(authorization: string | null): Promise<Calle
   })
   if (!user || !user.isActive) return null
 
-  return { userId: user.id, name: user.name, role: user.role, ip: await getMembership(user.id) }
+  return { userId: user.id, name: user.name, role: user.role, ip: await getIpAccess(user.id) }
 }
 
 // ─── 지침 ───────────────────────────────────────────────────────────
@@ -102,8 +112,10 @@ export const INSTRUCTIONS = [
   "파일은 upload_file(텍스트·작은 파일) 또는 create_upload_link(셸에서 curl 로 올리는 링크)로 올리고, 받은 파일 ID 를 post_message 의 files 에 넣어 채팅·업무 스레드에 붙입니다. 첨부를 읽을 때는 get_task 에 보이는 파일 ID 로 read_file.",
   "「나한테 온 거」는 list_notifications. 업무 수락·완료 확인은 respond_notification 으로 — 사용자 본인에게 온 알림에만 응답할 수 있습니다.",
   "주간보고는 list_weekly_reports·write_weekly_report, 사내 지식 카드 작성은 write_omnis_card, 업무 밖 채팅은 list_chat 입니다.",
+  "단톡방·1:1 대화는 list_rooms 로 내가 든 방을 보고 list_chat(view=room, room 또는 members)으로 읽습니다. 내가 참여자가 아닌 방은 누구도 읽을 수 없습니다.",
   "업무 카드의 상태·마감·우선순위는 update_task, 체크리스트는 update_checklist. 진행 보고라면 post_message 가 먼저입니다(담당자 확인과 AI 재구성이 따라옵니다).",
   "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
+  "웍스 캘린더 일정(행사·미팅·외근)은 list_calendar — 날짜는 서울 기준이고, 결과의 마지막 동기화 시각만큼 웍스와 늦을 수 있습니다.",
   "",
   IP_INSTRUCTIONS.replace("HADD SCIENCE 지식재산권 기록 서버입니다.", "지식재산권 도구(list_ip·get_ip·add_progress …)는 구성원에게만 열립니다."),
 ].join("\n")
@@ -116,7 +128,7 @@ export const OMNIS_TOOLS = [
   {
     name: "ask_omnis",
     description:
-      "옴니스 AI 에게 묻는다. 질문에 맞춰 검색·업무·CRM·지식재산권 도구를 스스로 골라 부르고 답한다. 「X 어디까지 됐어」「지연된 업무」「재고 얼마 남았어」처럼 현황을 묻는 질문에 먼저 쓴다. 화면의 「Omnis AI 에게 질문하기」와 같은 것이다.",
+      "옴니스 AI 에게 묻는다. 질문에 맞춰 검색·업무·CRM·지식재산권 도구를 스스로 골라 부르고 답한다. 「X 어디까지 됐어」「지연된 업무」「재고 얼마 남았어」처럼 현황을 묻는 질문에 먼저 쓴다. 화면의 「Omnis AI 에게 질문하기」와 같은 것이다. 전사방 · 업무 글만 근거로 삼는다 — 단톡방 · 1:1 대화는 list_chat(view=room)으로 직접 읽는다.",
     inputSchema: {
       type: "object",
       properties: { question: { type: "string", description: "한국어 질문. 500자 이내." } },
@@ -126,15 +138,15 @@ export const OMNIS_TOOLS = [
   {
     name: "search_knowledge",
     description:
-      "의미 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권 조각을 유사도 순으로 돌려준다. ask_omnis 가 답을 만들기 전에 무엇을 근거로 삼는지 직접 보고 싶을 때, 또는 원문 조각이 필요할 때.",
+      "의미 검색. 질문에 가까운 채팅(전사방)·업무·지식 카드·주간보고·지식재산권·사진(설명) 조각을 유사도 순으로 돌려주고, 내가 지금 참여자인 단톡방 · 1:1 · 옴니스 1:1 글도 질문의 낱말로 찾아 섞는다(「[n] 방 · …」 머리줄, 앞뒤 대화 2줄씩, 결과의 절반까지). 방 글은 의미가 아니라 낱말이 맞아야 걸린다 — 한 방을 날짜로 훑으려면 list_rooms 로 방을 찾고 list_chat(view=room)으로 읽는다. ask_omnis 가 무엇을 근거로 삼는지 직접 보고 싶을 때, 또는 원문 조각이 필요할 때.",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string" },
         sources: {
           type: "array",
-          items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE"] },
-          description: "생략하면 전부",
+          items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO", "ROOM_MESSAGE"] },
+          description: "생략하면 전부. ROOM_MESSAGE 는 내가 든 단톡방 · 1:1 · 옴니스 1:1 글(낱말 검색) — 빼면 방 글을 찾지 않는다",
         },
         limit: { type: "integer", description: "기본 8, 최대 30" },
       },
@@ -144,7 +156,7 @@ export const OMNIS_TOOLS = [
   {
     name: "list_tasks",
     description:
-      "업무 목록. 상태·담당자·프로젝트·이름으로 거른다. mine=true 면 내가 담당인 것만, overdue=true 면 마감이 지난 미완료만. 결과는 최근 만든 순.",
+      "업무 목록. 상태·담당자·프로젝트·이름으로 거른다. mine=true 면 내가 담당인 것만, overdue=true 면 마감이 지난 미완료만, unassigned=true 면 담당자가 없는 미완료만(마감 빠른 순). 그 밖의 결과는 최근 만든 순.",
     inputSchema: {
       type: "object",
       properties: {
@@ -154,6 +166,7 @@ export const OMNIS_TOOLS = [
         query: { type: "string", description: "업무 이름·배경에 포함된 말" },
         mine: { type: "boolean" },
         overdue: { type: "boolean" },
+        unassigned: { type: "boolean", description: "담당 미배정(담당 0명 · 미완료)만. mine · assignee · status=DONE 과 함께 쓸 수 없다" },
         limit: { type: "integer", description: "기본 50, 최대 200" },
       },
     },
@@ -270,6 +283,7 @@ export const OMNIS_TOOLS = [
       "업무 카드를 고친다 — 화면의 업무 상세에서 고치는 것과 같은 길. 준 필드만 바뀐다.",
       "상태를 DONE 으로 바꾸면 떠 있는 완료 확인 알림이 거둬진다. 담당자 확인을 거치려면 post_message 로 보고하는 편이 낫다.",
       "마감은 사용자가 말한 날짜만. 빈 문자열이면 마감을 지운다. project 는 기존 프로젝트 이름(list_projects), 빈 문자열이면 프로젝트에서 뺀다.",
+      "assignees 를 주면 담당자를 그 목록으로 통째로 바꾼다(정식 이름 — list_members).",
     ].join(" "),
     inputSchema: {
       type: "object",
@@ -282,6 +296,7 @@ export const OMNIS_TOOLS = [
         background: { type: "string" },
         expected_result: { type: "string" },
         project: { type: "string", description: "기존 프로젝트 이름 (일부도 됨). 빈 문자열이면 뺀다" },
+        assignees: { type: "array", items: { type: "string" }, description: "담당자 정식 이름들 — 주면 담당자 전체를 이 목록으로 바꾼다" },
         archived: { type: "boolean", description: "true 면 보관(목록에서 사라진다)" },
       },
       required: ["task"],
@@ -406,16 +421,36 @@ export const OMNIS_TOOLS = [
   {
     name: "list_chat",
     description: [
-      "업무 밖 채팅까지 읽는다. view=all 최근 전체 · task 업무 하나에 걸린 글(스레드 + #멘션) · dm 나와 그 사람이 서로 @부른 글 · ai 옴니스 AI 가 쓰거나 불린 글.",
+      "채팅을 읽는다. view=all 전사방 최근 글 · task 업무 하나에 걸린 글(스레드 + #멘션) · dm 전사방에서 나와 그 사람이 서로 @부른 글(1:1 방 아님) · ai 옴니스 AI 가 쓰거나 불린 글 · room 방 하나(단톡방 · 1:1 · 전사방)의 글.",
+      "all · task · dm · ai 는 전사방 글만 본다. 단톡방 · 1:1 대화는 view=room 에 room(방 이름 일부 · ID, list_rooms 참고) 또는 members(참여자 이름 목록 — 정확히 그 구성, 나는 빼도 된다)를 준다. 내가 참여자인 방만 읽힌다.",
       "특정 업무의 대화만 필요하면 get_task 가 더 짧다.",
     ].join(" "),
     inputSchema: {
       type: "object",
       properties: {
-        view: { type: "string", enum: ["all", "task", "dm", "ai"], description: "기본 all" },
+        view: { type: "string", enum: ["all", "task", "dm", "ai", "room"], description: "기본 all" },
         task: { type: "string", description: "view=task 일 때 업무 슬러그·ID·이름 일부" },
         user: { type: "string", description: "view=dm 일 때 상대 이름" },
-        limit: { type: "integer", description: "기본 40, 최대 200" },
+        room: { type: "string", description: "view=room 일 때 방 이름 일부 또는 방 ID (list_rooms)" },
+        members: { type: "array", items: { type: "string" }, description: "view=room 일 때 room 대신 — 참여자 이름 목록. 정확히 그 사람들(과 나)만 있는 방을 고른다" },
+        since: { type: "string", description: "view=room — 이 시각 이후(YYYY-MM-DD 또는 ISO, 서울 기준)" },
+        until: { type: "string", description: "view=room — 이 시각 전까지(날짜만 주면 그 날 끝까지)" },
+        query: { type: "string", description: "view=room — 본문에 이 말이 든 글만(대소문자 무시)" },
+        limit: { type: "integer", description: "기본 40, 최대 200. view=room 은 범위 안에서 최근 것부터 이만큼" },
+      },
+    },
+  },
+  {
+    name: "list_rooms",
+    description: [
+      "내가 참여자인 채팅방 목록(전사방 · 단톡방 · 1:1 · 옴니스 1:1) — 이름 · 종류 · 참여자 · 마지막 글 시각 · 안 읽은 수 · 방 ID. 최근 글 순.",
+      "단톡방 · 1:1 대화를 읽으려면 여기서 방을 찾고 list_chat(view=room)에 room 을 준다. 업무방은 list_tasks · get_task.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "방 이름 · 참여자 이름 일부로 거른다" },
+        limit: { type: "integer", description: "기본 50, 최대 200" },
       },
     },
   },
@@ -531,6 +566,25 @@ export const OMNIS_TOOLS = [
       "대상 하나(업무·프로젝트·사람·기관·견적·세금계산서·연혁·특허·카드)와 DB 로 이어진 것, 의미상 가까운 것. 「국일그래핀과 엮인 견적·세금계산서」「이 과제에 딸린 업무」 처럼 관계를 물으면 쓴다. node 는 이전 결과의 key, 없으면 query 에 이름을 준다.",
     inputSchema: { type: "object", properties: { node: { type: "string" }, query: { type: "string" } } },
   },
+  // ─── 캘린더 (lib/calendar/agent-tool) — 캘린더 탭과 같은 함수 · 같은 보기 권한 ───
+  {
+    name: "list_calendar",
+    description:
+      "네이버 웍스 캘린더 일정(회사 행사 · 미팅 · 외근 · 출장 · 제출 마감)을 기간으로 읽는다. 반복 일정은 회차마다 펼쳐 준다. " +
+      "「다음 주 일정」「이번 달 회사 행사」「11/4 에 누가 외근이야」 처럼 일정 · 날짜를 물으면 쓴다. 날짜는 서울 기준 YYYY-MM-DD. " +
+      "웍스 일정에는 사람별 칸이 없다 — 사람은 제목에 적힌 이름으로 찾는다(query). 캘린더 화면에서 볼 수 있는 캘린더만 보이고, 마지막 동기화 시각을 함께 준다. " +
+      "업무 마감은 list_tasks, 연혁 · 정부과제 기간은 list_company_records.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "시작 날짜 YYYY-MM-DD(서울). 생략하면 오늘" },
+        to: { type: "string", description: "끝 날짜 YYYY-MM-DD(서울, 그날 포함). 생략하면 from 부터 7일. from~to 는 최대 62일" },
+        calendar: { type: "string", description: "캘린더 이름 일부(예: 대표님). 생략하면 볼 수 있는 캘린더 전부" },
+        query: { type: "string", description: "제목 · 장소에서 찾을 말 — 사람 이름 · 기관 · 행사명 · 외근. 띄어 쓴 말은 모두 든 일정만" },
+        all_day: { type: "boolean", description: "true 면 종일 일정만, false 면 시간 있는 일정만" },
+      },
+    },
+  },
 ] as const
 
 export const TOOLS = [...OMNIS_TOOLS, ...IP_TOOLS]
@@ -577,7 +631,7 @@ function taskLine(t: TaskRow): string {
  * 업무 찾기 — ID → 슬러그 → 이름 일부(최근 것 우선).
  * 이름으로 여럿이 걸리고 정확히 같은 이름이 없으면 고르지 않고 후보를 돌려준다.
  */
-async function findTask(ref: string): Promise<{ id: string } | { error: string }> {
+export async function findTask(ref: string): Promise<{ id: string } | { error: string }> {
   const key = ref.replace(/^#/, "").trim()
   if (!key) return { error: "task 가 비어 있습니다." }
   const direct = await prisma.task.findFirst({
@@ -603,8 +657,10 @@ async function findTask(ref: string): Promise<{ id: string } | { error: string }
 }
 
 /** 이름 → 사용자. 정확히 같은 이름 우선, 없으면 「우창님」「혜린씨」 같은 호칭을 벗긴 부분 일치. */
-async function findUsers(names: string[]): Promise<{ ids: string[]; missing: string[] }> {
-  const users = await prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true } })
+export async function findUsers(names: string[], keep: { id: string; name: string }[] = []): Promise<{ ids: string[]; missing: string[] }> {
+  // keep — 이 업무에 이미 걸린 사람. 퇴사했어도 담당 목록을 통째로 다시 보낼 때 이름이 풀려야 한다
+  const active = await prisma.user.findMany({ where: ACTIVE_MEMBER_WHERE, select: { id: true, name: true } })
+  const users = [...active, ...keep.filter((k) => !active.some((a) => a.id === k.id))]
   const ids: string[] = []
   const missing: string[] = []
   for (const raw of names) {
@@ -702,19 +758,20 @@ export async function verifyUploadLink(token: string): Promise<{ taskId: string 
 
 export const signDownloadLink = (userId: string, fileId: string) => signLink("download", { u: userId, f: fileId })
 
-export async function verifyDownloadLink(token: string): Promise<{ fileId: string } | null> {
+export async function verifyDownloadLink(token: string): Promise<{ fileId: string; userId: string } | null> {
   const p = await verifyLink("download", token)
-  return p && typeof p.f === "string" ? { fileId: p.f } : null
+  return p && typeof p.f === "string" && typeof p.u === "string" ? { fileId: p.f, userId: p.u } : null
 }
 
 type FileRow = { id: string; name: string; path: string; mimeType: string; size: number; task: { slug: string } | null }
 
 /** 파일 찾기 — ID, 없으면 업무 첨부(업무에 직접 붙었거나 그 스레드 메시지에 붙은 것) 중 이름 일부. 여럿이면 고르지 않는다. */
-async function findFile(args: Record<string, unknown>): Promise<FileRow | { error: string }> {
+async function findFile(args: Record<string, unknown>, userId: string): Promise<FileRow | { error: string }> {
   const select = { id: true, name: true, path: true, mimeType: true, size: true, task: { select: { slug: true } } } as const
   const id = str(args.file)
   if (id) {
-    const f = await prisma.file.findUnique({ where: { id }, select })
+    // 참여자만 보는 방의 파일은 그 방 사람에게만(lib/file-access.ts) — 못 보는 파일은 없는 파일과 같게
+    const f = (await findVisibleFile(id, userId)) ? await prisma.file.findUnique({ where: { id }, select }) : null
     return f ?? { error: `'${id}' 파일이 없습니다. get_task 의 첨부 목록에서 파일 ID 를 확인하세요.` }
   }
   if (!str(args.task)) return { error: "file(파일 ID) 또는 task 를 주세요." }
@@ -724,6 +781,7 @@ async function findFile(args: Record<string, unknown>): Promise<FileRow | { erro
   const hits = await prisma.file.findMany({
     where: {
       OR: [{ taskId: found.id }, { message: { taskId: found.id } }],
+      ...PUBLIC_FILE_WHERE,
       ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
     },
     select, orderBy: { createdAt: "desc" }, take: 20,
@@ -742,7 +800,7 @@ function fileKind(name: string, mimeType: string): "text" | "sheet" | "image" | 
   return "other"
 }
 
-async function readObject(file: { id: string; name: string; path: string }): Promise<Buffer> {
+async function readObject(file: { id: string; name: string; path: string; size: number }): Promise<Buffer> {
   const res = await openFileObject(file)
   const chunks: Buffer[] = []
   for await (const chunk of res.body) chunks.push(Buffer.from(chunk))
@@ -755,6 +813,55 @@ const clip = (s: string) =>
   s.length > TEXT_LIMIT ? `${s.slice(0, TEXT_LIMIT)}\n\n… (${s.length.toLocaleString()}자 중 앞 ${TEXT_LIMIT.toLocaleString()}자)` : s
 
 // ─── 실행 ───────────────────────────────────────────────────────────
+
+/** 방 한 줄 — 「이름 (종류) · 참여자 … · ID …」 */
+function roomLine(r: PickableRoom): string {
+  const people = r.kind === "COMPANY" ? "구성원 전체" : r.members.map((m) => m.name).join(", ") || "참여자 없음"
+  return `${r.title} (${ROOM_KIND_LABEL[r.kind] ?? r.kind}) · 참여자 ${people} · ID ${r.id}`
+}
+
+/** since/until — 날짜만 주면 서울 기준 그 날 0시. until 이 날짜만이면 그 다음 날 0시(그 날 끝까지) */
+function kstBound(raw: string, endOfDay: boolean): Date | null {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+  const d = new Date(day ? `${raw}T00:00:00+09:00` : raw)
+  if (Number.isNaN(d.getTime())) return null
+  return day && endOfDay ? new Date(d.getTime() + 86_400_000) : d
+}
+
+/** list_chat view=room — 방을 고르고(읽을 수 있는 방 안에서만) 그 방 글을 읽는다 */
+async function listRoomChat(args: Record<string, unknown>, caller: Caller): Promise<ToolResult> {
+  const ref = str(args.room)
+  const names = Array.isArray(args.members) ? args.members.map(String).map((x) => x.trim()).filter(Boolean) : []
+  if (!ref && names.length === 0) return { error: "view=room 에는 room(방 이름 일부 · ID) 또는 members(참여자 이름 목록)가 필요합니다. list_rooms 로 방을 찾을 수 있습니다." }
+  const rooms = await readableRooms(caller.userId)
+  // 고르기는 읽을 수 있는 방 안에서만 — 남의 방은 ID 를 알아도 「없음」 과 같게 답한다(이름이 새지 않게)
+  const hits = ref ? pickByRef(rooms, ref) : pickByMembers(rooms, names, caller.userId)
+  const asked = ref ? `「${ref}」` : `참여자 ${names.join(", ")}`
+  if (hits.length === 0) return { error: `${asked} 에 맞는 방이 없거나 볼 수 없는 방입니다. list_rooms 로 내가 든 방을 확인하세요.` }
+  if (hits.length > 1) {
+    return { error: [`${asked} 에 맞는 방이 ${hits.length}개입니다. room 에 방 ID 를 주세요.`, ...hits.slice(0, 10).map(roomLine)].join("\n") }
+  }
+  const room = hits[0]
+  const since = str(args.since) ? kstBound(str(args.since), false) : undefined
+  const until = str(args.until) ? kstBound(str(args.until), true) : undefined
+  if (since === null || until === null) return { error: "since · until 은 YYYY-MM-DD 또는 ISO 시각입니다." }
+  const query = str(args.query)
+  const r = await readRoomFeed({ currentUserId: caller.userId, roomId: room.id, since, until, query: query || undefined, take: clampInt(args.limit, 40, 200) })
+  if ("error" in r) return { error: r.error }
+  const head = roomLine(room)
+  if (r.messages.length === 0) return { text: `${head}\n글이 없습니다${query || since || until ? " (조건에 맞는 글)" : ""}.` }
+  return {
+    text: [
+      `${head}`,
+      `글 ${r.messages.length}건 (오래된 것부터)`,
+      ...r.messages.map((m) =>
+        `[${kst(m.createdAt, true)}] ${m.author}${m.taskSlug ? ` · #${m.taskSlug}` : ""}: ` +
+        `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
+        `${m.files.length ? ` [첨부: ${m.files.map((f) => `${f.name} (${f.id})`).join(", ")}]` : ""}`
+      ),
+    ].join("\n"),
+  }
+}
 
 export async function runTool(
   name: string, args: Record<string, unknown>, caller: Caller, ctx: { base: string } = { base: "" }
@@ -781,38 +888,65 @@ export async function runTool(
     case "search_knowledge": {
       const query = str(args.query)
       if (!query) return { error: "query 가 비어 있습니다." }
-      const sources = Array.isArray(args.sources)
-        ? (args.sources.filter((s): s is EmbeddingSource => typeof s === "string" && s in SOURCE_LABEL))
-        : undefined
-      const chunks = await withFollowUps(
-        await retrieveContext(query, { limit: clampInt(args.limit, 8, 30), sources, minSimilarity: 0.25, userId: caller.userId })
-      )
-      if (chunks.length === 0) return { text: "비슷한 조각이 없습니다." }
+      const limit = clampInt(args.limit, 8, 30)
+      const asked = Array.isArray(args.sources) ? args.sources.filter((s): s is string => typeof s === "string") : undefined
+      const embedSources = asked?.filter((s): s is EmbeddingSource => s in SOURCE_LABEL)
+      // sources 를 주면 그 안에 든 것만 — 방 글만 달라면 색인 검색(Gemini 호출)을 하지 않는다
+      const wantEmbedded = !asked || (embedSources?.length ?? 0) > 0
+      const wantRooms = !asked || asked.includes("ROOM_MESSAGE")
+      const [embedded, roomHits] = await Promise.all([
+        wantEmbedded
+          ? retrieveContext(query, { limit, sources: embedSources, minSimilarity: 0.25, userId: caller.userId })
+              .then(withFollowUps)
+              .then((chunks) => ({ chunks, error: null as unknown }), (error: unknown) => ({ chunks: [], error }))
+          : Promise.resolve({ chunks: [], error: null as unknown }),
+        wantRooms ? searchRoomMessages({ currentUserId: caller.userId, query, take: roomLimit(limit) }) : Promise.resolve([]),
+      ])
+      // 의미 검색(임베딩 호출)이 실패해도 방 글이 찾아졌으면 그것만이라도 돌려준다. 방 글도 없으면 도구 오류로 —
+      // 예전에는 던져서 MCP 응답이 500 이었다
+      const embedError = embedded.error instanceof Error ? embedded.error.message.slice(0, 200) : embedded.error ? String(embedded.error) : ""
+      if (embedded.error && roomHits.length === 0) return { error: `의미 검색을 하지 못했습니다: ${embedError}` }
+      if (embedded.error) console.warn("[search_knowledge] 의미 검색 실패 — 방 글만 돌려준다:", embedError)
+      const merged = mergeResults(embedded.chunks, roomHits, limit)
+      if (merged.length === 0) return { text: "비슷한 조각이 없습니다." }
       return {
-        text: chunks
-          // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
-          .map((c, i) => `[${i + 1}] ${SOURCE_LABEL[c.source]} · ${c.title} (${Math.round(c.similarity * 100)}%)\n${c.content.slice(0, c.source === "CHAT_MESSAGE" ? 1500 : 600)}`)
+        text: (embedded.error ? "(의미 검색을 하지 못해 방 글만 보입니다)\n\n" : "") + merged
+          .map((m, i) =>
+            m.kind === "room"
+              ? formatRoomHit(i + 1, m.item, ROOM_KIND_LABEL)
+              : // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
+                `[${i + 1}] ${SOURCE_LABEL[m.item.source]} · ${m.item.title} (${Math.round(m.item.similarity * 100)}%)\n${m.item.content.slice(0, m.item.source === "CHAT_MESSAGE" || m.item.source === "PHOTO" ? 1500 : 600)}`,
+          )
           .join("\n\n"),
       }
     }
 
     case "list_tasks": {
-      const where: Record<string, unknown> = { archived: false }
       const status = str(args.status)
-      if (status && (TASK_STATUS as readonly string[]).includes(status)) where.status = status
-      if (args.mine === true) where.assignees = { some: { userId: caller.userId } }
-      else if (str(args.assignee)) where.assignees = { some: { user: { name: { contains: str(args.assignee) } } } }
-      if (str(args.project)) where.project = { name: { contains: str(args.project), mode: "insensitive" } }
-      if (str(args.query)) {
-        where.OR = [
-          { name: { contains: str(args.query), mode: "insensitive" } },
-          { background: { contains: str(args.query), mode: "insensitive" } },
-        ]
-      }
-      if (args.overdue === true) { where.status = { not: "DONE" }; where.deadline = { lt: new Date() } }
+      const unassigned = args.unassigned === true
+      const built = listTasksWhere(
+        {
+          status: status && (TASK_STATUS as readonly string[]).includes(status) ? status : undefined,
+          mine: args.mine === true,
+          assignee: str(args.assignee) || undefined,
+          project: str(args.project) || undefined,
+          query: str(args.query) || undefined,
+          overdue: args.overdue === true,
+          unassigned,
+        },
+        caller.userId,
+      )
+      if ("error" in built) return built
+      const { where } = built
       const limit = clampInt(args.limit, 50, 200)
       const [rows, total] = await Promise.all([
-        prisma.task.findMany({ where, select: TASK_SELECT, orderBy: { createdAt: "desc" }, take: limit }),
+        prisma.task.findMany({
+          where,
+          select: TASK_SELECT,
+          // 담당 미배정은 급한 것부터 — 묻힌 업무를 찾는 조회다
+          orderBy: unassigned ? [{ deadline: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }] : { createdAt: "desc" },
+          take: limit,
+        }),
         prisma.task.count({ where }),
       ])
       if (rows.length === 0) return { text: "조건에 맞는 업무가 없습니다." }
@@ -827,14 +961,15 @@ export async function runTool(
         select: {
           ...TASK_SELECT, background: true, expectedResult: true, workStart: true, workEnd: true,
           checklists: { select: { name: true, done: true }, orderBy: { createdAt: "asc" } },
-          files: { select: { id: true, name: true, size: true } },
+          files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true, size: true } },
         },
       })
       if (!t) return { error: "업무가 없습니다." }
       const n = clampInt(args.messages, 20, 100)
       const msgs = await prisma.chatMessage.findMany({
-        where: { taskId: t.id, kind: "NORMAL" },
-        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { select: { id: true, name: true } } },
+        // 화면과 같다 — 참여자 전용 방의 글은 그 방 사람에게만
+        where: { taskId: t.id, kind: "NORMAL", ...NOT_EXTERNAL_WHERE, ...visibleMessageWhere(caller.userId) },
+        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true } } },
         orderBy: { createdAt: "desc" }, take: n,
       })
       // 파일 ID 를 함께 보여준다 — read_file 이 ID 로 읽는다.
@@ -875,7 +1010,8 @@ export async function runTool(
       // 여기서는 모델이 ID 를 잘못 옮기면 남의 메시지 첨부를 빼앗아 온다.
       const fileIds = Array.isArray(args.files) ? [...new Set(args.files.map(String).map((s) => s.trim()).filter(Boolean))] : []
       if (fileIds.length) {
-        const rows = await prisma.file.findMany({ where: { id: { in: fileIds } }, select: { id: true, name: true, messageId: true } })
+        // 참여자만 보는 방의 파일은 없는 파일로 본다 — 전사방 글로 옮기지 않는다(lib/file-access.ts)
+        const rows = await prisma.file.findMany({ where: { id: { in: fileIds }, ...PUBLIC_FILE_WHERE }, select: { id: true, name: true, messageId: true } })
         const missing = fileIds.filter((id) => !rows.some((r) => r.id === id))
         if (missing.length) return { error: `없는 파일 ID: ${missing.join(", ")}. upload_file 로 받은 ID 를 넣으세요.` }
         const taken = rows.filter((r) => r.messageId)
@@ -950,7 +1086,7 @@ export async function runTool(
     }
 
     case "read_file": {
-      const f = await findFile(args)
+      const f = await findFile(args, caller.userId)
       if ("error" in f) return f
       const head = `# ${f.name}  (${(f.size / 1024).toFixed(1)}KB · ${f.mimeType}${f.task ? ` · 업무 #${f.task.slug}` : ""} · 파일 ID ${f.id})`
       const kind = fileKind(f.name, f.mimeType)
@@ -1065,6 +1201,14 @@ export async function runTool(
           input.projectId = (exact ?? ps[0]).id
         }
       }
+      if (args.assignees !== undefined) {
+        const names = Array.isArray(args.assignees) ? args.assignees.map(String).map((n) => n.trim()).filter(Boolean) : []
+        if (names.length === 0) return { error: "assignees 는 담당자 이름 1명 이상입니다." }
+        const current = await prisma.taskAssignee.findMany({ where: { taskId: found.id }, select: { user: { select: { id: true, name: true } } } })
+        const { ids, missing } = await findUsers(names, current.map((a) => a.user))
+        if (missing.length) return { error: `모르거나 재직 중이 아닌 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
+        input.assigneeIds = ids
+      }
       if (Object.keys(input).length === 0) return { error: "바꿀 필드를 하나 이상 주세요." }
 
       const r = await updateTask(found.id, caller.userId, input, "mcp")
@@ -1139,7 +1283,7 @@ export async function runTool(
       if (!taskName) return { error: "name 이 비어 있습니다." }
       if (names.length === 0) return { error: "담당자가 1명 이상 필요합니다. list_members 로 정식 이름을 확인하세요." }
       const { ids: assigneeIds, missing } = await findUsers(names)
-      if (missing.length) return { error: `모르는 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
+      if (missing.length) return { error: `모르거나 재직 중이 아닌 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
 
       let projectId: string | null = null
       if (str(args.project)) {
@@ -1181,8 +1325,8 @@ export async function runTool(
         { field: "created", before: null, after: { status: "TODO", assignees: [...assigneeIds].sort(), deadline: deadline?.toISOString() ?? null } },
       ])
 
-      // 담당자 전원에게 수락 알림 — 화면에서 만든 것과 같다.
-      for (const userId of assigneeIds.filter((id) => id !== caller.userId)) {
+      // 담당자 전원에게 수락 알림 — 화면에서 만든 것과 같다. 에이전트 확인 카드도 이 길을 지난다(executeWrite → runTool).
+      for (const userId of assignmentTargets({ previous: [], next: assigneeIds, actorId: caller.userId, systemUserId: SYSTEM_USER_ID })) {
         await createNotification(userId, "task_assigned", `새 업무: ${task.name}`, `${caller.name}님이 업무를 지시했습니다.`, task.id, "accept_task")
       }
       // 채팅에 지시 원문과 카드를 올린다 — 채팅이 기록의 원본이다.
@@ -1226,12 +1370,12 @@ export async function runTool(
     case "list_members": {
       const rows = await prisma.user.findMany({
         // 시스템 계정(🤖 메시지 작성자)은 구성원이 아니다 — 과거 구성원을 포함해도 뺀다.
-        where: { id: { not: SYSTEM_USER_ID }, ...(args.includeInactive === true ? {} : { isActive: true }) },
-        select: { name: true, position: true, department: true, role: true, isActive: true },
+        where: { id: { not: SYSTEM_USER_ID }, ...(args.includeInactive === true ? {} : ACTIVE_MEMBER_WHERE) },
+        select: { name: true, position: true, department: true, role: true, isActive: true, staffProfile: { select: { employment: true } } },
         orderBy: { name: "asc" },
       })
       return {
-        text: rows.map((u) => `- ${u.name}${u.position ? ` · ${u.position}` : ""}${u.department ? ` · ${u.department}` : ""}${u.role === "ADMIN" ? " · 관리자" : ""}${u.isActive ? "" : " · 과거 구성원"}`).join("\n"),
+        text: rows.map((u) => `- ${u.name}${u.position ? ` · ${u.position}` : ""}${u.department ? ` · ${u.department}` : ""}${u.role === "ADMIN" ? " · 관리자" : ""}${isActiveMember(u) ? "" : " · 과거 구성원"}`).join("\n"),
       }
     }
 
@@ -1405,9 +1549,25 @@ export async function runTool(
       }
     }
 
+    case "list_rooms": {
+      const q = str(args.query).replace(/\s+/g, "").toLowerCase()
+      const rooms = (await listReadableRooms(caller.userId)).filter(
+        (r) => !q || [r.title, ...r.members.map((m) => m.name)].some((n) => n.replace(/\s+/g, "").toLowerCase().includes(q)),
+      )
+      if (rooms.length === 0) return { text: q ? "그 말에 맞는 방이 없습니다." : "방이 없습니다." }
+      const shown = rooms.slice(0, clampInt(args.limit, 50, 200))
+      return {
+        text: [
+          `방 ${rooms.length}개${shown.length < rooms.length ? ` 중 ${shown.length}개` : ""} (최근 글 순)`,
+          ...shown.map((r) => roomLine(r) + ` · 마지막 ${kst(r.lastAt, true)}${r.unread ? ` · 안 읽음 ${r.unread}` : ""}`),
+        ].join("\n"),
+      }
+    }
+
     case "list_chat": {
-      const view = (str(args.view) || "all") as FeedView
-      if (!["all", "task", "dm", "ai"].includes(view)) return { error: "view 는 all · task · dm · ai 중 하나입니다." }
+      const view = (str(args.view) || "all") as FeedView | "room"
+      if (view === "room") return listRoomChat(args, caller)
+      if (!["all", "task", "dm", "ai"].includes(view)) return { error: "view 는 all · task · dm · ai · room 중 하나입니다." }
       let id: string | undefined
       let userId: string | undefined
       if (view === "task") {
@@ -1465,6 +1625,8 @@ export async function runTool(
       return { text: await marketCompaniesText(args) }
     case "get_context":
       return contextText(args, caller.role === "ADMIN")
+    case "list_calendar":
+      return listCalendarText(args, { id: caller.userId, isAdmin: caller.role === "ADMIN" })
   }
 
   return { error: `모르는 도구입니다: ${name}` }

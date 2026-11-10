@@ -1,6 +1,6 @@
 "use client"
 
-import { useDeferredValue, useMemo, type ReactNode } from "react"
+import { useDeferredValue, useEffect, useMemo, type ReactNode } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,9 @@ import type { WorkspaceViewProps } from "./overview/workspace-view"
 import { TasksFilterMenu } from "./tasks-filter-menu"
 import { FilterLink, useTasksFilter } from "./filter-link"
 import { FILTER_LABEL } from "./filters"
+import { byDeadlineFirst } from "@/lib/task-unassigned"
+import { withAssignOverrides } from "@/lib/quick-assign"
+import { useListQuickAssign } from "@/components/tasks/list-quick-assign"
 
 /** 업무 한 건 + 필터가 보는 값. 「오늘 마감」 은 서버 시계로 미리 잰다 */
 export interface FilterableTask {
@@ -58,13 +61,24 @@ export function TasksBody({ tasks, members, currentUserId, products, projects, t
             return t.dueToday
           case "stalled":
             return t.stalled
+          case "unassigned":
+            return t.card.unassigned === true
           default:
             return true
         }
       }),
     [tasks, filter, assignee, currentUserId]
   )
-  const cards = useMemo(() => filtered.map((t) => t.card), [filtered])
+  // 담당 미배정은 마감 지남 · 임박부터 — 묻힌 것 중 급한 것을 먼저 지정하게 한다
+  const unassignedView = filter === "unassigned"
+  // 목록 · 보드의 「담당 지정」 — 고른 사람을 먼저 그리고, 서버 값이 따라오면 걷는다(components/tasks/list-quick-assign.tsx)
+  const quick = useListQuickAssign()
+  const { prune } = quick
+  useEffect(() => prune(tasks.map((t) => t.card)), [tasks, prune])
+  const cards = useMemo(() => {
+    const list = withAssignOverrides(filtered.map((t) => t.card), quick.overrides)
+    return unassignedView ? [...list].sort(byDeadlineFirst) : list
+  }, [filtered, unassignedView, quick.overrides])
   const boardTasks = useMemo<KanbanTask[]>(
     () =>
       cards.map((t) => ({
@@ -73,6 +87,7 @@ export function TasksBody({ tasks, members, currentUserId, products, projects, t
         name: t.name,
         status: t.status as KanbanTask["status"],
         ownerName: t.ownerName,
+        unassigned: t.unassigned,
         projectName: t.projectName,
         productName: t.productName,
         productColor: t.productColor,
@@ -90,7 +105,9 @@ export function TasksBody({ tasks, members, currentUserId, products, projects, t
   return (
     <TasksViews
       boardTasks={boardTasks}
-      listSlot={<TaskRowsView tasks={cards} />}
+      members={members}
+      onAssign={quick.assign}
+      listSlot={<TaskRowsView tasks={cards} members={members} onAssign={quick.assign} keepOrder={unassignedView} />}
       workspace={{ products, projects, tasks: workspaceTasks }}
       toolbarStart={
         <>

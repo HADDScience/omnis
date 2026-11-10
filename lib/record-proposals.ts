@@ -8,6 +8,7 @@
 //
 // 배경: mydocs/plans/2026-09-30-record-proposals-and-card-categories.md
 import { prisma } from "@/lib/db"
+import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import { callGemini } from "@/lib/ai"
 import { writeActivity } from "@/lib/api"
 import { recordData, recordDedupeKey } from "@/lib/company-edit"
@@ -346,6 +347,8 @@ async function secretSignals(msgs: Msg[]): Promise<{ text: string; task: string 
   const last = msgs.at(-1)?.at ?? new Date()
   const rows = await prisma.chatMessage.findMany({
     where: {
+      // 전사방 글만 — 1:1 · 단톡 · 옴니스 방 글이 기록 제안(모두가 보는 표)으로 새지 않게
+      ...PUBLIC_MESSAGE_WHERE,
       createdAt: { gte: new Date(first.getTime() - 45 * DAY_MS), lte: new Date(last.getTime() + 7 * DAY_MS) },
       kind: "NORMAL",
       deletedAt: null,
@@ -492,7 +495,8 @@ export async function proposeRecordsFromTask(taskId: string, opts: { userId?: st
       id: true,
       name: true,
       messages: {
-        where: { kind: "NORMAL", deletedAt: null },
+        // 기록 제안은 모두가 본다 — 참여자 전용 방의 글을 넘기지 않는다
+        where: { ...PUBLIC_MESSAGE_WHERE, kind: "NORMAL", deletedAt: null },
         orderBy: { createdAt: "asc" },
         take: 300,
         select: { id: true, content: true, createdAt: true, author: { select: { name: true } } },
@@ -513,7 +517,8 @@ export function proposeRecordsFromTaskSafe(taskId: string, opts: { userId?: stri
 /** 하루치 채팅 (업무 안팎 전부). 크론이 부른다 */
 export async function proposeRecordsFromChat(since: Date, until = new Date()) {
   const rows = await prisma.chatMessage.findMany({
-    where: { createdAt: { gte: since, lt: until }, kind: "NORMAL", deletedAt: null },
+    // 전사방 글만 — 1:1 · 단톡 · 옴니스 방 글은 참여자만 본다. 하루치를 AI 에 넘겨 기록 제안을 만들기 때문에 여기서 막는다
+    where: { ...PUBLIC_MESSAGE_WHERE, createdAt: { gte: since, lt: until }, kind: "NORMAL", deletedAt: null },
     orderBy: { createdAt: "asc" },
     take: 600,
     select: { id: true, content: true, createdAt: true, author: { select: { name: true } }, task: { select: { name: true } } },

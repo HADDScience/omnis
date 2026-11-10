@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { PriorityRating } from "@/components/ui/priority-rating"
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS } from "@/lib/constants"
+import { UNASSIGNED_LABEL } from "@/lib/task-unassigned"
 import { cn } from "@/lib/utils"
 
 /**
@@ -22,6 +23,10 @@ export interface TaskCardData {
   status: string
   priority: string | null
   ownerName: string | null
+  /** 목록 검색용 담당자 전체 이름 — ownerName 은 3명을 넘으면 접혀 뒤 사람을 찾지 못한다 */
+  ownerSearch?: string
+  /** 미완료인데 담당자가 없다 — lib/task-unassigned.ts */
+  unassigned?: boolean
   projectName: string | null
   productName: string | null
   productColor: string | null
@@ -46,6 +51,14 @@ interface TaskCardProps extends VariantProps<typeof cardVariants> {
   className?: string
   /** Tutorial previews share the real card without linking to a demo task. */
   readOnly?: boolean
+  /**
+   * list 행 오른쪽 끝, 상세로 가는 링크 **밖**에 놓을 단추들(담당 지정 칩 · Omnis 와 시작).
+   * 링크 안에 단추를 두면 누를 때 상세로 넘어가 버린다 — 행 테두리 안에서 링크와 나란히 둔다.
+   * 담당 지정 칩이 있으면 「미배정」 표를 따로 달지 않는다(같은 말을 두 번 하지 않는다).
+   */
+  actions?: ReactNode
+  /** actions 안에 담당 지정 칩이 있다 */
+  assignInActions?: boolean
 }
 
 function formatDeadline(deadline: string | null, isDone: boolean) {
@@ -67,11 +80,17 @@ function formatDeadline(deadline: string | null, isDone: boolean) {
   }
 }
 
+const UNASSIGNED_BADGE = (
+  <Badge variant="outline" className="h-5 shrink-0 border-destructive/40 px-1.5 text-[10px] text-destructive">
+    {UNASSIGNED_LABEL}
+  </Badge>
+)
+
 function CardSurface({ readOnly, href, className, children }: { readOnly: boolean; href: string; className: string; children: ReactNode }) {
   return readOnly ? <div className={cn(className, "cursor-default")}>{children}</div> : <Link href={href} className={className}>{children}</Link>
 }
 
-export function TaskCard({ task, variant = "board", className, readOnly = false }: TaskCardProps) {
+export function TaskCard({ task, variant = "board", className, readOnly = false, actions, assignInActions = false }: TaskCardProps) {
   const isDone = task.status === "DONE"
   const deadlineInfo = formatDeadline(task.deadline, isDone)
   const overdue = deadlineInfo?.overdue ?? false
@@ -84,16 +103,9 @@ export function TaskCard({ task, variant = "board", className, readOnly = false 
   ) : null
 
   if (variant === "list") {
-    return (
-      <CardSurface
-        readOnly={readOnly}
-        href={`/tasks/${task.id}`}
-        className={cn(
-          cardVariants({ variant: "list" }),
-          overdue ? "border-destructive/30 bg-destructive/5" : "",
-          className,
-        )}
-      >
+    const rowClass = cn(cardVariants({ variant: "list" }), overdue ? "border-destructive/30 bg-destructive/5" : "", className)
+    const content = (
+      <>
         <Badge
           variant="secondary"
           className={cn("h-5 shrink-0 text-[10px]", TASK_STATUS_COLORS[task.status] ?? "")}
@@ -122,6 +134,7 @@ export function TaskCard({ task, variant = "board", className, readOnly = false 
           )}
         </span>
         {task.priority && <PriorityRating value={task.priority} disabled size={12} />}
+        {task.unassigned && !assignInActions && UNASSIGNED_BADGE}
         {task.ownerName && (
           <Avatar className="h-6 w-6 shrink-0">
             <AvatarFallback className="text-[10px]">{task.ownerName.charAt(0)}</AvatarFallback>
@@ -132,6 +145,23 @@ export function TaskCard({ task, variant = "board", className, readOnly = false 
             {deadlineInfo.text}
           </span>
         )}
+      </>
+    )
+    if (actions && !readOnly) {
+      return (
+        <div className={cn(rowClass, "gap-1.5 py-0 pr-1 md:pr-2")} data-task-row={task.id}>
+          <Link href={`/tasks/${task.id}`} className="flex min-w-0 flex-1 items-center gap-3 self-stretch py-2">
+            {content}
+          </Link>
+          <div data-task-row-actions className="flex shrink-0 items-center gap-0.5">
+            {actions}
+          </div>
+        </div>
+      )
+    }
+    return (
+      <CardSurface readOnly={readOnly} href={`/tasks/${task.id}`} className={rowClass}>
+        {content}
       </CardSurface>
     )
   }
@@ -167,6 +197,7 @@ export function TaskCard({ task, variant = "board", className, readOnly = false 
       <div className="flex items-center gap-1.5">
         {task.priority && <PriorityRating value={task.priority} disabled size={11} />}
         {projectChip}
+        {task.unassigned && UNASSIGNED_BADGE}
         {task.ownerName && (
           <Avatar className="ml-auto h-5 w-5 shrink-0">
             <AvatarFallback className="text-[9px]">{task.ownerName.charAt(0)}</AvatarFallback>

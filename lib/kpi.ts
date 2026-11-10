@@ -45,12 +45,14 @@ export async function computeDailyKpis(
   const rows: KpiRow[] = []
 
   // ── 채택: 메시지 — 직접 입력은 카톡에서 옮긴 것(sourceId)과 🤖 시스템 글을 뺀 사람의 글
+  // 전사방 글만 센다 — 옴니스 1:1 방의 질문은 OmnisQuery 로 따로 남아(아래 users.active) 여기서 세면 채팅 지표가 부푼다
   const [msg] = await prisma.$queryRaw<{ native: number; imported: number; total: number; linked: number }[]>`
     select count(*) filter (where "sourceId" is null and "authorId" <> ${SYSTEM_USER_ID} and kind = 'NORMAL')::int native,
            count(*) filter (where "sourceId" like 'kakao%')::int imported,
            count(*) filter (where kind = 'NORMAL')::int total,
            count(*) filter (where kind = 'NORMAL' and "taskId" is not null)::int linked
-    from "ChatMessage" where "deletedAt" is null and "createdAt" >= ${s} and "createdAt" < ${e}`
+    from "ChatMessage" where "deletedAt" is null and "createdAt" >= ${s} and "createdAt" < ${e}
+      and "roomId" in (select id from "ChatRoom" where kind = 'COMPANY')`
   rows.push({ key: "messages.native", value: msg.native }, { key: "messages.imported", value: msg.imported })
   // 잡담은 업무에 붙지 않는 게 맞아 100% 가 목표는 아니다. 갑자기 떨어지면 연결이 새는 신호다
   if (msg.total > 0) rows.push({ key: "messages.linkedRate", value: round(msg.linked / msg.total, 4), detail: { linked: msg.linked, total: msg.total } })

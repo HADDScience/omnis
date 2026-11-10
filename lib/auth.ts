@@ -1,4 +1,4 @@
-import NextAuth from "next-auth"
+import NextAuth, { CredentialsSignin } from "next-auth"
 import type { Provider } from "next-auth/providers"
 import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
@@ -7,6 +7,12 @@ import { compareSync } from "bcryptjs"
 import { prisma } from "./db"
 import { resolveIdentity, linkIdentity, rememberIdentityEmail } from "./auth-identity"
 import { BASE_PATH } from "./base-path"
+import { clientIp, loginLockState, recordLoginFailure, recordLoginSuccess } from "./login-guard"
+
+/** 로그인 화면이 `code === "locked"` 로 잠금 안내를 띄운다 */
+class LoginLocked extends CredentialsSignin {
+  code = "locked"
+}
 
 // 소셜은 자격증명이 실제로 설정된 것만 켠다.
 // 키 없이 프로바이더를 등록하면 로그인 화면에 버튼은 뜨는데 누르면 깨진다.
@@ -16,16 +22,21 @@ const providers: Provider[] = [
       name: { label: "이름", type: "text" },
       password: { label: "비밀번호", type: "password" },
     },
-    async authorize(credentials) {
+    async authorize(credentials, request) {
       if (!credentials?.name || !credentials?.password) return null
+      const name = credentials.name as string
+      const ip = clientIp(request?.headers)
 
-      const user = await prisma.user.findUnique({
-        where: { name: credentials.name as string },
-      })
+      // 잠긴 동안에는 대조하지 않는다(lib/login-guard.ts)
+      if ((await loginLockState(name, ip)).locked) throw new LoginLocked()
 
-      if (!user || !user.isActive) return null
-      if (!compareSync(credentials.password as string, user.passwordHash))
+      const user = await prisma.user.findUnique({ where: { name } })
+
+      if (!user || !user.isActive || !compareSync(credentials.password as string, user.passwordHash)) {
+        await recordLoginFailure(name, ip)
         return null
+      }
+      await recordLoginSuccess(user.id, name)
 
       return {
         id: user.id,
@@ -78,7 +89,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (!current?.user?.id) return "/login?error=notlinked"
 
       const result = await linkIdentity(current.user.id, social)
-      if (!result.ok) return `/settings?error=${result.reason}`
+      if (!result.ok) return `/settings/profile?error=${result.reason}`
       return true
     },
 

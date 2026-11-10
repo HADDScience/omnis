@@ -8,6 +8,8 @@
 //   - postChatMessage: 저장 · 업무 연결 · 멘션까지만 하고, 재구성할 일이 있으면 rebuild 로 돌려준다
 //   - runTaskRebuild: AI 재구성 · 상태 변경 · 알림 · 시스템 메시지. 끝나면 활동 기록을 남겨 화면이 끝났음을 안다
 // 화면 경로는 응답 뒤(after)에 runTaskRebuild 를 돌리고, MCP 는 기다려서 결과를 글로 돌려준다.
+import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
+import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import { prisma } from "@/lib/db"
 import { createNotification } from "@/lib/notifications"
 import { rebuildTask } from "@/lib/ai"
@@ -16,6 +18,9 @@ import { syncEmbeddings, syncEmbeddingsSafe } from "@/lib/embeddings"
 import { getSystemUserId } from "@/lib/system-user"
 import { writeActivity } from "@/lib/api"
 import { recordTaskEvents } from "@/lib/task-events"
+import { queueChatPush, type ChatPushRoom } from "@/lib/chat-push"
+import { describePhotosSafe } from "@/lib/photo-describe"
+import { PUBLIC_FILE_WHERE } from "@/lib/file-access"
 
 export interface PostMessageInput {
   user: { id: string; name: string }
@@ -25,6 +30,8 @@ export interface PostMessageInput {
   fileIds?: string[]
   /** 답장 대상 메시지. 화면은 인용 한 줄로 그린다. */
   replyToId?: string | null
+  /** 화면이 만든 id — 다시 보내기 중복 막기(ChatMessage.clientId). 화면 밖에서는 비운다 */
+  clientId?: string | null
 }
 
 export interface PostMessageOptions {
@@ -71,10 +78,11 @@ export function extractMentionSlug(content: string): { slug: string; restText: s
 export async function postChatMessage(input: PostMessageInput, options: PostMessageOptions = {}) {
   const { user, roomId, fileIds } = input
   const trimmedContent = input.content.trim()
-  await prisma.chatRoom.upsert({
+  const chatRoom = await prisma.chatRoom.upsert({
     where: { id: roomId },
     update: {},
     create: { id: roomId, name: roomId === "default-room" ? "하드사이언스 인턴방" : "새 채팅방" },
+    select: { name: true },
   })
 
   const mention = extractMentionSlug(trimmedContent)
@@ -90,6 +98,7 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
       content: trimmedContent,
       taskId: linkedTaskId,
       replyToId: input.replyToId ?? null,
+      clientId: input.clientId ?? null,
     },
     include: {
       author: { select: { id: true, name: true } },
@@ -99,9 +108,10 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
   })
 
   // 파일 연결
+  // 참여자만 보는 방(옴니스 1:1 · 사람 방)에 올린 파일은 전사방 글로 옮기지 않는다(lib/file-access.ts)
   if (fileIds && fileIds.length > 0) {
     await prisma.file.updateMany({
-      where: { id: { in: fileIds } },
+      where: { id: { in: fileIds }, ...PUBLIC_FILE_WHERE },
       data: { messageId: message.id },
     })
   }
@@ -119,17 +129,25 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
     // 예전에는 재구성이 '완료'를 '진행 중'으로 되돌렸다. 완료된 업무의 스레드에 직접 쓴 글은 예전처럼 처리한다.
     const referenceOnly = !!task && !threadTask && task.status === "DONE"
 
+    // 채팅 푸시 — 쓴 자리를 따른다. 업무 스레드에 쓴 글은 업무방(담당 · 지시 · 글쓴 사람 · 즐겨찾기),
+    // 전사방에서 #슬러그 로 이은 글은 전사방(구성원 전원) 글이다 — 전사방 사람들이 읽은 글이다(lib/notify-rules.ts).
+    const pushRoom: ChatPushRoom = threadTask
+      ? { kind: "TASK", id: threadTask.id, name: threadTask.name }
+      : { kind: "COMPANY", id: roomId, name: chatRoom.name }
+    queueChatPush({ room: pushRoom, author: user, content: trimmedContent })
+
     if (task && restText.trim().length > 0) {
       // 메시지를 업무에 연결
+      // changedAt — 먼저 이 글을 읽어 간 화면에도 업무 표시가 붙게
       await prisma.chatMessage.update({
         where: { id: message.id },
-        data: { taskId: task.id },
+        data: { taskId: task.id, changedAt: new Date() },
       })
 
       // 파일도 업무에 연결
       if (fileIds && fileIds.length > 0) {
         await prisma.file.updateMany({
-          where: { id: { in: fileIds } },
+          where: { id: { in: fileIds }, ...PUBLIC_FILE_WHERE },
           data: { taskId: task.id },
         })
       }
@@ -146,7 +164,7 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
         }
       }
     } else if (task) {
-      await prisma.chatMessage.update({ where: { id: message.id }, data: { taskId: task.id } })
+      await prisma.chatMessage.update({ where: { id: message.id }, data: { taskId: task.id, changedAt: new Date() } })
     }
   }
 
@@ -171,6 +189,8 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
   void syncEmbeddings("CHAT_MESSAGE", message.id, user.id).catch((err) =>
     console.error("[embeddings] 채팅 메시지 동기화 실패", err)
   )
+  // 사진은 설명을 만들어 따로 색인한다 — 사진 안의 내용으로 찾게(사진이 아닌 파일은 안에서 건너뛴다)
+  if (fileIds && fileIds.length > 0) describePhotosSafe(fileIds, user.id)
 
 
   return { message: updatedMessage, taskUpdate, rebuild }
@@ -203,11 +223,13 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
       // 이 업무에 연결된 모든 메시지 + 파일 수집
       const allMessages = await prisma.chatMessage.findMany({
         // 지운 글은 넣지 않는다 — 지웠는데도 그 내용이 업무 카드에 남으면 지운 의미가 없다(2026-09-16)
-        where: { taskId: task.id, deletedAt: null },
+        // 카드는 전원이 본다 — 참여자 전용 방의 글을 입력으로 넣으면 그 내용이 본문으로 옮겨 간다
+        where: { taskId: task.id, deletedAt: null, ...NOT_EXTERNAL_WHERE, ...PUBLIC_MESSAGE_WHERE },
         orderBy: { createdAt: "asc" },
         include: {
           author: { select: { name: true } },
-          files: { select: { name: true } },
+          // 카드는 전원이 본다 — 참여자 전용 첨부의 이름을 재구성에 넘기지 않는다
+          files: { where: PUBLIC_FILE_WHERE, select: { name: true } },
         },
       })
 
@@ -236,6 +258,7 @@ export async function runTaskRebuild(job: RebuildJob): Promise<TaskUpdate | null
       const newer = await prisma.chatMessage.findFirst({
         where: {
           taskId: task.id,
+          ...PUBLIC_MESSAGE_WHERE,
           kind: "NORMAL",
           createdAt: { gt: job.messageCreatedAt },
           authorId: { not: systemUserId },

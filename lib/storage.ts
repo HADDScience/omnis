@@ -38,7 +38,7 @@ function connectVerified(): Promise<TLSSocket> {
         const actual = normalizeFingerprint(socket.getPeerCertificate().fingerprint256 ?? "")
         if (actual !== expected) {
           socket.destroy()
-          reject(new Error("NAS 인증서 지문이 일치하지 않습니다. 연결을 중단했습니다."))
+          reject(new Error("시놀로지 인증서 지문이 일치하지 않습니다. 연결을 중단했습니다."))
           return
         }
         // 핸드셰이크가 끝났으니 연결 한도를 푼다. 본문을 주고받는 한도는 dav() 가 다시 건다
@@ -48,7 +48,7 @@ function connectVerified(): Promise<TLSSocket> {
     )
     socket.setTimeout(CONNECT_TIMEOUT_MS, () => {
       socket.destroy()
-      reject(new Error(`NAS 연결이 ${CONNECT_TIMEOUT_MS / 1000}초 안에 열리지 않았습니다`))
+      reject(new Error(`시놀로지 연결이 ${CONNECT_TIMEOUT_MS / 1000}초 안에 열리지 않았습니다`))
     })
     socket.once("error", reject)
   })
@@ -101,7 +101,7 @@ export async function dav(
       },
     )
     req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy(new Error(`NAS 가 ${REQUEST_TIMEOUT_MS / 1000}초 안에 응답하지 않았습니다`))
+      req.destroy(new Error(`시놀로지가 ${REQUEST_TIMEOUT_MS / 1000}초 안에 응답하지 않았습니다`))
     })
     req.once("error", reject)
     if (body) req.write(body)
@@ -130,17 +130,37 @@ async function ensureParents(absolutePath: string) {
 // 첨부파일(SYNOLOGY_WEBDAV_BASE_PATH) 밖에 두어야 하는 것 — 서명·직인처럼 권한이 좁은 폴더 — 이 쓴다.
 // 첨부파일은 아래 putObject/getObject/deleteObject(키)를 쓴다.
 
+/** 응답 없이 연결이 끊겼는가 — NAS 나 회선이 끊은 것이다. 우리 한도 초과(시놀로지가 …초 안에)는 여기 들지 않는다 */
+export function isConnectionDropped(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  return (e as NodeJS.ErrnoException).code === "ECONNRESET" || e.message === "socket hang up"
+}
+
+/**
+ * 연결이 끊긴 일은 한 번만 다시 해 본다(2026-11-03 운영 첨부 HTTP 500 — socket hang up 한 건, 몇 분 뒤 업로드는 성공했다).
+ * 같은 경로에 같은 내용을 다시 쓰는 PUT 이라 앞의 시도가 닿았어도 결과가 같다.
+ */
+export async function retryOnDrop<T>(attempt: () => Promise<T>): Promise<T> {
+  try {
+    return await attempt()
+  } catch (e) {
+    if (!isConnectionDropped(e)) throw e
+    return attempt()
+  }
+}
+
 export async function putAt(absolutePath: string, body: Buffer, contentType: string): Promise<void> {
-  let res = await dav("PUT", davUrl(absolutePath), body, contentType)
+  const put = () => retryOnDrop(() => dav("PUT", davUrl(absolutePath), body, contentType))
+  let res = await put()
   if (res.status === 409) {
     // 상위 디렉터리가 없다. 만들고 한 번만 다시 시도한다.
     drain(res)
     await ensureParents(absolutePath)
-    res = await dav("PUT", davUrl(absolutePath), body, contentType)
+    res = await put()
   }
   drain(res)
   if (res.status < 200 || res.status >= 300) {
-    throw new Error(`NAS 업로드 실패 (HTTP ${res.status})`)
+    throw new Error(`시놀로지 업로드 실패 (HTTP ${res.status})`)
   }
 }
 
@@ -148,7 +168,7 @@ export async function getAt(absolutePath: string): Promise<DavResponse> {
   const res = await dav("GET", davUrl(absolutePath))
   if (res.status !== 200) {
     drain(res)
-    throw new Error(`NAS 다운로드 실패 (HTTP ${res.status})`)
+    throw new Error(`시놀로지 다운로드 실패 (HTTP ${res.status})`)
   }
   return res
 }
@@ -159,7 +179,7 @@ export async function deleteAt(absolutePath: string): Promise<void> {
   drain(res)
   if (res.status === 404) return
   if (res.status < 200 || res.status >= 300) {
-    throw new Error(`NAS 삭제 실패 (HTTP ${res.status})`)
+    throw new Error(`시놀로지 삭제 실패 (HTTP ${res.status})`)
   }
 }
 
@@ -169,7 +189,7 @@ export async function existsAt(absolutePath: string): Promise<boolean> {
   drain(res)
   if (res.status === 404) return false
   if (res.status === 207 || res.status === 200) return true
-  throw new Error(`NAS 확인 실패 (HTTP ${res.status})`)
+  throw new Error(`시놀로지 확인 실패 (HTTP ${res.status})`)
 }
 
 // ─── 첨부파일 (베이스 경로 + 키) ────────────────────────────────────
@@ -182,9 +202,76 @@ export function getObject(key: string): Promise<DavResponse> {
   return getAt(absolutePathFor(key))
 }
 
+/** 있으면 객체, 없으면(404) null — 만들어 둔 사본(미리보기 캐시)을 찾을 때 */
+export async function getObjectIfExists(key: string): Promise<DavResponse | null> {
+  const res = await dav("GET", davUrl(absolutePathFor(key)))
+  if (res.status === 404) {
+    drain(res)
+    return null
+  }
+  if (res.status !== 200) {
+    drain(res)
+    throw new Error(`시놀로지 다운로드 실패 (HTTP ${res.status})`)
+  }
+  return res
+}
+
 /** 객체를 지운다. 이미 없으면(404) 성공으로 본다 — 지우려던 결과와 같다. */
 export function deleteObject(key: string): Promise<void> {
   return deleteAt(absolutePathFor(key))
+}
+
+// ─── 큰 첨부 이어 쓰기 (2026-11-04 실측: 시놀로지 WebDAV 가 Content-Range PUT 을 받는다) ───
+
+/**
+ * 파일의 한 범위를 쓴다. 같은 범위를 다시 보내도 결과가 같아 재시도가 안전하다.
+ * 상태 코드를 그대로 돌려준다 — 507(디스크 가득 참)은 복사 쪽이 다르게 다룬다.
+ */
+export async function putObjectRange(key: string, body: Buffer, start: number, total: number): Promise<number> {
+  const absolutePath = absolutePathFor(key)
+  const headers = { "Content-Range": `bytes ${start}-${start + body.length - 1}/${total}` }
+  const put = () => retryOnDrop(() => dav("PUT", davUrl(absolutePath), body, "application/octet-stream", headers))
+  let res = await put()
+  if (res.status === 409) {
+    drain(res)
+    await ensureParents(absolutePath)
+    res = await put()
+  }
+  drain(res)
+  return res.status
+}
+
+/** 한 범위를 연다. 상태 코드는 호출부가 본다(206 이어야 범위가 지켜진 것이다) */
+export function getObjectRange(key: string, start: number, length: number): Promise<DavResponse> {
+  return dav("GET", davUrl(absolutePathFor(key)), undefined, undefined, { Range: `bytes=${start}-${start + length - 1}` })
+}
+
+/** 저장된 크기. 없으면 null */
+export async function statObjectSize(key: string): Promise<number | null> {
+  const res = await dav("PROPFIND", davUrl(absolutePathFor(key)), undefined, undefined, { Depth: "0" })
+  if (res.status === 404) {
+    drain(res)
+    return null
+  }
+  if (res.status !== 207) {
+    drain(res)
+    throw new Error(`시놀로지 확인 실패 (HTTP ${res.status})`)
+  }
+  const chunks: Buffer[] = []
+  for await (const c of res.body) chunks.push(Buffer.from(c))
+  const size = Buffer.concat(chunks).toString("utf8").match(/getcontentlength[^>]*>(\d+)</i)?.[1]
+  return size === undefined ? null : Number(size)
+}
+
+/** 첨부 폴더에 닿는가. 디스크 · 파일을 건드리지 않는 PROPFIND 한 번 — NAS 를 기다리는 동안 DB 를 깨우지 않으려고 쓴다 */
+export async function nasReachable(): Promise<boolean> {
+  try {
+    const res = await dav("PROPFIND", davUrl(env("SYNOLOGY_WEBDAV_BASE_PATH")), undefined, undefined, { Depth: "0" })
+    drain(res)
+    return res.status < 500
+  } catch {
+    return false
+  }
 }
 
 /** File.id로부터 NAS 저장 키를 만든다. 업로드·다운로드가 같은 규칙을 쓰도록 여기 한 곳에 둔다. */

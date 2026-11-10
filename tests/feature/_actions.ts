@@ -31,34 +31,22 @@ export async function openMy(page: Page) {
   await page.waitForURL("**/settings")
 }
 
-/** 명령 팔레트(검색) 열기. PC 는 ⌘K, 폰은 단축키가 없어 마이 화면의 「검색」 행 */
-export async function openSearch(page: Page) {
-  if (isPhone(page)) {
-    await openMy(page)
-    await page.getByRole("button", { name: "검색", exact: true }).click()
-  } else {
-    await page.keyboard.press("ControlOrMeta+k")
-  }
-  const input = page.getByPlaceholder(/HADD.*업무.*사람.*명령어/)
-  await expect(input).toBeVisible({ timeout: 5_000 })
-  return input
-}
-
-/** 오른쪽 채팅 패널 열기(이미 열려 있으면 그대로) — 메시지 입력창을 돌려준다 */
+/**
+ * 오른쪽 대화 패널 열기(이미 열려 있으면 그대로) — 메시지 입력창을 돌려준다.
+ * 패널은 오른쪽 아래 둥근 단추(「대화 패널 열기」)가 연다. 그 단추는 채팅 화면에서는 숨으므로 업무 화면으로 옮겨 간다.
+ * 폰(md 미만)에는 패널이 없다(2026-11-04) — 같은 입력창이 있는 전사방으로 간다.
+ */
 export async function openChatPanel(page: Page) {
   const input = page.getByPlaceholder("메시지 입력...  / 명령 · @ 사람 · # 업무")
   if (!(await input.isVisible())) {
-    await page.getByRole("button", { name: "채팅 열기", exact: true }).click()
+    if (isPhone(page)) {
+      await page.goto("/chat/default-room")
+      await expect(input).toBeVisible({ timeout: 30_000 })
+      return input
+    }
+    if (new URL(page.url()).pathname.startsWith("/chat")) await page.goto("/tasks")
+    await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
   }
-  await expect(input).toBeVisible()
-  return input
-}
-
-/** 패널의 Omnis AI 에게 묻는 칸 — 질문 입력창을 돌려준다 */
-export async function openOmnisAi(page: Page) {
-  await openChatPanel(page)
-  await page.getByRole("button", { name: "Omnis AI", exact: true }).click()
-  const input = page.getByRole("textbox", { name: "옴니스에게 보낼 질문" })
   await expect(input).toBeVisible()
   return input
 }

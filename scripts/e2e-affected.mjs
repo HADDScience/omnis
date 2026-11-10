@@ -34,11 +34,23 @@ const AREAS = [
   [/^app\/\(main\)\/(tasks|dashboard)\/|^components\/tasks\/|^components\/chat\/task-|^app\/api\/(tasks|projects|products|workspace-layout|gemini-usage)\//, ["@tasks", "@mobile"]],
   [/^app\/\(main\)\/(omnis|crm|nas)\/|^components\/(omnis|crm|company)\/|^app\/api\/(omnis|crm|nas|company|context|categories|bookmarks|ip|files)\//, ["@archive"]],
   [/^app\/\(main\)\/reports\/|^app\/api\/reports\//, ["@reports"]],
-  [/^app\/\(main\)\/settings\/|^components\/settings\//, ["@search", "@onboarding", "@mobile"]],
-  [/^app\/\(main\)\/(chat|calendar)\/|^components\/chat\/|^app\/api\/(chat|ai|calendar)\//, ["@chat"]],
+  [/^app\/\(main\)\/settings\/|^components\/settings\/|^app\/api\/(ai-budget|ui-metrics|notification-prefs)\//, ["@settings", "@onboarding", "@mobile"]],
+  [/^app\/\(main\)\/(chat|calendar)\/|^components\/(chat|messenger)\/|^app\/api\/(chat|ai|calendar|rooms)\//, ["@chat"]],
   [/^app\/\(auth\)\/|^app\/(sso)\/|^app\/api\/(auth|sso|users|account)\//, ["@auth"]],
   [/^components\/onboarding\/|^app\/api\/onboarding\//, ["@onboarding"]],
-  [/^app\/api\/search\//, ["@search"]],
+  [/^app\/api\/search\//, ["@chat"]],
+]
+
+/**
+ * 태그를 달지 않은 spec 의 영역 — 파일 이름으로 정한다(#109 뒤 main 에서 들어온 spec 들, 2026-11-10).
+ * 여기에도 없는 태그 없는 spec 은 어느 영역이든 바뀌면 함께 돈다 — 모르는 것은 돌리는 쪽이다.
+ */
+const SPEC_AREAS = [
+  [/^(chat-|room-|people-|photo-|company-room-|new-chat-|mcp-rooms|webp-thumbs|large-upload|file-headers|mobile-keyboard)/, ["@chat"]],
+  [/^(task-|quick-assign|active-assignees)/, ["@tasks"]],
+  [/^(mypage-|settings-|ai-budget|ui-metrics|pilot-metrics)/, ["@settings"]],
+  [/^(password-guard|landing)/, ["@auth"]],
+  [/^(brand-logo|nav-tab-|ipad-viewport|mobile-no-panel|shortcuts)/, ["@nav"]],
 ]
 
 /** 화면과 무관하다 — e2e 대상이 아니다 */
@@ -91,7 +103,10 @@ if (everything) {
   for (const name of fs.readdirSync("tests/feature")) {
     if (!name.endsWith(".spec.ts")) continue
     const body = fs.readFileSync(`tests/feature/${name}`, "utf8")
-    if ([...tags].some((t) => body.includes(`"${t}"`))) specs.add(`tests/feature/${name}`)
+    const own = body.match(/"@[a-z]+"/g)?.map((t) => t.slice(1, -1))
+    const byName = SPEC_AREAS.find(([r]) => r.test(name))?.[1]
+    const areas = own ?? byName
+    if (tags.size && (!areas || [...tags].some((t) => areas.includes(t)))) specs.add(`tests/feature/${name}`)
   }
   if (specs.size === 0) {
     console.log("e2e 에 닿는 변경이 없다 — 돌리지 않는다")

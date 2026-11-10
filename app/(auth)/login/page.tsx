@@ -102,7 +102,11 @@ export default function LoginPage() {
     })
 
     if (result?.error) {
-      setError("이름 또는 비밀번호가 올바르지 않습니다.")
+      setError(
+        result.code === "locked"
+          ? "로그인 시도가 너무 많아 잠시 막혔습니다. 15분 뒤 다시 시도하거나 관리자에게 문의하세요."
+          : "이름 또는 비밀번호가 올바르지 않습니다."
+      )
       setLoading(false)
       return
     }
@@ -115,7 +119,8 @@ export default function LoginPage() {
       return
     }
 
-    router.push("/tasks")
+    // 첫 화면은 옴니스 메신저다(mydocs/plans/2026-10-28-omnis-messenger-agent.md)
+    router.push("/chat")
     router.refresh()
   }
 
@@ -305,7 +310,7 @@ export default function LoginPage() {
                 onClick={() => {
                   setSocial(provider)
                   signIn(provider, {
-                    callbackUrl: safeCallbackUrl() ?? apiUrl("/tasks"),
+                    callbackUrl: safeCallbackUrl() ?? apiUrl("/chat"),
                   })
                 }}
               />

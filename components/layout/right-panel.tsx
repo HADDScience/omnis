@@ -1,15 +1,18 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { ChatPanel } from "@/components/chat/chat-panel"
 import { TaskCmdModal } from "@/components/chat/task-cmd-modal"
-import { OmnisAsk } from "@/components/omnis/omnis-ask"
 import { TaskThread } from "@/app/(main)/tasks/[taskId]/task-sidebar"
+import { useMediaQuery } from "@/hooks/use-media-query"
+import { useShortcut } from "@/hooks/use-shortcuts"
+import { NAV_DESKTOP_QUERY } from "./floating-nav"
 import { useRightPanel } from "./right-panel-context"
+import { PanelOmnis } from "./panel-omnis"
 import { cn } from "@/lib/utils"
 import { apiUrl } from "@/lib/base-path"
 
@@ -34,7 +37,9 @@ interface RecentThread {
   slug: string
 }
 
-type View = "task" | "all" | "ai"
+// 「옴니스」 탭(2026-10-29 되살림) — 예전 「Omnis AI」(Gemini 한 번 묻기)가 아니라 에이전트 런타임의 옴니스 1:1 방을 끼운다.
+// 쓰기는 방 화면과 같은 확인 카드를 거친다(PanelOmnis → OmnisRoom)
+type View = "task" | "all" | "omnis"
 
 /**
  * 오른쪽에서 열리는 하나의 패널.
@@ -43,12 +48,19 @@ type View = "task" | "all" | "ai"
  * 나눠 먹어서, 열면 본문이 절반으로 눌리고 닫으면 대화가 안 보였다.
  *
  * 그래서 **덮어서** 연다. 닫혀 있을 때 폭은 0 이다 — 접힌 레일조차 두지 않는다.
- * 스레드 하나 때문에 모든 화면이 좁아질 이유가 없다. 여는 곳은 헤더의 버튼 하나다.
+ * 스레드 하나 때문에 모든 화면이 좁아질 이유가 없다. 여는 곳은 오른쪽 아래의 둥근 유리 단추(PanelDock) ·
+ * 단축키(⌥⇧C · ⌘⇧F, 설정에서 바꾼다) · ?taskId= 링크다(2026-10-29, 제목줄의 「채팅 열기」 는 지웠다).
  *
  * 업무 상세에서 열면 전체 채팅이 아니라 **그 업무 스레드**가 먼저 뜬다.
+ *
+ * md 미만에서는 열지 않는다(2026-11-04 작업지시자) — 화면 전체를 가려 채팅 탭으로 가는 편이 낫다. 단축키는 /chat 으로,
+ * ?taskId= 는 그 업무방으로 보낸다. 저장된 「열림」 값이 있어도 그리지 않는다(내용을 만들지 않아 폴링도 돌지 않는다).
  */
 export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Props) {
-  const { open, setOpen, task, requestedView, clearRequestedView } = useRightPanel()
+  const { open: panelOpen, setOpen, task, requestedView, clearRequestedView, omnisStartKey, clearOmnisStart } = useRightPanel()
+  const isDesktop = useMediaQuery(NAV_DESKTOP_QUERY)
+  const open = panelOpen && isDesktop
+  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const urlTaskId = searchParams.get("taskId")
@@ -64,22 +76,19 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
     if (!open || view !== "all") setSearchOpen(false)
   }, [open, view])
 
-  // ⌘⇧F (윈도우는 Ctrl+Shift+F) — 어디서든 패널을 열고 전체 채팅 검색 줄로 간다. 이미 열려 있으면 검색칸을 다시 고른다.
+  // ⌘⇧F (윈도우는 Ctrl+Shift+F, 설정에서 바꿀 수 있다) — 어디서든 패널을 열고 전체 채팅 검색 줄로 간다. 이미 열려 있으면 검색칸을 다시 고른다.
   // 입력칸 안에서도 받는다 — 글을 쓰다가 바로 찾는 게 단축키의 쓸모다
   const [searchFocus, setSearchFocus] = useState(0)
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return
-      if (e.code !== "KeyF" && e.key.toLowerCase() !== "f") return
-      e.preventDefault()
-      setOpen(true)
-      setView("all")
-      setSearchOpen(true)
-      setSearchFocus((n) => n + 1)
+  useShortcut("panelSearch", () => {
+    if (!window.matchMedia(NAV_DESKTOP_QUERY).matches) {
+      router.push("/chat")
+      return
     }
-    window.addEventListener("keydown", handleKey)
-    return () => window.removeEventListener("keydown", handleKey)
-  }, [setOpen])
+    setOpen(true)
+    setView("all")
+    setSearchOpen(true)
+    setSearchFocus((n) => n + 1)
+  })
 
   // 업무 화면으로 들어오면 그 업무 스레드로, 떠나면 전체로 되돌린다
   useEffect(() => {
@@ -107,8 +116,10 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
     }
     if (openedFor.current === urlTaskId) return
     openedFor.current = urlTaskId
-    setOpen(true)
-  }, [urlTaskId, setOpen])
+    // 하이드레이션 첫 값은 false 라 isDesktop 을 믿지 않고 직접 묻는다 — PC 링크가 업무방으로 튀면 안 된다
+    if (window.matchMedia(NAV_DESKTOP_QUERY).matches) setOpen(true)
+    else router.replace(`/chat/task/${encodeURIComponent(urlTaskId)}`)
+  }, [urlTaskId, setOpen, router])
 
   const loadRecentThreads = useCallback(async () => {
     try {
@@ -138,8 +149,8 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
   const tabs = useMemo(() => {
     const list: { key: View; label: string; hint?: string }[] = []
     if (task) list.push({ key: "task", label: "이 업무", hint: task.name })
-    list.push({ key: "all", label: "전체" })
-    list.push({ key: "ai", label: "Omnis AI" })
+    list.push({ key: "all", label: "전체", hint: "전사 채팅" })
+    list.push({ key: "omnis", label: "옴니스", hint: "옴니스와 1:1 — 쓰기는 확인 카드를 거친다" })
     return list
   }, [task])
 
@@ -155,19 +166,23 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
         />
       )}
 
+      {/* 둥근 유리 판 — nav 와 같은 질감(.glass)의 가장자리 빛 · 그림자, 화면 가장자리에서 띄운다.
+          속은 읽기 좋게 거의 불투명한 바탕을 깐다(유리는 크롬에만 — ux-rules 떠 있는 nav) */}
       <aside
         data-onboarding="conversation"
         aria-hidden={!open}
+        aria-label="대화 패널"
         className={cn(
-          "fixed right-0 top-0 z-[var(--z-banner)] flex h-[var(--app-vh)] flex-col border-l bg-background shadow-[-4px_0_16px_rgba(0,0,0,0.08)] transition-transform duration-200 motion-reduce:transition-none dark:shadow-[-4px_0_16px_rgba(0,0,0,0.35)]",
+          "glass fixed! top-[calc(var(--demo-banner-height,0px)+8px)] right-2 h-[calc(var(--app-vh)-var(--demo-banner-height,0px)-8px-0.5rem)] z-[var(--z-banner)] flex flex-col overflow-hidden rounded-[22px] transition-[transform,opacity] duration-200 motion-reduce:transition-none max-md:hidden",
           // 92vw 를 그대로 쓰면 안 된다 — vw 는 zoom 을 모르므로 배율만큼 화면을 넘친다
           // (--app-vh 주석과 같은 함정). zoom 을 나눈 --app-vw 로 계산한다.
-          "w-[min(380px,calc(var(--app-vw)*0.92))]",
-          open ? "translate-x-0" : "pointer-events-none translate-x-full"
+          "w-[min(400px,calc(var(--app-vw)-16px))]",
+          open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-[calc(100%+16px)] opacity-0"
         )}
       >
-        <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2 md:h-11 [@media(pointer:coarse)]:h-[52px]">
-          <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+        <div className="flex shrink-0 items-center gap-1.5 px-2.5 pt-2.5 pb-2">
+          {/* 탭은 nav 처럼 캡슐 하나 + 현재 탭만 한 겹 더 진한 유리(.glass-pill) */}
+          <div role="group" aria-label="패널 보기" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto rounded-full bg-muted/60 p-1 [scrollbar-width:none]">
             {tabs.map((t) => (
               <button
                 key={t.key}
@@ -179,14 +194,12 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
                 aria-pressed={view === t.key}
                 title={t.hint ?? t.label}
                 className={cn(
-                  "touch-target inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] whitespace-nowrap transition-colors md:h-7",
-                  view === t.key
-                    ? "border-primary/30 bg-primary/10 font-medium text-primary"
-                    : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-                  t.key === "ai" && view === t.key && "ai-rainbow-border"
+                  "touch-target inline-flex h-7 min-w-0 shrink-0 items-center justify-center gap-1 rounded-full px-3 text-[12px] whitespace-nowrap transition-[color,transform] duration-150 active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                  view === t.key ? "glass-pill bg-background font-semibold text-foreground" : "text-muted-foreground hover:text-foreground",
+                  t.key === "omnis" && view === t.key && "text-primary"
                 )}
               >
-                {t.label}
+                {t.key === "task" ? <span className="max-w-[7.5rem] truncate">{t.label}</span> : t.label}
               </button>
             ))}
           </div>
@@ -194,7 +207,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
             <Button
               variant="ghost"
               size="icon-sm"
-              className="touch-target"
+              className="touch-target rounded-full"
               aria-label="채팅 검색"
               aria-pressed={searchOpen}
               title="채팅 검색 (⌘⇧F)"
@@ -206,7 +219,7 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
           <Button
             variant="ghost"
             size="icon-sm"
-            className="touch-target"
+            className="touch-target rounded-full"
             aria-label="패널 닫기"
             title="패널 닫기 (C)"
             onClick={() => setOpen(false)}
@@ -214,25 +227,34 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
             <HugeiconsIcon icon={Cancel01Icon} size={15} aria-hidden />
           </Button>
         </div>
+        {/* 지금 보는 범위 — 이 업무 스레드 · 전체에서 업무 하나만 거른 중 */}
+        {view === "task" && task && (
+          <p className="shrink-0 truncate px-4 pb-1.5 text-[11.5px] text-muted-foreground">
+            <span className="mr-0.5 opacity-60">#</span>
+            {task.name} 스레드
+          </p>
+        )}
 
         {/* 열려 있을 때만 내용을 만든다 — 닫힌 패널이 3초마다 폴링할 이유가 없다 */}
         {open && (
           // pb-safe: 안드로이드 제스처바·홈 인디케이터에 입력창이 가리지 않게
-          <div className="pb-safe flex min-h-0 flex-1 flex-col">
-            {view === "task" && task ? (
+          <div className="pb-safe mx-1.5 mb-1.5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border bg-background">
+            {view === "omnis" ? (
+              <div className="flex min-h-0 flex-1 flex-col pt-2">
+                <PanelOmnis userId={currentUserId} startKey={omnisStartKey} onStarted={clearOmnisStart} />
+              </div>
+            ) : view === "task" && task ? (
               <TaskThread taskId={task.id} taskName={task.name} messages={task.messages} currentUserId={currentUserId} />
-            ) : view === "ai" ? (
-              <OmnisAsk variant="dock" />
             ) : (
               <>
                 {recentThreads.length > 0 && (
-                  <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b px-2 py-1.5 [scrollbar-width:none]">
+                  <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b px-2 py-1.5 [scrollbar-width:none]" aria-label="업무 스레드로 거르기">
                     <button
                       type="button"
                       onClick={() => setTaskFilter(null)}
                       className={cn(
-                        "inline-flex h-6 shrink-0 items-center rounded px-1.5 text-[11px]",
-                        !urlTaskId ? "bg-muted font-medium" : "text-muted-foreground"
+                        "inline-flex h-6 shrink-0 items-center rounded-full px-2.5 text-[11px]",
+                        !urlTaskId ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted"
                       )}
                     >
                       전체
@@ -244,8 +266,8 @@ export function RightPanel({ currentUserId, initialMessages, onTaskUpdated }: Pr
                         onClick={() => setTaskFilter(t.id)}
                         title={`#${t.name} 스레드만 보기`}
                         className={cn(
-                          "inline-flex h-6 shrink-0 items-center rounded px-1.5 text-[11px]",
-                          urlTaskId === t.id ? "bg-muted font-medium" : "text-muted-foreground"
+                          "inline-flex h-6 shrink-0 items-center rounded-full px-2.5 text-[11px]",
+                          urlTaskId === t.id ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted"
                         )}
                       >
                         <span className="mr-0.5 opacity-60">#</span>

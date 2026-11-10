@@ -163,6 +163,8 @@ export async function callGemini(
         candidateTokens: usage.candidatesTokenCount ?? 0,
         totalTokens: usage.totalTokenCount ?? 0,
         userId,
+        model,
+        cachedTokens: usage.cachedContentTokenCount ?? 0,
       })
     } catch (err) {
       console.error("[gemini-usage] 사용량 기록 실패", { endpoint, userId, err })
@@ -591,6 +593,7 @@ export async function embedTexts(
           candidateTokens: 0,
           totalTokens: usage.totalTokenCount ?? usage.promptTokenCount ?? 0,
           userId,
+          model: GEMINI_EMBED_MODEL,
         })
       } catch (err) {
         console.error("[gemini-usage] 임베딩 사용량 기록 실패", { endpoint, userId, err })
@@ -604,6 +607,7 @@ export async function embedTexts(
           candidateTokens: 0,
           totalTokens: estimated,
           userId,
+          model: GEMINI_EMBED_MODEL,
         })
       } catch (err) {
         console.error("[gemini-usage] 임베딩 추정 사용량 기록 실패", { endpoint, userId, err })
@@ -725,6 +729,8 @@ export interface ToolLoopOptions {
   temperature?: number
   endpoint?: string
   userId?: string
+  /** 이번 질문 앞의 대화(오래된 것 → 최근). user 로 시작해 model 로 끝나고 번갈아 와야 한다 — lib/omnis-history.ts 가 맞춘다 */
+  history?: { role: "user" | "model"; text: string }[]
 }
 
 type GeminiPart = Record<string, unknown> & {
@@ -754,7 +760,10 @@ export async function runGeminiToolLoop(
   if (opts.thinking?.budget !== undefined) generationConfig.thinkingConfig = { thinkingBudget: opts.thinking.budget }
   else if (opts.thinking?.level) generationConfig.thinkingConfig = { thinkingLevel: opts.thinking.level.toUpperCase() }
 
-  const contents: { role: "user" | "model"; parts: GeminiPart[] }[] = [{ role: "user", parts: [{ text: question }] }]
+  const contents: { role: "user" | "model"; parts: GeminiPart[] }[] = [
+    ...(opts.history ?? []).map((h) => ({ role: h.role, parts: [{ text: h.text }] as GeminiPart[] })),
+    { role: "user", parts: [{ text: question }] },
+  ]
   const usage: ToolLoopUsage = { promptTokens: 0, candidateTokens: 0, thinkingTokens: 0, cachedTokens: 0 }
   const trace: ToolLoopResult["trace"] = []
   let calls = 0
@@ -805,7 +814,7 @@ export async function runGeminiToolLoop(
       usage.thinkingTokens += u.thoughtsTokenCount ?? 0
       usage.cachedTokens += u.cachedContentTokenCount ?? 0
       try {
-        await recordGeminiUsage({ endpoint, promptTokens: u.promptTokenCount ?? 0, candidateTokens: u.candidatesTokenCount ?? 0, totalTokens: u.totalTokenCount ?? 0, userId: opts.userId })
+        await recordGeminiUsage({ endpoint, promptTokens: u.promptTokenCount ?? 0, candidateTokens: u.candidatesTokenCount ?? 0, totalTokens: u.totalTokenCount ?? 0, userId: opts.userId, model, cachedTokens: u.cachedContentTokenCount ?? 0 })
       } catch (err) {
         console.error("[gemini-usage] 사용량 기록 실패", { endpoint, err })
       }

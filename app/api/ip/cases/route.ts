@@ -22,9 +22,16 @@ export async function POST(req: NextRequest) {
   const auth = await authorize(req, { write: true })
   if (isDenied(auth)) return auth.response
 
-  const input = await body<{ kind: EntityKind; name: string; stage: string; note?: string }>(req)
-  if (!input?.kind || !input.name || !input.stage) {
-    return bad("kind·name·stage 가 필요합니다", auth.cors)
+  // status 가 새 이름이다. 옛 화면은 stage 에 옛 단계(아이디어…)를 보낸다 — create_case 가 상태로 옮긴다.
+  const input = await body<{
+    kind: EntityKind
+    name: string
+    status?: string
+    stage?: string
+    note?: string
+  }>(req)
+  if (!input?.kind || !input.name) {
+    return bad("kind·name 이 필요합니다", auth.cors)
   }
 
   try {
@@ -32,12 +39,12 @@ export async function POST(req: NextRequest) {
       auth.caller.userId,
       input.kind,
       input.name,
-      input.stage,
+      input.status ?? input.stage ?? "출원전",
       input.note ?? ""
     )
     return ok({ id }, auth.cors)
   } catch (err) {
-    // create_case 는 알 수 없는 단계·빈 이름을 raise 로 막는다. 그 문장을 그대로 보낸다.
+    // create_case 는 알 수 없는 상태·빈 이름을 raise 로 막는다. 그 문장을 그대로 보낸다.
     return bad((err as Error).message, auth.cors, 422)
   }
 }

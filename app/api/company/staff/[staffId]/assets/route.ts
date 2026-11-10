@@ -69,7 +69,7 @@ export async function POST(req: NextRequest, { params }: Props) {
     await putStaffAsset(key, buf, image.mimeType)
   } catch (err) {
     console.error("[staff-assets] NAS 저장 실패", { staffId, err })
-    return NextResponse.json({ error: "NAS 에 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요" }, { status: 502 })
+    return NextResponse.json({ error: "시놀로지에 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요" }, { status: 502 })
   }
 
   const created = await prisma.$transaction(async (tx) => {

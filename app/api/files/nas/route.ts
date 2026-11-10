@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { demoStorageBlocked } from "@/lib/demo"
-import { normalizeNasPath, statNasFile, inlineContentType } from "@/lib/nas"
+import { normalizeNasPath, statNasFile, mimeTypeFromName } from "@/lib/nas"
 import { nasLinkPath } from "@/lib/file-source"
 
 export const runtime = "nodejs"
@@ -31,9 +31,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "HADD Science 공유폴더 안의 경로만 연결할 수 있습니다" }, { status: 400 })
   }
 
+  // scope=private — 옴니스 1:1 · 사람끼리 방에 붙일 연결(POST /api/files 와 같은 뜻)
+  const isPrivate = body?.scope === "private"
+
   const entry = await statNasFile(path)
   if (!entry) {
-    return NextResponse.json({ error: `NAS 에서 파일을 찾지 못했습니다 — ${path}` }, { status: 404 })
+    return NextResponse.json({ error: `시놀로지에서 파일을 찾지 못했습니다 — ${path}` }, { status: 404 })
   }
 
   const record = await prisma.file.create({
@@ -41,8 +44,9 @@ export async function POST(req: NextRequest) {
       name: entry.name,
       path: nasLinkPath(path),
       size: Math.min(entry.size ?? 0, INT_MAX),
-      // /api/nas 가 그 자리에서 여는 형식이면 그 타입으로 — 말풍선이 이미지 미리보기를 그린다
-      mimeType: inlineContentType(entry.name)?.split(";")[0] ?? "application/octet-stream",
+      // 말풍선이 이 값으로 이미지 미리보기를 그린다
+      mimeType: mimeTypeFromName(entry.name)?.split(";")[0] ?? "application/octet-stream",
+      privateToUserId: isPrivate ? session.user.id : null,
     },
   })
 

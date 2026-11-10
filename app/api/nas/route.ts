@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Readable } from "node:stream"
 import { auth } from "@/lib/auth"
-import { listDirectory, readFile, normalizeNasPath, inlineContentType, statNasFile } from "@/lib/nas"
+import { listDirectory, readFile, normalizeNasPath, statNasFile } from "@/lib/nas"
+import { fileResponseHeaders } from "@/lib/file-serving"
 
 export const runtime = "nodejs"
 
@@ -47,14 +48,10 @@ export async function GET(req: NextRequest) {
   if (!file) return NextResponse.json({ error: "찾을 수 없습니다" }, { status: 404 })
 
   const name = (path.split("/").pop() ?? "file").normalize("NFC")
-  const inline = inlineContentType(name)
 
   return new NextResponse(Readable.toWeb(file.body) as ReadableStream, {
     headers: {
-      "Content-Type": inline ?? "application/octet-stream",
-      // 브라우저가 열 수 있는 형식이면 그 자리에서 열고, 아니면 저장으로 넘긴다.
-      "Content-Disposition":
-        `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name)}`,
+      ...fileResponseHeaders({ name }),
       "Cache-Control": "private, max-age=300",
     },
   })

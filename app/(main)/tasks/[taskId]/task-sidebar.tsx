@@ -1,5 +1,6 @@
 "use client"
 
+import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -25,6 +26,7 @@ import {
 } from "@/components/chat/message-parts"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
+import { writeSnapshot } from "@/lib/room-snapshot"
 
 interface Message {
   id: string
@@ -47,6 +49,11 @@ interface TaskSidebarProps {
   messages: Message[]
   /** 내 글에만 수정 · 삭제를 보여 준다 */
   currentUserId?: string
+  /**
+   * 메신저 업무방에서 그릴 때의 방 키(task:) — loading 입력창에 쓴 글을 이어받고(lib/chat-entry.ts),
+   * 다음에 열 때 바로 그리게 최근 글을 기기에 저장한다(lib/chat-cache.ts). 업무 상세 · 오른쪽 패널은 비운다
+   */
+  roomKey?: string
 }
 
 function formatTime(iso: string): string {
@@ -100,7 +107,7 @@ function useThreadRefs(): ThreadRefs {
   return refs
 }
 
-export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps) {
+export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSidebarProps) {
   const refs = useThreadRefs()
   const slug = refs.tasks.find((t) => t.id === taskId)?.slug
   const systemMessages = messages.filter(
@@ -114,6 +121,27 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
   const threadMessages = messages
   const rows = layoutMessages(threadMessages.map((m) => ({ ...m, isEvent: eventKindOf(m) !== null })))
   const router = useRouter()
+
+  // 업무방은 글 목록을 서버가 다시 그려 준다(보낸 뒤 router.refresh) — 새 글이 생겼을 때만 왼쪽 목록을 맞춘다
+  const nudgeRoomList = useRoomListNudge()
+  const [seenIds] = useState(() => new Set(messages.map((m) => m.id)))
+  useEffect(() => {
+    const unseen = messages.filter((m) => !seenIds.has(m.id))
+    if (unseen.length === 0) return
+    for (const m of unseen) seenIds.add(m.id)
+    nudgeRoomList()
+  }, [messages, seenIds, nudgeRoomList])
+
+  // 메신저 업무방 — 사람 글만 최근 30개를 기기에 저장한다(채팅 패널과 같은 범위). 사건 줄은 넣지 않는다
+  useEffect(() => {
+    if (!roomKey || !currentUserId) return
+    const people = messages.filter((m) => !m.deletedAt && eventKindOf(m) === null)
+    if (people.length === 0) return
+    writeSnapshot(currentUserId, roomKey, {
+      checkedAt: new Date().toISOString(),
+      messages: people.map((m) => ({ id: m.id, author: m.author, mine: m.author.id === currentUserId, content: m.content, createdAt: m.createdAt })),
+    })
+  }, [roomKey, currentUserId, messages])
 
   // AI 재구성은 응답 뒤에 돈다. 끝날 때까지 「갱신 중」 한 줄을 두고 2초마다 묻는다 — 입력창은 막지 않는다
   const [rebuildWait, setRebuildWait] = useState<string | null>(null)
@@ -143,8 +171,19 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
 
   // 보내기 누른 글을 서버 응답(AI 재구성까지 8~13초) 전에 바로 보여 준다.
   // 목록 길이를 같이 적어 두고, 새 메시지가 붙어 길이가 바뀌면 저절로 사라진다.
-  const [pending, setPending] = useState<{ content: string; count: number } | null>(null)
-  const showPending = pending && pending.count === threadMessages.length ? pending : null
+  // 보내는 중인 글들 — 쓴 순서대로. count 는 앞의 글까지 다 들어왔을 때의 글 수이고, 그 글이 들어오면 수가 넘어 사라진다
+  const [pending, setPending] = useState<{ key: number; content: string; count: number }[]>([])
+  const showPending = pending.filter((p) => threadMessages.length <= p.count)
+  const trackPending = (key: number, content: string | null) =>
+    setPending((prev) => {
+      if (content === null) {
+        const at = prev.findIndex((p) => p.key === key)
+        if (at < 0) return prev
+        return prev.filter((p) => p.key !== key).map((p, i) => (i >= at ? { ...p, count: p.count - 1 } : p))
+      }
+      const alive = prev.filter((p) => threadMessages.length <= p.count)
+      return [...alive, { key, content, count: threadMessages.length + alive.length }]
+    })
   // 이 시각 뒤에 생긴 메시지만 떠오르게 한다
   const [mountedAt] = useState(() => Date.now())
 
@@ -171,13 +210,13 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
   useEffect(() => {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [threadMessages.length, showPending, rebuildWait])
+  }, [threadMessages.length, showPending.length, rebuildWait])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Tabs defaultValue="thread" className="flex h-full flex-col">
         {/* #9: "결과" 탭 제거 — task-detail에 동일 체크리스트 존재 (중복 제거) */}
-        <TabsList className="grid h-10 w-full shrink-0 grid-cols-2 rounded-none border-b bg-transparent p-0">
+        <TabsList className="grid h-10 w-full shrink-0 grid-cols-2 rounded-none border-b bg-transparent p-0 in-data-[messenger]:h-12 in-data-[messenger]:[&_button]:text-[15.5px]">
           <TabsTrigger
             value="thread"
             className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
@@ -193,10 +232,10 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
         </TabsList>
 
         <TabsContent value="thread" className="mt-0 flex min-h-0 flex-1 flex-col p-0">
-          <div ref={listRef} className="flex-1 overflow-auto p-3">
+          <div ref={listRef} data-keep-bottom className="flex-1 overflow-auto p-3 in-data-[messenger]:py-4">
             <div role="log" aria-label="업무 스레드" className="flex flex-col">
               {threadMessages.length === 0 && (
-                <div className="rounded-md border border-dashed p-4 text-center text-[11px] text-muted-foreground">
+                <div className="rounded-md border border-dashed p-4 text-center text-[11px] text-muted-foreground in-data-[messenger]:text-[14px]">
                   스레드 메시지 없음 · 아래 입력창에 답장하세요. 파일은 붙여넣거나 끌어다 놓으면 됩니다.
                 </div>
               )}
@@ -225,35 +264,35 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                 return (
                   <div
                     key={row.key}
-                    className={`group/msg relative -mx-3 flex gap-2.5 px-3 hover:bg-muted/40 ${row.groupStart ? "mt-2.5 pt-1" : ""} ${row.groupEnd ? "pb-1" : ""} ${
+                    className={`group/msg relative -mx-3 flex gap-2.5 px-3 in-data-[messenger]:gap-3 hover:bg-muted/40 ${row.groupStart ? "mt-2.5 pt-1 in-data-[messenger]:mt-4" : ""} ${row.groupEnd ? "pb-1" : ""} ${
                       new Date(m.createdAt).getTime() > mountedAt ? MESSAGE_ENTER : ""
                     }`}
                   >
                     {row.groupStart ? (
-                      <AuthorAvatar name={m.author.name} className="mt-0.5" />
+                      <AuthorAvatar name={m.author.name} lgSize={38} className="mt-0.5" />
                     ) : (
                       // 묶음 안 줄은 아바타 자리에 hover 로 시간만 — 폭은 아바타와 같게 두고 글자는 띄워 본문 줄이 어긋나지 않게
-                      <span className="relative w-[28px] shrink-0">
+                      <span className="relative w-[28px] shrink-0 in-data-[messenger]:w-[38px]">
                         <MessageTime
                           iso={m.createdAt}
                           compact
-                          className="absolute right-0 top-[3px] text-[10px] opacity-0 group-hover/msg:opacity-100"
+                          className="absolute right-0 top-[3px] text-[10px] in-data-[messenger]:top-[4px] in-data-[messenger]:text-[12px] opacity-0 group-hover/msg:opacity-100"
                         />
                       </span>
                     )}
                     <div className="min-w-0 flex-1">
                       {row.groupStart && (
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-[13px] font-semibold">{m.author.name}</span>
+                        <div className="flex items-baseline gap-1.5 in-data-[messenger]:gap-2">
+                          <span className="text-[13px] font-semibold in-data-[messenger]:text-[15.5px]">{m.author.name}</span>
                           <MessageTime iso={m.createdAt} />
                           {m.editedAt && !m.deletedAt && (
-                            <span className="text-[10px] text-muted-foreground">수정됨</span>
+                            <span className="text-[10px] text-muted-foreground in-data-[messenger]:text-[12px]">수정됨</span>
                           )}
                         </div>
                       )}
                       {m.replyTo && (
                         <div
-                          className="mb-0.5 max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground"
+                          className="mb-0.5 max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground in-data-[messenger]:px-3 in-data-[messenger]:py-1 in-data-[messenger]:text-[13.5px]"
                           title={m.replyTo.content}
                         >
                           <span className="font-medium">{m.replyTo.authorName}</span> · {m.replyTo.content}
@@ -280,13 +319,13 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                               }
                             }}
                             rows={Math.min(6, editDraft.split("\n").length + 1)}
-                            className="w-full resize-none rounded-md border p-1.5 text-[13px] outline-none ring-1 ring-primary/30"
+                            className="w-full resize-none rounded-md border p-1.5 text-[13px] outline-none ring-1 ring-primary/30 in-data-[messenger]:p-2.5 in-data-[messenger]:text-[16px]"
                           />
-                          <span className="text-[10.5px] text-muted-foreground">Enter 저장 · Esc 취소</span>
+                          <span className="text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]">Enter 저장 · Esc 취소</span>
                         </div>
                       ) : (
                         <div
-                          className={`whitespace-pre-wrap break-keep text-[13px] leading-[1.6] [overflow-wrap:anywhere] ${
+                          className={`whitespace-pre-wrap break-keep text-[13px] leading-[1.6] in-data-[messenger]:text-[17px] [overflow-wrap:anywhere] ${
                             m.deletedAt ? "italic text-muted-foreground" : ""
                           }`}
                         >
@@ -309,7 +348,7 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                           onClick={() =>
                             setReplyTarget({ id: m.id, authorName: m.author.name, content: m.content.slice(0, 80) })
                           }
-                          className="rounded p-1 text-muted-foreground hover:bg-muted"
+                          className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
                         >
                           <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
                         </button>
@@ -323,7 +362,7 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                                 setEditDraft(m.content)
                                 setEditingId(m.id)
                               }}
-                              className="rounded p-1 text-muted-foreground hover:bg-muted"
+                              className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
                             >
                               <HugeiconsIcon icon={PencilEdit01Icon} size={13} />
                             </button>
@@ -335,7 +374,7 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                                 if (!window.confirm("이 메시지를 지울까요? 자리는 남고 내용만 사라집니다.")) return
                                 void changeMessage(m.id, { method: "DELETE" })
                               }}
-                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                              className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted hover:text-destructive"
                             >
                               <HugeiconsIcon icon={Delete02Icon} size={13} />
                             </button>
@@ -346,25 +385,25 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                   </div>
                 )
               })}
-              {showPending && (
-                <div className={`-mx-3 mt-2.5 flex gap-2.5 px-3 pb-1 pt-1 ${MESSAGE_ENTER}`} aria-live="polite">
-                  <span className="w-[28px] shrink-0" />
+              {showPending.map((p) => (
+                <div key={p.key} className={`-mx-3 mt-2.5 flex gap-2.5 px-3 pb-1 pt-1 ${MESSAGE_ENTER}`} aria-live="polite">
+                  <span className="w-[28px] shrink-0 in-data-[messenger]:w-[38px]" />
                   <div className="min-w-0 flex-1">
-                    <div className="whitespace-pre-wrap break-keep text-[13px] leading-[1.6] text-foreground/60 [overflow-wrap:anywhere]">
-                      {tidyBody(showPending.content)}
+                    <div className="whitespace-pre-wrap break-keep text-[13px] leading-[1.6] text-foreground/60 in-data-[messenger]:text-[17px] [overflow-wrap:anywhere]">
+                      {tidyBody(p.content)}
                     </div>
-                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground in-data-[messenger]:text-[13px]">
                       <Spinner className="h-3 w-3" />
                       보내는 중…
                     </div>
                   </div>
                 </div>
-              )}
-              {rebuildWait && !showPending && (
+              ))}
+              {rebuildWait && showPending.length === 0 && (
                 <div
                   role="status"
                   aria-live="polite"
-                  className={`flex items-center gap-2 py-1.5 pl-9 text-[12px] text-muted-foreground ${MESSAGE_ENTER}`}
+                  className={`flex items-center gap-2 py-1.5 pl-9 text-[12px] text-muted-foreground in-data-[messenger]:pl-[50px] in-data-[messenger]:text-[14px] ${MESSAGE_ENTER}`}
                 >
                   <Spinner className="h-3.5 w-3.5 text-primary" />
                   <span className="break-keep">
@@ -382,17 +421,19 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
             tasks={refs.tasks}
             users={refs.users}
             files={refs.files}
-            onPending={(content) => setPending(content ? { content, count: threadMessages.length } : null)}
+            onPending={trackPending}
             onQueued={setRebuildWait}
             replyTo={replyTarget}
             onClearReply={() => setReplyTarget(null)}
+            onRestoreReply={(reply) => setReplyTarget((cur) => cur ?? reply)}
+            handoffKey={roomKey}
           />
         </TabsContent>
 
         <TabsContent value="history" className="mt-0 flex-1 overflow-auto p-3">
           <div className="flex flex-col gap-2.5">
             {systemMessages.length === 0 && (
-              <div className="rounded-md border border-dashed p-4 text-center text-[11px] text-muted-foreground">
+              <div className="rounded-md border border-dashed p-4 text-center text-[11px] text-muted-foreground in-data-[messenger]:text-[14px]">
                 재구성 이력 없음
               </div>
             )}
@@ -408,7 +449,7 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-1.5">
-                    <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+                    <Badge variant="secondary" className="h-4 px-1.5 text-[9px] in-data-[messenger]:h-6 in-data-[messenger]:text-[12px]">
                       {m.kind === "TASK_REBUILT"
                         ? "재구성"
                         : m.kind === "TASK_DONE"
@@ -417,11 +458,11 @@ export function TaskThread({ taskId, messages, currentUserId }: TaskSidebarProps
                             ? "확인 대기"
                             : "생성"}
                     </Badge>
-                    <span className="font-mono text-[10px] text-muted-foreground">
+                    <span className="font-mono text-[10px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
                       {formatTime(m.createdAt)}
                     </span>
                   </div>
-                  <div className="mt-0.5 text-[11.5px] leading-[1.5]">{displayContent(m)}</div>
+                  <div className="mt-0.5 text-[11.5px] leading-[1.5] in-data-[messenger]:text-[15px]">{displayContent(m)}</div>
                 </div>
               </div>
             ))}

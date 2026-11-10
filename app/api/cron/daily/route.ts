@@ -5,6 +5,9 @@ import { NextResponse } from "next/server"
 import { flushVisits } from "@/lib/website-visits"
 import { proposeRecordsFromChat } from "@/lib/record-proposals"
 import { runDailyKpis } from "@/lib/kpi"
+import { syncWorksCalendars } from "@/lib/caldav/sync"
+import { purgeUiEvents } from "@/lib/ui-metrics/server"
+import { largeUploadEnabled, runTransferUpkeep } from "@/lib/large-upload/server"
 
 /**
  * 하루 한 번 도는 일을 모두 여기서 차례로 한다 (`vercel.json` 의 crons 는 이것 하나).
@@ -70,6 +73,36 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("[cron/daily] KPI 실패", e)
     out.kpi = { ok: false }
+  }
+
+  try {
+    // 웍스 캘린더 — 아무도 캘린더를 열지 않은 날에도 하루 한 번은 당겨 새 일정 알림이 나가게 한다(2026-10-29).
+    // 평소엔 열람 시 갱신(60초)이 주력이다. 바뀐 캘린더가 없으면 CalDAV 요청 1건으로 끝난다
+    const r = await syncWorksCalendars()
+    out.calendar = r.configured && !r.skipped
+      ? { ok: r.calendars.every((c) => c.status !== "error"), requests: r.requests, synced: r.calendars.filter((c) => c.status === "synced").length }
+      : { ok: true, skipped: r.configured ? "recent" : "unconfigured" }
+  } catch (e) {
+    console.error("[cron/daily] 캘린더 동기화 실패", e)
+    out.calendar = { ok: false }
+  }
+
+  try {
+    // 90일 지난 사용 기록 — 지울 것이 없으면 질의 한 번이다
+    out.uiEvents = { ok: true, purged: await purgeUiEvents() }
+  } catch (e) {
+    console.error("[cron/daily] 사용 기록 정리 실패", e)
+    out.uiEvents = { ok: false }
+  }
+
+  if (largeUploadEnabled()) {
+    try {
+      // 큰 첨부 — 멈춘 복사를 다시 시작하고, 행 없는 임시본을 지운다
+      out.transfers = { ok: true, ...(await runTransferUpkeep()) }
+    } catch (e) {
+      console.error("[cron/daily] 큰 첨부 점검 실패", e)
+      out.transfers = { ok: false }
+    }
   }
 
   const ok = Object.values(out).every((v) => (v as { ok: boolean }).ok)

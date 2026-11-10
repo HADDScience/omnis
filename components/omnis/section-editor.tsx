@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { toast } from "sonner"
+import { startLargeUpload } from "@/lib/large-upload/client"
+import { isLargeUpload } from "@/lib/large-upload/rules"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   ContextMenu,
@@ -700,6 +703,14 @@ function FilesEditor({
       try {
         const newIds: string[] = []
         for (const file of fileList) {
+          if (isLargeUpload(file.size)) {
+            try {
+              newIds.push((await startLargeUpload(file)).id)
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : "파일을 올리지 못했습니다")
+            }
+            continue
+          }
           const formData = new FormData()
           formData.append("file", file)
           const res = await fetch(apiUrl("/api/files"), { method: "POST", body: formData })

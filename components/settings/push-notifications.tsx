@@ -155,9 +155,34 @@ export function PushNotifications() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
-          Omnis 를 닫아 두어도 업무 지시와 완료 확인이 이 기기의 알림으로 옵니다.
+          Omnis 를 닫아 두어도 채팅 · 업무 · 일정 소식이 이 기기의 알림으로 옵니다.
           기기마다 따로 켜야 합니다 — 휴대폰에서 켜도 노트북은 켜지지 않습니다.
         </p>
+
+        {/* 이 기기의 구독 상태 — 한 줄로 먼저 보인다. 아래 단계는 그 상태를 만드는 길이다 */}
+        <div
+          role="status"
+          data-push-device={subscribed ? "subscribed" : "none"}
+          className={
+            subscribed
+              ? "flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm"
+              : "flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm"
+          }
+        >
+          <span className={subscribed ? "size-2 shrink-0 rounded-full bg-primary" : "size-2 shrink-0 rounded-full bg-muted-foreground/50"} aria-hidden />
+          <span>
+            {subscribed
+              ? `이 기기는 알림을 받고 있습니다 · 받는 기기 ${server.deviceCount}대`
+              : `이 기기는 알림을 받지 않습니다${server.deviceCount > 0 ? ` · 다른 기기 ${server.deviceCount}대는 받는 중` : ""}`}
+          </span>
+        </div>
+
+        {iosNeedsInstall && (
+          <p role="note" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+            아이폰 · 아이패드는 <b>홈 화면에 추가한 Omnis 앱</b>에서만 알림을 받을 수 있습니다. 사파리 탭에서는 켤 수 없어요 —
+            아래 1단계로 홈 화면에 추가한 뒤 그 아이콘으로 열어 주세요.
+          </p>
+        )}
 
         {!server.configured && (
           <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
@@ -200,7 +225,7 @@ export function PushNotifications() {
 
           <Step
             index={2}
-            title="알림 켜기"
+            title="이 기기에서 알림 받기"
             done={subscribed}
             description={
               !supported
@@ -239,7 +264,7 @@ export function PushNotifications() {
                 disabled={!canSubscribe || busy !== null}
                 onClick={turnOn}
               >
-                알림 켜기
+                이 기기에서 알림 받기
               </Button>
             )}
           </Step>

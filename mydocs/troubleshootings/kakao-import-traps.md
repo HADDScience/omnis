@@ -2,7 +2,7 @@
 kind: reference
 status: active
 canonical: import-tools/README.md
-last_verified: 2026-09-07
+last_verified: 2026-10-06
 ---
 
 # 카톡 이식 파이프라인에서 실제로 밟은 함정
@@ -55,3 +55,16 @@ Prisma 는 UTC 로 저장하므로 원본(KST)에서 직접 계산하거나 `at 
 
 품질 시나리오에 실제 거래처·과제 이름이 들어간다. `import-tools/eval-*.json` 을 `.gitignore` 에 넣고
 `KAKAO_DATA_DIR/eval/` 에 둔다. 분류 프롬프트의 프로젝트 어휘도 파일에 박지 않고 `final.json` 에서 채운다.
+
+## 9. `--target prod` 인데 첨부는 개발 폴더로 올라간다
+
+2026-10-06, 카톡 첨부 1,348개를 운영에 올렸는데 화면에서 열면 500. DB(Neon)는 운영으로 바꿔 달았지만
+NAS 첨부 경로는 Vercel 에서 민감 변수라 `.env.production.local` 로 내려오지 않는다. 빈자리는 Prisma 가 미리 읽어 둔
+로컬 `.env` 의 `…/옴니스 첨부파일/_dev/files` 가 채웠다. 운영 서버는 `…/옴니스 첨부파일/files` 에서 찾는다.
+**같은 일이 세 번째다** — 9/7 홈페이지 사진, 9/14 서명, 이번.
+
+업로드 직후 md5 검증도 통과했다. 검증 스크립트도 같은 env 로 돌아 같은 `_dev` 를 읽었기 때문이다.
+검증은 **운영 서버가 읽는 경로**로 해야 한다.
+
+- 고침: `prod-env.ts` 의 `pointAtProd` 가 첨부 경로를 운영 경로로 못박고, `_dev` 가 섞이면 멈춘다
+- 복구: 이식 첨부의 키만 골라 WebDAV `MOVE`(`Overwrite: F`)로 `_dev/files` → `files`. 1,348개 · 실패 0, 내려받지 않아 몇 분이면 끝난다

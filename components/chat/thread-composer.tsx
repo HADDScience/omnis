@@ -1,11 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { MessageInput } from "@/components/chat/message-input"
 import { apiUrl } from "@/lib/base-path"
 import { reportIncident } from "@/lib/report-client-error"
+import { noteAttachAttempt } from "@/lib/ui-metrics/client"
+import { startLargeUpload } from "@/lib/large-upload/client"
+import { isLargeUpload } from "@/lib/large-upload/rules"
+import { createSerialQueue } from "@/lib/serial-queue"
 
 /** 자동완성 후보 — 스레드 목록이 한 번 불러와 목록(멘션 링크)과 입력창이 같이 쓴다 */
 export interface ThreadRefs {
@@ -21,13 +25,17 @@ interface ThreadComposerProps extends Partial<ThreadRefs> {
   roomId?: string
   /** 메시지 작성 후 호출. 없으면 router.refresh()만 호출 */
   onSent?: () => void
-  /** 보내기 누른 즉시 글을 알린다(목록에 「보내는 중」 줄). 실패하면 null */
-  onPending?: (content: string | null) => void
+  /** 보내기 누른 즉시 글을 알린다(목록에 「보내는 중」 줄). 글마다 key 가 다르고, 실패하면 그 key 에 null */
+  onPending?: (key: number, content: string | null) => void
   /** 서버가 AI 재구성을 응답 뒤로 미뤘다 — 이 메시지의 재구성이 끝날 때까지 목록에 「갱신 중」 */
   onQueued?: (messageId: string) => void
   /** 답장 대상 — 목록에서 고른 글. 보내면 비운다 */
   replyTo?: { id: string; authorName: string; content: string } | null
   onClearReply?: () => void
+  /** 보내지 못했다 — 답장 대상을 되돌린다 */
+  onRestoreReply?: (reply: { id: string; authorName: string; content: string }) => void
+  /** 메신저 업무방 키(task:) — loading 입력창에 쓴 글을 이어받는다(lib/chat-entry.ts) */
+  handoffKey?: string
 }
 
 class SessionExpired extends Error {}
@@ -49,19 +57,57 @@ export function ThreadComposer({
   onQueued,
   replyTo,
   onClearReply,
+  onRestoreReply,
   tasks = [],
   users = [],
   files = [],
+  handoffKey,
 }: ThreadComposerProps) {
   const router = useRouter()
-  const [sending, setSending] = useState(false)
+  const [sending, setSending] = useState(0)
+  /** 사진을 올리는 동안 다음 글을 보내도 쓴 순서대로 서버에 닿는다 */
+  const queue = useRef(createSerialQueue())
+  const pendingSeq = useRef(0)
 
-  async function send(content: string, attached?: File[], nasPaths?: string[]) {
-    setSending(true)
-    onPending?.(content)
+  function send(content: string, attached?: File[], nasPaths?: string[]): Promise<void> {
+    // 글과 답장 대상은 누른 순간의 것이다 — 줄에서 기다리는 동안 다음 글이 답장을 물려받지 않는다
+    const key = ++pendingSeq.current
+    const reply = replyTo
+    setSending((n) => n + 1)
+    onPending?.(key, content)
+    onClearReply?.()
+    // 큰 파일은 줄 밖에서 올린다 — 올리는 동안 다음 글이 먼저 나갈 수 있다
+    const large = (attached ?? []).filter((f) => isLargeUpload(f.size))
+    if (large.length === 0) return queue.current.run(() => deliver(key, content, reply, attached, nasPaths)).finally(() => setSending((n) => n - 1))
+    noteAttachAttempt()
+    const small = attached?.filter((f) => !isLargeUpload(f.size))
+    return Promise.all(large.map((f) => startLargeUpload(f)))
+      .catch((e: unknown) => {
+        giveUp(key, reply, e)
+        throw e
+      })
+      .then((files) => queue.current.run(() => deliver(key, content, reply, small, nasPaths, files.map((f) => f.id))))
+      .finally(() => setSending((n) => n - 1))
+  }
+
+  /** 보내지 못했다 — 보내는 중 표시를 걷고 답장 대상을 되돌린다. 쓴 글과 첨부는 입력창이 되돌린다 */
+  function giveUp(key: number, reply: ThreadComposerProps["replyTo"], e: unknown) {
+    onPending?.(key, null)
+    if (reply) onRestoreReply?.(reply)
+    if (e instanceof SessionExpired) {
+      toast.error("세션이 만료되었습니다. 다시 로그인해주세요.", {
+        action: { label: "로그인", onClick: () => { window.location.href = apiUrl("/login") } },
+      })
+    } else {
+      toast.error(e instanceof Error ? e.message : "메시지 전송 실패")
+    }
+  }
+
+  async function deliver(key: number, content: string, reply: ThreadComposerProps["replyTo"], attached?: File[], nasPaths?: string[], uploadedIds: string[] = []) {
     try {
       // NAS 에 먼저 올리고 받은 id 를 메시지에 붙인다 — 채팅 패널과 같은 순서
-      const fileIds: string[] = []
+      const fileIds = [...uploadedIds]
+      if (attached?.length) noteAttachAttempt()
       for (const f of attached ?? []) {
         const form = new FormData()
         form.append("file", f)
@@ -86,7 +132,7 @@ export function ThreadComposer({
         if (!link.ok) {
           const err = await link.json().catch(() => ({}))
           reportIncident({ kind: "upload_failed", message: err?.error ?? "NAS 파일 연결 실패", status: link.status, fileName: path })
-          throw new Error(err?.error ?? "NAS 파일을 연결하지 못했습니다")
+          throw new Error(err?.error ?? "시놀로지 파일을 연결하지 못했습니다")
         }
         fileIds.push((await link.json()).id)
       }
@@ -94,7 +140,7 @@ export function ThreadComposer({
       const res = await fetch(apiUrl("/api/chat/messages"), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ roomId, content, taskId, fileIds, replyToId: replyTo?.id }),
+        body: JSON.stringify({ roomId, content, taskId, fileIds, replyToId: reply?.id }),
       })
       if (res.status === 401) throw new SessionExpired()
       if (!res.ok) {
@@ -104,21 +150,11 @@ export function ThreadComposer({
       }
       const saved = (await res.json().catch(() => null)) as { id?: string; _rebuild?: string | null } | null
       if (saved?.id && saved._rebuild === "queued") onQueued?.(saved.id)
-      onClearReply?.()
       onSent?.()
       router.refresh()
     } catch (e) {
-      onPending?.(null)
-      if (e instanceof SessionExpired) {
-        toast.error("세션이 만료되었습니다. 다시 로그인해주세요.", {
-          action: { label: "로그인", onClick: () => { window.location.href = apiUrl("/login") } },
-        })
-      } else {
-        toast.error(e instanceof Error ? e.message : "메시지 전송 실패")
-      }
+      giveUp(key, reply, e)
       throw e
-    } finally {
-      setSending(false)
     }
   }
 
@@ -126,18 +162,18 @@ export function ThreadComposer({
     <div
       className="relative shrink-0 border-t bg-background"
       data-thread-composer
-      data-sending={sending ? "true" : "false"}
+      data-sending={sending > 0 ? "true" : "false"}
     >
       {/* 무엇에 답하는 중인지 입력창 바로 위에 둔다 — 채팅 패널과 같은 모양 */}
       {replyTo && (
-        <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground in-data-[messenger]:px-4 in-data-[messenger]:py-2.5 in-data-[messenger]:text-[14px]">
           <span className="shrink-0 font-medium">{replyTo.authorName}에게 답장</span>
           <span className="min-w-0 flex-1 truncate">{replyTo.content}</span>
           <button
             type="button"
             aria-label="답장 취소"
             onClick={onClearReply}
-            className="shrink-0 rounded px-1 hover:bg-muted"
+            className="shrink-0 rounded px-1 in-data-[messenger]:px-2.5 in-data-[messenger]:py-1 hover:bg-muted"
           >
             ✕
           </button>
@@ -151,7 +187,8 @@ export function ThreadComposer({
         commands={false}
         ariaLabel="이 업무 스레드에 답장"
         // 슬러그를 넣으면 긴 업무명에서 두 줄로 넘친다 — 이 업무로 간다는 것은 탭 이름이 이미 말한다
-        placeholder="답장 · @ 사람 · # 업무 · 파일은 끌어다 놓기"
+        placeholder="답장 · @ 사람 · # 업무"
+        handoffKey={handoffKey}
       />
     </div>
   )

@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { UNASSIGNED_LABEL } from "@/lib/task-unassigned"
+import { useMemo, useState, type SyntheticEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -21,6 +22,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { apiUrl } from "@/lib/base-path"
+import { QuickAssignChip } from "@/components/tasks/list-quick-assign"
+import { StartWithOmnisIcon } from "@/components/tasks/start-with-omnis"
 
 type Status = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE"
 
@@ -37,6 +40,8 @@ export interface KanbanTask {
   name: string
   status: Status
   ownerName: string | null
+  /** 미완료인데 담당자가 없다 — lib/task-unassigned.ts */
+  unassigned?: boolean
   projectName: string | null
   /** 1-hop project.product (CLAUDE.md 규칙 21) */
   productName: string | null
@@ -88,7 +93,29 @@ function formatDeadline(deadline: string, isDone: boolean) {
   }
 }
 
-function TaskCard({ task }: { task: KanbanTask }) {
+type Person = { id: string; name: string }
+type AssignFn = (task: { id: string }, person: Person) => void
+
+/**
+ * 카드 안 단추(담당 지정 · Omnis 와 시작)와 그 단추가 띄운 창은 끌기를 시작하지 않는다.
+ * 창(팝오버 · 바텀시트 · 확인)은 포털로 그려져도 React 이벤트는 이 카드까지 올라온다 — 카드 DOM 밖에서 왔거나
+ * 단추 칸([data-no-drag]) 안에서 온 누름은 끌기 센서에 넘기지 않는다.
+ */
+function dragOnlyFromCard(listeners: ReturnType<typeof useDraggable>["listeners"]): Record<string, (e: SyntheticEvent) => void> | undefined {
+  if (!listeners) return listeners
+  const out: Record<string, (e: SyntheticEvent) => void> = {}
+  for (const [name, fn] of Object.entries(listeners)) {
+    out[name] = (e) => {
+      const target = e.target as Element | null
+      const card = e.currentTarget as Element
+      if (!target || !card.contains(target) || target.closest("[data-no-drag]")) return
+      ;(fn as (e: SyntheticEvent) => void)(e)
+    }
+  }
+  return out
+}
+
+function TaskCard({ task, members, onAssign }: { task: KanbanTask; members?: Person[]; onAssign?: AssignFn }) {
   // 끌리는 모양은 DragOverlay 가 그린다. 원본까지 transform 으로 옮기면 overflow-auto 컬럼 안에서
   // 스크롤 영역이 늘었다 줄며 자동 스크롤이 튀었다 — 원본은 제자리에 흐리게만 남긴다.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -102,7 +129,7 @@ function TaskCard({ task }: { task: KanbanTask }) {
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
+      {...dragOnlyFromCard(listeners)}
       {...attributes}
       className={[
         "relative cursor-grab select-none rounded-md border bg-card p-2.5 transition-shadow [-webkit-touch-callout:none]",
@@ -130,6 +157,15 @@ function TaskCard({ task }: { task: KanbanTask }) {
       </Link>
       <div className="mt-1 truncate text-[10.5px] text-muted-foreground">#{task.slug}</div>
       <div className="mt-2 flex items-center gap-1.5">
+        {task.unassigned && members && onAssign ? (
+          <span data-no-drag className="contents">
+            <QuickAssignChip taskId={task.id} taskName={task.name} members={members} onAssign={(p) => onAssign(task, p)} />
+          </span>
+        ) : task.unassigned ? (
+          <Badge variant="outline" className="h-5 shrink-0 border-destructive/40 px-1.5 text-[10px] text-destructive">
+            {UNASSIGNED_LABEL}
+          </Badge>
+        ) : null}
         {task.ownerName && (
           <Avatar className="h-5 w-5 shrink-0">
             <AvatarFallback className="text-[9px]">{task.ownerName.charAt(0)}</AvatarFallback>
@@ -153,6 +189,10 @@ function TaskCard({ task }: { task: KanbanTask }) {
             {deadlineInfo.text}
           </span>
         )}
+        {/* 폰은 44px 를 그대로 누르게 하되 카드가 길어지지 않게 안쪽 여백만큼 겹친다 */}
+        <span data-no-drag className={["-my-[10px] -mr-2 shrink-0 md:my-0 md:mr-0", deadlineInfo ? "" : "ml-auto"].join(" ")}>
+          <StartWithOmnisIcon taskId={task.id} taskName={task.name} />
+        </span>
       </div>
     </div>
   )
@@ -164,11 +204,15 @@ function KanbanColumn({
   color,
   tasks,
   active,
+  members,
+  onAssign,
 }: {
   status: Status
   label: string
   color: string
   tasks: KanbanTask[]
+  members?: Person[]
+  onAssign?: AssignFn
   /** 좁은 화면에서는 탭으로 고른 컬럼 하나만 보인다 */
   active: boolean
 }) {
@@ -191,7 +235,7 @@ function KanbanColumn({
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto">
         {tasks.map((t) => (
-          <TaskCard key={t.id} task={t} />
+          <TaskCard key={t.id} task={t} members={members} onAssign={onAssign} />
         ))}
         {tasks.length === 0 && (
           <div className="rounded-md border border-dashed p-3 text-center text-[10.5px] text-muted-foreground">
@@ -251,9 +295,12 @@ const pointerFirst: CollisionDetection = (args) => {
 
 interface TasksBoardProps {
   initialTasks: KanbanTask[]
+  /** 담당 미배정 카드의 「담당 지정」 후보 · 고른 뒤 할 일(낙관적 갱신은 부모가 한다). 없으면 「미배정」 표만 */
+  members?: Person[]
+  onAssign?: AssignFn
 }
 
-export function TasksBoard({ initialTasks }: TasksBoardProps) {
+export function TasksBoard({ initialTasks, members, onAssign }: TasksBoardProps) {
   const [tasks, setTasks] = useState(initialTasks)
   // 빠른 필터(?filter=)로 서버가 새 목록을 내려도 처음 받은 목록을 계속 그리고 있었다 — 바뀌면 갈아 끼운다
   const [prevInitial, setPrevInitial] = useState(initialTasks)
@@ -335,6 +382,8 @@ export function TasksBoard({ initialTasks }: TasksBoardProps) {
             color={c.color}
             tasks={byStatus.get(c.key) ?? []}
             active={activeStatus === c.key}
+            members={members}
+            onAssign={onAssign}
           />
         ))}
       </div>

@@ -14,8 +14,9 @@
 
 import { NextRequest, NextResponse } from "next/server"
 
+import { auth } from "@/lib/auth"
 import { corsHeaders, resolveApp, ssoEnabled, verifySession, type SsoApp } from "@/lib/sso"
-import { canWrite, getMembership, type IpMembership } from "@/lib/ip-data"
+import { canWrite, getIpAccess, type IpMembership } from "@/lib/ip-data"
 
 /** ip-platform 이 등록된 앱 id. 로컬 개발용도 함께 본다. */
 function ipApps(): SsoApp[] {
@@ -53,6 +54,21 @@ export async function authorize(
   const origin = req.headers.get("origin")
   const cors = corsHeaders(origin)
 
+  // Omnis 안의 화면(/ip)은 같은 오리진이라 표 대신 로그인 쿠키가 실린다.
+  // 같은 오리진인지는 브라우저가 붙이는 sec-fetch-site 로 본다 — 같은 오리진 GET 에는
+  // Origin 헤더가 빠지기 때문이다. 다른 사이트의 요청은 여기로 들어오지 못하고
+  // 아래 표 검사로 간다(쿠키는 SameSite=Lax 라 애초에 실리지도 않는다).
+  const authHeader = req.headers.get("authorization")
+  const sameOrigin =
+    req.headers.get("sec-fetch-site") === "same-origin" || (origin !== null && origin === req.nextUrl.origin)
+  if (!authHeader && sameOrigin) {
+    const session = await auth()
+    const userId = session?.user?.id
+    if (!userId) return { response: json({ error: "unauthorized" }, 401, {}) }
+
+    return admit(userId, opts, {})
+  }
+
   if (!ssoEnabled()) {
     return { response: json({ error: "sso_disabled" }, 503, cors) }
   }
@@ -69,17 +85,26 @@ export async function authorize(
   const claims = await verifySession(token, app)
   if (!claims) return { response: json({ error: "invalid_session" }, 401, cors) }
 
-  const membership = await getMembership(claims.userId)
-  if (!membership) {
-    // Omnis 계정은 있지만 지식재산권 구성원이 아니다. 로그인 문제가 아니므로 403.
-    return { response: json({ error: "not_a_member" }, 403, cors) }
-  }
+  return admit(claims.userId, opts, cors)
+}
+
+/**
+ * 로그인한 사람이 확인된 뒤의 공통 관문. 자격은 getIpAccess 가 정한다 — 문턱을
+ * 최대한 낮춰 두었으므로 비활성 계정만 걸린다(lib/ip-data.ts).
+ */
+async function admit(
+  userId: string,
+  opts: { write: boolean },
+  cors: Record<string, string>
+): Promise<Denied | Allowed> {
+  const membership = await getIpAccess(userId)
+  if (!membership) return { response: json({ error: "unauthorized" }, 401, cors) }
 
   if (opts.write && !canWrite(membership)) {
     return { response: json({ error: "read_only" }, 403, cors) }
   }
 
-  return { caller: { userId: claims.userId, membership }, cors }
+  return { caller: { userId, membership }, cors }
 }
 
 export function isDenied(result: Denied | Allowed): result is Denied {

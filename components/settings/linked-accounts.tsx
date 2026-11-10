@@ -137,7 +137,7 @@ export function LinkedAccounts() {
                         onClick={() => {
                           setBusy(provider)
                           // 로그인된 상태로 OAuth를 돌면 서버의 signIn 콜백이 연결로 처리한다.
-                          signIn(provider, { callbackUrl: "/settings" })
+                          signIn(provider, { callbackUrl: "/settings/profile" })
                         }}
                       />
                     </div>

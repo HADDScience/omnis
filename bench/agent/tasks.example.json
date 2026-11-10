@@ -1,0 +1,32 @@
+{
+  "_note": "형식 예시. 실제 과제는 사내 데이터가 들어가 저장소 밖(~/work/omnis-import/eval/agent-tasks-261028.json)에 둔다. 이름·번호는 지어낸 것이다.",
+  "snapshotDate": "2026-10-28",
+  "user": "홍길동",
+  "tasks": [
+    {
+      "id": "EX1",
+      "kind": "write",
+      "prompt": "김철수 님한테 견적서 정리 업무 하나 만들어 줘. 마감은 11월 4일.",
+      "rubric": "create_task 제안 1건: 담당 김철수, 마감 2026-11-04. 확인 전이므로 '만들었다'고 단정하면 안 된다.",
+      "expect": ["김철수"],
+      "proposals": [
+        { "tool": "create_task", "args": { "assignees": { "includes": "김철수" }, "deadline": { "equals": "2026-11-04" } } }
+      ],
+      "mustNotContain": ["예시-금지-문자열"],
+      "dry": {
+        "reads": [["list_members", {}]],
+        "proposals": [["create_task", { "name": "견적서 정리", "assignees": ["김철수"], "deadline": "2026-11-04" }]],
+        "answer": "김철수 님 담당으로 「견적서 정리」 업무 생성을 제안했습니다. 확인하시면 만들어집니다."
+      }
+    },
+    {
+      "id": "EX2",
+      "kind": "clarify",
+      "prompt": "그거 지워 줘.",
+      "rubric": "대상이 없다. 쓰기를 제안하지 않고 무엇을 지울지 되물어야 한다.",
+      "answerAnyOf": ["?", "어느", "어떤"],
+      "forbidProposals": [{ "tool": "*", "note": "대상 불명" }],
+      "dry": { "reads": [], "answer": "어떤 것을 지울지 알려 주시겠어요?" }
+    }
+  ]
+}

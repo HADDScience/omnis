@@ -1,5 +1,8 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { withWorkflow } from "workflow/next"
+
+import { brandRewrites, resolveBrand } from "./lib/brand-static.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -18,8 +21,36 @@ const nextConfig = {
    * next-auth/react 는 클라이언트에서 NEXTAUTH_URL 의 경로를 자기 basePath 로 삼는다.
    * NEXT_PUBLIC_ 이 아니라 번들에 안 실리므로 여기서 실어 준다 (비밀이 아니다 — 주소다).
    */
-  env: { NEXTAUTH_URL: process.env.NEXTAUTH_URL },
+  env: {
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+    // 화면이 그려진 빌드의 커밋 — 열어 둔 탭은 옛 빌드일 수 있어 서버 값이 아니라 이것을 기록한다(lib/ui-metrics)
+    NEXT_PUBLIC_BUILD_SHA: process.env.VERCEL_GIT_COMMIT_SHA ?? "",
+    // 큰 첨부 — 화면이 같은 값을 본다. 서버는 LARGE_UPLOAD_ENABLED 를 직접 본다(lib/large-upload/server.ts). 켜고 끄려면 재배포한다
+    NEXT_PUBLIC_LARGE_UPLOAD: process.env.LARGE_UPLOAD_ENABLED === "1" ? "1" : "",
+    // 사용 기록은 운영에서만. 데모 · 프리뷰 · 로컬은 끈다. e2e 는 이 값을 직접 준다
+    NEXT_PUBLIC_UI_METRICS:
+      process.env.NEXT_PUBLIC_UI_METRICS ??
+      (process.env.VERCEL_ENV === "production" && process.env.NEXT_PUBLIC_IS_DEMO !== "true" ? "1" : ""),
+  },
   devIndicators: false, // 좌측하단 Next.js 개발 툴박스 숨김
+  /*
+   * 클라이언트 라우터 캐시 — 한 번 연 화면을 이 시간 동안 브라우저에 두어, 탭을 오갈 때
+   * 서버가 DB 를 다시 읽는 동안 화면이 멈추지 않게 한다(블로킹 내비게이션). 기본값 dynamic 0 은
+   * 매번 서버로 갔다. 30초 안에 돌아오면 그때의 화면을 그대로 보인다 — 쓰기 뒤에는
+   * router.refresh() 가 이 캐시를 버린다. 채팅 · 방 목록은 기기 저장(lib/chat-cache.ts)이 따로 맡는다.
+   */
+  experimental: {
+    staleTimes: { dynamic: 30, static: 180 },
+  },
+  /*
+   * Workflow 경로(withWorkflow 가 만드는 /.well-known/workflow/*)의 함수에 Prisma 엔진을 싣는다.
+   * 이 경로는 단계 코드를 따로 묶어 Next 의 파일 추적이 generated/prisma 의 엔진을 따라가지 못했다 —
+   * 운영(2026-10-29)에서 옴니스 방 첫 단계가 「Query Engine for runtime "rhel-openssl-3.0.x"」 를 못 찾아
+   * 실행이 RUNNING 에 멈췄다. 로컬 dev · next start 는 디스크에서 엔진을 찾아 드러나지 않았다.
+   */
+  outputFileTracingIncludes: {
+    "/.well-known/workflow/**": ["./generated/prisma/**/*.node", "./generated/prisma/schema.prisma"],
+  },
   typescript: {
     ignoreBuildErrors: false,
   },
@@ -92,7 +123,7 @@ const nextConfig = {
             destination: "/api/ip-mcp/.well-known/oauth-protected-resource",
           },
         ]
-    return [
+    const afterFiles = [
       ...legacy,
       {
         source: "/.well-known/oauth-authorization-server/api/ip-mcp",
@@ -111,7 +142,16 @@ const nextConfig = {
         destination: "/api/ip-mcp/.well-known/oauth-protected-resource",
       },
     ]
+    /*
+     * 새 로고(NEXT_PUBLIC_BRAND=v2) — 주소가 고정된 정적 로고를 public/brand/v2/ 로 돌린다(lib/brand-static.mjs).
+     * public 파일보다 먼저 걸려야 해서 beforeFiles 다. v1 이면 빈 목록이라 지금과 같다.
+     */
+    return { beforeFiles: brandRewrites(resolveBrand(process.env.NEXT_PUBLIC_BRAND)), afterFiles, fallback: [] }
   },
 }
 
-export default nextConfig
+/*
+ * Workflow — "use workflow" · "use step" 지시어를 컴파일하고 /.well-known/workflow/* 경로를 붙인다(옴니스 에이전트, lib/agent/).
+ * 로컬은 Local World(.workflow-data/), Vercel 배포는 Vercel World 가 자동으로 붙는다.
+ */
+export default withWorkflow(nextConfig)

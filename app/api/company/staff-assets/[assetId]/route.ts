@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { writeActivity } from "@/lib/api"
 import { getStaffAsset } from "@/lib/staff-assets"
 import { demoStorageBlocked } from "@/lib/demo"
+import { fileResponseHeaders } from "@/lib/file-serving"
 
 interface Props {
   params: Promise<{ assetId: string }>
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest, { params }: Props) {
     object = await getStaffAsset(asset.objectKey)
   } catch (err) {
     console.error("[staff-assets] NAS 읽기 실패", { assetId, err })
-    return NextResponse.json({ error: "NAS 에서 이미지를 읽지 못했습니다" }, { status: 502 })
+    return NextResponse.json({ error: "시놀로지에서 이미지를 읽지 못했습니다" }, { status: 502 })
   }
 
   const label = KIND_LABEL[asset.kind]
@@ -65,8 +66,7 @@ export async function GET(req: NextRequest, { params }: Props) {
   const fileName = `${asset.staff.name}_${label}.${asset.mimeType === "image/jpeg" ? "jpg" : "png"}`
   return new NextResponse(Readable.toWeb(object.body) as ReadableStream, {
     headers: {
-      "Content-Type": asset.mimeType,
-      "Content-Disposition": `${purpose === "download" ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      ...fileResponseHeaders({ mimeType: asset.mimeType, name: fileName, attachment: purpose === "download" }),
       "Cache-Control": "no-store",
     },
   })

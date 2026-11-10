@@ -108,12 +108,12 @@ async function main() {
   check("거부: 폴더", (await statNasFile(DIR)) === null)
   check("거부: 없는 파일", (await statNasFile(`${DIR}/없는파일-${Date.now()}.pdf`)) === null)
   const t0 = Date.now()
-  const obj = await openFileObject({ id: "x", name: "족자_3.pdf", path: nasLinkPath(SMALL) })
+  const obj = await openFileObject({ id: "x", name: "족자_3.pdf", path: nasLinkPath(SMALL), size: small?.size ?? 0 })
   let bytes = 0
   for await (const c of obj.body) bytes += (c as Buffer).length
   check(`연결 파일을 끝까지 읽는다 — ${bytes}B · ${Date.now() - t0}ms`, bytes === small?.size)
   let threw = ""
-  await openFileObject({ id: "x", name: "a", path: nasLinkPath("/homes/admin/secret.txt") }).catch((e: Error) => { threw = e.message })
+  await openFileObject({ id: "x", name: "a", path: nasLinkPath("/homes/admin/secret.txt"), size: 0 }).catch((e: Error) => { threw = e.message })
   check("거부: DB 에 공유폴더 밖 경로가 들어 있어도 읽지 않는다", threw.includes("찾지 못했습니다"), threw)
 
   const alive = await fetch(`${BASE}/api/auth/csrf`).then((r) => r.ok).catch(() => false)

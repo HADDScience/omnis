@@ -7,6 +7,7 @@ import { CheckmarkCircle02Icon, Cancel01Icon, ArrowTurnBackwardIcon, SparklesIco
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import { BrandLoader } from "@/components/brand/brand-loader"
 import { apiUrl } from "@/lib/base-path"
 
 /**
@@ -123,7 +124,7 @@ export function ProposalList() {
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <Spinner />
+          <BrandLoader size={32} />
         </div>
       ) : proposals.length === 0 ? (
         <p className="rounded-xl border bg-card px-5 py-10 text-center text-[13px] text-muted-foreground">

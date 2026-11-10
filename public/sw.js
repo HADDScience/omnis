@@ -26,31 +26,77 @@ self.addEventListener("push", (event) => {
   const scope = self.registration.scope
   const url = payload.url ? new URL(payload.url.replace(/^\//, ""), scope).href : scope
 
-  event.waitUntil(
-    self.registration.showNotification(payload.title || "Omnis", {
+  // 받은 것은 띄우지 않을 때(그 방을 보는 중)도 받은 것이다 — 수신율에 넣는다. 알림을 기다리게 하지 않고 나란히 보낸다
+  const received = reportPushTiming("push_recv_s", payload)
+
+  event.waitUntil(Promise.all([received, show()]))
+
+  async function show() {
+    // 그 방을 지금 보고 있으면 띄우지 않는다 — 화면에 이미 글이 올라온다(채팅 글 · 옴니스 답 · 멘션).
+    // 「보고 있다」 = 포커스된 창의 주소가 그 방 주소다. 다른 탭 · 백그라운드 창은 보고 있지 않은 것이다.
+    if (payload.roomPath && (await isViewing(new URL(payload.roomPath.replace(/^\//, ""), scope).pathname))) return
+
+    await self.registration.showNotification(payload.title || "Omnis", {
       body: payload.body || "",
       icon: new URL("icon-192.png", scope).href,
-      // 같은 tag 는 서로를 덮어쓴다. 같은 업무 알림이 잠금화면에 쌓이지 않게 한다.
+      // 같은 tag 는 서로를 덮어쓴다. 같은 업무 · 같은 방 알림이 잠금화면에 쌓이지 않게 한다.
       tag: payload.tag,
-      data: { url },
+      // 채팅은 같은 방의 새 글이 앞 알림을 덮을 때도 다시 울린다. tag 가 없으면 브라우저가 거부한다
+      renotify: Boolean(payload.tag && payload.renotify),
+      data: { url, sentAt: payload.sentAt, sha: payload.sha },
     })
-  )
+  }
 })
+
+/**
+ * 시범 운영 측정 — 서버가 보낸 시각(payload.sentAt)에서 몇 초 뒤에 받았는지 · 눌렀는지만 보낸다.
+ * 서버가 측정을 켠 배포에서만 sentAt 이 실린다. 기기 시계가 서버와 어긋나면 값도 어긋난다 — 음수는 0 으로 둔다.
+ * 실패는 버린다. 알림을 띄우는 일이 이것 때문에 늦거나 막히면 안 된다.
+ */
+function reportPushTiming(name, meta) {
+  if (!meta || typeof meta.sentAt !== "number") return Promise.resolve()
+  const value = Math.min(Math.max(0, Math.round((Date.now() - meta.sentAt) / 1000)), 1_800_000)
+  const sha = typeof meta.sha === "string" && /^([0-9a-f]{7,40}|dev)$/.test(meta.sha) ? meta.sha : "dev"
+  return fetch(new URL("api/ui-metrics/events", self.registration.scope).href, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sha, events: [{ name, value, path: "/push" }] }),
+  }).then(
+    () => undefined,
+    () => undefined
+  )
+}
+
+const trimSlash = (path) => (path.length > 1 ? path.replace(/\/+$/, "") : path)
+
+async function isViewing(pathname) {
+  const target = trimSlash(pathname)
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true })
+  return windows.some(
+    (client) => client.focused && client.visibilityState === "visible" && trimSlash(new URL(client.url).pathname) === target
+  )
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()
-  const target = (event.notification.data && event.notification.data.url) || self.registration.scope
+  const data = event.notification.data || {}
+  const target = data.url || self.registration.scope
+  const opened = reportPushTiming("push_open_s", data)
 
   // 이미 열린 Omnis 창이 있으면 새 창을 띄우지 않고 그 창을 옮긴다 —
   // 알림을 누를 때마다 탭이 늘어나면 쓰던 화면을 잃는다.
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if (client.url.startsWith(self.registration.scope) && "focus" in client) {
-          return client.focus().then((focused) => focused.navigate(target))
+    Promise.all([
+      opened,
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+        for (const client of clients) {
+          if (client.url.startsWith(self.registration.scope) && "focus" in client) {
+            return client.focus().then((focused) => focused.navigate(target))
+          }
         }
-      }
-      return self.clients.openWindow(target)
-    })
+        return self.clients.openWindow(target)
+      }),
+    ])
   )
 })

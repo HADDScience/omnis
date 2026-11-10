@@ -16,8 +16,9 @@
 
 ## 프로젝트
 
-Omnis — HADD Science 의 채팅 기반 업무 관리 시스템. 채팅 한 줄로 업무를 지시하면
-AI 가 업무 카드로 구조화한다. Next.js 16 (App Router) · React 19 · Prisma · PostgreSQL(Neon) ·
+Omnis — HADD Science 의 채팅 기반 사내 지식 관리 에이전트. 채팅으로 오가는 회사의 정보
+(업무 · 기록 · 고객 · 지식재산권)를 AI 가 지식으로 정리해 두고, 누가 물으면 답한다.
+업무 카드는 지식이 쌓이는 통로 중 하나다. Next.js 16 (App Router) · React 19 · Prisma · PostgreSQL(Neon) ·
 NextAuth v5 · Gemini · Vercel.
 
 ## 자주 찾는 것

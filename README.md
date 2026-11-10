@@ -1,7 +1,7 @@
-# Omnis — 채팅 한 줄로 굴러가는 사내 업무 OS
+# Omnis — 채팅 기반 사내 지식 관리 에이전트
 
-> **카톡 보내듯 한 줄 적으면 AI가 업무로 만들어 등록한다.**
-> HADD Science의 사내 운영 프로토타입. Notion + Slack + 지식베이스를 한 화면에 통합한 채팅 우선 ERP.
+> **채팅으로 오가는 회사의 정보를 AI가 지식으로 정리해 두고, 누구든 물으면 답한다.**
+> HADD Science의 사내 운영 프로토타입. 업무·기록·고객·지식재산권이 채팅 한 줄에서 쌓이고, 한 사람의 정보가 모두의 정보가 된다.
 
 [![Next.js](https://img.shields.io/badge/Next.js-16.1-black?logo=next.js)](https://nextjs.org)
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react)](https://react.dev)

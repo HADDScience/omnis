@@ -1,42 +1,41 @@
 import "dotenv/config"
 import { PrismaClient } from "../generated/prisma/client"
 import { hashSync } from "bcryptjs"
+import { randomBytes } from "node:crypto"
 
 const prisma = new PrismaClient()
+const DEV_ADMIN_NAME = "개발관리자"
 
 async function main() {
-  // ─── 사용자 시드 (HADD Science 실제 구성원) ──────────────
-  // 임시 비밀번호 = haddscience + 전화번호 뒷 4자리 + "!"
-  // 최초 로그인 후 각자 계정 설정에서 변경한다.
-  // role: 업무 지시 권한 기준(직급 표시와 별개). 사원/인턴만 MEMBER.
+  // ─── 사용자 시드 (개발용 가짜 계정) ──────────────
+  // 실제 구성원 계정은 시드로 만들지 않는다. 공개 저장소라 이름·비밀번호 규칙이 그대로 드러난다.
+  // 비밀번호는 SEED_PASSWORD, 없으면 무작위로 만들어 한 번 출력한다. 로그인하면 바꾸라는 안내가 뜬다.
+  // role: 업무 지시 권한 기준(직급 표시와 별개).
   const members = [
-    { name: "허채정", email: "neuroheo@haddscience.com",   position: "대표",   department: null,             phoneLast4: "0862", role: "ADMIN" as const },
-    { name: "김아리", email: "arikim@haddscience.com",     position: "팀장",   department: "연구개발팀",     phoneLast4: "0310", role: "ADMIN" as const },
-    { name: "윤훈",   email: "hyun@haddscience.com",       position: "상무",   department: "영업마케팅팀",   phoneLast4: "0838", role: "ADMIN" as const },
-    { name: "노혜린", email: "hyerinnoh@haddscience.com",  position: "과장",   department: "제품개발팀",     phoneLast4: "4305", role: "ADMIN" as const },
-    { name: "김경훈", email: "khkim@haddscience.com",      position: "COO",    department: null,             phoneLast4: "8418", role: "ADMIN" as const },
-    { name: "허찬",   email: "chanheo@haddscience.com",    position: "팀장",   department: "연구지원/재무팀", phoneLast4: "0855", role: "ADMIN" as const },
-    { name: "정우창", email: "jwoochang@haddscience.com",  position: "사원",   department: "AI개발팀",       phoneLast4: "4671", role: "MEMBER" as const },
+    { name: DEV_ADMIN_NAME, email: "dev-admin@example.com", position: "팀장", department: "개발팀", role: "ADMIN" as const },
+    { name: "개발사원", email: "dev-member@example.com", position: "사원", department: "개발팀", role: "MEMBER" as const },
   ]
+  const seedPassword = process.env.SEED_PASSWORD || randomBytes(12).toString("base64url")
 
+  let created = 0
   for (const m of members) {
-    const passwordHash = hashSync(`haddscience${m.phoneLast4}!`, 10)
-    await prisma.user.upsert({
+    const exists = await prisma.user.findUnique({ where: { name: m.name }, select: { id: true } })
+    // 재시드 시 프로필은 보강하되 비밀번호는 덮어쓰지 않는다(사용자가 바꿨을 수 있음).
+    const user = await prisma.user.upsert({
       where: { name: m.name },
-      // 재시드 시 프로필은 보강하되 비밀번호는 덮어쓰지 않는다(사용자가 바꿨을 수 있음).
       update: { email: m.email, position: m.position, department: m.department, role: m.role },
-      create: {
-        name: m.name,
-        email: m.email,
-        position: m.position,
-        department: m.department,
-        role: m.role,
-        passwordHash,
-      },
+      create: { ...m, passwordHash: hashSync(seedPassword, 10) },
     })
+    if (!exists) {
+      created++
+      await prisma.activityLog.create({
+        data: { userId: user.id, entity: "auth.password", entityId: user.id, action: "reset", title: "비밀번호 초기화" },
+      })
+    }
   }
 
-  console.log(`✓ 사용자 생성 완료 (${members.length}명: HADD Science 구성원)`)
+  console.log(`✓ 개발용 계정 ${members.length}개 (${created}개 새로 만듦)`)
+  if (created > 0 && !process.env.SEED_PASSWORD) console.log(`  새 계정 비밀번호: ${seedPassword}`)
 
   // ─── 기본 채팅방 ────────────────────────────────────
   await prisma.chatRoom.upsert({
@@ -113,7 +112,7 @@ async function main() {
   console.log("✓ 업무 카테고리 8개 생성 완료")
 
   // ─── 기본 프로젝트 ──────────────────────────────────
-  const anyUser = await prisma.user.findUnique({ where: { name: "정우창" } })
+  const anyUser = await prisma.user.findUnique({ where: { name: DEV_ADMIN_NAME } })
   if (anyUser) {
     await prisma.project.upsert({
       where: { id: "default-project" },

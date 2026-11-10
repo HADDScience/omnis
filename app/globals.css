@@ -193,6 +193,28 @@
   .omnis-md th { background: var(--muted); font-weight: 600; }
   /* 출원·등록번호(10-2766706) 가 하이픈에서 줄바꿈되지 않게 */
   .omnis-md .omnis-nowrap { white-space: nowrap; }
+
+  /* 메신저 안(`data-messenger`, components/messenger/messenger-shell.tsx)의 답 본문 — 폰 Gemini 앱처럼 본문 17px · 행간 1.65.
+     루트 글꼴이 81.25% 라 rem 으로 쓰면 의도한 크기가 안 나온다 — px 로 둔다. 같은 `.omnis-md` 를 쓰는 주간보고 · 지식 카드 ·
+     오른쪽 패널은 이 셸 밖이라 그대로다(2026-10-30 작업지시자) */
+  [data-messenger] .omnis-md {
+    font-size: 17px;
+    line-height: 1.65;
+  }
+  [data-messenger] .omnis-md p { margin: 0.6em 0; }
+  [data-messenger] .omnis-md > :first-child { margin-top: 0; }
+  [data-messenger] .omnis-md > :last-child { margin-bottom: 0; }
+  [data-messenger] .omnis-md h1 { font-size: 22px; }
+  [data-messenger] .omnis-md h2 { font-size: 20px; }
+  [data-messenger] .omnis-md h3 { font-size: 18.5px; }
+  [data-messenger] .omnis-md h4 { font-size: 17px; }
+  [data-messenger] .omnis-md ul,
+  [data-messenger] .omnis-md ol { padding-inline-start: 1.5em; }
+  [data-messenger] .omnis-md li { margin: 0.28em 0; }
+  [data-messenger] .omnis-md table { font-size: 15px; line-height: 1.5; }
+  [data-messenger] .omnis-md th,
+  [data-messenger] .omnis-md td { padding: 0.5em 0.75em; }
+  [data-messenger] .omnis-md pre { font-size: 15px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -277,6 +299,7 @@
    * 테마를 따라가지 않는다: 로고는 다크 모드에서도 같은 얼굴이어야 해서 .dark 에서 덮지 않는다.
    */
   --brand-gradient: linear-gradient(180deg, #225af8 0%, #0835d5 100%);
+  /* 새 로고(NEXT_PUBLIC_BRAND=v2)의 타일은 앱 아이콘(public/brand/v2/omnis-appicon.svg)과 같은 단색이다 — 아래 html[data-brand="v2"] */
 
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
@@ -311,6 +334,10 @@
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
     --border-strong: oklch(0.85 0 0);
+}
+
+html[data-brand="v2"] {
+  --brand-gradient: linear-gradient(#044abf, #044abf);
 }
 
 .dark {
@@ -498,6 +525,29 @@
     --ui-zoom: 1;
   }
 }
+/* iOS · iPadOS 도 배율을 끈다. iOS 26.0 Safari 는 zoom 이 걸려도 100svh 를 화면 높이 그대로 그려서
+   --app-vh 가 화면의 1/1.1 이 된다 — iPad 가로에서 셸이 734px 중 667px 까지만 찼다(시뮬레이터 실측 2026-11-04).
+   macOS Safari 26.6 과 Chrome 은 zoom 배로 그려 나눗셈이 맞는다. 엔진 버전마다 다르니 값을 맞추지 않고 배율을 없앤다.
+   화면 크기로 가르면 iPad 의 md 레이아웃까지 흔들려서, iOS 에서만 참인 이 속성으로 가른다 */
+@supports (-webkit-touch-callout: none) {
+  :root {
+    --ui-zoom: 1;
+  }
+}
+
+/* 폰 키보드 위에 입력창을 붙인 동안(hooks/use-keyboard-open.ts) — 입력창 아래 빈 줄을 걷는다 */
+html[data-keyboard-docked] [data-composer] {
+  padding-bottom: 6px;
+}
+/* 키보드 위에서는 입력창이 좌우로 더 넓다. 공통 입력창의 유틸리티보다 앞서야 해서 레이어 안에 둔다 */
+@layer utilities {
+  html[data-keyboard-docked] [data-messenger] [data-composer] {
+    padding-inline: 10px !important;
+  }
+}
+html[data-keyboard-docked] [data-composer-foot][data-empty] {
+  display: none;
+}
 
 /*
  * 떠 있는 nav (mydocs/plans/2026-10-28-floating-nav.md).
@@ -531,7 +581,8 @@
 }
 @media (width >= 48rem) {
   :root {
-    --nav-offset-bottom: 0px;
+    /* 하단 nav 는 없지만 iPad 의 홈 인디케이터 자리는 비운다. PC 에서는 0 이다 */
+    --nav-offset-bottom: var(--safe-bottom);
     --nav-w: 16.25rem;
   }
 }
@@ -592,6 +643,81 @@
   background: linear-gradient(0deg, color-mix(in oklab, var(--glass-fade) 85%, transparent), transparent);
   -webkit-mask-image: linear-gradient(0deg, #000 45%, transparent);
   mask-image: linear-gradient(0deg, #000 45%, transparent);
+}
+/* 폰 전사 · 사람 방 — 글이 머리 · 입력창 뒤로 지나간다. 바탕으로 덮어 글자 대비를 지키고 가장자리만 흐린다 */
+.room-edge-top {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  background: linear-gradient(180deg, var(--background) 62%, color-mix(in oklab, var(--background) 55%, transparent) 82%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
+  mask-image: linear-gradient(180deg, #000 70%, transparent);
+}
+/* 입력창 칸은 하단 nav 처럼 글이 캡슐 둘레(좌우 · 아래 안전 영역)로 비쳐 지나간다 — 바탕은 옅은 띠만, 캡슐은 유리.
+   끝 글은 글 칸 끝 여백(--room-bottom-h, ChatPanel 이 잰다)으로 캡슐 위에 멈춘다 */
+@utility room-edge-bottom {
+  background: linear-gradient(0deg, color-mix(in oklab, var(--glass-fade) 30%, transparent), transparent);
+}
+@media (max-width: 767.98px) {
+  [data-messenger] [data-chat-room-chrome] [data-room-composer-chrome] [data-composer-pill] {
+    background: linear-gradient(180deg, var(--glass-top), var(--glass-bottom));
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    backdrop-filter: blur(18px) saturate(170%);
+    border-color: transparent;
+    box-shadow: 0 0 0 1px var(--glass-edge), var(--glass-shadow);
+  }
+}
+@media (max-width: 767.98px) and (prefers-reduced-transparency: reduce) {
+  [data-messenger] [data-chat-room-chrome] [data-room-composer-chrome] [data-composer-pill] {
+    background: var(--glass-solid);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (max-width: 767.98px) {
+    [data-messenger] [data-chat-room-chrome] [data-room-composer-chrome] [data-composer-pill] {
+      background: var(--glass-solid);
+    }
+  }
+}
+/* 폰 대화방에는 하단 nav 가 없다 — 뒤로 캡슐로 목록에 돌아간다. 셸이 방을 그릴 때 다는 표식으로 가르므로 첫 화면부터 맞고,
+   nav 자리 여백은 홈 인디케이터만 남아 입력창이 화면 아래 안전 영역에 붙는다. 키보드가 뜨면 use-keyboard-open 의 인라인 값이 이긴다 */
+@media (max-width: 767.98px) {
+  html:has([data-chat-in-room]) {
+    --nav-offset-bottom: var(--safe-bottom);
+  }
+  html:has([data-chat-in-room]) [data-phone-bottom-nav] {
+    display: none;
+  }
+}
+/* 폰 전사 · 사람 방의 말풍선 꼬리. 꼬리가 말풍선에 조금 겹쳐 둥근 모서리와 이어지므로, 겹친 자리가 진해지지 않게 내 글 색을 불투명하게 섞는다.
+   테마에 따라 값이 달라 :root 가 아니라 여기서 정의한다 */
+@media (max-width: 767.98px) {
+  [data-messenger] {
+    --bubble-mine: color-mix(in srgb, var(--primary) 10%, var(--background));
+  }
+  [data-messenger] [data-bubble][data-tail] {
+    position: relative;
+  }
+  [data-messenger] [data-bubble][data-tail]::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    width: 9px;
+    height: 11px;
+    background: inherit;
+  }
+  [data-messenger] [data-bubble][data-tail="other"]::before {
+    left: -5px;
+    clip-path: polygon(0 0, 100% 15%, 100% 100%);
+  }
+  [data-messenger] [data-bubble][data-tail="mine"]::before {
+    right: -5px;
+    clip-path: polygon(100% 0, 0 15%, 0 100%);
+  }
+}
+.nav-edge-bottom.nav-edge-clear {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: linear-gradient(0deg, color-mix(in oklab, var(--glass-fade) 30%, transparent), transparent);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass {
@@ -668,6 +794,23 @@
     width: max(100%, 44px);
     height: max(100%, 44px);
     transform: translate(-50%, -50%);
+  }
+}
+
+/* 폰 채팅 목록의 칩 — 보이는 높이는 37, 누르는 자리는 44(규칙 30) */
+@media (max-width: 767px) and (pointer: coarse) {
+  .list-chip.touch-target {
+    position: relative;
+    min-height: 37px;
+  }
+  .list-chip.touch-target::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
   }
 }
 

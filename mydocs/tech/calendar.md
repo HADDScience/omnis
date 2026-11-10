@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/tech/calendar.md
-last_verified: 2026-10-27
+last_verified: 2026-10-29
 ---
 
 # 캘린더 — 옴니스 날짜 데이터 집계와 네이버 웍스 동기화
@@ -363,8 +363,9 @@ UTC 자정이면 UTC 날짜, 아니면 서울 날짜. 세 꼴 모두 맞는 날�
 - **ICS 피드의 민감 일정 제목 가림** — 1.3. 잠금화면에 보이므로 기본값을 정해야 한다.
 - **ICS 피드를 어느 데이터까지 담을지** — `Task.deadline` 으로 시작하는 것은 정했고,
   3.1 의 나머지와 웍스 일정을 언제 더할지는 미정이다.
-- **스케줄러를 어디에 둘지** — 사내 NAS 인지 GitHub Actions 인지. Vercel Hobby 로는 안 된다.
-  2026-10-28 구현에는 넣지 않았다 — 아무도 안 볼 때의 동기화가 필요해지는 것은 알림을 붙일 때다.
+- **스케줄러를 어디에 둘지** — 사내 NAS 인지 GitHub Actions 인지. Vercel Hobby 로는 분 단위가 안 된다.
+  2026-10-29 새 일정 알림을 붙이며 **하루 한 번 크론(`/api/cron/daily`)에 동기화를 한 줄 더했다** — 아무도 캘린더를
+  안 연 날에도 하루 한 번은 새 일정이 알림으로 나간다. 그보다 빠른 바닥(분 단위)은 여전히 이 질문에 달려 있다.
 
 ## 4a. 구현 (2026-10-28)
 
@@ -391,6 +392,21 @@ UTC 자정이면 UTC 날짜, 아니면 서울 날짜. 세 꼴 모두 맞는 날�
 
 비밀번호를 바꾸면 동기화는 401 로 멈추고, 관리자에게만 「보기」 창에 오류가 보인다.
 구성원 화면은 DB 에 있던 것으로 그대로 돈다.
+
+## 4b. 새 일정 알림 (2026-10-29)
+
+계획 [`../plans/2026-10-29-push-notifications.md`](../plans/2026-10-29-push-notifications.md) 결정 3 ·
+실측 [`../working/2026-10-29-push-notifications.md`](../working/2026-10-29-push-notifications.md).
+
+- **언제** — 동기화가 새 행을 만들 때(`upsertResources` 의 `createManyAndReturn`). 동기화는 캘린더 화면을 열 때(60초 판정)와
+  하루 한 번 크론에서 돈다 — 알림이 늦으면 그 사이 아무도 캘린더를 안 연 것이다
+- **보내지 않는 것** — 그 캘린더의 **첫 성공 동기화**(`syncedAt` 이 비어 있었다): 원래 있던 일정이다. 공개 범위를 넓힐 때:
+  행이 새로 생기지 않는다. 예외 회차(`recurrenceId ≠ ""`) · 취소 · 이미 끝난 일정. 바뀐 · 취소된 일정 알림은 범위 밖
+- **누구에게** — `audience` ALL 이면 구성원 전원, ADMIN 이면 관리자. 그 일정의 ORGANIZER 메일이 옴니스 사용자면 그 사람은 뺀다
+- **무엇을** — 벨(`calendar_event_added`) + 푸시. `entityId` 는 `YYYY-MM-DD:<일정 id>` 이고 누르면 `/calendar?day=` 로 그 날을 연다.
+  한 캘린더에서 한 번에 4건 이상이면 「새 일정 N건」 하나로 묶는다
+- 알림은 응답 뒤에 만든다 — 동기화 응답을 늦추지 않고, 실패해도 동기화 결과는 그대로다
+- 규칙은 `lib/notify-rules.ts`(`calendarEventsToNotify` · `calendarRecipients` · `calendarNotices`), 발송은 `lib/calendar-notify.ts`
 
 ## 5. 실측 기록 (2026-10-27)
 

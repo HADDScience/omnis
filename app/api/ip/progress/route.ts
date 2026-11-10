@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 
 import {
+  IpInputError,
   removeProgress,
   saveProgress,
   setNextTurn,
@@ -27,7 +28,13 @@ export async function POST(req: NextRequest) {
   const input = await body<{ entry: ProgressInput; isNew: boolean }>(req)
   if (!input?.entry) return bad("entry 가 없습니다", auth.cors)
 
-  await saveProgress(auth.caller.userId, input.entry, Boolean(input.isNew))
+  try {
+    await saveProgress(auth.caller.userId, input.entry, Boolean(input.isNew))
+  } catch (err) {
+    // 없는 상태·사건. 500 으로 두면 화면이 무엇이 틀렸는지 보여 줄 수 없다.
+    if (err instanceof IpInputError) return bad(err.message, auth.cors, 422)
+    throw err
+  }
   return ok({ ok: true }, auth.cors)
 }
 

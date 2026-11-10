@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
+import { BrandLoader } from "@/components/brand/brand-loader"
 import { format } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -21,9 +22,17 @@ import {
 } from "@hugeicons/core-free-icons"
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS } from "@/lib/constants"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
+import { arrivals, followOnAppend, unseenLabel } from "@/lib/chat-follow"
+import { isStuckToBottom } from "@/lib/agent/scroll-follow"
 import { AuthorAvatar, DayDivider, MessageTime } from "@/components/chat/message-parts"
+import { SystemPill } from "@/components/chat/system-pill"
 
 import { apiUrl } from "@/lib/base-path"
+import { thumbSrcSet, thumbUrl } from "@/lib/thumb"
+import { usePhotoViewer } from "@/components/photo-viewer/context"
+import { safeInlineType } from "@/lib/file-serving"
+import { isLargeUpload } from "@/lib/large-upload/rules"
+import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arrival"
 export interface FileInfo {
   id: string
   name: string
@@ -41,6 +50,8 @@ interface Message {
   _isSystem?: boolean
   /** 보내는 중 말풍선을 서버 응답으로 바꾼 것 — 이미 한 번 떠올랐으니 다시 움직이지 않는다 */
   _settled?: boolean
+  /** 보내지 못한 글 — 까닭. 「다시 보내기 · 지우기」 를 띄운다 */
+  _failed?: string
   author: { id: string; name: string }
   task?: {
     id: string
@@ -106,8 +117,11 @@ interface MessageListProps {
   /** 내 글 고치기. 저장이 끝나면 목록을 다시 읽는 것은 부모가 한다 */
   onEdit?: (id: string, content: string) => Promise<void>
   onDelete?: (id: string) => Promise<void>
+  /** 보내지 못한 글 다시 보내기 · 거두기 (보내는 중 말풍선 id) */
+  onResend?: (tempId: string) => void
+  onDiscardFailed?: (tempId: string) => void
   /** 검색 결과로 갈 때 — 이 글을 가운데로 가져와 잠깐 강조한다. n 은 같은 글을 다시 눌렀을 때 다시 움직이게 */
-  highlight?: { id: string; n: number } | null
+  highlight?: { id: string; n: number; typing?: boolean } | null
   /** 검색 결과 보기 중 — 최신이 아닌 자리를 보고 있다. 뒤를 붙여도 맨 아래로 끌어내리지 않는다 */
   jumped?: boolean
   /** 아래로 스크롤 시 뒤 메시지 로드 요청 (검색 결과 보기 중에만) */
@@ -132,6 +146,8 @@ export function MessageList({
   onReply,
   onEdit,
   onDelete,
+  onResend,
+  onDiscardFailed,
   highlight = null,
   jumped = false,
   onLoadNewer,
@@ -147,6 +163,15 @@ export function MessageList({
   // 이 시각 뒤에 생긴 메시지만 떠오르게 한다 — 처음 불러온 목록 · 이전 메시지는 가만히 둔다
   const [mountedAt] = useState(() => Date.now())
   const prevFirstIdRef = useRef<string | null>(null)
+  // 직전에 그린 글 id — 새로 붙은 글을 가린다(lib/chat-follow.ts)
+  const prevIdsRef = useRef<Set<string> | null>(null)
+  // 맨 아래에 붙어 있는가. 스크롤할 때마다 갱신한다 — 새 글이 붙은 뒤에는 높이가 바뀌어 다시 잴 수 없다
+  const stuckRef = useRef(true)
+  // 따라 내려가는 부드러운 스크롤 중 — 그사이 scroll 이벤트는 아직 바닥이 아니어도 붙어 있는 것으로 본다
+  const followingRef = useRef(false)
+  const lastScrollTopRef = useRef(0)
+  // 위로 올려 읽는 동안 붙은 남의 글 수 — 「새 메시지 N개 ↓」
+  const [unseen, setUnseen] = useState(0)
   const anchorRef = useRef<{ height: number; top: number } | null>(null)
   // 아래 레이아웃 효과는 messages 가 바뀔 때만 돈다 — jumped · highlight 는 ref 로 읽어 deps 에 넣지 않는다
   const jumpedRef = useRef(jumped)
@@ -157,12 +182,22 @@ export function MessageList({
     highlightRef.current = highlight
   })
   const scrolledHighlightRef = useRef<number | null>(null)
+  const arrivedIdRef = useRef<string | null>(null)
+  const arrivalFrameRef = useRef(0)
+  useEffect(() => () => cancelAnimationFrame(arrivalFrameRef.current), [])
   const [flashId, setFlashId] = useState<string | null>(null)
 
   // 이전 메시지(prepend)면 스크롤 위치 유지, 그 외(새 메시지·초기 로드)는 맨 아래로
   useLayoutEffect(() => {
     const el = scrollRef.current
-    if (!el) return
+    if (!el) {
+      // 빈 목록 화면이라 스크롤 칸이 없다. 다음에 그려질 칸은 새 칸(scrollTop 0)이다 — 처음 그리는 것으로 되돌린다.
+      // 이게 없으면 방을 열 때(ChatPanel 이 목록을 비웠다 다시 채운다) 같은 글이 「새 글 없음」 으로 보여 맨 위에 머문다
+      prevFirstIdRef.current = null
+      prevIdsRef.current = null
+      stuckRef.current = true
+      return
+    }
     const firstId = messages[0]?.id ?? null
     const prevFirstId = prevFirstIdRef.current
     const isPrepend =
@@ -178,13 +213,43 @@ export function MessageList({
     } else if (jumpedRef.current || (highlightRef.current && highlightRef.current.n !== scrolledHighlightRef.current)) {
       // 검색 결과 보기 — 자리는 아래 강조 효과가 잡는다. 뒤를 붙일 때도 보던 자리에 둔다
     } else if (prevFirstId != null) {
-      // 새 메시지 — 부드럽게 따라 내려간다
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+      const added = arrivals(prevIdsRef.current, messages)
+      if (added === null) {
+        // 목록을 갈아 끼웠다(최신으로 · 업무 필터) — 맨 아래부터
+        el.scrollTop = el.scrollHeight
+        stuckRef.current = true
+        setUnseen(0)
+      } else {
+        // 새 글 — 맨 아래에 있었거나 내가 보낸 글이면 따라 내려간다. 위로 올려 읽는 중이면 자리를 지키고 센다
+        const { follow, unseen: more } = followOnAppend(added, stuckRef.current, (m) => m.author.id === currentUserId || m.author.id === "me")
+        if (follow) {
+          followingRef.current = true
+          el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+          setUnseen(0)
+        } else if (more > 0) {
+          setUnseen((n) => n + more)
+        }
+      }
     } else {
       el.scrollTop = el.scrollHeight
     }
     prevFirstIdRef.current = firstId
-  }, [messages])
+    prevIdsRef.current = new Set(messages.map((m) => m.id))
+  }, [messages, currentUserId])
+
+  /** 「새 메시지 N개 ↓」 — 맨 아래로 내려가고 알약을 걷는다 */
+  function jumpToLatest() {
+    const el = scrollRef.current
+    if (!el) return
+    followingRef.current = true
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+    setUnseen(0)
+  }
+
+  /** 사용자가 직접 굴렸다 — 따라 내려가던 스크롤은 거기서 끝난 것으로 본다 */
+  function userScrolled() {
+    followingRef.current = false
+  }
 
   // 검색 결과로 온 글을 가운데로 — 위 효과 뒤에 돈다(선언 순서)
   useLayoutEffect(() => {
@@ -200,12 +265,26 @@ export function MessageList({
     if (first && el) {
       const r = first.getBoundingClientRect()
       const box = el.getBoundingClientRect()
-      el.scrollTop += r.top - box.top - box.height / 2 + r.height / 2
-      if (typeof CSS !== "undefined" && CSS.highlights) return
+      // 머리 · 입력창이 글 위에 떠 있으면 그 사이의 가운데로 — 글 칸 여백이 위아래 같으면(PC) 칸 가운데와 같다
+      const inner = el.firstElementChild ? getComputedStyle(el.firstElementChild) : null
+      const offset = inner ? (parseFloat(inner.paddingTop) - parseFloat(inner.paddingBottom)) / 2 : 0
+      el.scrollTop += r.top - box.top - box.height / 2 - offset + r.height / 2
     } else {
       target.scrollIntoView({ block: "center" })
     }
-    setFlashId(highlight.id)
+    const { bounce, flash } = arrivalEffects({
+      typing: !!highlight.typing,
+      sameTarget: arrivedIdRef.current === highlight.id,
+      reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      textMarked: !!first && typeof CSS !== "undefined" && !!CSS.highlights,
+    })
+    arrivedIdRef.current = highlight.id
+    if (flash) setFlashId(highlight.id)
+    // 스크롤은 위에서 끝났다 — 그 자리가 그려지는 다음 프레임에 튕긴다
+    if (bounce) {
+      cancelAnimationFrame(arrivalFrameRef.current)
+      arrivalFrameRef.current = requestAnimationFrame(() => playArrival(target))
+    }
   }, [highlight, messages, searchText])
 
   // 걸린 글자 표시. DOM 위에 범위만 거는 방식이라 링크 · 칩으로 쪼갠 렌더를 건드리지 않는다.
@@ -234,13 +313,36 @@ export function MessageList({
 
   useEffect(() => {
     if (!flashId) return
-    const timer = setTimeout(() => setFlashId(null), 2000)
+    const timer = setTimeout(() => setFlashId(null), ARRIVAL_FLASH_MS)
     return () => clearTimeout(timer)
   }, [flashId, highlight])
+
+  // 사진은 받은 뒤에야 높이가 정해진다 — 맨 아래에 있었으면 늘어난 만큼 따라간다.
+  // 부드럽게 따라가는 중이거나 검색으로 간 자리는 건드리지 않는다
+  const hasRows = messages.length > 0
+  useEffect(() => {
+    const el = scrollRef.current
+    const content = el?.firstElementChild
+    if (!el || !content) return
+    const observer = new ResizeObserver(() => {
+      if (stuckRef.current && !followingRef.current && !highlightRef.current) el.scrollTop = el.scrollHeight
+    })
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [hasRows])
 
   function handleScroll() {
     const el = scrollRef.current
     if (!el) return
+    const atBottom = isStuckToBottom(el)
+    if (atBottom) {
+      followingRef.current = false
+      if (unseen > 0) setUnseen(0)
+    }
+    // 사진이 늘어나면 스크롤 없이도 맨 아래에서 멀어진다 — 위로 올린 때에만 떨어진 것으로 본다
+    const movedUp = el.scrollTop < lastScrollTopRef.current - 1
+    lastScrollTopRef.current = el.scrollTop
+    stuckRef.current = atBottom || followingRef.current || (stuckRef.current && !movedUp)
     if (onLoadNewer && hasMoreNewer && !loadingNewer && el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
       onLoadNewer()
     }
@@ -261,247 +363,302 @@ export function MessageList({
   }
 
   return (
-    <div
-      ref={scrollRef}
-      onScroll={handleScroll}
-      className="min-h-0 flex-1 overflow-y-auto px-4"
-    >
-      <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3">
-        {loadingOlder && (
-          <div className="flex justify-center py-1">
-            <Spinner className="h-4 w-4" />
-          </div>
-        )}
-        {!hasMoreOlder && !loadingOlder && (
-          <div className="py-1 text-center text-[11px] text-muted-foreground">
-            대화의 시작
-          </div>
-        )}
-        {layoutMessages(
-          messages.map((m, i) => ({
-            ...m,
-            isEvent:
-              m.content.startsWith("__TASK_CREATED__:") ||
-              !!m._isSystem ||
-              m.author.id === "system" ||
-              m.content.startsWith("🤖"),
-            // 같은 업무 태그가 묶음 안 말풍선마다 반복되지 않게 — 다음 메시지가 다른 업무일 때만 붙인다
-            nextTaskId: messages[i + 1]?.task?.id ?? null,
-          })),
-        ).map((row) => {
-          if (row.type === "day") return <DayDivider key={row.key} label={row.label} />
-          const msg = row.message
-          const isMe = msg.author.id === currentUserId || msg.author.id === "me"
-          const isSelected = selectedIds?.has(msg.id) ?? false
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {unseen > 0 && (
+        // 위로 올려 읽는 중에 붙은 글 — 끌어내리지 않고 알린다
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          aria-live="polite"
+          className="absolute bottom-3 max-md:in-data-[messenger]:bottom-[calc(var(--room-bottom-h,0px)+12px)] left-1/2 z-10 inline-flex min-h-11 -translate-x-1/2 items-center gap-1 rounded-full bg-primary px-4 text-[12px] font-medium text-primary-foreground shadow-md hover:bg-primary/90 in-data-[messenger]:text-[14px]"
+        >
+          {unseenLabel(unseen)} ↓
+        </button>
+      )}
+      <div
+        ref={scrollRef}
+        data-keep-bottom
+        onScroll={handleScroll}
+        onWheel={userScrolled}
+        onTouchMove={userScrolled}
+        onKeyDown={userScrolled}
+        className="min-h-0 flex-1 overflow-y-auto px-4 in-data-[messenger]:px-[16px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:scroll-pt-[calc(56px+var(--room-search-h,0px))] max-md:in-data-[messenger]:scroll-pb-[var(--room-bottom-h,0px)]"
+      >
+        <div role="log" aria-label="채팅 메시지" className="flex flex-col py-3 in-data-[messenger]:py-4 max-md:in-data-[messenger]:pt-[calc(56px+var(--room-search-h,0px)+6px)] max-md:in-data-[messenger]:pb-[calc(var(--room-bottom-h,0px)+8px+var(--notice-reserve,0px))]">
+          {loadingOlder && (
+            <div className="flex justify-center py-1">
+              <BrandLoader className="h-4 w-4" size={20} />
+            </div>
+          )}
+          {!hasMoreOlder && !loadingOlder && (
+            <div className="py-1 text-center text-[11px] text-muted-foreground in-data-[messenger]:text-[13px]">
+              대화의 시작
+            </div>
+          )}
+          {layoutMessages(
+            messages.map((m, i) => ({
+              ...m,
+              isEvent:
+                m.content.startsWith("__TASK_CREATED__:") ||
+                !!m._isSystem ||
+                !!m.deletedAt ||
+                m.author.id === "system" ||
+                m.content.startsWith("🤖"),
+              // 같은 업무 태그가 묶음 안 말풍선마다 반복되지 않게 — 다음 메시지가 다른 업무일 때만 붙인다
+              nextTaskId: messages[i + 1]?.task?.id ?? null,
+            })),
+          ).map((row) => {
+            if (row.type === "day") return <DayDivider key={row.key} label={row.label} pillOnPhone />
+            const msg = row.message
+            const isMe = msg.author.id === currentUserId || msg.author.id === "me"
+            const isSelected = selectedIds?.has(msg.id) ?? false
 
-          // 업무 생성 카드 — content가 `__TASK_CREATED__:<taskId>` 형태
-          if (msg.content.startsWith("__TASK_CREATED__:")) {
+            // 업무 생성 카드 — content가 `__TASK_CREATED__:<taskId>` 형태
+            if (msg.content.startsWith("__TASK_CREATED__:")) {
+              return (
+                <TaskCreatedCard
+                  key={msg.id}
+                  task={msg.task ?? null}
+                  fallbackId={msg.content.slice("__TASK_CREATED__:".length)}
+                  createdAt={msg.createdAt}
+                />
+              )
+            }
+
+            // 지운 글 — 자리만 남는다. 검색 · 답장이 가리키는 자리라 글 id 를 지킨다
+            if (msg.deletedAt) return <SystemPill key={msg.id} messageId={msg.id}>{msg.content}</SystemPill>
+
+            // 시스템 메시지. 재구성 요약은 한 줄을 넘어 알약 안에서 줄을 바꾼다
+            if (msg._isSystem || msg.author.id === "system" || msg.content.startsWith("🤖")) {
+              return <SystemPill key={msg.id}>{msg.content.startsWith("🤖") ? msg.content : `🤖 ${msg.content}`}</SystemPill>
+            }
+
+            const mine = isMe && !selectionMode
+            const flashing = flashId === msg.id
+            const pending = msg.id.startsWith("temp-")
+            const fresh = !msg._settled && new Date(msg.createdAt).getTime() > mountedAt
             return (
-              <TaskCreatedCard
-                key={msg.id}
-                task={msg.task ?? null}
-                fallbackId={msg.content.slice("__TASK_CREATED__:".length)}
-                createdAt={msg.createdAt}
-              />
-            )
-          }
-
-          // 시스템 메시지 (구분선 스타일)
-          if (msg._isSystem || msg.author.id === "system" || msg.content.startsWith("🤖")) {
-            return (
-              // 재구성 요약은 한 줄을 넘는다 — 줄바꿈 없이 두면 380px 패널 밖으로 잘렸다(2026-09-15 녹화)
-              <div key={msg.id} className="mt-2 flex items-center gap-3 py-1">
-                <div className="min-w-4 flex-1 border-t border-dashed border-muted-foreground/20" />
-                <span className="max-w-[80%] break-keep text-center text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
-                  {msg.content.startsWith("🤖") ? msg.content : `🤖 ${msg.content}`}
-                </span>
-                <div className="min-w-4 flex-1 border-t border-dashed border-muted-foreground/20" />
-              </div>
-            )
-          }
-
-          const mine = isMe && !selectionMode
-          const flashing = flashId === msg.id
-          const pending = msg.id.startsWith("temp-")
-          const fresh = !msg._settled && new Date(msg.createdAt).getTime() > mountedAt
-          return (
-            <div
-              key={msg.id}
-              data-message-id={msg.id}
-              className={`group/msg flex gap-2.5 rounded-lg transition-colors duration-700 motion-reduce:transition-none ${mine ? "flex-row-reverse" : ""} ${
-                row.groupStart ? "mt-3" : "mt-0.5"
-              } ${fresh ? MESSAGE_ENTER : ""} ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "bg-primary/5 ring-1 ring-primary/20 p-1" : ""} ${flashing ? "bg-amber-200/50 ring-2 ring-amber-400/60 dark:bg-amber-400/15" : ""}`}
-              onClick={selectionMode ? () => onToggleSelect?.(msg.id) : undefined}
-            >
-              {selectionMode && (
-                <div className="flex items-start pt-1 shrink-0">
-                  <Checkbox checked={isSelected} />
-                </div>
-              )}
-              {!mine && !selectionMode && (
-                // 묶음 안 줄은 아바타 자리를 비워 본문 줄을 맞춘다
-                row.groupStart ? <AuthorAvatar name={msg.author.name} size={30} className="mt-5" /> : <span className="w-[30px] shrink-0" />
-              )}
               <div
-                className={`flex min-w-0 max-w-[78%] flex-col gap-1 ${mine ? "items-end" : ""}`}
+                key={msg.id}
+                data-message-id={msg.id}
+                className={`group/msg flex gap-2.5 rounded-lg transition-colors duration-700 in-data-[messenger]:gap-3 max-md:in-data-[messenger]:gap-[8px] motion-reduce:transition-none ${mine ? "flex-row-reverse" : ""} ${
+                  row.groupStart ? "mt-3 in-data-[messenger]:mt-5 max-md:in-data-[messenger]:mt-[12px]" : "mt-0.5 in-data-[messenger]:mt-1 max-md:in-data-[messenger]:mt-[6px]"
+                } ${fresh ? MESSAGE_ENTER : ""} ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "bg-primary/5 ring-1 ring-primary/20 p-1" : ""} ${flashing ? "bg-amber-200/50 ring-2 ring-amber-400/60 dark:bg-amber-400/15" : ""}`}
+                onClick={selectionMode ? () => onToggleSelect?.(msg.id) : undefined}
               >
-                {!isMe && row.groupStart && (
-                  <span className="px-0.5 text-[12px] font-semibold text-foreground/80">
-                    {msg.author.name}
-                  </span>
-                )}
-                {/* 답장 인용 — 어떤 글에 답하는지 한 줄로만 보인다 */}
-                {msg.replyTo && (
-                  <div
-                    className={`max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground ${
-                      mine ? "text-right" : ""
-                    }`}
-                    title={msg.replyTo.content}
-                  >
-                    <span className="font-medium">{msg.replyTo.authorName}</span> · {msg.replyTo.content}
+                {selectionMode && (
+                  <div className="flex items-start pt-1 shrink-0">
+                    <Checkbox checked={isSelected} />
                   </div>
                 )}
-                <div className={`flex items-end gap-1 ${mine ? "flex-row-reverse" : ""}`}>
-                  <div
-                    data-message-body
-                    className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] ${
-                      mine ? "bg-primary text-primary-foreground" : "bg-muted"
-                    } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md" : ""} ${
-                      msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
-                    } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}
-                  >
-                    {editingId === msg.id ? (
-                      // 고치기는 말풍선 자리에서 한다 — 창을 띄우면 앞뒤 대화가 가려진다
-                      <div className="flex flex-col gap-1">
-                        <textarea
-                          autoFocus
-                          value={editDraft}
-                          onChange={(e) => setEditDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") setEditingId(null)
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault()
-                              const next = editDraft.trim()
-                              if (!next || next === msg.content) return setEditingId(null)
-                              setBusyId(msg.id)
-                              void onEdit?.(msg.id, next).finally(() => {
-                                setBusyId(null)
-                                setEditingId(null)
-                              })
-                            }
-                          }}
-                          rows={Math.min(6, editDraft.split("\n").length + 1)}
-                          className="w-[min(60vw,340px)] resize-none rounded-md bg-background p-1.5 text-[13.5px] text-foreground outline-none ring-1 ring-primary/40"
-                        />
-                        <span className="text-[10.5px] opacity-70">Enter 저장 · Esc 취소</span>
-                      </div>
-                    ) : (
-                      <>
-                        <p className="whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">
-                          {msg.deletedAt ? (
-                            msg.content
-                          ) : (
-                            <MessageContent content={tidyBody(msg.content)} tasks={tasks} isMe={mine} />
+                {!mine && !selectionMode && (
+                  // 묶음 안 줄은 아바타 자리를 비워 본문 줄을 맞춘다
+                  row.groupStart ? <AuthorAvatar name={msg.author.name} size={30} lgSize={38} className="mt-5 in-data-[messenger]:mt-[27px] max-md:in-data-[messenger]:mt-0 max-md:in-data-[messenger]:size-[34px] max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:text-[12px]" /> : <span className="w-[30px] shrink-0 in-data-[messenger]:w-[38px] max-md:in-data-[messenger]:w-[34px]" />
+                )}
+                <div
+                  className={`flex min-w-0 max-w-[78%] flex-col gap-1 max-md:in-data-[messenger]:gap-[4px] ${mine ? "items-end in-data-[messenger]:max-w-[85%] max-md:in-data-[messenger]:max-w-full" : "in-data-[messenger]:max-w-[calc(100%-50px)] max-md:in-data-[messenger]:max-w-[calc(100%-42px)]"}`}
+                >
+                  {!isMe && row.groupStart && (
+                    <span className="px-0.5 text-[12px] font-semibold text-foreground/80 in-data-[messenger]:text-[15.5px] in-data-[messenger]:text-foreground max-md:in-data-[messenger]:px-0 max-md:in-data-[messenger]:text-[12px] max-md:in-data-[messenger]:leading-[15px] max-md:in-data-[messenger]:font-normal">
+                      {msg.author.name}
+                    </span>
+                  )}
+                  {/* 답장 인용 — 어떤 글에 답하는지 한 줄로만 보인다 */}
+                  {msg.replyTo && (
+                    <div
+                      className={`max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground max-md:in-data-[messenger]:hidden in-data-[messenger]:px-3 in-data-[messenger]:py-1.5 in-data-[messenger]:text-[13.5px] ${
+                        mine ? "text-right" : ""
+                      }`}
+                      title={msg.replyTo.content}
+                    >
+                      <span className="font-medium">{msg.replyTo.authorName}</span> · {msg.replyTo.content}
+                    </div>
+                  )}
+                  <div className={`relative flex items-end gap-1 max-md:in-data-[messenger]:gap-[4px] ${mine ? "flex-row-reverse" : ""}`}>
+                    <div
+                      data-message-body
+                      className={`min-w-0 rounded-2xl px-3 py-2 text-[13.5px] leading-[1.6] in-data-[messenger]:rounded-[24px] in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] max-md:in-data-[messenger]:flex max-md:in-data-[messenger]:flex-col max-md:in-data-[messenger]:gap-[6px] max-md:in-data-[messenger]:bg-transparent! max-md:in-data-[messenger]:p-0 max-md:in-data-[messenger]:text-[15px] max-md:in-data-[messenger]:leading-[22px] ${mine ? "max-md:in-data-[messenger]:items-end" : "max-md:in-data-[messenger]:items-start"} ${
+                        mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground max-md:in-data-[messenger]:max-w-[calc(var(--app-vw)*0.7)]" : "bg-muted max-md:in-data-[messenger]:max-w-[calc(var(--app-vw)*0.7)]"
+                      } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:[&_a]:max-w-full max-md:in-data-[messenger]:[&_a]:rounded-[13px] ${
+                        msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
+                      } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}
+                    >
+                      {editingId === msg.id ? (
+                        // 고치기는 말풍선 자리에서 한다 — 창을 띄우면 앞뒤 대화가 가려진다
+                        <div className="flex flex-col gap-1">
+                          <textarea
+                            autoFocus
+                            value={editDraft}
+                            onChange={(e) => setEditDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") setEditingId(null)
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault()
+                                const next = editDraft.trim()
+                                if (!next || next === msg.content) return setEditingId(null)
+                                setBusyId(msg.id)
+                                void onEdit?.(msg.id, next).finally(() => {
+                                  setBusyId(null)
+                                  setEditingId(null)
+                                })
+                              }
+                            }}
+                            rows={Math.min(6, editDraft.split("\n").length + 1)}
+                            className="w-[min(60vw,340px)] resize-none rounded-md bg-background p-1.5 text-[13.5px] text-foreground outline-none ring-1 ring-primary/40 in-data-[messenger]:w-[min(66vw,420px)] in-data-[messenger]:p-2 in-data-[messenger]:text-[16px]"
+                          />
+                          <span className="text-[10.5px] opacity-70 in-data-[messenger]:text-[12.5px]">Enter 저장 · Esc 취소</span>
+                        </div>
+                      ) : (
+                        <>
+                          {/* 폰 메신저는 글 칸이 말풍선이고 사진 · 파일은 그 아래 따로 놓는다. 글 없는 첨부면 말풍선이 없다 */}
+                          {/* 꼬리는 묶음 첫 말풍선에만(globals.css). 사진 · 파일이 든 글에는 없다 */}
+                          <p
+                            data-bubble
+                            data-tail={row.groupStart && !msg.files?.length ? (mine ? "mine" : "other") : undefined}
+                            className={`whitespace-pre-wrap break-keep [overflow-wrap:anywhere] max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:empty:hidden ${msg.deletedAt ? "max-md:in-data-[messenger]:bg-muted/50" : mine ? "max-md:in-data-[messenger]:bg-(--bubble-mine)" : "max-md:in-data-[messenger]:bg-muted"}`}
+                          >
+                            {msg.replyTo && (
+                              <span data-reply-in-bubble className="hidden max-md:in-data-[messenger]:mb-[6px] max-md:in-data-[messenger]:block max-md:in-data-[messenger]:border-b max-md:in-data-[messenger]:border-foreground/10 max-md:in-data-[messenger]:pb-[6px] max-md:in-data-[messenger]:text-[13px] max-md:in-data-[messenger]:leading-[18px] max-md:in-data-[messenger]:whitespace-normal">
+                                <span className="block truncate font-semibold">{msg.replyTo.authorName}에게 답장</span>
+                                <span className="block truncate text-muted-foreground">{msg.replyTo.content}</span>
+                              </span>
+                            )}
+                            {msg.deletedAt ? (
+                              msg.content
+                            ) : (
+                              <MessageContent content={tidyBody(msg.content)} tasks={tasks} isMe={mine} />
+                            )}
+                          </p>
+                          {!msg.deletedAt && msg.files && msg.files.length > 0 && (
+                            <MessageFiles files={msg.files} onPrimary={mine} messageId={msg.id} />
                           )}
-                        </p>
-                        {!msg.deletedAt && msg.files && msg.files.length > 0 && (
-                          <MessageFiles files={msg.files} onPrimary={mine} />
+                        </>
+                      )}
+                    </div>
+                    {/* 폰 메신저는 시각을 말풍선 옆 아래에 둔다 */}
+                    {row.groupEnd && !pending && (
+                      <span data-bubble-time className="hidden shrink-0 flex-col max-md:in-data-[messenger]:flex max-md:in-data-[messenger]:items-start">
+                        {msg.editedAt && !msg.deletedAt && <span className="text-[10.5px] leading-[13px] text-muted-foreground">수정됨</span>}
+                        <MessageTime iso={msg.createdAt} className="max-md:in-data-[messenger]:text-[10.5px] max-md:in-data-[messenger]:leading-[13px]" />
+                      </span>
+                    )}
+                    {/* 말풍선에 겹치지 않게 옆에 둔다. 손이 닿는 화면에서는 늘 보인다 */}
+                    {!selectionMode && !pending && !msg.deletedAt && editingId !== msg.id && (
+                      // 폰 메신저에서는 자리를 차지하면 말풍선 폭이 줄어 위에 겹쳐 띄운다. 안 보일 때는 눌리지 않게 한다
+                      <div className={`flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 max-md:in-data-[messenger]:pointer-events-none max-md:in-data-[messenger]:absolute max-md:in-data-[messenger]:bottom-full max-md:in-data-[messenger]:z-10 max-md:in-data-[messenger]:rounded-lg max-md:in-data-[messenger]:bg-background max-md:in-data-[messenger]:shadow-sm max-md:in-data-[messenger]:group-hover/msg:pointer-events-auto max-md:in-data-[messenger]:focus-within:pointer-events-auto ${mine ? "max-md:in-data-[messenger]:right-0" : "max-md:in-data-[messenger]:left-0"}`}>
+                        {onReply && (
+                          <button
+                            type="button"
+                            aria-label="답장"
+                            title="답장"
+                            onClick={() =>
+                              onReply({ id: msg.id, authorName: msg.author.name, content: msg.content.slice(0, 80) })
+                            }
+                            className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
+                          >
+                            <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
+                          </button>
                         )}
-                      </>
+                        {isMe && onEdit && (
+                          <button
+                            type="button"
+                            aria-label="수정"
+                            title="수정"
+                            onClick={() => {
+                              setEditDraft(msg.content)
+                              setEditingId(msg.id)
+                            }}
+                            className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
+                          >
+                            <HugeiconsIcon icon={PencilEdit01Icon} size={13} />
+                          </button>
+                        )}
+                        {isMe && onDelete && (
+                          <button
+                            type="button"
+                            aria-label="삭제"
+                            title="삭제"
+                            disabled={busyId === msg.id}
+                            onClick={() => {
+                              if (!window.confirm("이 메시지를 지울까요? 자리는 남고 내용만 사라집니다.")) return
+                              setBusyId(msg.id)
+                              void onDelete(msg.id).finally(() => setBusyId(null))
+                            }}
+                            className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted hover:text-destructive"
+                          >
+                            <HugeiconsIcon icon={Delete02Icon} size={13} />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
-                  {/* 말풍선에 겹치지 않게 옆에 둔다. 손이 닿는 화면에서는 늘 보인다 */}
-                  {!selectionMode && !pending && !msg.deletedAt && editingId !== msg.id && (
-                    <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
-                      {onReply && (
-                        <button
-                          type="button"
-                          aria-label="답장"
-                          title="답장"
-                          onClick={() =>
-                            onReply({ id: msg.id, authorName: msg.author.name, content: msg.content.slice(0, 80) })
-                          }
-                          className="rounded p-1 text-muted-foreground hover:bg-muted"
-                        >
-                          <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
-                        </button>
-                      )}
-                      {isMe && onEdit && (
-                        <button
-                          type="button"
-                          aria-label="수정"
-                          title="수정"
-                          onClick={() => {
-                            setEditDraft(msg.content)
-                            setEditingId(msg.id)
-                          }}
-                          className="rounded p-1 text-muted-foreground hover:bg-muted"
-                        >
-                          <HugeiconsIcon icon={PencilEdit01Icon} size={13} />
-                        </button>
-                      )}
-                      {isMe && onDelete && (
-                        <button
-                          type="button"
-                          aria-label="삭제"
-                          title="삭제"
-                          disabled={busyId === msg.id}
-                          onClick={() => {
-                            if (!window.confirm("이 메시지를 지울까요? 자리는 남고 내용만 사라집니다.")) return
-                            setBusyId(msg.id)
-                            void onDelete(msg.id).finally(() => setBusyId(null))
-                          }}
-                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
-                        >
-                          <HugeiconsIcon icon={Delete02Icon} size={13} />
-                        </button>
+                  {(row.groupEnd || (msg.task && msg.nextTaskId !== msg.task.id)) && (
+                    <div className={`flex items-center gap-2 px-0.5 ${!pending && !msg.task ? "max-md:in-data-[messenger]:hidden" : ""}`}>
+                      {row.groupEnd &&
+                        (pending && msg._failed ? (
+                          // 보내지 못했다 — 예전에는 「보내는 중」 으로 영원히 남아 다시 보낼 길이 없었다
+                          <span className="flex flex-wrap items-center gap-x-1 text-[10.5px] text-destructive in-data-[messenger]:text-[12.5px]" role="alert">
+                            <span>{msg._failed}</span>
+                            {onResend && (
+                              <button
+                                type="button"
+                                onClick={() => onResend(msg.id)}
+                                className="inline-flex min-h-11 items-center rounded px-2 font-medium underline underline-offset-2 hover:bg-destructive/10"
+                              >
+                                다시 보내기
+                              </button>
+                            )}
+                            {onDiscardFailed && (
+                              <button
+                                type="button"
+                                onClick={() => onDiscardFailed(msg.id)}
+                                className="inline-flex min-h-11 items-center rounded px-2 text-muted-foreground hover:bg-muted"
+                              >
+                                지우기
+                              </button>
+                            )}
+                          </span>
+                        ) : pending ? (
+                          <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[12.5px]" aria-live="polite">
+                            <Spinner className="h-2.5 w-2.5" />
+                            보내는 중…
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 max-md:in-data-[messenger]:hidden">
+                            <MessageTime iso={msg.createdAt} className="text-[10.5px]" />
+                            {/* 고친 글임을 알린다 — 나중에 읽는 사람이 원문과 다름을 알아야 한다 */}
+                            {msg.editedAt && !msg.deletedAt && (
+                              <span className="text-[10px] text-muted-foreground in-data-[messenger]:text-[12px]">수정됨</span>
+                            )}
+                          </span>
+                        ))}
+                      {msg.task && (row.groupEnd || msg.nextTaskId !== msg.task.id) && (
+                        <Link href={`/tasks/${msg.task.id}`} onClick={(e) => e.stopPropagation()} title={msg.task.name}>
+                          <Badge variant="outline" className="max-w-[180px] cursor-pointer truncate text-[10px] in-data-[messenger]:h-6 in-data-[messenger]:px-2.5 in-data-[messenger]:text-[12.5px] transition-colors hover:bg-primary/10">
+                            #{msg.task.slug}
+                          </Badge>
+                        </Link>
                       )}
                     </div>
                   )}
                 </div>
-                {(row.groupEnd || (msg.task && msg.nextTaskId !== msg.task.id)) && (
-                  <div className="flex items-center gap-2 px-0.5">
-                    {row.groupEnd &&
-                      (pending ? (
-                        <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground" aria-live="polite">
-                          <Spinner className="h-2.5 w-2.5" />
-                          보내는 중…
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1">
-                          <MessageTime iso={msg.createdAt} className="text-[10.5px]" />
-                          {/* 고친 글임을 알린다 — 나중에 읽는 사람이 원문과 다름을 알아야 한다 */}
-                          {msg.editedAt && !msg.deletedAt && (
-                            <span className="text-[10px] text-muted-foreground">수정됨</span>
-                          )}
-                        </span>
-                      ))}
-                    {msg.task && (row.groupEnd || msg.nextTaskId !== msg.task.id) && (
-                      <Link href={`/tasks/${msg.task.id}`} onClick={(e) => e.stopPropagation()} title={msg.task.name}>
-                        <Badge variant="outline" className="max-w-[180px] cursor-pointer truncate text-[10px] transition-colors hover:bg-primary/10">
-                          #{msg.task.slug}
-                        </Badge>
-                      </Link>
-                    )}
-                  </div>
-                )}
               </div>
+            )
+          })}
+          {loadingNewer && (
+            <div className="flex justify-center py-1">
+              <BrandLoader className="h-4 w-4" size={20} />
             </div>
-          )
-        })}
-        {loadingNewer && (
-          <div className="flex justify-center py-1">
-            <Spinner className="h-4 w-4" />
-          </div>
-        )}
-        {processingSlug && (
-          <div className="flex items-center gap-2 rounded-lg bg-primary/5 border border-primary/10 px-3 py-2 animate-pulse">
-            <div className="h-2 w-2 rounded-full bg-primary animate-bounce" />
-            <span className="text-xs text-muted-foreground">
-              <span className="font-medium text-primary">#{processingSlug}</span> 업무를 분석하고 있습니다...
-            </span>
-          </div>
-        )}
+          )}
+          {processingSlug && (
+            <div className="flex items-center gap-2 rounded-lg bg-primary/5 border border-primary/10 px-3 py-2 animate-pulse">
+              <div className="h-2 w-2 rounded-full bg-primary animate-bounce" />
+              <span className="text-xs text-muted-foreground in-data-[messenger]:text-[14px]">
+                <span className="font-medium text-primary">#{processingSlug}</span> 업무를 분석하고 있습니다...
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -563,33 +720,109 @@ function fileKind(name: string): { icon: typeof File01Icon; label: string; tone:
 }
 
 /** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
-export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; onPrimary?: boolean }) {
-  return (
-    <div className="mt-1.5 flex flex-col gap-1.5">
-      {files.map((f) => {
-        const isImage = f.mimeType?.startsWith("image/")
-        const uploading = f._uploading
+/** 받은 사진의 세로/가로 — 다시 그릴 때 받기 전부터 자리를 맞춘다. 파일 표에 크기가 없어 첫 표시는 4:3 으로 시작한다 */
+const imageRatios = new Map<string, number>()
+/** 사진 한 장이 그려지는 가장 넓은 폭(css px) — 말풍선 260, 폰 카드는 화면 폭 70%(390 폭에서 273) */
+const IMAGE_CSS_WIDTH = 280
 
-        if (isImage) {
+/**
+ * 메시지에 붙은 사진 한 장. 폰의 전사 · 사람 방은 말풍선 없는 카드(화면 폭 70% · 모서리 13)이고 이름을 감춘다.
+ * 비율은 받은 뒤 맞추고 높이 상한을 넘으면 잘라 보인다(찌그러지지 않는다). 묶음(tile)은 정사각.
+ */
+function ImageAttachment({ file: f, tile, onOpen }: { file: FileInfo; tile: boolean; onOpen?: () => void }) {
+  const uploading = f._uploading
+  const [ratio, setRatio] = useState(() => imageRatios.get(f.id) ?? 0.75)
+  // WebP 미리보기 → 못 받으면 원본 → 그것도 안 되면 「불러오지 못했어요」. 올리는 중에는 아직 미리보기가 없다
+  const [stage, setStage] = useState<"thumb" | "original" | "failed">(uploading ? "original" : "thumb")
+  const failed = stage === "failed"
+  const fail = useCallback(() => setStage((s) => (s === "thumb" ? "original" : "failed")), [])
+  const img = useRef<HTMLImageElement>(null)
+  const measure = useCallback((el: HTMLImageElement) => {
+    if (!el.naturalWidth) return
+    const next = el.naturalHeight / el.naturalWidth
+    imageRatios.set(f.id, next)
+    setRatio(next)
+  }, [f.id])
+  // 서버가 그린 사진은 React 가 붙기 전에 이미 받았을 수 있다
+  // naturalWidth 로 실패를 가르지 않는다 — srcset(480w)이면 아주 작은 그림은 잘 받아도 0 이다. 깨진 그림만 decode 가 거절한다
+  useEffect(() => {
+    const el = img.current
+    if (!el?.complete || !el.currentSrc) return
+    if (el.naturalWidth) measure(el)
+    else el.decode().catch(fail)
+  }, [measure, fail])
+  return (
+    <a
+      href={uploading ? undefined : apiUrl(f.path)}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-attachment-image
+      style={{ "--img-ratio": 1 / ratio } as React.CSSProperties}
+      className={`relative block rounded-md overflow-hidden max-w-[200px] in-data-[messenger]:max-w-[260px] border max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:border-0 max-md:in-data-[chat-room-chrome]:bg-muted ${tile ? "max-md:in-data-[chat-room-chrome]:aspect-square max-md:in-data-[chat-room-chrome]:w-full max-md:in-data-[chat-room-chrome]:max-w-none" : "max-md:in-data-[chat-room-chrome]:aspect-(--img-ratio) max-md:in-data-[chat-room-chrome]:max-h-[420px] max-md:in-data-[chat-room-chrome]:min-h-[90px] max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:max-w-none"} ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
+      onClick={(e) => {
+        e.stopPropagation()
+        // 채팅방은 뷰어로 연다. ⌘ · Ctrl · 가운데 단추는 예전처럼 새 탭
+        if (uploading || (onOpen && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0)) e.preventDefault()
+        if (!uploading && onOpen && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) onOpen()
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- 인증이 필요한 첨부 라우트 */}
+      <img
+        ref={img}
+        src={stage === "thumb" ? thumbUrl(f.id, IMAGE_CSS_WIDTH) : apiUrl(f.path)}
+        srcSet={stage === "thumb" ? thumbSrcSet(f.id, IMAGE_CSS_WIDTH) : undefined}
+        sizes={stage === "thumb" ? `${IMAGE_CSS_WIDTH}px` : undefined}
+        alt={f.name}
+        className={`w-full h-auto max-md:in-data-[chat-room-chrome]:size-full max-md:in-data-[chat-room-chrome]:object-cover ${ratio > 1.5 ? "max-md:in-data-[chat-room-chrome]:object-top" : ""} ${failed ? "max-md:in-data-[chat-room-chrome]:hidden" : ""}`}
+        loading="lazy"
+        onLoad={(e) => measure(e.currentTarget)}
+        onError={fail}
+      />
+      {failed && (
+        <span data-attachment-failed className="hidden items-center justify-center p-2 text-center text-[13px] leading-[18px] text-muted-foreground max-md:in-data-[chat-room-chrome]:flex max-md:in-data-[chat-room-chrome]:absolute max-md:in-data-[chat-room-chrome]:inset-0">
+          사진을 불러오지 못했어요
+        </span>
+      )}
+      <div className={`relative px-1.5 py-0.5 text-[10px] in-data-[messenger]:text-[12.5px] text-muted-foreground bg-background/80 truncate overflow-hidden ${uploading ? "max-md:in-data-[chat-room-chrome]:absolute max-md:in-data-[chat-room-chrome]:inset-x-0 max-md:in-data-[chat-room-chrome]:bottom-0" : "max-md:in-data-[chat-room-chrome]:hidden"}`}>
+        {uploading && (
+          <div className="absolute inset-0 bg-primary/20 animate-[gauge_1.5s_ease-in-out_infinite]" />
+        )}
+        <span className="relative">{uploading ? "업로드 중..." : f.name}</span>
+      </div>
+    </a>
+  )
+}
+
+/** 연달아 붙은 사진 묶음의 칸 수 — 둘 · 넷은 두 칸, 나머지는 세 칸 */
+const imageGridCols = (n: number) => (n === 2 || n === 4 ? "max-md:in-data-[chat-room-chrome]:grid-cols-2" : "max-md:in-data-[chat-room-chrome]:grid-cols-3")
+
+/** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
+export function MessageFiles({ files, onPrimary = false, messageId }: { files: FileInfo[]; onPrimary?: boolean; messageId?: string }) {
+  const viewer = usePhotoViewer()
+  const openOf = (f: FileInfo) => (viewer && messageId ? () => viewer.open(messageId, f.id) : undefined)
+  // 그 자리에서 열리는 형식만 미리보기를 그린다 — 나머지(SVG 등)는 내려받기로 나가 이미지가 깨진다
+  // 큰 첨부 사진은 카드로 — 말풍선이 원본 수백 MB 를 부르지 않게
+  const isImage = (f: FileInfo) => safeInlineType(f.mimeType)?.startsWith("image/") && !isLargeUpload(f.size)
+  // 연달아 붙은 사진은 한 묶음 — 폰의 전사 · 사람 방에서만 격자가 되고, 나머지 화면은 display: contents 라 예전처럼 한 줄씩이다
+  const groups: FileInfo[][] = []
+  for (const f of files) {
+    const last = groups.at(-1)
+    if (last && isImage(f) && isImage(last[0])) last.push(f)
+    else groups.push([f])
+  }
+  return (
+    <div className="mt-1.5 flex flex-col gap-1.5 max-md:in-data-[chat-room-chrome]:mt-0 max-md:in-data-[chat-room-chrome]:gap-[6px]">
+      {groups.map((group) => {
+        const f = group[0]
+        if (isImage(f)) {
+          if (group.length === 1) return <ImageAttachment key={f.id} file={f} tile={false} onOpen={openOf(f)} />
           return (
-            <a
-              key={f.id}
-              href={uploading ? undefined : apiUrl(f.path)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`block rounded-md overflow-hidden max-w-[200px] border ${uploading ? "opacity-60" : "hover:opacity-90"} transition-opacity`}
-              onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
-            >
-              <img src={apiUrl(f.path)} alt={f.name} className="w-full h-auto" loading="lazy" />
-              <div className="relative px-1.5 py-0.5 text-[10px] text-muted-foreground bg-background/80 truncate overflow-hidden">
-                {uploading && (
-                  <div className="absolute inset-0 bg-primary/20 animate-[gauge_1.5s_ease-in-out_infinite]" />
-                )}
-                <span className="relative">{uploading ? "업로드 중..." : f.name}</span>
-              </div>
-            </a>
+            <div key={f.id} data-attachment-grid className={`contents max-md:in-data-[chat-room-chrome]:grid max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:gap-[2px] ${imageGridCols(group.length)}`}>
+              {group.map((g) => <ImageAttachment key={g.id} file={g} tile onOpen={openOf(g)} />)}
+            </div>
           )
         }
+        const uploading = f._uploading
         const kind = fileKind(f.name)
         return (
           <a
@@ -598,20 +831,21 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
             target="_blank"
             rel="noopener noreferrer"
             title={f.name}
-            className={`relative flex max-w-[280px] items-center gap-2.5 overflow-hidden rounded-lg border px-2.5 py-2 transition-colors ${
-              onPrimary ? "border-white/25 bg-white/10 hover:bg-white/15" : "bg-background hover:bg-muted/60"
+            data-attachment-file
+            className={`relative flex max-w-[280px] items-center gap-2.5 overflow-hidden rounded-lg border px-2.5 py-2 in-data-[messenger]:max-w-[340px] in-data-[messenger]:gap-3 in-data-[messenger]:rounded-xl max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:max-w-none max-md:in-data-[chat-room-chrome]:flex-row-reverse max-md:in-data-[chat-room-chrome]:gap-[10px] max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:border-0 max-md:in-data-[chat-room-chrome]:bg-muted max-md:in-data-[chat-room-chrome]:p-[10px] ${
+              onPrimary ? "border-white/25 bg-white/10 hover:bg-white/15 in-data-[messenger]:border-border in-data-[messenger]:bg-background in-data-[messenger]:hover:bg-muted/60" : "bg-background hover:bg-muted/60"
             } ${uploading ? "opacity-70" : ""}`}
             onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
           >
             {uploading && (
               <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />
             )}
-            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${onPrimary ? "bg-white/20 text-white" : kind.tone}`}>
+            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md in-data-[messenger]:size-[44px] in-data-[messenger]:[&_svg]:size-[22px] max-md:in-data-[chat-room-chrome]:size-[40px] max-md:in-data-[chat-room-chrome]:rounded-full ${onPrimary ? "bg-white/20 text-white in-data-[messenger]:bg-muted in-data-[messenger]:text-foreground" : kind.tone}`}>
               <HugeiconsIcon icon={kind.icon} size={17} aria-hidden />
             </span>
             <span className="relative min-w-0 flex-1">
-              <span className={`block truncate text-[12.5px] font-medium ${onPrimary ? "text-white" : "text-foreground"}`}>{f.name}</span>
-              <span className={`block text-[11px] ${onPrimary ? "text-white/70" : "text-muted-foreground"}`}>
+              <span data-attachment-name className={`block truncate text-[12.5px] in-data-[messenger]:text-[15px] font-medium max-md:in-data-[chat-room-chrome]:line-clamp-2 max-md:in-data-[chat-room-chrome]:whitespace-normal max-md:in-data-[chat-room-chrome]:font-normal max-md:in-data-[chat-room-chrome]:leading-[20px] max-md:in-data-[chat-room-chrome]:[overflow-wrap:anywhere] ${onPrimary ? "text-white in-data-[messenger]:text-foreground" : "text-foreground"}`}>{f.name}</span>
+              <span className={`block text-[11px] in-data-[messenger]:text-[13px] max-md:in-data-[chat-room-chrome]:mt-[2px] max-md:in-data-[chat-room-chrome]:leading-[18px] ${onPrimary ? "text-white/70 in-data-[messenger]:text-muted-foreground" : "text-muted-foreground"}`}>
                 {uploading ? "업로드 중..." : `${kind.label} · ${fileSizeLabel(f.size)}`}
               </span>
             </span>
@@ -625,10 +859,10 @@ export function MessageFiles({ files, onPrimary = false }: { files: FileInfo[]; 
 export function MessageContent({ content, tasks, isMe = false }: { content: string; tasks: TaskRef[]; isMe?: boolean }) {
   // 링크 · 경로는 밑줄 글자, @사람 · #업무는 옅은 칩 — 본문과 한눈에 구분된다
   const mentionClass = isMe
-    ? "font-medium text-white/90 underline decoration-white/40 hover:decoration-white"
+    ? "font-medium text-white/90 underline decoration-white/40 hover:decoration-white in-data-[messenger]:text-blue-700 in-data-[messenger]:decoration-blue-700/40 dark:in-data-[messenger]:text-blue-300 dark:in-data-[messenger]:decoration-blue-300/40"
     : "font-medium text-blue-700 dark:text-blue-300 hover:underline"
   const chipClass = isMe
-    ? "rounded bg-white/20 px-1 py-px font-medium text-white hover:bg-white/30"
+    ? "rounded bg-white/20 px-1 py-px font-medium text-white hover:bg-white/30 in-data-[messenger]:bg-blue-50 in-data-[messenger]:text-blue-700 dark:in-data-[messenger]:bg-blue-950/50 dark:in-data-[messenger]:text-blue-300"
     : "rounded bg-blue-50 px-1 py-px font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-900/60"
 
   const parts: React.ReactNode[] = []
@@ -671,7 +905,7 @@ export function MessageContent({ content, tasks, isMe = false }: { content: stri
           key={match.index}
           href={`/omnis/nas?path=${encodeURIComponent(raw)}`}
           className={mentionClass}
-          title="사내 NAS 에서 열기"
+          title="사내 시놀로지에서 열기"
           onClick={(e) => e.stopPropagation()}
         >
           {raw}
@@ -733,26 +967,26 @@ function TaskCreatedCard({
       <Link
         href={href}
         onClick={(e) => e.stopPropagation()}
-        className="group flex w-full max-w-[88%] flex-col gap-2 rounded-xl border border-primary/25 bg-primary/[0.04] px-3.5 py-3 transition-colors hover:border-primary/45 hover:bg-primary/[0.07]"
+        className="group flex w-full max-w-[88%] flex-col gap-2 rounded-xl border border-primary/25 bg-primary/[0.04] px-3.5 py-3 in-data-[messenger]:gap-2.5 in-data-[messenger]:rounded-2xl in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] transition-colors hover:border-primary/45 hover:bg-primary/[0.07]"
       >
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-primary">
-          <HugeiconsIcon icon={Task01Icon} size={13} />
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-primary in-data-[messenger]:text-[13.5px]">
+          <HugeiconsIcon icon={Task01Icon} size={13} className="in-data-[messenger]:size-[17px]" />
           새 업무가 생성되었습니다
         </div>
 
-        <div className="text-[13px] font-semibold leading-snug text-foreground">
+        <div className="text-[13px] font-semibold leading-snug text-foreground in-data-[messenger]:text-[16.5px]">
           {task?.name ?? "업무"}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
           {task?.slug && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-[10px] in-data-[messenger]:h-6 in-data-[messenger]:text-[12.5px]">
               #{task.slug}
             </Badge>
           )}
           {statusLabel && (
             <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+              className={`rounded px-1.5 py-0.5 text-[10px] font-medium in-data-[messenger]:text-[12.5px] ${
                 (task?.status && TASK_STATUS_COLORS[task.status]) ||
                 "bg-muted text-muted-foreground"
               }`}
@@ -761,25 +995,25 @@ function TaskCreatedCard({
             </span>
           )}
           {task?.priority && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[10px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
               {PRIORITY_LABELS[task.priority] ?? task.priority}
             </span>
           )}
         </div>
 
         {(task?.owner || deadlineLabel || checklistCount > 0) && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-muted-foreground in-data-[messenger]:text-[13px]">
             {task?.owner && <span>담당 {task.owner.name}</span>}
             {deadlineLabel && <span>마감 {deadlineLabel}</span>}
             {checklistCount > 0 && <span>체크리스트 {checklistCount}개</span>}
           </div>
         )}
 
-        <span className="text-[10.5px] font-medium text-primary opacity-70 transition-opacity group-hover:opacity-100">
+        <span className="text-[10.5px] font-medium text-primary opacity-70 in-data-[messenger]:text-[13px] transition-opacity group-hover:opacity-100">
           업무 상세 보기 →
         </span>
       </Link>
-      <span className="text-[10px] text-muted-foreground">
+      <span className="text-[10px] text-muted-foreground in-data-[messenger]:text-[12.5px]">
         {format(new Date(createdAt), "HH:mm")}
       </span>
     </div>

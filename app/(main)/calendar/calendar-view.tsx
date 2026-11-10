@@ -76,7 +76,16 @@ const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
 /** 웍스 동기화 간격. 서버도 60초 안의 재시도는 요청 없이 돌려보낸다 */
 const SYNC_MS = 60_000
 
-export function CalendarView({ isAdmin, initialMonth }: { isAdmin: boolean; initialMonth: string | null }) {
+export function CalendarView({
+  isAdmin,
+  initialMonth,
+  initialDay = null,
+}: {
+  isAdmin: boolean
+  initialMonth: string | null
+  /** 고른 채 열 날(YYYY-MM-DD) — 새 일정 알림을 누르면 온다. initialMonth 가 그 날의 달이다 */
+  initialDay?: string | null
+}) {
   const [ym, setYm] = useState(() => parseMonthKey(initialMonth) ?? thisSeoulMonth())
   const days = useMemo(() => monthGrid(ym.year, ym.month), [ym])
   const range = useMemo(() => gridWindow(days), [days])
@@ -96,7 +105,9 @@ export function CalendarView({ isAdmin, initialMonth }: { isAdmin: boolean; init
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
-  const [selected, setSelected] = useState<string>(() => defaultDay(ym.year, ym.month))
+  const [selected, setSelected] = useState<string>(() =>
+    initialDay && initialDay.startsWith(monthKey(ym.year, ym.month)) ? initialDay : defaultDay(ym.year, ym.month)
+  )
 
   // 마지막 요청만 반영한다 — 달을 빠르게 넘기면 앞의 응답이 늦게 와서 덮을 수 있다
   const seq = useRef(0)

@@ -9,8 +9,8 @@
  * uuid 는 운영과 로컬이 같지만, 사람이 읽고 검증할 수 있는 쪽이 이름이다(migration-traps 와 같은 이유).
  *
  * 여기 없는 계정(주진호·팀장·부팀장·사원1~3·Omnis)은 건드리지 않는다.
- * StaffProfile 도 건드리지 않는다 — 거기 position 은 **본 소속**에서의 직책이고(김경훈은 EAS 대표),
- * 하드사이언스 겸직 직함은 이미 haddRole 에 CMO·CAO 로 들어 있다. 다른 칸이다.
+ * StaffProfile 도 건드리지 않는다 — 거기 position 은 **본 소속**에서의 직책이고(윤훈은 EAS 소속),
+ * 하드사이언스 겸직 직함은 이미 haddRole 에 CAO 로 들어 있다. 다른 칸이다.
  *
  *   npx tsx scripts/set-team-positions.ts           # 무엇이 바뀔지만 보여준다
  *   npx tsx scripts/set-team-positions.ts --apply   # 실제로 쓴다
@@ -20,7 +20,6 @@ import { prisma } from "../lib/db"
 
 const TEAM: { name: string; department: string; position: string }[] = [
   { name: "허채정", department: "경영진", position: "CEO · CTO" },
-  { name: "김경훈", department: "영업마케팅팀", position: "CMO" },
   { name: "윤훈", department: "영업마케팅팀", position: "CAO" },
   { name: "김아리", department: "연구개발팀", position: "팀장" },
   { name: "노혜린", department: "제품개발팀", position: "팀장" },

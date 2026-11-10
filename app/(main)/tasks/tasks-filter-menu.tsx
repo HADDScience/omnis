@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { FilterLink } from "./filter-link"
+import { UNASSIGNED_LABEL } from "@/lib/task-unassigned"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowDown01Icon, FilterIcon } from "@hugeicons/core-free-icons"
 import {
@@ -17,6 +18,7 @@ const QUICK_FILTERS = [
   { key: "due-today", label: "오늘 마감" },
   { key: "i-assigned", label: "내가 지시한 업무" },
   { key: "i-own", label: "내가 담당" },
+  { key: "unassigned", label: UNASSIGNED_LABEL },
 ] as const
 
 export function TasksFilterMenu({ active }: { active: string | null }) {

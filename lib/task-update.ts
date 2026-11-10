@@ -10,8 +10,10 @@ import { writeActivity } from "@/lib/api"
 import { proposeFromTaskSafe } from "@/lib/card-proposals"
 import { proposeRecordsFromTaskSafe } from "@/lib/record-proposals"
 import { recordTaskEvents } from "@/lib/task-events"
+import { assignmentTargets } from "@/lib/notify-rules"
 import type { TaskEventVia } from "@/lib/schemas/task-event"
 import type { Prisma, Priority, TaskStatus } from "@/generated/prisma/client"
+import { ACTIVE_MEMBER_WHERE, newlyChosen } from "@/lib/active-members"
 
 export interface UpdateTaskInput {
   status?: TaskStatus
@@ -66,7 +68,7 @@ export async function updateTask(
   // 바꾸기 전 값 — 변경 이력(TaskEvent)이 「무엇에서 무엇으로」를 남기려면 먼저 읽어야 한다
   const before = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { status: true, deadline: true, archived: true, assignees: { select: { userId: true } } },
+    select: { status: true, deadline: true, archived: true, instructorId: true, assignees: { select: { userId: true } } },
   })
   if (!before) return { error: "업무를 찾을 수 없습니다" }
 
@@ -79,15 +81,20 @@ export async function updateTask(
     // 🤖 시스템 계정은 사람이 아니다 — 담당자 후보에서 뺀다(구조화 AI 와 같은 규칙).
     nextAssigneeIds = [...new Set(assigneeIds)].filter((id) => id !== SYSTEM_USER_ID)
     if (nextAssigneeIds.length === 0) return { error: "담당자는 최소 1명이 필요합니다" }
-    const found = await prisma.user.count({ where: { id: { in: nextAssigneeIds } } })
-    if (found !== nextAssigneeIds.length) return { error: "담당자 중에 없는 사용자가 있습니다" }
+    // 새로 고른 사람만 재직을 본다 — 이미 담당인 퇴사자를 남긴 채 다른 칸을 고쳐도 막히지 않게
+    const added = newlyChosen(nextAssigneeIds, previousAssigneeIds)
+    const found = await prisma.user.count({ where: { id: { in: added }, ...ACTIVE_MEMBER_WHERE } })
+    if (found !== added.length) return { error: "담당자 중에 없거나 재직 중이 아닌 사람이 있습니다" }
     data.assignees = { deleteMany: {}, create: nextAssigneeIds.map((userId) => ({ userId })) }
   }
 
   if (instructorId !== undefined) {
     if (instructorId === SYSTEM_USER_ID) return { error: "시스템 계정은 지시자가 될 수 없습니다" }
-    const found = await prisma.user.count({ where: { id: instructorId } })
-    if (found === 0) return { error: "없는 사용자를 지시자로 지정했습니다" }
+    // 지시자가 퇴사했어도 그대로 두면 저장된다 — 화면은 담당과 지시자를 늘 함께 보낸다
+    if (instructorId !== before.instructorId) {
+      const found = await prisma.user.count({ where: { id: instructorId, ...ACTIVE_MEMBER_WHERE } })
+      if (found === 0) return { error: "없거나 재직 중이 아닌 사람을 지시자로 지정했습니다" }
+    }
     data.instructorId = instructorId
   }
 
@@ -122,7 +129,7 @@ export async function updateTask(
   // 새로 담당이 된 사람에게만 알린다 — 빠진 사람에게 "당신은 빠졌다"를 보내지 않는다.
   // 생성 때와 같은 accept_task 알림이라, 받은 사람이 수락할 때까지 남는다.
   if (assigneeIds !== undefined) {
-    const added = nextAssigneeIds.filter((id) => !previousAssigneeIds.includes(id) && id !== userId)
+    const added = assignmentTargets({ previous: previousAssigneeIds, next: nextAssigneeIds, actorId: userId, systemUserId: SYSTEM_USER_ID })
     if (added.length > 0) {
       const actor = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
       for (const id of added) {

@@ -1,11 +1,11 @@
 import Link from "next/link"
 import { assigneeLabel } from "@/lib/task-assignees"
+import { isUnassignedOpen } from "@/lib/task-unassigned"
 import { Header } from "@/components/layout/header"
 import { auth } from "@/lib/auth"
 import { TaskCreateButton } from "@/components/chat/task-create-button"
 import { loadTasksOverview } from "./overview/load-overview"
 import { TasksStatusBand } from "./overview/tasks-status-band"
-import { DashboardGeminiBadge } from "./overview/dashboard-gemini-usage"
 import { TasksBody, type FilterableTask } from "./tasks-body"
 
 export const dynamic = "force-dynamic"
@@ -34,6 +34,8 @@ export default async function TasksPage() {
       status: t.status,
       priority: t.priority,
       ownerName: t.assignees.length > 0 ? assigneeLabel(t.assignees) : null,
+      ownerSearch: t.assignees.map((a) => a.user.name).join(" "),
+      unassigned: isUnassignedOpen({ status: t.status, assigneeCount: t.assignees.length }),
       projectName: t.project?.name ?? null,
       productName: t.project?.product?.name ?? null,
       productColor: t.project?.product?.color ?? null,
@@ -67,21 +69,15 @@ export default async function TasksPage() {
     // 바깥 스크롤러(main-with-chat)는 block 이라 flex-1 이 먹지 않아, 보드가 완료 600여 장 길이로 늘어났다.
     // 드래그하면 그 긴 페이지 전체가 자동 스크롤돼 화면이 튀었다 — 화면 높이에 묶고 컬럼 안에서 스크롤한다
     <div className="flex h-full flex-col">
-      {/* 300px 아래에서는 AI 사용량을 접는다 — 남겨 두면 맨 끝 「마이」 동그라미가 화면 밖으로 밀려났다(200px 실측) */}
-      <Header
-        title="업무"
-        actions={
-          <span className="contents max-[300px]:hidden">
-            <DashboardGeminiBadge data={overview.geminiUsage} />
-          </span>
-        }
-      />
+      {/* AI 사용량은 마이로 옮겼다(2026-10-29 작업지시자) — 업무를 보는 자리에 둘 값이 아니다 */}
+      <Header title="업무" />
       <TasksStatusBand
         tasksForProgress={allTasks.map((t) => ({
           status: t.status,
           updatedAt: t.updatedAt.toISOString(),
         }))}
         stalledCount={stalledIds.size}
+        unassignedCount={tasks.filter((t) => t.card.unassigned).length}
         members={overview.userStats.map((u) => ({ id: u.id, name: u.name, inProgress: u.inProgress }))}
         stalledGroups={overview.stalledGroups}
         userStats={overview.userStats}

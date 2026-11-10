@@ -55,6 +55,8 @@ export const CHAT_DELETED_TEXT = "삭제된 메시지입니다"
  * 서버 라우트는 lib/storage 가 다시 내보내는 같은 값을 쓴다(storage 는 node:tls 를 써 화면이 못 읽는다).
  */
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+/** 큰 첨부(LARGE_UPLOAD_ENABLED)의 파일당 상한. 임시 저장소로 직접 올린다 — lib/large-upload */
+export const ATTACH_MAX_BYTES = 300 * 1024 * 1024
 
 // ─── 네비게이션 ──────────────────────────────────────────
 

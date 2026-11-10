@@ -1,6 +1,7 @@
 // 옴니스 질문 — 화면(app/api/omnis/ask)과 MCP(hadd-omnis)가 같은 길을 쓴다.
 //
 // 검색(top-K) + 현황 전량(업무·지식재산권·CRM) + 생성. 라우트에서 그대로 옮겼다(2026-09-07).
+import { isUnassignedOpen } from "@/lib/task-unassigned"
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { assigneeLabel } from "@/lib/task-assignees"
@@ -9,6 +10,9 @@ import { stockBalance, quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { answerWithOmnis, runGeminiToolLoop, type GeminiFunctionDeclaration, type ToolLoopUsage } from "@/lib/ai"
 import { writeActivity } from "@/lib/api"
 import { listCases, listOpenTurns } from "@/lib/ip-data"
+import type { OmnisTurn } from "@/lib/omnis-history"
+import { seoulDayLabel } from "@/lib/calendar/time"
+import { CALENDAR_WRITE_RULE } from "@/lib/agent/prompt"
 
 export const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   OMNIS_CARD: "옴니스 카드",
@@ -16,6 +20,7 @@ export const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   WEEKLY_REPORT: "주간보고",
   CHAT_MESSAGE: "채팅",
   IP_CASE: "지식재산권",
+  PHOTO: "사진",
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -51,13 +56,14 @@ export async function buildTaskOverview(): Promise<string> {
       (a.deadline?.getTime() ?? Infinity) - (b.deadline?.getTime() ?? Infinity)
   )
   const overdueCount = tasks.filter(isOverdue).length
+  const unassignedCount = tasks.filter((t) => isUnassignedOpen({ status: t.status, assigneeCount: t.assignees.length })).length
   const lines = sorted.map((t) => {
     const dl = t.deadline
       ? ` · 마감 ${t.deadline.toISOString().slice(0, 10)}${isOverdue(t) ? " (지연)" : ""}`
       : ""
     return `- ${t.name} · ${STATUS_LABEL[t.status] ?? t.status}${dl} · 담당 ${assigneeLabel(t.assignees)}`
   })
-  return `전체 비보관 업무 ${tasks.length}건 · 지연 ${overdueCount}건\n${lines.join("\n")}`
+  return `전체 비보관 업무 ${tasks.length}건 · 지연 ${overdueCount}건 · 담당 미배정(미완료) ${unassignedCount}건\n${lines.join("\n")}`
 }
 
 /**
@@ -215,7 +221,7 @@ export async function buildIpOverview(): Promise<string> {
   const turns = (await listOpenTurns()).filter((t) => t.nextTurn === "us")
   if (turns.length > 0) {
     const lines = turns.map((t) => {
-      const bits = [`${t.entityId} ${t.caseName}`, t.stage]
+      const bits = [`${t.entityId} ${t.caseName}`, t.event ?? t.status ?? ""]
       if (t.dueOn) bits.push(`기한 ${t.dueOn}`)
       return `- ${bits.join(" · ")}`
     })
@@ -259,6 +265,13 @@ export interface RouteOptions {
   thinking?: { budget?: number; level?: "minimal" | "low" | "medium" | "high" }
   /** 기록(OmnisQuery·활동) 없이 답만 — 벤치용 */
   dryRun?: boolean
+  /**
+   * 이번 질문 앞의 대화 — 메신저 옴니스 1:1 방이 넘긴다(lib/omnis-room.ts, 상한은 lib/omnis-history.ts).
+   * MCP ask_omnis 와 오른쪽 패널 질문은 넘기지 않아 예전처럼 한 번 묻고 끝난다
+   */
+  history?: OmnisTurn[]
+  /** 사용량(GeminiUsage) 기록 이름. 메신저 방은 "omnisAsk.room" 으로 따로 센다 */
+  endpoint?: string
 }
 
 /** 질문 한 번 — 검색·생성·기록까지. 실패는 그대로 던진다(호출자가 응답 형식을 정한다). */
@@ -267,18 +280,59 @@ export async function askOmnis(question: string, userId: string): Promise<AskRes
   return askOmnisBaseline(question, userId)
 }
 
-const ROUTE_TOOL_EXCLUDE = new Set(["ask_omnis", "post_message", "create_task", "search_knowledge"])
+/** 1:1 방에서 앞선 대화가 함께 올 때만 덧붙인다 — 한 번 묻는 길(MCP · 패널)의 프롬프트는 그대로 둔다 */
+const HISTORY_RULE = `
+이 대화는 앞선 질문과 답에 이어집니다. 「그거」 「아까 그 업무」 「두 번째 것」 처럼 앞을 가리키는 말은 앞선 대화에서 대상을 찾아 답하세요.
+앞선 답에 있던 건수 · 상태 · 금액은 그 사이 바뀌었을 수 있으니, 다시 답할 때는 도구로 확인하세요.
+`
 
-function routeSystemPrompt(today: string, userName: string): string {
+/**
+ * 질문 경로에 여는 MCP 도구 — 읽기만. 이 경로에는 쓰기 전 확인 단계가 없어서,
+ * 빼는 목록으로 두면 MCP 에 새 쓰기 도구가 생길 때마다 확인 없이 열린다(update_task · delete_company_record 가 그랬다).
+ * search_knowledge · ip_overview 는 아래에서 이 경로 전용으로 따로 정의한다.
+ */
+export const ROUTE_READ_TOOLS = new Set([
+  "list_tasks", "get_task", "read_file", "list_notifications", "list_projects", "list_members",
+  "crm_overview", "find_org", "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat",
+  "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
+  "list_market_companies", "get_context", "list_calendar",
+])
+
+/**
+ * 질문 경로에서는 list_chat 의 방 보기(view=room)를 닫는다 — 이 경로의 근거는 전사방 · 업무 글뿐이다(검색 색인과 같다).
+ * 답은 옴니스 기록(OmnisQuery)으로 남고 화면에 따라 여러 사람이 보는 자리에 붙을 수 있어, 단톡 · 1:1 글이 들어오면 안 된다.
+ * 방 글은 MCP 에서 사용자가 직접 list_chat(view=room)으로 읽고, 앱 안에서는 요청한 사람만 보는 에이전트(lib/agent/tools.ts)가 읽는다.
+ */
+const ROUTE_ROOM_PROPS = ["room", "members", "since", "until", "query"]
+
+export function routeToolSchema(name: string, schema: { type: string; properties?: Record<string, unknown>; required?: string[] }) {
+  if (name !== "list_chat") return schema
+  const properties = { ...schema.properties }
+  for (const p of ROUTE_ROOM_PROPS) delete properties[p]
+  const view = properties.view as { enum?: string[] } | undefined
+  if (view?.enum) properties.view = { ...view, enum: view.enum.filter((v) => v !== "room") }
+  return { ...schema, properties }
+}
+
+export function routeArgsRefusal(name: string, args: Record<string, unknown>): string | null {
+  if (name === "list_chat" && args.view === "room") return "오류: 이 질문 경로에서는 단톡방 · 1:1 방 글을 읽지 않습니다."
+  return null
+}
+
+export function routeSystemPrompt(today: string, userName: string, withHistory = false): string {
   return `당신은 HADD Science 의 사내 지식 비서 "옴니스" 입니다. 오늘은 ${today} 이고, 질문한 사람은 ${userName} 입니다.
 직원의 질문에 답하려면 도구를 골라 부르세요. 한 번에 여러 도구를 불러도 됩니다. 최대 5번까지 부를 수 있습니다.
-
+${withHistory ? HISTORY_RULE : ""}
 도구 고르는 법:
 - 대화 내용·진행 상황·"누가 뭐라고 했나" 는 search_knowledge 로 찾으세요. 사람 이름·기관명·제품명처럼 고유명사가 있으면 그것을 query 에 넣으세요.
-- 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true), 한 업무의 체크리스트·최근 대화는 get_task.
+- 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true, 담당 미배정은 unassigned=true), 한 업무의 체크리스트·최근 대화는 get_task.
 - 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org, 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
 - 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
+- 일정·행사·미팅·외근·「다음 주」「11/4」 같은 날짜 질문은 list_calendar(웍스 캘린더). 날짜는 오늘(서울)을 기준으로 YYYY-MM-DD 로 풀어 from·to 에 넣으세요.
+- 사진을 찾으면(「~ 사진」 「~ 찍은 것」 「명함」 「포스터」) search_knowledge 를 sources=["PHOTO"] · limit 20 으로 부르세요. 사진 결과는 사진 속 모습 · 글자를 글로 옮긴 설명입니다.
 - 첫 도구 결과로 충분하면 바로 답하세요. 부족할 때만 더 부르세요.
+
+${CALENDAR_WRITE_RULE}
 
 답변 규칙:
 - 도구 결과에 있는 내용만으로 답하세요. 결과에 없으면 추측하지 말고 "관련 내용을 찾지 못했습니다" 라고 답하세요.
@@ -288,7 +342,11 @@ function routeSystemPrompt(today: string, userName: string): string {
 - 매출은 확정(결산서)·잠정(세금계산서 합)·계획 중 어느 것인지 밝히고, 단계가 다른 숫자를 더하지 마세요.
 - 직원 연락처·생년월일·과학기술인번호는 list_staff 가 관리자에게만 줍니다. 결과에 없으면 관리자만 볼 수 있다고 안내하세요. 서명은 도구가 주지 않습니다.
 - 한국어로 간결하게. 첫 줄에 질문에 대한 답을 한 문장으로 먼저 쓰세요.
-- 같은 칸(이름·상태·번호·날짜 등)을 가진 항목이 3개 이상이면 마크다운 표로 정리하세요.
+- 사진을 찾는 질문이면 질문에 맞는 사진을 **빠짐없이** 근거 번호로 다세요. 화면은 번호를 단 사진을 답 아래에 한 묶음으로 보여 줍니다.
+  사진마다 설명을 늘어놓지 말고, 행사 · 날짜처럼 같은 장면끼리 묶어 한두 줄로 무엇이 찍혔는지 쓰고 번호를 모아 붙이세요(예: 「○○ 행사 부스 — 10/14 · 10/16 [3, 4, 5]」).
+  질문과 어긋나는 사진(도면 · 다른 회사 부스 등)에는 번호를 달지 마세요 — 번호를 단 사진은 모두 묶음에 뜹니다. 필요하면 번호 없이 「그 밖에 ~ 사진도 있습니다」 한 줄만 쓰세요.
+  결과에 없는 사진을 두고 「이것만 있다」 처럼 단정하지 마세요.
+- 같은 칸(이름·상태·번호·날짜 등)을 가진 항목이 3개 이상이면 마크다운 표로 정리하세요. 단, 사진은 표로 만들지 말고 위처럼 묶어 쓰세요.
 - 묶음이 여럿이면 "### 소제목" 으로 나누고, 한 항목의 세부는 들여쓴 하위 목록("  - 상태: …")으로 쓰세요. 번호 제목 아래에 굵은 라벨 줄을 늘어놓지 마세요.
 - 굵은 글씨는 꼭 짚어야 할 한두 곳에만 쓰세요.`
 }
@@ -310,19 +368,19 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
   const tools: GeminiFunctionDeclaration[] = [
     {
       name: "search_knowledge",
-      description: "의미 + 키워드 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권 조각을 돌려준다. 대화 내용·진행 상황·결정을 물으면 먼저 쓴다.",
+      description: "의미 + 키워드 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권·사진(설명) 조각을 돌려준다. 대화 내용·진행 상황·결정을 물으면 먼저 쓴다.",
       parameters: {
         type: "object",
         properties: {
           query: { type: "string", description: "검색어. 고유명사(사람·기관·제품)를 포함한다" },
-          sources: { type: "array", items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE"] }, description: "생략하면 전부" },
+          sources: { type: "array", items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO"] }, description: "생략하면 전부" },
           limit: { type: "integer", description: "기본 8, 최대 20" },
         },
         required: ["query"],
       },
     },
-    ...OMNIS_TOOLS.filter((t) => !ROUTE_TOOL_EXCLUDE.has(t.name)).map((t) => {
-      const schema = t.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[] }
+    ...OMNIS_TOOLS.filter((t) => ROUTE_READ_TOOLS.has(t.name)).map((t) => {
+      const schema = routeToolSchema(t.name, t.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[] })
       const hasProps = schema.properties && Object.keys(schema.properties).length > 0
       return { name: t.name, description: t.description, ...(hasProps ? { parameters: schema } : {}) }
     }),
@@ -348,13 +406,19 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
         .join("\n\n")
     }
     if (call.name === "ip_overview") return (await buildIpOverview()) || "지식재산권 자료가 없습니다."
+    // 내놓지 않은 이름을 모델이 지어 불러도 실행하지 않는다
+    if (!ROUTE_READ_TOOLS.has(call.name)) return `오류: ${call.name} 은(는) 이 질문 경로에서 쓸 수 없는 도구입니다.`
+    const refused = routeArgsRefusal(call.name, call.args)
+    if (refused) return refused
     const r = await runTool(call.name, call.args, caller)
     return "error" in r ? `오류: ${r.error}` : r.text
   }
 
-  const today = new Date().toISOString().slice(0, 10)
-  const loop = await runGeminiToolLoop(routeSystemPrompt(today, user.name), question, tools, runOne, {
-    model, thinking, maxSteps: 6, endpoint: "omnisAsk.route", userId,
+  // 서울 날짜 · 요일 — UTC 날짜면 서울 0~9시에 하루 어긋나 「오늘」「다음 주」 가 틀린다(list_calendar)
+  const today = `${seoulDayLabel(new Date())} · 시간대 Asia/Seoul`
+  const history = opts.history ?? []
+  const loop = await runGeminiToolLoop(routeSystemPrompt(today, user.name, history.length > 0), question, tools, runOne, {
+    model, thinking, maxSteps: 6, endpoint: opts.endpoint ?? "omnisAsk.route", userId, history,
   })
   const answer = loop.text || (loop.error ? `답을 정리하지 못했습니다 (${loop.error}). 질문을 더 구체적으로 바꿔 주세요.` : "관련 내용을 찾지 못했습니다.")
 

@@ -1,9 +1,9 @@
-import { startOfWeek, subDays } from "date-fns"
+import { subDays } from "date-fns"
 import { prisma } from "@/lib/db"
 import { assigneeLabel } from "@/lib/task-assignees"
-import type { GeminiUsageData } from "./dashboard-gemini-usage"
 import type { StalledGroups, StalledTask } from "./dashboard-stalled"
 import type { MemberStat } from "./dashboard-members"
+import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 
 /** 진행 중으로 둔 채 이만큼 움직임이 없으면 「멈춤」 으로 본다 */
 const STALE_DAYS = 3
@@ -17,9 +17,8 @@ const STALE_DAYS = 3
  */
 export async function loadTasksOverview() {
   const now = new Date()
-  const weekStart = startOfWeek(now, { weekStartsOn: 1 })
 
-  const [allTasks, users, gajumCard, gwajaeCard, products, allProjects, geminiAggregate, geminiByEndpoint, pendingActions] = await Promise.all([
+  const [allTasks, users, gajumCard, gwajaeCard, products, allProjects, pendingActions] = await Promise.all([
     prisma.task.findMany({
       where: { archived: false },
       select: {
@@ -44,8 +43,9 @@ export async function loadTasksOverview() {
       },
       orderBy: { updatedAt: "desc" },
     }),
+    // 담당 칩 · 「담당 지정」 후보. 퇴사자의 업무는 목록 검색칸에서 찾는다
     prisma.user.findMany({
-      where: { isActive: true },
+      where: ACTIVE_MEMBER_WHERE,
       select: { id: true, name: true },
     }),
     prisma.omnisCard.findFirst({ where: { title: "가점항목 리스트" } }),
@@ -55,17 +55,6 @@ export async function loadTasksOverview() {
       where: { archived: false },
       select: { id: true, name: true, productId: true },
       orderBy: { createdAt: "desc" },
-    }),
-    prisma.geminiUsage.aggregate({
-      where: { createdAt: { gte: weekStart } },
-      _sum: { totalTokens: true, promptTokens: true, candidateTokens: true },
-      _count: true,
-    }),
-    prisma.geminiUsage.groupBy({
-      by: ["endpoint"],
-      where: { createdAt: { gte: weekStart } },
-      _sum: { totalTokens: true },
-      _count: true,
     }),
     // 아직 응답이 없는 액션 알림 = 확인 안 한 업무 / 완료 확인 대기의 원천
     prisma.notification.findMany({
@@ -144,18 +133,6 @@ export async function loadTasksOverview() {
     [...stalledGroups.unacknowledged, ...stalledGroups.stale, ...stalledGroups.awaitingDone].map((t) => t.id)
   )
 
-  const geminiUsage: GeminiUsageData = {
-    totalTokens: geminiAggregate._sum.totalTokens ?? 0,
-    promptTokens: geminiAggregate._sum.promptTokens ?? 0,
-    candidateTokens: geminiAggregate._sum.candidateTokens ?? 0,
-    callCount: geminiAggregate._count,
-    byEndpoint: geminiByEndpoint.map((e) => ({
-      endpoint: e.endpoint,
-      totalTokens: e._sum.totalTokens ?? 0,
-      callCount: e._count,
-    })),
-  }
-
   return {
     now,
     allTasks,
@@ -163,7 +140,6 @@ export async function loadTasksOverview() {
     userStats,
     stalledGroups,
     stalledIds,
-    geminiUsage,
     gajumMarkdown: (gajumCard?.content as { text?: string })?.text ?? "",
     gwajaeMarkdown: (gwajaeCard?.content as { text?: string })?.text ?? "",
     workspaceProducts: products.map((p) => ({ id: p.id, name: p.name, color: p.color })),

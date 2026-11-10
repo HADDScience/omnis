@@ -18,7 +18,7 @@ export default async function OmnisNasPage({
   const { path } = await searchParams
   return (
     <>
-      <Header crumbs={["HADD DB", "사내 자료 (NAS)"]} />
+      <Header crumbs={["HADD DB", "사내 자료 (시놀로지)"]} />
       <div className="flex flex-1 flex-col overflow-hidden p-4">
         <NasBrowser initialPath={path ?? "/HADD Science"} />
       </div>

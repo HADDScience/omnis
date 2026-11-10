@@ -3,6 +3,8 @@
 import { useEffect } from "react"
 
 import {
+  isStandalone,
+  markInstalled,
   registerServiceWorker,
   setInstallPrompt,
   type InstallPromptEvent,
@@ -18,13 +20,18 @@ import {
 export function PwaRegister() {
   useEffect(() => {
     void registerServiceWorker()
+    // 홈 화면으로 열렸으면 설치한 기기다 — 브라우저 탭으로 다시 와도 설치 권유를 띄우지 않는다(lib/app-nudge.ts)
+    if (isStandalone()) markInstalled()
 
     // layout 의 인라인 스크립트가 놓친 뒤늦은 이벤트를 여기서 받는다.
     const onPrompt = (e: Event) => {
       e.preventDefault()
       setInstallPrompt(e as InstallPromptEvent)
     }
-    const onInstalled = () => setInstallPrompt(null)
+    const onInstalled = () => {
+      setInstallPrompt(null)
+      markInstalled()
+    }
 
     window.addEventListener("beforeinstallprompt", onPrompt)
     window.addEventListener("appinstalled", onInstalled)

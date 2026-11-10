@@ -10,6 +10,8 @@ import {
 test.describe("업무 탭 — 현황 띠 / 관계도", { tag: "@tasks" }, () => {
   test.beforeEach(async ({ page }) => {
     await login(page, "팀장")
+    // 로그인 뒤 첫 화면은 채팅이다 — 업무 탭은 직접 연다
+    await page.goto("/tasks")
   })
 
   // 지키는 것: 업무 화면 맨 위에서 진행률 · 멈춘 업무 수 · 상세 보기를 한눈에 본다
