@@ -188,6 +188,16 @@ ui-ux-pro-max / codex-rescue) 다수결에 Codex 적대적 검토(v2~v4)를 반�
 - 첫 글은 짧은 요청 한 줄 + `#슬러그` · ID · 배경 · 기대 결과(160자까지) · 남은 체크리스트(8개까지, `lib/task-start.ts`). 옴니스는 `#슬러그` 로 get_task 를 불러 원문을 읽는다
 - 한 번만 보낸다 — 글은 sessionStorage 의 일회용 키(10분)로 넘기고, 옴니스 방이 **보내기 전에** 보냈다고 적는다. 더블탭 · 뒤로 갔다 다시 들어오기 · 새로고침은 다시 보내지 않는다. 보내다 실패하면 입력칸에 글이 남는다
 
+### 업무 목록 · 보드에서 바로 (2026-11-10)
+
+상세에 들어가지 않고 목록 행 · 보드 카드에서 같은 두 가지를 한다. 시험: `tests/feature/task-list-actions.spec.ts`
+
+- **모든 업무**에 「Omnis 와 시작」 아이콘(`StartWithOmnisIcon`) — 확인 창 · 넘기는 길 · 한 번만 보내기는 위와 같다. 목록은 배경 · 체크리스트를 싣지 않아 확인 창을 열 때 `GET /api/tasks/[id]/start` 로 그 한 장만 읽는다(받기 전 단추는 「불러오는 중…」)
+- **담당 없는 미완료 업무**에 「담당 지정」 칩(`QuickAssignChip`, `components/tasks/list-quick-assign.tsx`)이 「미배정」 표 자리를 대신한다. 누르면 PC 는 팝오버, 폰은 바텀시트에 구성원 칩(상세 칸과 같은 `QuickAssignChips`) — 한 번 누르면 지정. 저장은 상세 칸(#178)과 같은 `PATCH /api/tasks/[id]` 의 assigneeIds(권한 · 알림 · 이력 그대로). 화면을 먼저 바꾸고 실패하면 칩이 돌아온다(`withAssignOverrides`)
+- 목록 행의 단추는 상세로 가는 링크 **밖**, 행 테두리 안에 링크와 나란히 둔다(`TaskCard` 의 `actions`) — 단추를 눌러도 상세로 넘어가지 않고, 나머지 자리를 누르면 전처럼 상세로 간다
+- 보드 카드는 끌어 옮길 수 있다(PC 4px · 폰 꾹 250ms). 카드 안 단추 칸(`data-no-drag`)과 그 단추가 띄운 창(포털)에서 온 누름은 끌기 센서에 넘기지 않는다(`dragOnlyFromCard`). 업무 목록에는 밀기(스와이프) 동작이 없다
+- 폰 아이콘은 보이는 크기 그대로 44px(`size-[44px]` — 폰은 rem 이 13px 이라 `size-11` 은 36px 이 된다), 보드 카드에서는 안쪽 여백만큼 겹쳐 카드가 길어지지 않게 한다. 칩은 보이는 크기는 24px, 누르는 자리는 `touch-hit` 으로 44px
+
 ## 메신저 — 첫 화면 (2026-10-28)
 
 로그인하면 `/` → `/chat`. 왼쪽 방 목록 + 가운데 대화. 계획: [`../plans/2026-10-28-omnis-messenger-agent.md`](../plans/2026-10-28-omnis-messenger-agent.md)

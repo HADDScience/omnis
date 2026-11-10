@@ -23,6 +23,9 @@ const WorkspaceView = dynamic(
 
 interface TasksViewsProps {
   boardTasks: KanbanTask[]
+  /** 보드 카드의 「담당 지정」 후보와 고른 뒤 할 일 */
+  members: { id: string; name: string }[]
+  onAssign: (task: { id: string }, person: { id: string; name: string }) => void
   listSlot: ReactNode
   workspace: WorkspaceViewProps
   /** 툴바 왼쪽 — 건수와 걸린 필터 */
@@ -34,7 +37,7 @@ interface TasksViewsProps {
 const STORAGE_KEY = "omnis:tasks-view"
 const VIEWS: readonly TasksView[] = ["list", "board", "graph"]
 
-export function TasksViews({ boardTasks, listSlot, workspace, toolbarStart, toolbarEnd }: TasksViewsProps) {
+export function TasksViews({ boardTasks, members, onAssign, listSlot, workspace, toolbarStart, toolbarEnd }: TasksViewsProps) {
   // 저장된 보기는 마운트 뒤에 읽는다 — 첫 렌더에서 읽으면 서버(보드)와 어긋나 hydration 이 깨진다
   const [view, setView] = useState<TasksView>("board")
   useEffect(() => {
@@ -69,7 +72,7 @@ export function TasksViews({ boardTasks, listSlot, workspace, toolbarStart, tool
         {view === "list" ? (
           <div className="h-full overflow-auto p-4">{listSlot}</div>
         ) : view === "board" ? (
-          <TasksBoard initialTasks={boardTasks} />
+          <TasksBoard initialTasks={boardTasks} members={members} onAssign={onAssign} />
         ) : (
           <WorkspaceView {...workspace} />
         )}
