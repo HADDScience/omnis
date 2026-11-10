@@ -12,6 +12,8 @@ import { MESSAGE_ENTER, MessageFiles, type FileInfo } from "@/components/chat/me
 import { OmnisAnswerBody } from "@/components/omnis/omnis-ask"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
+import type { BudgetBlock } from "@/lib/ai-budget-rules"
+import { RaiseBudgetButton } from "@/components/messenger/raise-budget-button"
 import { OMNIS_MESSAGE_MAX } from "@/lib/schemas/chat-room"
 import { cn } from "@/lib/utils"
 import type { OmnisRoomMessage } from "@/lib/omnis-room"
@@ -123,8 +125,10 @@ export function OmnisRoom({
   /** 새 대화는 첫 글을 보낸 뒤에야 방 id 가 생긴다 — 중지 뒤 다시 읽을 방 */
   const roomRef = useRef(initialRoomId)
   const [error, setError] = useState<string | null>(null)
-  /** 하루 상한(429) 안내 — 데모 사이트. 입력창 위에 남겨 둔다(토스트만으로는 왜 안 되는지 금방 사라진다) */
+  /** 상한(429) 안내 — 사람별 하루 · 회사 월 비용 상한, 데모 하루 상한. 입력창 위에 남겨 둔다(토스트만으로는 왜 안 되는지 금방 사라진다) */
   const [quotaNotice, setQuotaNotice] = useState<string | null>(null)
+  /** 비용 상한이면 그 정보 — 관리자는 그 자리에서 올린다(lib/ai-budget-rules BudgetBlock) */
+  const [quotaBudget, setQuotaBudget] = useState<BudgetBlock | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const [mountedAt] = useState(() => Date.now())
@@ -246,8 +250,8 @@ export function OmnisRoom({
     if (!res.ok || !res.headers.get("content-type")?.includes("text/event-stream")) {
       // 멈출 실행이 생기지 않았다(거절 · 오류)
       releaseStop()
-      const data = (await res.json().catch(() => null)) as { error?: string } | null
-      throw Object.assign(new Error(data?.error ?? `답을 받지 못했습니다 (${res.status})`), { status: res.status })
+      const data = (await res.json().catch(() => null)) as { error?: string; budget?: BudgetBlock } | null
+      throw Object.assign(new Error(data?.error ?? `답을 받지 못했습니다 (${res.status})`), { status: res.status, budget: data?.budget })
     }
     onHeaders?.(res.headers)
     const runId = res.headers.get("x-agent-run-id")
@@ -402,7 +406,10 @@ export function OmnisRoom({
         return
       }
       setError(message)
-      if (status === 429) setQuotaNotice(message)
+      if (status === 429) {
+        setQuotaNotice(message)
+        setQuotaBudget((err as { budget?: BudgetBlock }).budget ?? null)
+      }
       else toast.error(message)
       // 질문 글이 남지 못했으면 입력창에 되돌린다
       const saved = questionId ? state?.messages.some((m) => m.id === questionId) : false
@@ -688,6 +695,12 @@ export function OmnisRoom({
       {quotaNotice && (
         <p role="status" data-agent-quota className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-1 text-center text-[12.5px] text-amber-700 dark:text-amber-300 in-data-[messenger]:text-[14.5px]">
           {quotaNotice}
+          {quotaBudget?.canRaise && (
+            <RaiseBudgetButton
+              budget={quotaBudget}
+              onRaised={() => { setQuotaNotice(null); setQuotaBudget(null) }}
+            />
+          )}
         </p>
       )}
       <Composer

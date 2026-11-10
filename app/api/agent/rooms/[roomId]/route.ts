@@ -39,6 +39,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ roo
 
   const { roomId } = await params
   const r = await startAgentTurn({ roomId, userId: session.user.id, ...parsed.data })
-  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status })
+  if (!r.ok) return NextResponse.json({ error: r.error, ...(r.budget ? { budget: r.budget } : {}) }, { status: r.status })
   return agentStream(r.stream, r.headers)
 }

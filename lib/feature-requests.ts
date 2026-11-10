@@ -1,14 +1,12 @@
 // 기능 요청 — 옴니스(앱 AI)가 「지금 기능이 없어 못 한다」 고 본 것을 사용자가 확인하면 개발자에게 전달한다.
 //
 // 저장: FeatureRequest(묶음) + FeatureRequestEntry(요청 한 번). 같은 요청은 열린(완료 아닌) 묶음 하나에 붙인다.
-// 알림: 개발자 = 운영 알림 메일 받는 주소(ALERT_EMAIL_TO)와 같은 이메일의 재직 계정. 저장소에 사람 이름을 두지 않는다.
+// 알림: lib/notify-recipients.ts — 관리자 화면에서 지정한 사람, 비어 있으면 ALERT_EMAIL_TO 와 같은 이메일의 재직 계정.
 //   ① 옴니스 알림(벨 · 푸시) ② 운영 알림 메일(lib/alert-mail — Resend). 둘 다 실패해도 요청은 저장된다.
 // 계획: mydocs/plans/2026-11-10-app-ai-mcp-parity.md
 
 import { prisma } from "@/lib/db"
-import { sendAlertMail } from "@/lib/alert-mail"
-import { createNotification } from "@/lib/notifications"
-import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
+import { notifyDevelopers } from "@/lib/notify-recipients"
 
 import { isFeatureStatus, type FeatureStatus } from "@/lib/feature-requests-shared"
 export { FEATURE_STATUSES, FEATURE_STATUS_LABEL, isFeatureStatus, type FeatureStatus } from "@/lib/feature-requests-shared"
@@ -57,14 +55,6 @@ export async function findOpenFeature(title: string) {
   })
 }
 
-/** 개발자 계정 — ALERT_EMAIL_TO 의 주소와 이메일이 같은 재직자 */
-async function developerIds(): Promise<string[]> {
-  const emails = (process.env.ALERT_EMAIL_TO ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
-  if (emails.length === 0) return []
-  const users = await prisma.user.findMany({ where: { ...ACTIVE_MEMBER_WHERE, email: { not: null } }, select: { id: true, email: true } })
-  return users.filter((u) => emails.includes((u.email ?? "").toLowerCase())).map((u) => u.id)
-}
-
 export interface SubmitCtx {
   userId: string
   userName: string
@@ -93,19 +83,14 @@ export async function submitFeatureRequest(input: FeatureInput, ctx: SubmitCtx):
   const head = merged ? `기능 요청 (같은 요청 ${saved.count}번째): ${saved.title}` : `새 기능 요청: ${saved.title}`
   const roomPath = ctx.roomId ? `/chat/${ctx.roomId}` : null
 
-  let app = 0
-  for (const id of await developerIds()) {
-    try {
-      // entityId 를 묶음 id 로 — 같은 묶음 알림은 기기에서 서로 덮는다
-      await createNotification(id, FEATURE_NOTIFY_TYPE, head, `${ctx.userName}: ${input.detail.slice(0, 120)}`, saved.id)
-      app++
-    } catch (err) {
-      console.error("[feature-request] 알림 실패", err)
-    }
-  }
-  const mail = await sendAlertMail(
-    `[Omnis] ${head}`,
-    [
+  const notified = await notifyDevelopers({
+    type: FEATURE_NOTIFY_TYPE,
+    title: head,
+    content: `${ctx.userName}: ${input.detail.slice(0, 120)}`,
+    // entityId 를 묶음 id 로 — 같은 묶음 알림은 기기에서 서로 덮는다
+    entityId: saved.id,
+    mailSubject: `[Omnis] ${head}`,
+    mailBody: [
       head,
       "",
       `요청한 사람: ${ctx.userName}`,
@@ -114,9 +99,8 @@ export async function submitFeatureRequest(input: FeatureInput, ctx: SubmitCtx):
       roomPath ? `대화: ${ctx.base ?? ""}${roomPath} (요청한 사람만 열 수 있습니다)` : "",
       `관리: ${ctx.base ?? ""}${FEATURE_ADMIN_PATH}`,
     ].filter((l) => l !== "").join("\n"),
-  )
-  if (!mail.sent && mail.reason === "failed") console.error("[feature-request] 메일 실패", mail.detail)
-  return { id: saved.id, merged, count: saved.count, notified: { app, mail: mail.sent } }
+  })
+  return { id: saved.id, merged, count: saved.count, notified }
 }
 
 export interface FeatureRow {

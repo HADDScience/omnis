@@ -6,6 +6,7 @@
 import sharp from "sharp"
 import { generateText } from "ai"
 import { prisma } from "@/lib/db"
+import { checkBudgetAlertsSoon } from "@/lib/ai-budget-alerts"
 import { openFileObject } from "@/lib/file-object"
 import { ATTACH_READ_MAX_BYTES } from "@/lib/agent/attachments"
 import { syncEmbeddings } from "@/lib/embeddings"
@@ -101,6 +102,7 @@ export async function describePhoto(fileId: string, userId?: string): Promise<"d
       costUsd: cost.usd, costKrw: cost.krw, userId: userId ?? null,
     },
   })
+  await checkBudgetAlertsSoon()
   return (await savePhotoDescription(fileId, r.text, key, userId)) ? "done" : "unparsed"
 }
 

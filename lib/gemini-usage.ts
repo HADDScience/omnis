@@ -1,5 +1,7 @@
 import { startOfDay } from "date-fns"
 import { prisma } from "@/lib/db"
+import { costOf } from "@/lib/ai-pricing"
+import { checkBudgetAlertsSoon } from "@/lib/ai-budget-alerts"
 
 // 공개 데모(omnis-omega)는 비밀번호가 README 에 공개돼 있어 env 로 한도를 낮춘다. 없으면 기본값.
 const envLimit = (name: string, fallback: number) => {
@@ -95,8 +97,11 @@ export async function recordGeminiUsage(input: {
   candidateTokens: number
   totalTokens: number
   userId?: string | null
+  /** 부른 모델 — 주면 비용(AiUsage)도 함께 남긴다. 2026-11-10 전에는 토큰만 남아 원 환산이 없었다 */
+  model?: string
+  cachedTokens?: number
 }) {
-  await prisma.geminiUsage.create({
+  const gemini = prisma.geminiUsage.create({
     data: {
       endpoint: input.endpoint,
       promptTokens: input.promptTokens,
@@ -105,6 +110,36 @@ export async function recordGeminiUsage(input: {
       userId: input.userId ?? null,
     },
   })
+  if (!input.model) {
+    await gemini
+    return
+  }
+  // 비용 기록의 원천은 AiUsage 하나 — 에이전트 · 사진 설명과 같은 표에 같은 환산으로 남긴다(lib/ai-budget.ts 가 읽는다)
+  const row = geminiAiUsageRow({ ...input, model: input.model })
+  await prisma.$transaction([gemini, prisma.aiUsage.create({ data: row })])
+  void checkBudgetAlertsSoon()
+}
+
+/** GeminiUsage 한 줄 → AiUsage 한 줄. 출력은 생각(thinking) 토큰을 포함한다(total − prompt) */
+export function geminiAiUsageRow(input: {
+  endpoint: string; promptTokens: number; candidateTokens: number; totalTokens: number; userId?: string | null; model: string; cachedTokens?: number
+}) {
+  const inputTokens = Math.max(input.promptTokens, 0)
+  const outputTokens = Math.max(input.totalTokens - inputTokens, input.candidateTokens, 0)
+  const cached = Math.min(Math.max(input.cachedTokens ?? 0, 0), inputTokens)
+  const cost = costOf(`google:${input.model}`, { inputTokens, cachedInputTokens: cached, outputTokens })
+  return {
+    vendor: "google",
+    model: input.model,
+    feature: input.endpoint,
+    inputTokens,
+    cachedInputTokens: cached,
+    outputTokens,
+    reasoningTokens: Math.max(outputTokens - Math.max(input.candidateTokens, 0), 0),
+    costUsd: cost.usd,
+    costKrw: cost.krw,
+    userId: input.userId ?? null,
+  }
 }
 
 export function estimateGeminiTokens(texts: string[]): number {

@@ -71,6 +71,8 @@ export function notificationHref(type: string, entityId: string | null): string 
   if (type === "crm_invoice_request") return `/crm/invoices/new?quote=${entityId}`
   // 앱 AI 기능 요청 — 관리 화면(lib/feature-requests.ts FEATURE_ADMIN_PATH)
   if (type === "feature_request") return "/settings/feature-requests"
+  // AI 비용 월 상한 80% · 100%(lib/ai-budget-alerts)
+  if (type === "ai_budget") return "/settings/ai-budget"
   // 새 일정 — entityId 가 `YYYY-MM-DD:<일정 id>` 다(lib/notify-rules.ts calendarNotices). 캘린더의 그 날짜를 연다
   if (type === "calendar_event_added") {
     const day = /^(\d{4}-\d{2}-\d{2}):/.exec(entityId)?.[1]

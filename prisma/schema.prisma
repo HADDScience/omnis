@@ -2079,3 +2079,16 @@ model FeatureRequestEntry {
 
   @@index([requestId, createdAt])
 }
+
+/// 재배포 없이 바꾸는 운영 설정 — 관리자 화면이 쓴다. value 의 모양은 key 마다 lib 에 있다.
+///   ai_budget                       lib/ai-budget.ts BudgetSettings(사람별 하루 · 회사 월 상한 · 사람별 예외)
+///   feature_request_recipients      lib/feature-requests.ts — 기능 요청 · 비용 알림 받는 사람
+///   ai_budget_alert:YYYY-MM:80|100  월 상한 알림을 보낸 표시(같은 달 같은 단계는 한 번)
+/// mydocs/plans/2026-11-10-ai-budget.md
+model AppSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}

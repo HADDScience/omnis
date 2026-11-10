@@ -163,6 +163,8 @@ export async function callGemini(
         candidateTokens: usage.candidatesTokenCount ?? 0,
         totalTokens: usage.totalTokenCount ?? 0,
         userId,
+        model,
+        cachedTokens: usage.cachedContentTokenCount ?? 0,
       })
     } catch (err) {
       console.error("[gemini-usage] 사용량 기록 실패", { endpoint, userId, err })
@@ -591,6 +593,7 @@ export async function embedTexts(
           candidateTokens: 0,
           totalTokens: usage.totalTokenCount ?? usage.promptTokenCount ?? 0,
           userId,
+          model: GEMINI_EMBED_MODEL,
         })
       } catch (err) {
         console.error("[gemini-usage] 임베딩 사용량 기록 실패", { endpoint, userId, err })
@@ -604,6 +607,7 @@ export async function embedTexts(
           candidateTokens: 0,
           totalTokens: estimated,
           userId,
+          model: GEMINI_EMBED_MODEL,
         })
       } catch (err) {
         console.error("[gemini-usage] 임베딩 추정 사용량 기록 실패", { endpoint, userId, err })
@@ -810,7 +814,7 @@ export async function runGeminiToolLoop(
       usage.thinkingTokens += u.thoughtsTokenCount ?? 0
       usage.cachedTokens += u.cachedContentTokenCount ?? 0
       try {
-        await recordGeminiUsage({ endpoint, promptTokens: u.promptTokenCount ?? 0, candidateTokens: u.candidatesTokenCount ?? 0, totalTokens: u.totalTokenCount ?? 0, userId: opts.userId })
+        await recordGeminiUsage({ endpoint, promptTokens: u.promptTokenCount ?? 0, candidateTokens: u.candidatesTokenCount ?? 0, totalTokens: u.totalTokenCount ?? 0, userId: opts.userId, model, cachedTokens: u.cachedContentTokenCount ?? 0 })
       } catch (err) {
         console.error("[gemini-usage] 사용량 기록 실패", { endpoint, err })
       }
