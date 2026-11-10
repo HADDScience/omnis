@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { accountOf, autoRoomId, copyRoomIds, externalSpeakerIdOf, importedFilePrivateTo, parseImportConfig, registerRoom, speakerTarget, structureEnabled, type ImportConfig } from "../import-tools/rooms-config"
+import { accountOf, autoRoomId, copyRoomIds, externalSpeakerIdOf, importedFilePrivateTo, normalizeBody, parseImportConfig, registerRoom, speakerKey, speakerTarget, structureEnabled, type ImportConfig } from "../import-tools/rooms-config"
 import { canSeeFile } from "./file-access"
 
 const cfg = { speakers: { "직원A 표시명": "직원A" }, externals: { "외부B 표시명": { name: "외부B", org: "예시기관", title: "연구원" } } }
@@ -136,4 +136,47 @@ test("자동 등록 — 등록된 자동 방에 새 사람이 오면 더하고, 
 
 test("자동 등록 — me 가 없으면 등록하지 않는다", () => {
   assert.throws(() => registerRoom({ rooms: {}, speakers: {}, externals: {} }, "방", ["갑"], ACCOUNTS), /me/)
+})
+
+// 이름은 지어낸 값이다
+const names = {
+  me: "직원갑",
+  speakers: { "옛별칭": "직원을", "직원을 새직함님": "직원을", "직원병 과장님": "직원병", "직원갑": "직원갑" },
+  externals: { "외부정 연구원님": { name: "외부정", org: "예시기관", title: "연구원" } },
+}
+
+test("메시지 키의 보낸 사람은 표시명이 아니라 계정 — 한 계정에 표시명이 여럿이어도 같다", () => {
+  assert.equal(speakerKey("옛별칭", names), "u:직원을")
+  assert.equal(speakerKey("직원을 새직함님", names), "u:직원을")
+  assert.equal(speakerKey("직원갑", names), "u:직원갑")
+  assert.equal(speakerKey("외부정 연구원님", names), `x:${externalSpeakerIdOf(names.externals["외부정 연구원님"])}`)
+  assert.equal(speakerKey("처음보는사람", names), "d:처음보는사람")
+})
+
+test("본문의 멘션 · 초대 줄 표시명을 계정 이름으로 — 외부 발화자는 그대로", () => {
+  assert.equal(normalizeBody("@옛별칭 상무님 확인 부탁드립니다", names), "@직원을 상무님 확인 부탁드립니다")
+  assert.equal(normalizeBody("@직원을 새직함님 확인 부탁드립니다", names), "@직원을 확인 부탁드립니다")
+  assert.equal(normalizeBody("직원병 과장님 invited 옛별칭, 외부정 연구원님 and 직원갑.", names), "직원병 invited 직원을, 외부정 연구원님 and 직원갑.")
+  assert.equal(normalizeBody("The host 직원병 과장님 started the Team Chat.", names), "The host 직원병 started the Team Chat.")
+  // 사람이 쓴 글의 이름은 멘션이 아니면 그대로 · 메일 주소의 @ 도 그대로
+  assert.equal(normalizeBody("직원병 과장님께 전달했습니다", names), "직원병 과장님께 전달했습니다")
+  assert.equal(normalizeBody("x@example.com 으로 보내주세요", names), "x@example.com 으로 보내주세요")
+  assert.equal(normalizeBody("@외부정 연구원님 감사합니다", names), "@외부정 연구원님 감사합니다")
+})
+
+test("본문 바꾸기는 한 번에 훑는다 — 바꾼 이름을 다시 바꾸지 않는다", () => {
+  // 멘션 뒤에 직함이 또 붙은 글: 한 번이면 「@직원병 과장님」 이 남는 게 맞다(원문 그대로의 뒷말)
+  assert.equal(normalizeBody("@직원병 과장님 과장님 검토 부탁드려요", names), "@직원병 과장님 검토 부탁드려요")
+  // 긴 표시명이 먼저 맞는다
+  assert.equal(normalizeBody("@직원을 새직함님 네", names), "@직원을 네")
+})
+
+test("외부 발화자 id 를 적어 두면 소속 · 직급을 채워도 id 와 키가 그대로다", () => {
+  const before: { name: string; org: string | null; title: string | null; id?: string } = { name: "외부무", org: null, title: null }
+  const pinned = { ...before, org: "예시기관", title: "연구원", id: externalSpeakerIdOf(before) }
+  assert.notEqual(externalSpeakerIdOf({ ...before, org: "예시기관" }), externalSpeakerIdOf(before))
+  assert.equal(externalSpeakerIdOf(pinned), externalSpeakerIdOf(before))
+  const cfgOf = (def: typeof before) => ({ speakers: {}, externals: { "외부무 표시명": def } })
+  assert.equal(speakerKey("외부무 표시명", cfgOf(pinned)), speakerKey("외부무 표시명", cfgOf(before)))
+  assert.throws(() => parseImportConfig({ externals: { "외부무": { name: "외부무", id: "abc" } } }), /ext-/)
 })
