@@ -45,6 +45,7 @@ model User {
   pushPresence     PushPresence?
   uiEvents         UiEvent[]
   uiSurveyResponses UiSurveyResponse[]
+  featureRequestEntries FeatureRequestEntry[]
   omnisViewLogs    OmnisViewLog[]
   bookmarks        Bookmark[]
   activityLogs     ActivityLog[]
@@ -2039,4 +2040,42 @@ model UiSurveyResponse {
 
   @@unique([userId, commitSha])
   @@index([commitSha])
+}
+
+/// 옴니스(앱 AI)가 「지금 기능이 없어 못 한다」 고 본 요청 — 사용자가 확인하면 개발자에게 전달한다.
+/// 같은 요청(key = 정규화한 제목)은 열린 것 하나로 묶고 요청마다 FeatureRequestEntry 를 붙인다.
+/// mydocs/plans/2026-11-10-app-ai-mcp-parity.md
+model FeatureRequest {
+  id        String                @id @default(uuid())
+  /// lib/feature-requests.ts featureKey — 묶기 기준
+  key       String
+  title     String
+  /// NEW 새로 · REVIEW 검토 · DONE 완료
+  status    String                @default("NEW")
+  /// 묶인 요청 수
+  count     Int                   @default(1)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  entries   FeatureRequestEntry[]
+
+  @@index([key, status])
+  @@index([status, updatedAt])
+}
+
+model FeatureRequestEntry {
+  id          String         @id @default(uuid())
+  requestId   String
+  request     FeatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requesterId String
+  requester   User           @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  /// 요청이 나온 옴니스 대화 — /chat/{roomId}
+  roomId      String?
+  runId       String?
+  /// 사용자가 원한 것
+  detail      String
+  /// AI 가 해 본 것 · 막힌 까닭
+  attempted   String?
+  createdAt   DateTime       @default(now())
+
+  @@index([requestId, createdAt])
 }

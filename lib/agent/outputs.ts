@@ -22,8 +22,9 @@ import {
 } from "./doc-files"
 import { DraftSchema, RecordItemSchema, RecordItemsSchema, draftAsFile, evidenceSnippet, mailCopyText, type RecordItem } from "./output-rules"
 import type { AgentToolSpec, PreviewChange, WritePreview } from "./tools"
+import { findOpenFeature, parseFeatureInput, submitFeatureRequest } from "@/lib/feature-requests"
 
-export const OUTPUT_TOOLS = ["draft_document", "create_file", "propose_records"] as const
+export const OUTPUT_TOOLS = ["draft_document", "create_file", "propose_records", "request_feature"] as const
 export type OutputTool = (typeof OUTPUT_TOOLS)[number]
 export const isOutputTool = (name: string): name is OutputTool => (OUTPUT_TOOLS as readonly string[]).includes(name)
 
@@ -123,6 +124,24 @@ export const OUTPUT_TOOL_SPECS: AgentToolSpec[] = [
         },
       },
       required: ["items"],
+    },
+    risk: "write",
+  },
+  {
+    name: "request_feature",
+    description:
+      "옴니스에 지금 없는 기능이라 요청을 들어줄 수 없을 때, 그 기능이 필요하다는 것을 개발자에게 전달한다. " +
+      "먼저 다른 도구로 할 수 있는지 확인하고, 정말 길이 없을 때만 쓴다. 무엇이 필요한지 흐리면 부르기 전에 한두 줄만 되묻는다(어디서 · 무엇을 · 왜). " +
+      "부르면 「이 기능이 필요하다고 개발자에게 전달할까요?」 확인 카드가 뜨고, 사용자가 [전달] 해야 저장 · 알림이 간다. 같은 요청은 서버가 하나로 묶는다." +
+      WRITE_SUFFIX,
+    schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "기능 이름 한 줄(80자 이내). 예: 「사진 여러 장 한꺼번에 내려받기」" },
+        detail: { type: "string", description: "사용자가 원한 것 — 사용자 말을 옮긴다. 어디서 · 무엇을 · 왜" },
+        attempted: { type: "string", description: "옴니스가 해 본 것과 막힌 까닭(어떤 도구가 없거나 무엇을 못 하는지)" },
+      },
+      required: ["title", "detail"],
     },
     risk: "write",
   },
@@ -307,7 +326,28 @@ async function recordsPreview(args: Record<string, unknown>, roomId: string): Pr
 export async function buildOutputPreview(name: OutputTool, args: Record<string, unknown>, ctx: { roomId: string }): Promise<WritePreview> {
   if (name === "draft_document") return draftPreview(args)
   if (name === "create_file") return filePreview(args)
+  if (name === "request_feature") return featurePreview(args)
   return recordsPreview(args, ctx.roomId)
+}
+
+/** 기능 요청 카드 — 「개발자에게 전달할까요?」 */
+async function featurePreview(args: Record<string, unknown>): Promise<WritePreview> {
+  const input = parseFeatureInput(args)
+  const open = input.problem ? null : await findOpenFeature(input.title)
+  const changes: PreviewChange[] = [
+    { label: "기능", before: null, after: input.title || "(없음)" },
+    { label: "필요한 것", before: null, after: clip(input.detail, 600) || "(없음)" },
+  ]
+  if (input.attempted) changes.push({ label: "옴니스가 해 본 것", before: null, after: clip(input.attempted, 400) })
+  if (open) changes.push({ label: "같은 요청", before: null, after: `이미 ${open.count}건 — 「${open.title}」 에 묶입니다` })
+  return {
+    title: "이 기능이 필요하다고 개발자에게 전달할까요?",
+    target: input.title || "(제목 없음)",
+    changes,
+    confirmLabel: "전달",
+    risk: "요청 내용과 이 대화 위치가 개발자에게 알림 · 메일로 갑니다. 대화 본문은 보내지 않습니다.",
+    ...(input.problem ? { problem: input.problem } : {}),
+  }
 }
 
 export interface OutputCtx {
@@ -383,6 +423,20 @@ export async function executeOutput(name: OutputTool, args: Record<string, unkno
     const p = DraftSchema.safeParse(args)
     if (!p.success) return { ok: false, text: "초안 형식이 맞지 않습니다" }
     return saveFileToRoom(draftAsFile(p.data), ctx, p.data.kind === "mail_reply" ? "메일 회신 초안을 저장했습니다. 메일은 보내지 않았습니다." : "보고서 초안을 저장했습니다.")
+  }
+
+  if (name === "request_feature") {
+    const input = parseFeatureInput(args)
+    if (input.problem) return { ok: false, text: input.problem }
+    const user = await prisma.user.findUnique({ where: { id: ctx.userId }, select: { name: true } })
+    const r = await submitFeatureRequest(input, {
+      userId: ctx.userId, userName: user?.name ?? "구성원", roomId: ctx.roomId, runId: ctx.runId, base: process.env.PUBLIC_URL ?? "",
+    })
+    return {
+      ok: true,
+      text: `${r.merged ? `같은 요청이 이미 있어 함께 묶었습니다(${r.count}번째).` : "개발자에게 기능 요청을 전달했습니다."} ` +
+        `개발자 알림 ${r.notified.app ? "보냄" : "받을 계정 없음"} · 메일 ${r.notified.mail ? "보냄" : "보내지 않음"}.`,
+    }
   }
 
   // propose_records — 카드와 같은 판정을 다시 한다(그사이 같은 제안이 생겼을 수 있다)

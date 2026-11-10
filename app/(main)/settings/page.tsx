@@ -94,6 +94,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <p className="text-sm text-muted-foreground">
                   사용자 관리, Gemini API 키, 시스템 설정을 관리합니다.
                 </p>
+                {role === "ADMIN" && (
+                  <Link href="/settings/feature-requests" className="touch-target mt-2 inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
+                    기능 요청 보기
+                  </Link>
+                )}
               </CardContent>
             </Card>
             <Card id={UI_METRICS_NOTICE_ANCHOR} className="mt-4" data-ui-metrics-notice>
