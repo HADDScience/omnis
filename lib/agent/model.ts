@@ -11,6 +11,7 @@ import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from "@workflow/serde"
 import type { LanguageModel } from "ai"
 import type { AiVendor } from "@/lib/ai-models"
 import { AGENT_STOP_NAMESPACE, promptBytes, stoppableStream } from "./stop-stream"
+import { fakeAgentEnabled, fakeAgentModel } from "./fake-model"
 
 type V4 = Extract<Exclude<LanguageModel, string>, { specificationVersion: "v4" }>
 type CallOptions = Parameters<V4["doStream"]>[0]
@@ -23,6 +24,8 @@ export interface OmnisModelSpec {
 }
 
 export async function realModel(spec: OmnisModelSpec): Promise<V4> {
+  // e2e 전용 — 벤더를 부르지 않는다(./fake-model.ts). 운영 배포에서는 켜지지 않는다
+  if (fakeAgentEnabled()) return fakeAgentModel(spec)
   switch (spec.vendor) {
     case "openai": {
       const { createOpenAI } = await import("@ai-sdk/openai")

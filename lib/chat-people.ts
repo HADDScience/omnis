@@ -14,6 +14,7 @@ import { checkAttachable } from "@/lib/file-access"
 import type { PeopleRoomView } from "@/lib/chat-people-rules"
 import { defaultGroupName, dmKeyOf, isSelfDmKey, mentionedMembers, peopleRoomTitle, planPeopleRoom, SELF_ROOM_TITLE, selfDmKeyOf } from "@/lib/chat-people-rules"
 import { ACTIVE_MEMBER_WHERE, isActiveMember } from "@/lib/active-members"
+import { syncSessionMembers } from "@/lib/omnis-mention-notice"
 
 export type PeopleResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string }
 const fail = (status: number, error: string) => ({ ok: false as const, status, error })
@@ -149,6 +150,8 @@ export async function invitePeople(roomId: string, userId: string, userIds: stri
   const names = await activeMembers(wanted)
   if (names.size !== wanted.length) return fail(400, "고를 수 없는 사람이 들어 있습니다")
   const res = await prisma.chatRoomMember.createMany({ data: wanted.map((id) => ({ roomId, userId: id })), skipDuplicates: true })
+  // 이 방에서 연 옴니스 세션도 함께 — 세션 권한은 방 참여자 그대로다
+  await syncSessionMembers(roomId)
   return { ok: true, value: { added: res.count } }
 }
 
@@ -167,6 +170,8 @@ export async function leavePeopleRoom(roomId: string, userId: string): Promise<P
     prisma.chatRoomPref.deleteMany({ where: { userId, roomKey: key } }),
     prisma.chatFolderRoom.deleteMany({ where: { roomKey: key, folder: { userId } } }),
   ])
+  // 나간 사람은 이 방에서 연 옴니스 세션도 더는 못 본다
+  await syncSessionMembers(roomId)
   return { ok: true, value: null }
 }
 

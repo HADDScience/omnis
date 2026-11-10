@@ -109,10 +109,17 @@ model ChatRoom {
   /// 사람끼리 1:1(DM) 방만 — 두 사람 id 를 정렬해 이은 값(lib/chat-people-rules.ts dmKeyOf).
   /// 같은 두 사람의 1:1 방이 하나뿐이게 DB 가 막는다(동시에 두 번 눌러도 하나만 생긴다)
   dmKey         String?          @unique
+  /// 옴니스 세션(OMNIS_DM)을 사람 방(GROUP · DM)의 @옴니스 언급으로 시작했으면 그 방(2026-11-10).
+  /// 세션의 참여자는 이 방의 참여자와 같게 맞춘다 — 초대 · 나가기 때 함께 바뀐다(lib/omnis-mention.ts).
+  /// 그래서 방 권한 · 목록 · 검색 · 첨부 · MCP 가 참여자 조건 그대로 공유 세션에도 맞는다. null 이면 개인 세션
+  originRoomId  String?
+  originRoom    ChatRoom?        @relation("SessionOrigin", fields: [originRoomId], references: [id], onDelete: SetNull)
+  sessions      ChatRoom[]       @relation("SessionOrigin")
   messages      ChatMessage[]
   members       ChatRoomMember[]
 
   @@index([kind, lastMessageAt])
+  @@index([originRoomId])
 }
 
 enum ChatRoomKind {
@@ -246,6 +253,9 @@ model ChatMessage {
   /// 옴니스 계정이 없는 사람의 글(카톡 이식 · 참여자 전용 방만). 이때 authorId 는 시스템 계정이다 — lib/external-speaker.ts
   externalSpeakerId String?
   externalSpeaker   ExternalSpeaker? @relation(fields: [externalSpeakerId], references: [id], onDelete: Restrict)
+  /// 사람 방에 남긴 옴니스 세션 안내(시작 · 완료 줄)가 가리키는 세션 방(OMNIS_DM) id. 누르면 그 세션으로 간다.
+  /// 관계를 두지 않는다 — ChatMessage ↔ ChatRoom 에 관계가 둘이 되면 기존 관계에도 이름을 붙여야 한다
+  sessionRoomId     String?
 
   files    File[]
   mentions ChatMention[]
@@ -1937,6 +1947,8 @@ model AgentRun {
   error             String?
   /// 멈춘(STOPPED) 실행이 남긴 옴니스 글 — 그때까지 흘러나온 답. 화면이 이 글에 「중지됨」 을 붙인다. 글 없이 멈췄으면 null
   stoppedMessageId  String?
+  /// 사람 방의 @옴니스 로 연 첫 실행 — 끝나면(답 · 확인 대기 · 실패) 그 방에 안내 한 줄을 남긴다. 완료를 알린 뒤 false
+  notifyOrigin      Boolean        @default(false)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   steps             AgentStep[]

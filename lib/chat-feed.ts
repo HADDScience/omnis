@@ -101,8 +101,9 @@ export async function readableRooms(userId: string): Promise<PickableRoom[]> {
       id: r.id,
       kind: r.kind,
       title: peopleRoomTitle(r, people, userId),
-      // 전사방은 참여자 행이 있어도 구성원 모두의 방이다 — 참여자로 고르지 않는다
-      members: r.kind === "COMPANY" ? [] : people,
+      // 전사방은 참여자 행이 있어도 구성원 모두의 방이다 — 참여자로 고르지 않는다.
+      // 옴니스 세션도 참여자로 고르지 않는다 — 공유 세션은 연 방과 참여자가 같아 members 로 고르면 그 방과 겹친다(이름 · ID 로 고른다)
+      members: r.kind === "COMPANY" || r.kind === "OMNIS_DM" ? [] : people,
       lastAt: r.lastMessageAt ?? r.createdAt,
     }
   })
