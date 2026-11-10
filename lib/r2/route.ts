@@ -2,13 +2,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { demoStorageBlocked } from "@/lib/demo"
-import { largeUploadEnabled } from "@/lib/large-upload/server"
 import { verifyUploadSession, type UploadSession } from "@/lib/large-upload/session"
 import { r2Config } from "./server"
 
 export async function r2SessionFrom(req: NextRequest): Promise<{ upload: UploadSession; body: Record<string, unknown> } | NextResponse> {
-  // 꺼져 있으면 없는 경로다. 플래그(LARGE_UPLOAD_BACKEND)는 새 세션을 열 때만 본다 — 끄기 전에 연 세션은 끝까지 올리거나 버릴 수 있다
-  if (!largeUploadEnabled() || !r2Config()) return NextResponse.json({ error: "없는 경로" }, { status: 404 })
+  // R2 값이 없으면 없는 경로다. 스위치(LARGE_UPLOAD_BACKEND)는 새 세션을 열 때만 본다 — 끄기 전에 연 세션은 끝까지 올리거나 버릴 수 있다
+  if (!r2Config()) return NextResponse.json({ error: "없는 경로" }, { status: 404 })
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "인증 필요" }, { status: 401 })
   const blocked = demoStorageBlocked()

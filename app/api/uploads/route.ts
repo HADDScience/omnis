@@ -15,7 +15,8 @@ const bodySchema = z.object({
 
 /** 큰 첨부 세션 열기 — 4MB 초과만. 꺼져 있으면 없는 경로다. 응답의 backend 가 "r2" 면 화면이 R2 로 바로 올린다 */
 export async function POST(req: NextRequest) {
-  if (!largeUploadEnabled()) return NextResponse.json({ error: "없는 경로" }, { status: 404 })
+  // R2 스위치(LARGE_UPLOAD_BACKEND=r2 + R2_*)만으로도 열린다 — Blob 경로 스위치 LARGE_UPLOAD_ENABLED 와 따로다
+  if (!largeUploadEnabled() && !r2UploadEnabled()) return NextResponse.json({ error: "없는 경로" }, { status: 404 })
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "인증 필요" }, { status: 401 })
   const blocked = demoStorageBlocked()

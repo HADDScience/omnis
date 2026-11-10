@@ -64,41 +64,45 @@ Vercel 함수는 권한을 보고 서명 주소만 준다 — 파일 바이트�
 
 | 이름 | 값 | 비고 |
 |---|---|---|
-| `LARGE_UPLOAD_ENABLED` | `1` | 큰 첨부 전체 스위치(#158). 꺼져 있으면 4MB 상한 그대로이고 `/api/uploads*` 는 404 |
-| `LARGE_UPLOAD_BACKEND` | `r2` | **새 업로드를 R2 로.** 없거나 다른 값이면 #158(Blob) 경로 |
+| `LARGE_UPLOAD_BACKEND` | `r2` | **R2 스위치.** 아래 R2 값 넷과 함께 있으면 4MB 초과 첨부가 R2 로 간다. `LARGE_UPLOAD_ENABLED` 는 필요 없다 |
+| `LARGE_UPLOAD_ENABLED` | (비움) | #158(Blob → NAS) 경로 스위치. R2 와 따로다. 둘 다 켜져 있으면 새 업로드는 R2 로 간다 |
 | `R2_ACCOUNT_ID` | Cloudflare 계정 id | 주소 `https://<id>.r2.cloudflarestorage.com` 를 만든다 |
 | `R2_ENDPOINT` | (비움) | 로컬 시험(MinIO)에서만 준다. 주면 `R2_ACCOUNT_ID` 보다 우선 |
-| `R2_BUCKET` | 예 `omnis-attachments` | |
+| `R2_BUCKET` | `omnis-files` | |
 | `R2_ACCESS_KEY_ID` · `R2_SECRET_ACCESS_KEY` | API 토큰의 S3 키 | **Sensitive** 로 넣는다. 화면 · 로그에 찍지 않는다 |
 | `R2_STORAGE_CAP_MB` | 기본 `9000` | R2 저장 합계 상한. 무료 구간 10GB-월 아래에서 새 업로드를 멈춘다 |
 | `LARGE_UPLOAD_MONTHLY_CAP_MB` | 기본 `20480` | 월 업로드 상한 — Blob 과 R2 를 합쳐 센다 |
 
-`R2_*` 넷(또는 `R2_ENDPOINT` 포함 다섯) 중 하나라도 없으면 `LARGE_UPLOAD_BACKEND=r2` 여도 R2 를 쓰지 않는다.
-`NEXT_PUBLIC_*` 는 늘지 않았다 — 화면은 세션 응답의 `backend` 로 길을 고른다.
+이름은 고정이다(2026-11-10 결정): `R2_ACCOUNT_ID` · `R2_ACCESS_KEY_ID` · `R2_SECRET_ACCESS_KEY` · `R2_BUCKET` + `LARGE_UPLOAD_BACKEND=r2`.
+하나라도 없으면 R2 를 쓰지 않고 지금 동작 그대로다. 화면의 큰 첨부 표시(`NEXT_PUBLIC_LARGE_UPLOAD`)는 빌드 때 같은 조건으로 정해진다(`next.config.mjs`) — **값을 바꾸면 재배포해야 화면에 반영된다.**
+화면은 세션 응답의 `backend` 로 길을 고른다. 운영(Production)에만 넣는다 — 프리뷰는 운영 DB 를 쓴다.
 
 ## 3. R2 준비 — 사람이 할 일 (회사 결재 뒤)
 
 결제수단 등록이 필요하다(공식 문서는 「R2 subscription · checkout」 만 적는다, `docs/cloudflare.md` §1). 계정은 회사 명의로 만든다.
 
 1. **계정 · 구독:** Cloudflare 가입 → R2 → 구독(checkout). 무료 구간: 저장 10GB-월, Class A 100만 · Class B 1천만 건/월, egress 무료.
-2. **버킷:** R2 → Create bucket. 이름 `omnis-attachments`, Location hint **Asia-Pacific**. **Public access 는 켜지 않는다**(r2.dev · 커스텀 도메인 둘 다 끔 — 서명 주소는 `<id>.r2.cloudflarestorage.com` 에서만 동작한다).
+2. **버킷:** R2 → Create bucket. 이름 `omnis-files`, Location hint **Asia-Pacific**. **Public access 는 켜지 않는다**(r2.dev · 커스텀 도메인 둘 다 끔 — 서명 주소는 `<id>.r2.cloudflarestorage.com` 에서만 동작한다).
 3. **API 토큰:** R2 → Manage R2 API Tokens → Create API token
-   - 권한 **Object Read & Write**, 적용 버킷 **`omnis-attachments` 하나만**, TTL 은 회사 규칙에 맞춘다.
+   - 권한 **Object Read & Write**, 적용 버킷 **`omnis-files` 하나만**, TTL 은 회사 규칙에 맞춘다.
    - 만든 화면의 Access Key ID · Secret Access Key 를 바로 Vercel 환경변수에 넣는다(한 번만 보인다). 메신저 · 문서에 붙이지 않는다.
 4. **CORS:** 버킷 → Settings → CORS Policy 에 아래 JSON. 반영까지 약 30초.
 
    ```json
    [
      {
-       "AllowedOrigins": ["https://omnis.haddscience.com"],
+       "AllowedOrigins": ["https://omnis.haddscience.com", "https://omnis-hadd.vercel.app", "http://localhost:3000"],
        "AllowedMethods": ["PUT", "GET", "HEAD"],
-       "AllowedHeaders": ["content-type", "range"],
+       "AllowedHeaders": ["*"],
        "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
        "MaxAgeSeconds": 3600
      }
    ]
    ```
 
+   - **`https://omnis.haddscience.com` 을 꼭 넣는다.** 사람들이 여는 운영 주소가 이것이라 브라우저가 보내는 Origin 도 이것이다. `omnis-hadd.vercel.app` 만 있으면 운영 화면의 조각 PUT 이 CORS 로 막힌다(화면에는 「R2 에 연결하지 못했습니다」).
+   - `AllowedHeaders: *` 로 충분하다. 조각 PUT 은 따로 헤더를 붙이지 않는다(형식 헤더도 없음).
+   - 영상 `<video>` · 내려받기는 CORS 없이 동작한다(302 로 넘어간 주소를 브라우저가 직접 연다).
    - 프리뷰 배포에서 시험하려면 그 주소를 따로 더한다. 프리뷰는 운영 DB 를 쓰므로 프리뷰에서는 켜지 않는다(#158 과 같은 이유).
    - `ETag` 노출은 이 구현에 필요 없지만(합치기는 서버가 한다) 넣어 둔다 — 화면 쪽 합치기로 바꿀 때 빠뜨리기 쉽다.
 5. **수명 규칙(미완료 멀티파트):** 버킷 → Settings → Object lifecycle rules
@@ -117,7 +121,8 @@ Vercel 함수는 권한을 보고 서명 주소만 준다 — 파일 바이트�
 
 1. 운영 DB 에 `prisma migrate deploy` (승인 뒤). 표가 없어도 읽기는 깨지지 않지만(`P2021` 은 「R2 파일 없음」 으로 본다) 완료가 실패한다.
 2. 실 R2 PoC(§7)를 먼저 통과시킨다.
-3. Vercel omnis-hadd → Production 환경변수: `R2_ACCOUNT_ID` · `R2_BUCKET` · `R2_ACCESS_KEY_ID` · `R2_SECRET_ACCESS_KEY`(Sensitive) · `LARGE_UPLOAD_BACKEND=r2`. `LARGE_UPLOAD_ENABLED=1` 도 있어야 한다.
+3. Vercel omnis-hadd → Production 환경변수: `R2_ACCOUNT_ID` · `R2_BUCKET=omnis-files` · `R2_ACCESS_KEY_ID` · `R2_SECRET_ACCESS_KEY`(Sensitive) · `LARGE_UPLOAD_BACKEND=r2`.
+   터미널에서는 `vercel env add <이름> production` (값은 화면 · 기록에 남기지 않는다). 확인은 이름만: `vercel env ls production`.
 4. **재배포.** 환경변수는 새 배포에만 붙는다.
 5. 확인: 5MB 넘는 파일 하나를 1:1 방에 올리고
    - 개발자 도구 Network 에서 `…r2.cloudflarestorage.com/…partNumber=` PUT 이 보이는지
@@ -126,17 +131,17 @@ Vercel 함수는 권한을 보고 서명 주소만 준다 — 파일 바이트�
 
 ## 5. 끄는 법
 
-- **새 업로드만 R2 에서 뺀다:** `LARGE_UPLOAD_BACKEND` 를 지우고(또는 `blob`) 재배포. 새 큰 첨부는 #158 경로로 간다.
+- **새 업로드만 R2 에서 뺀다:** `LARGE_UPLOAD_BACKEND` 를 지우고 재배포. `LARGE_UPLOAD_ENABLED` 가 꺼져 있으면 4MB 상한으로, 켜져 있으면 #158 경로로 간다.
   - 이미 R2 에 있는 파일은 **계속 R2 에서 열린다** — 읽기는 플래그가 아니라 `R2_*` 값과 `FileR2Object` 행만 본다.
   - 끄기 전에 연 세션(올리는 중이던 것)은 끝까지 올리거나 버릴 수 있다. 새로 고친 뒤 이어 올리기도 된다.
-- **큰 첨부 전체를 끈다:** `LARGE_UPLOAD_ENABLED` 를 지우고 재배포 — 4MB 상한으로 돌아간다(#158 문서와 같다). 이미 올린 파일 열람은 그대로다.
+- 끈 뒤에도 `R2_*` 값은 남겨 둔다 — 이미 올린 파일 열람과 올리던 세션 마무리에 쓴다.
 
 ## 6. 되돌리는 법
 
 | 하고 싶은 것 | 방법 |
 |---|---|
 | 코드만 이전으로 | 이 PR 을 revert 해 배포. **R2 에 올린 파일이 있으면 그 파일들이 안 열린다**(옛 코드는 `FileR2Object` 를 모른다) — 아래 「R2 를 아예 그만두기」 를 먼저 한다 |
-| R2 를 아예 그만두기 | ① `LARGE_UPLOAD_BACKEND` 를 지워 새 업로드를 막는다 ② R2 객체를 NAS(또는 다른 S3)로 복사 — 예: rclone `r2:omnis-attachments/uploads` → 대상 ③ 파일 행을 그 저장소를 가리키게 옮기는 일회성 스크립트(아직 없음, 그때 만든다) ④ 그 뒤에 `R2_*` 를 지운다 |
+| R2 를 아예 그만두기 | ① `LARGE_UPLOAD_BACKEND` 를 지워 새 업로드를 막는다 ② R2 객체를 NAS(또는 다른 S3)로 복사 — 예: rclone `r2:omnis-files/uploads` → 대상 ③ 파일 행을 그 저장소를 가리키게 옮기는 일회성 스크립트(아직 없음, 그때 만든다) ④ 그 뒤에 `R2_*` 를 지운다 |
 | 토큰이 샜다 | Cloudflare 에서 토큰을 Roll(또는 지우고 새로) → Vercel 값 교체 → 재배포. 이미 나간 서명 주소는 만료(조각 15분 · 열람 30분)까지 유효하다 |
 
 **`R2_*` 값을 지우면 R2 에 있는 파일 열람이 500 이 된다.** `FileR2Object` 행이 남아 있는 한 값을 지우지 않는다.
