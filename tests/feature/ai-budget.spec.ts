@@ -60,6 +60,9 @@ test("관리자 — 상한을 저장하면 다시 읽을 때 바로 그 값이�
   await form.getByLabel("1인 하루 상한(원)").fill("1500")
   await form.getByLabel("사원1 하루 상한").fill("3000")
   await form.getByRole("button", { name: "저장", exact: true }).click()
+  // 입력칸 아래 미리보기 — 원 금액을 대화 수로(표본이 적으면 기본 단가 + 추정)
+  await expect(form.locator("[data-runs-hint]").first()).toContainText("하루 1,500원 ≈ 보통 대화 약")
+  await expect(form.locator("[data-runs-hint]").nth(1)).toContainText("월 110,000원 ≈ 보통 대화 약")
   await expect(page.getByText("저장했어요")).toBeVisible()
   const now = (await (await page.request.get("/api/ai-budget")).json()) as Budget
   expect(now.userDailyKrw).toBe(1500)
@@ -80,6 +83,10 @@ test("구성원 — 관리 화면 · 저장 API 는 막히고, 사용량 탭에�
   const usage = page.locator("[data-ai-cost-usage]")
   await expect(usage).toBeVisible({ timeout: 30_000 })
   await expect(usage.getByRole("meter", { name: "오늘 내 사용" })).toBeVisible()
+  await expect(usage.locator("[data-runs-hint]").first()).toContainText("남은 한도: 오늘 보통 대화 약")
+  await expect(usage.locator("[data-runs-hint]").nth(1)).toContainText("월 110,000원 ≈ 보통 대화 약")
+  // 폰에서도 한 줄 — 줄이 넘치지 않는다
+  for (const h of await usage.locator("[data-runs-hint]").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))) expect(h).toBeLessThan(24)
   // 구성원은 남의 줄을 보지 않는다
   if (process.env.E2E_ISOLATED === "true") await expect(usage.locator("[data-ai-usage-person]")).toHaveCount(1)
   await expect(usage.getByText("상한 조정하기")).toHaveCount(0)
@@ -99,8 +106,8 @@ test("한도 도달 — 안내가 입력창 위에 남고, 관리자는 한 번 
       status: 429,
       contentType: "application/json",
       body: JSON.stringify({
-        error: `오늘 AI 사용 한도(${limit.toLocaleString("ko-KR")}원)에 도달했어요. 내일 0시에 다시 열려요. 아래에서 한도를 올릴 수 있어요.`,
-        budget: { kind: "user_daily", limitKrw: limit, usedKrw: limit, canRaise: true, suggestKrw: suggest, userId: me.user.id },
+        error: `오늘 AI 사용 한도(${limit.toLocaleString("ko-KR")}원 · 보통 대화 약 ${Math.floor(limit / 16.9).toLocaleString("ko-KR")}번(추정))에 도달했어요. 내일 0시에 다시 열려요. 아래에서 한도를 올릴 수 있어요.`,
+        budget: { kind: "user_daily", limitKrw: limit, usedKrw: limit, canRaise: true, suggestKrw: suggest, userId: me.user.id, basis: { typical: 16.9, long: 54, samples: 3, estimated: true } },
       }),
     })
   })
@@ -115,6 +122,7 @@ test("한도 도달 — 안내가 입력창 위에 남고, 관리자는 한 번 
   await expect(box(page)).toHaveValue("이번 주 업무 정리해 줘")
   await notice.locator("[data-raise-budget]").click()
   await expect(notice).toContainText(`${suggest.toLocaleString("ko-KR")}원`)
+  await expect(notice).toContainText(`보통 대화 약 ${Math.floor(suggest / 16.9).toLocaleString("ko-KR")}번 · 추정`)
   if (shots) await page.screenshot({ path: path.join(shots, "ai-budget-limit-mobile.png") })
   await notice.locator("[data-raise-budget-confirm]").click()
   await expect(page.locator("[data-agent-quota]")).toHaveCount(0)

@@ -4,8 +4,8 @@ import { prisma } from "@/lib/db"
 import { readSetting, writeSetting } from "@/lib/app-settings"
 import { kstDayStart } from "@/lib/agent/quota"
 import {
-  budgetDefaults, budgetRefusal, kstDayKey, kstMonthStart, mergeBudget, userDailyLimit,
-  type BudgetBlock, type BudgetSettings,
+  budgetDefaults, budgetRefusal, kstDayKey, kstMonthStart, mergeBudget, runCostBasis, userDailyLimit,
+  type BudgetBlock, type BudgetSettings, type RunCostBasis,
 } from "@/lib/ai-budget-rules"
 
 export const BUDGET_KEY = "ai_budget"
@@ -34,7 +34,21 @@ export async function budgetGate(userId: string): Promise<{ status: 429; error: 
     spentNow(userId),
     prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
   ])
-  return budgetRefusal(used, b, { userId, isAdmin: user?.role === "ADMIN" })
+  const refusal = budgetRefusal(used, b, { userId, isAdmin: user?.role === "ADMIN" })
+  // 막을 때만 환산 기준을 읽는다 — 보통 요청에는 쿼리를 더하지 않는다
+  if (!refusal) return null
+  return budgetRefusal(used, b, { userId, isAdmin: user?.role === "ADMIN" }, await loadRunCostBasis())
+}
+
+/** 최근 30일 옴니스 대화 1건(끝난 AgentRun)의 비용 → 보통(중앙값) · 긴 작업(90%값). 20건 미만이면 기본값 + 추정 */
+export async function loadRunCostBasis(now = new Date()): Promise<RunCostBasis> {
+  const rows = await prisma.agentRun.findMany({
+    where: { createdAt: { gte: new Date(now.getTime() - 30 * 86_400_000) }, status: { not: "RUNNING" }, costKrw: { gt: 0 } },
+    select: { costKrw: true },
+    orderBy: { createdAt: "desc" },
+    take: 5000,
+  })
+  return runCostBasis(rows.map((r) => Number(r.costKrw)))
 }
 
 export interface DayRow { day: string; count: number; krw: number }
@@ -46,13 +60,14 @@ export interface UsageReport {
   monthlyKrw: number
   userDailyKrw: number
   people: PersonUsage[]
+  basis: RunCostBasis
 }
 
 /** 이번 달 사람별 · 일별 건수 · 비용. userId 를 주면 그 사람만(본인 화면) */
 export async function usageReport(opts: { userId?: string } = {}, now = new Date()): Promise<UsageReport> {
   const since = kstMonthStart(now)
   const todayKey = kstDayKey(now)
-  const [b, rows, monthTotal] = await Promise.all([
+  const [b, rows, monthTotal, basis] = await Promise.all([
     loadBudget(),
     prisma.$queryRaw<{ userId: string | null; day: string; count: bigint; krw: number }[]>`
       SELECT "userId", to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') AS day,
@@ -61,6 +76,7 @@ export async function usageReport(opts: { userId?: string } = {}, now = new Date
       WHERE "createdAt" >= ${since} AND (${opts.userId ?? null}::text IS NULL OR "userId" = ${opts.userId ?? null}::text)
       GROUP BY 1, 2 ORDER BY 2 DESC`,
     prisma.aiUsage.aggregate({ where: { createdAt: { gte: since } }, _sum: { costKrw: true } }),
+    loadRunCostBasis(now),
   ])
   const ids = [...new Set(rows.map((r) => r.userId).filter((x): x is string => !!x))]
   const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
@@ -88,5 +104,6 @@ export async function usageReport(opts: { userId?: string } = {}, now = new Date
     monthlyKrw: b.monthlyKrw,
     userDailyKrw: b.userDailyKrw,
     people: [...people.values()].sort((a, b2) => b2.monthKrw - a.monthKrw),
+    basis,
   }
 }

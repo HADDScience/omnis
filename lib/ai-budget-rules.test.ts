@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
+  DEFAULT_RUN_COST, quantile, runCostBasis, runsFor, runsLabel,
   budgetDefaults, budgetRefusal, dueAlertLevels, kstDayKey, kstMonthKey, kstMonthStart, mergeBudget, percentOf, suggestRaise, userDailyLimit,
 } from "./ai-budget-rules"
 
@@ -70,4 +71,38 @@ test("한국 시각 달 · 날 — 1일 0시(KST)가 경계", () => {
 test("상한 대비 %", () => {
   assert.equal(percentOf(800, 1000), 80)
   assert.equal(percentOf(1, 0), null)
+})
+
+test("환산 기준 — 표본 20건 미만이면 기본값(보통 16.9 · 긴 작업 54) + 추정", () => {
+  const b = runCostBasis(Array.from({ length: 19 }, () => 10))
+  assert.deepEqual(b, { ...DEFAULT_RUN_COST, samples: 19, estimated: true })
+  assert.equal(runCostBasis([0, -1, Number.NaN]).samples, 0)
+})
+
+test("환산 기준 — 20건 이상이면 중앙값 · 90%값 실측", () => {
+  const xs = Array.from({ length: 21 }, (_, i) => i + 1) // 1..21
+  const b = runCostBasis(xs.reverse())
+  assert.equal(b.estimated, false)
+  assert.equal(b.samples, 21)
+  assert.equal(b.typical, 11)
+  assert.equal(b.long, 19)
+  assert.equal(quantile([1, 2], 0.5), 1.5)
+})
+
+test("원 → 대화 수 — 하루 1,000원 ≈ 보통 59번 · 긴 작업 18번, 월 11만원 ≈ 보통 6,508번", () => {
+  const b = runCostBasis([])
+  assert.deepEqual(runsFor(1000, b), { typical: 59, long: 18 })
+  assert.equal(runsFor(110_000, b).typical, 6508)
+  assert.deepEqual(runsFor(-5, b), { typical: 0, long: 0 })
+  assert.equal(runsLabel(1000, b), "옴니스 대화 약 59번(보통) · 긴 작업 약 18번")
+  assert.equal(runsLabel(110_000, b, true), "보통 약 6,508번 · 긴 작업 약 2,037번")
+})
+
+test("한도 도달 안내에 대화 수가 붙고, 기준을 화면에 넘긴다", () => {
+  const basis = runCostBasis([])
+  const r = budgetRefusal({ userTodayKrw: 1000, monthKrw: 0 }, budgetDefaults({}), { userId: "a", isAdmin: false }, basis)
+  assert.match(r!.error, /1,000원 · 보통 대화 약 59번\(추정\)/)
+  assert.equal(r!.budget.basis?.typical, 16.9)
+  // 기준 없이 부르면 예전 문장 그대로
+  assert.doesNotMatch(budgetRefusal({ userTodayKrw: 1000, monthKrw: 0 }, budgetDefaults({}), { userId: "a", isAdmin: false })!.error, /보통 대화/)
 })
