@@ -42,6 +42,13 @@ interface RightPanelValue {
   /** 지금 보고 있는 업무. 업무 상세 페이지가 등록하고, 떠나면 지운다. */
   task: PanelTaskContext | null
   setTask: (t: PanelTaskContext | null) => void
+  /**
+   * 「Omnis 와 함께 업무 시작하기」 — 옴니스 탭의 새 대화가 이 일회용 키의 글을 보낸다(lib/task-start.ts).
+   * 패널이 받아 보냈으면 지운다
+   */
+  omnisStartKey: string | null
+  startOmnis: (key: string) => void
+  clearOmnisStart: (key: string) => void
 }
 
 const Ctx = createContext<RightPanelValue | null>(null)
@@ -51,6 +58,7 @@ export function RightPanelProvider({ children }: { children: ReactNode }) {
   const [open, setOpenState] = useState(false)
   const [task, setTask] = useState<PanelTaskContext | null>(null)
   const [requestedView, setRequestedView] = useState<PanelView | null>(null)
+  const [omnisStartKey, setOmnisStartKey] = useState<string | null>(null)
 
   useEffect(() => {
     try {
@@ -77,6 +85,15 @@ export function RightPanelProvider({ children }: { children: ReactNode }) {
     [setOpen]
   )
 
+  const startOmnis = useCallback(
+    (key: string) => {
+      setOmnisStartKey(key)
+      openWith("omnis")
+    },
+    [openWith]
+  )
+  const clearOmnisStart = useCallback((key: string) => setOmnisStartKey((cur) => (cur === key ? null : cur)), [])
+
   const value = useMemo<RightPanelValue>(
     () => ({
       open,
@@ -87,8 +104,11 @@ export function RightPanelProvider({ children }: { children: ReactNode }) {
       clearRequestedView: () => setRequestedView(null),
       task,
       setTask,
+      omnisStartKey,
+      startOmnis,
+      clearOmnisStart,
     }),
-    [open, setOpen, requestedView, openWith, task]
+    [open, setOpen, requestedView, openWith, task, omnisStartKey, startOmnis, clearOmnisStart]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

@@ -7,6 +7,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { TaskDetail } from "./task-detail"
+import { StartWithOmnis } from "@/components/tasks/start-with-omnis"
 import { RegisterPanelTask } from "@/components/layout/right-panel-context"
 import { CHAT_DELETED_TEXT } from "@/lib/constants"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
@@ -136,6 +137,19 @@ export default async function TaskDetailPage({ params }: Props) {
           >
             이 업무 대화 보기
           </Link>
+          {/* 옴니스 새 대화로 이 업무를 이어 간다 — 확인 한 번 뒤 첫 글이 저절로 보내진다(components/tasks/start-with-omnis.tsx) */}
+          <div className="mx-auto w-full max-w-3xl px-4 pt-3">
+            <StartWithOmnis
+              task={{
+                id: task.id,
+                slug: task.slug,
+                name: task.name,
+                background: task.background,
+                expectedResult: task.expectedResult,
+                openChecklist: task.checklists.filter((c) => !c.done).map((c) => c.name),
+              }}
+            />
+          </div>
           <TaskDetail task={serialized} projects={projects} users={users} />
         </div>
       </div>
