@@ -14,6 +14,8 @@ import {
 } from "@hugeicons/core-free-icons"
 import { ThreadComposer, type ThreadRefs } from "@/components/chat/thread-composer"
 import { MESSAGE_ENTER, MessageContent, MessageFiles, type FileInfo } from "@/components/chat/message-list"
+import { MissingAttachmentTile } from "@/components/chat/missing-attachment"
+import { kakaoMissingAttachment, missingAttachmentRest } from "@/lib/kakao-placeholder"
 import { Spinner } from "@/components/ui/spinner"
 import {
   AuthorAvatar,
@@ -30,6 +32,8 @@ import { writeSnapshot } from "@/lib/room-snapshot"
 
 interface Message {
   id: string
+  /** 카톡에서 옮긴 글이면 `kakao:…` — 첨부를 못 받은 글은 흐린 칸으로 그린다 */
+  sourceId?: string | null
   content: string
   createdAt: string
   author: { id: string; name: string }
@@ -42,6 +46,9 @@ interface Message {
   deletedAt?: string | null
   replyTo?: { id: string; authorName: string; content: string } | null
 }
+
+/** 카톡에서 옮겼지만 첨부 실물이 없는 글 — 지운 글은 자리만 남아 칸을 그리지 않는다 */
+const missingOf = (m: Message) => (m.deletedAt ? null : kakaoMissingAttachment(m))
 
 interface TaskSidebarProps {
   taskId: string
@@ -139,7 +146,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
     if (people.length === 0) return
     writeSnapshot(currentUserId, roomKey, {
       checkedAt: new Date().toISOString(),
-      messages: people.map((m) => ({ id: m.id, author: m.author, mine: m.author.id === currentUserId, content: m.content, createdAt: m.createdAt })),
+      messages: people.map((m) => ({ id: m.id, sourceId: m.sourceId, author: m.author, mine: m.author.id === currentUserId, content: m.content, files: m.files, createdAt: m.createdAt })),
     })
   }, [roomKey, currentUserId, messages])
 
@@ -261,6 +268,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
                     </div>
                   )
                 }
+                const missing = missingOf(m)
                 return (
                   <div
                     key={row.key}
@@ -332,11 +340,12 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
                           {m.deletedAt ? (
                             m.content
                           ) : (
-                            <MessageContent content={tidyBody(m.content)} tasks={refs.tasks} />
+                            <MessageContent content={tidyBody(missing ? missingAttachmentRest(missing) : m.content)} tasks={refs.tasks} />
                           )}
                         </div>
                       )}
                       {!m.deletedAt && m.files && m.files.length > 0 && <MessageFiles files={m.files} />}
+                      {missing && <MissingAttachmentTile attachment={missing} />}
                     </div>
                     {/* 줄 오른쪽에 붙는다 — 본문 폭을 줄이지 않게 hover 에만 보인다 */}
                     {!m.deletedAt && editingId !== m.id && (

@@ -33,6 +33,8 @@ import { usePhotoViewer } from "@/components/photo-viewer/context"
 import { safeInlineType } from "@/lib/file-serving"
 import { isLargeUpload } from "@/lib/large-upload/rules"
 import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arrival"
+import { kakaoMissingAttachment, missingAttachmentRest } from "@/lib/kakao-placeholder"
+import { MissingAttachmentTile } from "@/components/chat/missing-attachment"
 export interface FileInfo {
   id: string
   name: string
@@ -44,6 +46,8 @@ export interface FileInfo {
 
 interface Message {
   id: string
+  /** 들여온 원본 식별자 — 카톡은 `kakao:…`. 첨부를 못 받은 카톡 글을 흐린 칸으로 그릴 때 본다 */
+  sourceId?: string | null
   content: string
   createdAt: string
   isTaskInstruction: boolean
@@ -434,6 +438,8 @@ export function MessageList({
             }
 
             const mine = isMe && !selectionMode
+            // 카톡에서 옮겼지만 첨부 실물이 없는 글 — 자리표시 글 대신 흐린 첨부 칸(lib/kakao-placeholder.ts)
+            const missing = kakaoMissingAttachment(msg)
             const flashing = flashId === msg.id
             const pending = msg.id.startsWith("temp-")
             const fresh = !msg._settled && new Date(msg.createdAt).getTime() > mountedAt
@@ -514,7 +520,7 @@ export function MessageList({
                           {/* 꼬리는 묶음 첫 말풍선에만(globals.css). 사진 · 파일이 든 글에는 없다 */}
                           <p
                             data-bubble
-                            data-tail={row.groupStart && !msg.files?.length ? (mine ? "mine" : "other") : undefined}
+                            data-tail={row.groupStart && !msg.files?.length && !missing ? (mine ? "mine" : "other") : undefined}
                             className={`whitespace-pre-wrap break-keep [overflow-wrap:anywhere] max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:empty:hidden ${msg.deletedAt ? "max-md:in-data-[messenger]:bg-muted/50" : mine ? "max-md:in-data-[messenger]:bg-(--bubble-mine)" : "max-md:in-data-[messenger]:bg-muted"}`}
                           >
                             {msg.replyTo && (
@@ -526,12 +532,13 @@ export function MessageList({
                             {msg.deletedAt ? (
                               msg.content
                             ) : (
-                              <MessageContent content={tidyBody(msg.content)} tasks={tasks} isMe={mine} />
+                              <MessageContent content={tidyBody(missing ? missingAttachmentRest(missing) : msg.content)} tasks={tasks} isMe={mine} />
                             )}
                           </p>
                           {!msg.deletedAt && msg.files && msg.files.length > 0 && (
                             <MessageFiles files={msg.files} onPrimary={mine} messageId={msg.id} />
                           )}
+                          {missing && <MissingAttachmentTile attachment={missing} onPrimary={mine} />}
                         </>
                       )}
                     </div>

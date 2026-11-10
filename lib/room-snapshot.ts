@@ -24,6 +24,9 @@ export interface SnapshotLine {
   content: string
   createdAt: string
   deletedAt?: string | null
+  /** 카톡에서 옮긴 글이면 `kakao:…` · 붙은 첨부 — 첨부를 못 받은 카톡 글을 흐린 칸으로 그릴 때 본다(lib/kakao-placeholder.ts) */
+  sourceId?: string | null
+  files?: unknown[]
 }
 
 export const SNAPSHOT_MESSAGES = 30

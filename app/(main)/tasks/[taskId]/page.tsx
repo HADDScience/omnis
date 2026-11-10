@@ -89,6 +89,8 @@ export default async function TaskDetailPage({ params }: Props) {
     })),
     feedbackMessages: feedbackMessages.map((m) => ({
       id: m.id,
+      sourceId: m.sourceId,
+      files: m.files.map((f) => f.id),
       content: m.content,
       author: m.author,
       isTaskInstruction: m.isTaskInstruction,
@@ -103,6 +105,7 @@ export default async function TaskDetailPage({ params }: Props) {
   // 지운 글은 자리만 남긴다 — 본문과 첨부는 넘기지 않는다(채팅 목록 API 와 같은 규칙)
   const sidebarMessages = feedbackMessages.map((m) => ({
     id: m.id,
+    sourceId: m.sourceId,
     content: m.deletedAt ? CHAT_DELETED_TEXT : m.content,
     createdAt: m.createdAt.toISOString(),
     author: { id: m.author.id, name: m.author.name },
