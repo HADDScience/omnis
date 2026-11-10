@@ -20,6 +20,6 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return apiError(400, parsed.error.issues[0]?.message ?? "잘못된 요청입니다")
 
   const r = await startAgentRoom(session.user.id, parsed.data.content, parsed.data.fileIds)
-  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status })
+  if (!r.ok) return NextResponse.json({ error: r.error, ...(r.budget ? { budget: r.budget } : {}) }, { status: r.status })
   return agentStream(r.stream, r.headers)
 }

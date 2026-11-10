@@ -9,7 +9,7 @@ import { loadMyProfile } from "@/lib/my-profile"
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SettingsTabs } from "@/components/settings/settings-tabs"
 import { legacySettingsRedirect, PROFILE_HREF, UI_METRICS_NOTICE_ANCHOR } from "@/lib/settings-tab"
-import { AiUsage } from "@/components/settings/ai-usage"
+import { AiCostUsage } from "@/components/settings/ai-cost-usage"
 import { MyShortcuts } from "@/components/settings/my-shortcuts"
 import { PushNotifications } from "@/components/settings/push-notifications"
 import { NotificationKinds } from "@/components/settings/notification-kinds"
@@ -83,7 +83,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <NotificationKinds />
           </TabsContent>
           <TabsContent value="usage" className="mt-3">
-            <AiUsage />
+            {user?.id ? <AiCostUsage userId={user.id} isAdmin={role === "ADMIN"} /> : null}
           </TabsContent>
           <TabsContent value="info" className="mt-3">
             <Card>
@@ -95,9 +95,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                   사용자 관리, Gemini API 키, 시스템 설정을 관리합니다.
                 </p>
                 {role === "ADMIN" && (
-                  <Link href="/settings/feature-requests" className="touch-target mt-2 inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
-                    기능 요청 보기
-                  </Link>
+                  <span className="mt-2 flex flex-wrap gap-x-4">
+                    <Link href="/settings/feature-requests" className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
+                      기능 요청 보기
+                    </Link>
+                    <Link href="/settings/ai-budget" className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
+                      AI 비용 상한
+                    </Link>
+                  </span>
                 )}
               </CardContent>
             </Card>

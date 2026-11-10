@@ -11,6 +11,8 @@ import { roomNameFrom, type OmnisRoomMessage } from "@/lib/omnis-room"
 import type { AskSource } from "@/lib/omnis-ask"
 import { modelFor, modelKey } from "@/lib/ai-models"
 import { agentQuota, kstDayStart, quotaEnabled, quotaRefusal } from "./quota"
+import { budgetGate } from "@/lib/ai-budget"
+import type { BudgetBlock } from "@/lib/ai-budget-rules"
 import { omnisAgentWorkflow } from "./workflow"
 import { approvalResponses } from "./messages"
 import { checkDecision, type StepStatus } from "./approval"
@@ -23,7 +25,7 @@ import { IS_DEMO } from "@/lib/demo"
 import { historyWithAttachmentNames, questionWithAttachments } from "./attachments"
 import { readAttachment } from "./attachments-server"
 
-export type Fail = { ok: false; status: number; error: string }
+export type Fail = { ok: false; status: number; error: string; budget?: BudgetBlock }
 
 /** 확인 카드 — 화면이 그리는 모양 */
 export interface AgentCard {
@@ -287,7 +289,8 @@ export async function startAgentTurn(input: { roomId: string; userId: string; co
 /**
  * 새 실행을 받지 않을 이유. 없으면 null.
  * - 같은 사람이 돌고 있는 실행이 있으면 409 — 방이 달라도. 연달아 보낸 요청이 모델을 겹쳐 부르지 않게(앞 실행은 그대로 끝까지 간다)
- * - 하루 상한(lib/agent/quota.ts)에 닿았으면 429. 환경변수가 없으면 DB 를 읽지 않는다
+ * - 사람별 하루 · 회사 월 비용 상한(lib/ai-budget)에 닿았으면 429 + budget(관리자면 올리기 단추)
+ * - 데모 하루 상한(lib/agent/quota.ts)에 닿았으면 429. 환경변수가 없으면 DB 를 읽지 않는다
  */
 async function admissionRefusal(db: Prisma.TransactionClient | typeof prisma, userId: string, roomId: string | null): Promise<Fail | null> {
   const running = await db.agentRun.findFirst({
@@ -300,6 +303,9 @@ async function admissionRefusal(db: Prisma.TransactionClient | typeof prisma, us
       error: running.roomId === roomId ? "옴니스가 아직 앞의 글에 답하는 중입니다" : "다른 대화에서 옴니스가 아직 답하는 중이에요. 끝난 뒤 보내 주세요",
     }
   }
+  // 사람별 하루 · 회사 월 상한(lib/ai-budget) — 갑자기 끊지 않는다: 이미 시작한 실행 · 확인 카드는 그대로, 새 실행만 받지 않는다
+  const budget = await budgetGate(userId)
+  if (budget) return { ok: false, status: budget.status, error: budget.error, budget: budget.budget }
   const quota = agentQuota()
   if (!quotaEnabled(quota)) return null
   const since = kstDayStart()

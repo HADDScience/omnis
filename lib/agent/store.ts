@@ -4,6 +4,7 @@
 // 확인을 기다리는 동안에는 아무것도 돌지 않는다 — 사람이 [확인] 을 누르면 DB 의 대화에 승인 응답을 붙여 새 구간을 연다.
 import type { ModelMessage } from "ai"
 import { prisma } from "@/lib/db"
+import { checkBudgetAlertsSoon } from "@/lib/ai-budget-alerts"
 import type { Prisma } from "@/generated/prisma/client"
 import { writeActivity } from "@/lib/api"
 import { getSystemUserId } from "@/lib/system-user"
@@ -194,6 +195,8 @@ export async function savePass(runId: string, pass: PassResult): Promise<{ autoC
         }
       }),
     })
+    // 월 상한 80% · 100% 알림 — 1분에 한 번만 본다(lib/ai-budget-alerts)
+    await checkBudgetAlertsSoon()
   }
   const spent: Spent = {
     turns: run.turns + pass.steps.length,
