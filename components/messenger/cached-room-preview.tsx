@@ -13,6 +13,8 @@ import { LIST_CACHE_KEY, readCache } from "@/lib/chat-cache"
 import { readSnapshot, type SnapshotLine } from "@/lib/room-snapshot"
 import { peekHandoff, queuedIsFresh, rememberedRoom, roomFromList, writeHandoff } from "@/lib/chat-entry"
 import { tidyBody } from "@/lib/chat-layout"
+import { kakaoMissingAttachment, missingAttachmentRest } from "@/lib/kakao-placeholder"
+import { MissingAttachmentInline } from "@/components/chat/missing-attachment"
 import { IS_DEMO } from "@/lib/demo"
 import type { RoomList, RoomListItem } from "@/lib/chat-rooms"
 import { cn } from "@/lib/utils"
@@ -137,7 +139,9 @@ function CachedMessages({ messages }: { messages: SnapshotLine[] }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden" data-cached-preview>
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3 px-4 py-4 opacity-80 sm:px-6">
-        {messages.slice(-12).map((m) => (
+        {messages.slice(-12).map((m) => {
+          const missing = kakaoMissingAttachment(m)
+          return (
           <div key={m.id} className={cn("flex flex-col gap-0.5", m.mine ? "items-end" : "items-start")}>
             {!m.mine && <span className="px-1 text-[13.5px] text-muted-foreground">{m.author.name}</span>}
             <div
@@ -147,10 +151,18 @@ function CachedMessages({ messages }: { messages: SnapshotLine[] }) {
                 m.fromOmnis && "line-clamp-6",
               )}
             >
-              {tidyBody(m.content)}
+              {missing ? (
+                <>
+                  {missingAttachmentRest(missing) && <span className="block">{missingAttachmentRest(missing)}</span>}
+                  <MissingAttachmentInline attachment={missing} />
+                </>
+              ) : (
+                tidyBody(m.content)
+              )}
             </div>
           </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

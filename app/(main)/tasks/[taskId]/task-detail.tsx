@@ -21,6 +21,8 @@ import { personOptions } from "@/lib/active-members"
 import { showQuickAssign } from "@/lib/quick-assign"
 import { QuickAssign } from "@/components/tasks/quick-assign"
 import { toast } from "sonner"
+import { kakaoMissingAttachment, missingAttachmentRest } from "@/lib/kakao-placeholder"
+import { MissingAttachmentInline } from "@/components/chat/missing-attachment"
 
 interface Checklist {
   id: string
@@ -31,6 +33,10 @@ interface Checklist {
 
 interface FeedbackMessage {
   id: string
+  /** 카톡에서 옮긴 글이면 `kakao:…` — 첨부를 못 받은 글은 흐린 칸 한 줄로 */
+  sourceId?: string | null
+  /** 붙은 첨부 id — 이 카드는 첨부를 그리지 않고, 카톡 자리표시 글을 가를 때만 본다 */
+  files?: string[]
   content: string
   author: { id: string; name: string }
   isTaskInstruction: boolean
@@ -679,9 +685,20 @@ export function TaskDetail({
                         {format(new Date(msg.createdAt), "MM/dd HH:mm")}
                       </span>
                     </div>
-                    <p className={`text-sm whitespace-pre-wrap break-words ${showAllFeedback ? "" : "line-clamp-6"}`}>
-                      {msg.content}
-                    </p>
+                    {(() => {
+                      const missing = kakaoMissingAttachment(msg)
+                      if (!missing) return (
+                        <p className={`text-sm whitespace-pre-wrap break-words ${showAllFeedback ? "" : "line-clamp-6"}`}>
+                          {msg.content}
+                        </p>
+                      )
+                      return (
+                        <div className="flex flex-col items-start gap-1 text-sm">
+                          {missingAttachmentRest(missing) && <p>{missingAttachmentRest(missing)}</p>}
+                          <MissingAttachmentInline attachment={missing} className="text-[12.5px]" />
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
               ))}

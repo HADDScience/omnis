@@ -34,6 +34,7 @@ export default async function TaskRoomPage({ params }: { params: Promise<{ taskI
   // 업무 상세(app/(main)/tasks/[taskId]/page.tsx)와 같은 규칙 — 지운 글은 자리만
   const messages = rows.map((m) => ({
     id: m.id,
+    sourceId: m.sourceId,
     content: m.deletedAt ? CHAT_DELETED_TEXT : m.content,
     createdAt: m.createdAt.toISOString(),
     author: { id: m.author.id, name: m.author.name },
