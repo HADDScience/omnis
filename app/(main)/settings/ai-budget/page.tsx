@@ -6,7 +6,7 @@ import { AiCostUsage } from "@/components/settings/ai-cost-usage"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
-import { loadBudget } from "@/lib/ai-budget"
+import { loadBudget, loadRunCostBasis } from "@/lib/ai-budget"
 import { budgetDefaults } from "@/lib/ai-budget-rules"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
@@ -38,10 +38,11 @@ export default async function AiBudgetPage() {
     )
   }
 
-  const [budget, recipients, people] = await Promise.all([
+  const [budget, recipients, people, basis] = await Promise.all([
     loadBudget(),
     configuredRecipientIds(),
     prisma.user.findMany({ where: { id: { not: SYSTEM_USER_ID }, ...ACTIVE_MEMBER_WHERE }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    loadRunCostBasis(),
   ])
   const defaults = budgetDefaults()
 
@@ -54,7 +55,7 @@ export default async function AiBudgetPage() {
             <CardTitle className="text-base">상한</CardTitle>
           </CardHeader>
           <CardContent>
-            <AiBudgetForm initial={{ ...budget, recipients }} people={people} defaults={{ userDailyKrw: defaults.userDailyKrw, monthlyKrw: defaults.monthlyKrw }} />
+            <AiBudgetForm initial={{ ...budget, recipients }} people={people} defaults={{ userDailyKrw: defaults.userDailyKrw, monthlyKrw: defaults.monthlyKrw }} basis={basis} />
           </CardContent>
         </Card>
         <AiCostUsage userId={userId} isAdmin showAdminLink={false} />

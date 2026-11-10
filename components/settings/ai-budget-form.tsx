@@ -6,17 +6,21 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { apiUrl } from "@/lib/base-path"
+import type { RunCostBasis } from "@/lib/ai-budget-rules"
+import { RunsHint } from "./runs-hint"
 
 interface Person { id: string; name: string }
 
 /** 관리자 — 1인 하루 · 회사 월 상한, 사람별 예외, 알림 받는 사람. 저장하면 다음 요청부터 바로 쓴다 */
 export function AiBudgetForm({
-  initial, people, defaults,
+  initial, people, defaults, basis,
 }: {
   initial: { userDailyKrw: number; monthlyKrw: number; users: Record<string, number>; recipients: string[] }
   people: Person[]
   /** env 기본값 — 안내용 */
   defaults: { userDailyKrw: number; monthlyKrw: number }
+  /** 원 → 대화 수 환산(최근 30일 실측) */
+  basis: RunCostBasis
 }) {
   const router = useRouter()
   const [daily, setDaily] = useState(String(initial.userDailyKrw))
@@ -60,11 +64,13 @@ export function AiBudgetForm({
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">1인 하루 상한(원)</span>
           <Input inputMode="numeric" value={daily} onChange={(e) => setDaily(e.target.value)} className="h-11 md:h-9" aria-describedby="daily-hint" />
+          {valid(daily) && <RunsHint krw={toNum(daily)} basis={basis} lead={`하루 ${toNum(daily).toLocaleString("ko-KR")}원 ≈`} />}
           <span id="daily-hint" className="text-xs text-muted-foreground">기본 {defaults.userDailyKrw.toLocaleString("ko-KR")}원 · 한국 시각 0시에 다시 열림</span>
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">회사 월 상한(원)</span>
           <Input inputMode="numeric" value={monthly} onChange={(e) => setMonthly(e.target.value)} className="h-11 md:h-9" aria-describedby="monthly-hint" />
+          {valid(monthly) && <RunsHint krw={toNum(monthly)} basis={basis} lead={`월 ${toNum(monthly).toLocaleString("ko-KR")}원 ≈`} />}
           <span id="monthly-hint" className="text-xs text-muted-foreground">기본 {defaults.monthlyKrw.toLocaleString("ko-KR")}원 · 80% · 100% 에 알림</span>
         </label>
       </div>

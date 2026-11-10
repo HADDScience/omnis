@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import { apiUrl } from "@/lib/base-path"
-import type { BudgetBlock } from "@/lib/ai-budget-rules"
+import { runsFor, type BudgetBlock } from "@/lib/ai-budget-rules"
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`
 
@@ -55,7 +55,8 @@ export function RaiseBudgetButton({ budget, onRaised }: { budget: BudgetBlock; o
   return (
     <span className="ml-2 inline-flex flex-wrap items-center gap-1.5">
       <span>
-        {what} {won(budget.limitKrw)} → {won(budget.suggestKrw)}?
+        {what} {won(budget.limitKrw)} → {won(budget.suggestKrw)}
+        {budget.basis && `(보통 대화 약 ${runsFor(budget.suggestKrw, budget.basis).typical.toLocaleString("ko-KR")}번${budget.basis.estimated ? " · 추정" : ""})`}?
       </span>
       <button
         type="button"

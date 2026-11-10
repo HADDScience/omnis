@@ -1,7 +1,9 @@
+import type { ReactNode } from "react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { usageReport, type PersonUsage } from "@/lib/ai-budget"
-import { percentOf } from "@/lib/ai-budget-rules"
+import { percentOf, type RunCostBasis } from "@/lib/ai-budget-rules"
+import { RunsHint } from "./runs-hint"
 
 const won = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`
 const pct = (used: number, limit: number | null) => {
@@ -9,7 +11,7 @@ const pct = (used: number, limit: number | null) => {
   return p === null ? "–" : `${p}%`
 }
 
-function Meter({ used, limit, label }: { used: number; limit: number; label: string }) {
+function Meter({ used, limit, label, hint }: { used: number; limit: number; label: string; hint?: ReactNode }) {
   const p = Math.min(percentOf(used, limit) ?? 0, 100)
   const tone = p >= 100 ? "bg-destructive" : p >= 80 ? "bg-amber-500" : "bg-primary"
   return (
@@ -23,8 +25,14 @@ function Meter({ used, limit, label }: { used: number; limit: number; label: str
       <div className="h-2 overflow-hidden rounded-full bg-muted" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={p}>
         <div className={`h-full ${tone}`} style={{ width: `${p}%` }} />
       </div>
+      {hint}
     </div>
   )
+}
+
+/** 「월 110,000원 ≈ 보통 대화 약 6,500번」 */
+function MonthHint({ limit, basis }: { limit: number; basis: RunCostBasis }) {
+  return <RunsHint krw={limit} basis={basis} lead={`월 ${won(limit)} ≈`} />
 }
 
 function PersonRow({ p }: { p: PersonUsage }) {
@@ -69,8 +77,18 @@ export async function AiCostUsage({ userId, isAdmin, showAdminLink = true }: { u
         <CardTitle className="text-base">AI 사용량 ({report.month})</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <Meter label="오늘 내 사용" used={me?.todayKrw ?? 0} limit={myLimit} />
-        <Meter label="이번 달 회사 전체" used={report.monthKrw} limit={report.monthlyKrw} />
+        <Meter
+          label="오늘 내 사용"
+          used={me?.todayKrw ?? 0}
+          limit={myLimit}
+          hint={<RunsHint krw={myLimit - (me?.todayKrw ?? 0)} basis={report.basis} lead="남은 한도: 오늘" more />}
+        />
+        <Meter
+          label="이번 달 회사 전체"
+          used={report.monthKrw}
+          limit={report.monthlyKrw}
+          hint={<MonthHint limit={report.monthlyKrw} basis={report.basis} />}
+        />
         {report.people.length === 0 ? (
           <p className="text-sm text-muted-foreground">이번 달 AI 사용 기록이 아직 없습니다.</p>
         ) : (
