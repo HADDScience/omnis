@@ -41,7 +41,11 @@ export function PasswordResetNotice() {
     const measure = () => {
       frame = 0
       const own = el.getBoundingClientRect()
-      const composers = Array.from(document.querySelectorAll<HTMLElement>("[data-room-composer-chrome]"))
+      const chrome = Array.from(document.querySelectorAll<HTMLElement>("[data-room-composer-chrome]"))
+      // 입력창은 문서 변화 없이도 자란다(글꼴이 늦게 와 안내 문구가 두 줄이 되거나 글을 여러 줄 쓸 때) —
+      // 크기도 지켜본다. 같은 요소를 다시 observe 해도 한 번만 걸린다
+      for (const c of chrome) sizes.observe(c)
+      const composers = chrome
         .map((c) => c.getBoundingClientRect())
         .filter((r) => r.height > 0 && r.width > 0 && r.top < window.innerHeight && r.left < own.right && r.right > own.left)
       setLift(composers.length ? Math.max(0, window.innerHeight - Math.min(...composers.map((r) => r.top))) + 8 : null)
@@ -50,12 +54,13 @@ export function PasswordResetNotice() {
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(measure)
     }
+    const sizes = new ResizeObserver(schedule)
+    sizes.observe(el)
     measure()
     // 방을 오가면 입력창이 생기고 사라진다 — 문서가 바뀔 때 다음 프레임에 한 번만 다시 잰다
     const mutations = new MutationObserver(schedule)
     mutations.observe(document.body, { childList: true, subtree: true })
-    const sizes = new ResizeObserver(schedule)
-    sizes.observe(el)
+    void document.fonts?.ready.then(schedule)
     window.addEventListener("resize", schedule)
     window.visualViewport?.addEventListener("resize", schedule)
     return () => {
