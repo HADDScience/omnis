@@ -13,7 +13,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import Spreadsheet, { type CellBase, type Matrix } from "react-spreadsheet"
+import { CopyableSheet } from "./copyable-sheet"
+import { clipFromSelection, putClip } from "./answer-copy"
 import { formatDistanceToNow } from "date-fns"
 import { ko } from "date-fns/locale"
 import { toast } from "sonner"
@@ -181,14 +182,8 @@ const tableComponent: Components["table"] = ({ node, children }) => {
   if (!parsed || (parsed.headers.length === 0 && parsed.rows.length === 0)) {
     return <table>{children}</table>
   }
-  const data: Matrix<CellBase> = parsed.rows.map((row) =>
-    row.map((cell) => ({ value: cell, readOnly: true }))
-  )
-  return (
-    <div className="omnis-spreadsheet omnis-spreadsheet--readonly my-2 overflow-x-auto">
-      <Spreadsheet data={data} columnLabels={parsed.headers} hideRowIndicators />
-    </div>
-  )
+  // 칸을 끌어 고르고 Ctrl/⌘+C 하면 표 그대로 복사된다(./copyable-sheet.tsx)
+  return <CopyableSheet headers={parsed.headers} rows={parsed.rows} className="my-2" />
 }
 
 /**
@@ -539,7 +534,19 @@ export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: 
   return (
     <>
       <TooltipProvider delay={150}>
-        <div className="omnis-md">
+        {/* 화면 글을 끌어 고른 복사 — 표는 표로, 각주 배지는 빼고(./answer-copy.ts). 고른 것이 없으면(표 칸 범위) 표가 맡는다 */}
+        <div
+          className="omnis-md"
+          data-omnis-answer
+          onCopy={(e) => {
+            const clip = clipFromSelection(window.getSelection())
+            if (!clip) return
+            e.preventDefault()
+            // 문서에 붙은 react-spreadsheet 의 복사 듣기가 글만 다시 쓰지 않게 여기서 멈춘다
+            e.stopPropagation()
+            putClip(e.clipboardData, clip)
+          }}
+        >
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
             {keepLineBreaks(qa.answer)}
           </ReactMarkdown>
