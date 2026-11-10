@@ -170,3 +170,13 @@ test("본문 바꾸기는 한 번에 훑는다 — 바꾼 이름을 다시 바�
   // 긴 표시명이 먼저 맞는다
   assert.equal(normalizeBody("@직원을 새직함님 네", names), "@직원을 네")
 })
+
+test("외부 발화자 id 를 적어 두면 소속 · 직급을 채워도 id 와 키가 그대로다", () => {
+  const before: { name: string; org: string | null; title: string | null; id?: string } = { name: "외부무", org: null, title: null }
+  const pinned = { ...before, org: "예시기관", title: "연구원", id: externalSpeakerIdOf(before) }
+  assert.notEqual(externalSpeakerIdOf({ ...before, org: "예시기관" }), externalSpeakerIdOf(before))
+  assert.equal(externalSpeakerIdOf(pinned), externalSpeakerIdOf(before))
+  const cfgOf = (def: typeof before) => ({ speakers: {}, externals: { "외부무 표시명": def } })
+  assert.equal(speakerKey("외부무 표시명", cfgOf(pinned)), speakerKey("외부무 표시명", cfgOf(before)))
+  assert.throws(() => parseImportConfig({ externals: { "외부무": { name: "외부무", id: "abc" } } }), /ext-/)
+})

@@ -8,7 +8,7 @@
 //   "me": "내 계정 이름",
 //   "syncFolder": "<카톡 채팅 폴더 이름>",
 //   "speakers": { "<카톡 표시명>": "계정 이름", "<같은 사람의 다른 표시명>": "계정 이름" },
-//   "externals": { "<카톡 표시명>": { "name": "이름", "org": "소속", "title": "직급" } }
+//   "externals": { "<카톡 표시명>": { "name": "이름", "org": "소속", "title": "직급", "id": "ext-…(처음 정해진 id, 선택)" } }
 // }
 //
 // structure: 분류 · 구조화 · 카드 연결을 하는가. 기본은 전사방만 true — 업무 카드는 전원이 보므로 참여자 전용 방은 켜지 않는다.
@@ -42,7 +42,8 @@ export interface ImportRoom {
   listName?: string
 }
 
-export interface ExternalDef { name: string; org?: string | null; title?: string | null }
+/** 계정 없는 외부 사람. id 를 적으면 그 id 를 쓴다 — 소속 · 직급을 나중에 채워도 id(와 메시지 키)가 바뀌지 않게 */
+export interface ExternalDef { name: string; org?: string | null; title?: string | null; id?: string }
 
 export interface ImportConfig {
   rooms: Record<string, ImportRoom>
@@ -72,6 +73,7 @@ export function parseImportConfig(raw: unknown): ImportConfig {
   }
   for (const [key, e] of Object.entries(externals)) {
     if (!e.name?.trim()) throw new Error(`외부 발화자 ${key}: name 이 없다`)
+    if (e.id !== undefined && !/^ext-[0-9a-z]+$/.test(e.id)) throw new Error(`외부 발화자 ${key}: id 는 ext-로 시작한다`)
     if (speakers[key]) throw new Error(`${key}: 계정(speakers)과 외부 발화자(externals)에 함께 있다`)
   }
   return { rooms, speakers, externals, me: c.me, syncFolder: c.syncFolder }
@@ -121,7 +123,7 @@ export const structureEnabled = (room: ImportRoom) => room.structure ?? room.kin
 
 /** 같은 사람이면 같은 id — 이식을 다시 돌려도 행이 늘지 않는다 */
 export const externalSpeakerIdOf = (e: ExternalDef) =>
-  `ext-${createHash("sha1").update(`${e.name.trim()}|${e.org?.trim() ?? ""}`).digest("hex").slice(0, 16)}`
+  e.id?.trim() || `ext-${createHash("sha1").update(`${e.name.trim()}|${e.org?.trim() ?? ""}`).digest("hex").slice(0, 16)}`
 
 export const plannedDmRoomId = (dmKey: string) => `kakao-dm-${createHash("sha1").update(dmKey).digest("hex").slice(0, 16)}`
 
