@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import { basename, dirname } from "path"
 import { PrismaClient } from "../generated/prisma"
 import { dmKeyOf } from "../lib/chat-people-rules"
-import { loadImportConfig, plannedDmRoomId, type ImportRoom } from "./rooms-config"
+import { loadImportConfig, plannedDmRoomId, restoreNames, type ImportRoom } from "./rooms-config"
 
 export const prisma = new PrismaClient()
 
@@ -103,7 +103,7 @@ export function parseKakaoCsv(path: string): RawRow[] {
     if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date)) continue
     out.push({ room, t: date, u: user, m: message })
   }
-  return out
+  return out.map((r) => restoreNames(r, IMPORT_CONFIG.renames))
 }
 
 export const rowKey = (r: RawRow) => `${r.room}|${r.t}|${r.u}|${r.m}`
@@ -147,7 +147,7 @@ export function parseKakaoMobileTxt(path: string, room: string): RawRow[] {
     } else if (MOBILE_SYSTEM.test(line) || MOBILE_DAY.test(line) || line.startsWith("저장한 날짜")) open = false
     else if (open) out[out.length - 1].m += "\n" + line
   }
-  return out.map((r) => ({ ...r, m: mobileToCsvWords(r.m.replace(/\n+$/, "")) }))
+  return out.map((r) => restoreNames({ ...r, m: mobileToCsvWords(r.m.replace(/\n+$/, "")) }, IMPORT_CONFIG.renames))
 }
 
 /** 원본 메시지 마스터. 지금까지 받은 모든 CSV 의 합집합이다. */

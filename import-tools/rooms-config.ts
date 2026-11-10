@@ -8,7 +8,8 @@
 //   "me": "내 계정 이름",
 //   "syncFolder": "<카톡 채팅 폴더 이름>",
 //   "speakers": { "<카톡 표시명>": "계정 이름" },
-//   "externals": { "<카톡 표시명>": { "name": "이름", "org": "소속", "title": "직급" } }
+//   "externals": { "<카톡 표시명>": { "name": "이름", "org": "소속", "title": "직급" } },
+//   "renames": { "<바뀐 카톡 표시명>": "<처음 쓰던 표시명>" }
 // }
 //
 // structure: 분류 · 구조화 · 카드 연결을 하는가. 기본은 전사방만 true — 업무 카드는 전원이 보므로 참여자 전용 방은 켜지 않는다.
@@ -17,6 +18,9 @@
 // syncFolder: kakao-sync.py 가 실행마다 이 폴더의 방을 전부 옮긴다. 처음 보는 방은 registerRoom 이 설정에 더한다.
 // auto: registerRoom 이 관리하는 방 — 새 발화자가 나오면 참여자 · 외부 발화자로 더한다. 없으면 설정을 건드리지 않는다.
 // listName: 채팅 목록의 이름이 방 키와 다를 때. 이름 없는 단체방은 CSV 이름이 모두 같아 이것으로 가른다.
+// renames: 카톡 표시명이 바뀌었을 때 CSV · 휴대폰 txt 를 읽자마자 처음 이름으로 되돌린다(보낸 사람 · 본문의 멘션 · 초대 줄).
+//   메시지 키(sourceId)와 마스터 줄 키에 표시명이 들어가므로, 되돌리지 않으면 이미 넣은 글이 새 글로 다시 들어간다.
+//   방 이름이 바뀐 것은 listName 으로 잇는다.
 // prisma 없음 — 단위 시험이 DB 없이 돈다.
 import { createHash } from "crypto"
 import { existsSync, readFileSync } from "fs"
@@ -47,15 +51,22 @@ export interface ImportConfig {
   externals: Record<string, ExternalDef>
   me?: string
   syncFolder?: string
+  /** 바뀐 표시명 → 처음 쓰던 표시명 */
+  renames?: Record<string, string>
 }
 
-export const EMPTY_CONFIG: ImportConfig = { rooms: {}, speakers: {}, externals: {} }
+export const EMPTY_CONFIG: ImportConfig = { rooms: {}, speakers: {}, externals: {}, renames: {} }
 
 export function parseImportConfig(raw: unknown): ImportConfig {
   const c = (raw ?? {}) as Partial<ImportConfig>
   const rooms = c.rooms ?? {}
   const speakers = c.speakers ?? {}
   const externals = c.externals ?? {}
+  const renames = c.renames ?? {}
+  for (const [now, was] of Object.entries(renames)) {
+    if (typeof was !== "string" || !now.trim() || !was.trim() || now === was) throw new Error(`renames ${now}: 바뀐 이름과 처음 이름이 둘 다 있고 달라야 한다`)
+    if (renames[was] !== undefined) throw new Error(`renames ${now}: 처음 이름 ${was} 가 다시 바뀐 이름으로 있다 — 한 단계로 적는다`)
+  }
   for (const [key, r] of Object.entries(rooms)) {
     if (!r.name?.trim()) throw new Error(`방 ${key}: name 이 없다`)
     if (!["COMPANY", "GROUP", "DM"].includes(r.kind)) throw new Error(`방 ${key}: kind 는 COMPANY · GROUP · DM`)
@@ -71,7 +82,20 @@ export function parseImportConfig(raw: unknown): ImportConfig {
     if (!e.name?.trim()) throw new Error(`외부 발화자 ${key}: name 이 없다`)
     if (speakers[key]) throw new Error(`${key}: 계정(speakers)과 외부 발화자(externals)에 함께 있다`)
   }
-  return { rooms, speakers, externals, me: c.me, syncFolder: c.syncFolder }
+  return { rooms, speakers, externals, me: c.me, syncFolder: c.syncFolder, renames }
+}
+
+/**
+ * 바뀐 표시명을 처음 이름으로 되돌린다. 보낸 사람은 통째로 같을 때만, 본문은 이름이 나오는 곳 전부(멘션 · 초대 줄).
+ * 긴 이름부터 바꿔 한 이름이 다른 이름의 일부일 때도 겹쳐 바뀌지 않게 한다.
+ */
+export function restoreNames<T extends { u: string; m: string }>(row: T, renames: Record<string, string> = {}): T {
+  const pairs = Object.entries(renames).sort((a, b) => b[0].length - a[0].length)
+  if (pairs.length === 0) return row
+  let m = row.m
+  for (const [now, was] of pairs) if (m.includes(now)) m = m.split(now).join(was)
+  const u = renames[row.u] ?? row.u
+  return u === row.u && m === row.m ? row : { ...row, u, m }
 }
 
 /** 파일이 없으면 빈 설정 — 옮길 방이 없다는 뜻이고, 저장소만 받은 사람도 시험을 돌릴 수 있다 */

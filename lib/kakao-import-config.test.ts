@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { accountOf, autoRoomId, copyRoomIds, externalSpeakerIdOf, importedFilePrivateTo, parseImportConfig, registerRoom, speakerTarget, structureEnabled, type ImportConfig } from "../import-tools/rooms-config"
+import { accountOf, autoRoomId, copyRoomIds, externalSpeakerIdOf, importedFilePrivateTo, parseImportConfig, registerRoom, restoreNames, speakerTarget, structureEnabled, type ImportConfig } from "../import-tools/rooms-config"
 import { canSeeFile } from "./file-access"
 
 const cfg = { speakers: { "직원A 표시명": "직원A" }, externals: { "외부B 표시명": { name: "외부B", org: "예시기관", title: "연구원" } } }
@@ -136,4 +136,31 @@ test("자동 등록 — 등록된 자동 방에 새 사람이 오면 더하고, 
 
 test("자동 등록 — me 가 없으면 등록하지 않는다", () => {
   assert.throws(() => registerRoom({ rooms: {}, speakers: {}, externals: {} }, "방", ["갑"], ACCOUNTS), /me/)
+})
+
+test("표시명이 바뀌면 처음 이름으로 되돌린다 — 보낸 사람 · 멘션 · 초대 줄", () => {
+  const renames = { "새이름 직함님": "옛이름" }
+  const row = { room: "방", t: "2026-01-01 10:00:00", u: "새이름 직함님", m: "확인했습니다" }
+  assert.deepEqual(restoreNames(row, renames), { ...row, u: "옛이름" })
+  assert.equal(restoreNames({ ...row, u: "직원A", m: "@새이름 직함님 검토 부탁드립니다" }, renames).m, "@옛이름 검토 부탁드립니다")
+  assert.equal(restoreNames({ ...row, u: "직원A", m: "직원A invited 새이름 직함님, 직원B." }, renames).m, "직원A invited 옛이름, 직원B.")
+  // 이름이 없는 줄 · 이름만 닮은 보낸 사람은 그대로 — 같은 객체를 돌려준다
+  const plain = { ...row, u: "새이름", m: "새이름 직함 이야기" }
+  assert.equal(restoreNames(plain, renames), plain)
+  assert.equal(restoreNames(row, {}), row)
+  assert.equal(restoreNames(row, undefined), row)
+})
+
+test("표시명이 바뀌면 — 긴 이름부터 바꿔 겹치지 않는다", () => {
+  const renames = { "갑 대표님": "갑A", "갑 대표님, 을": "단톡A" }
+  assert.equal(restoreNames({ u: "x", m: "갑 대표님, 을" }, renames).m, "단톡A")
+  assert.equal(restoreNames({ u: "x", m: "@갑 대표님 네" }, renames).m, "@갑A 네")
+})
+
+test("renames 설정 검사 — 빈 이름 · 같은 이름 · 사슬은 거절한다", () => {
+  assert.deepEqual(parseImportConfig({ renames: { "새": "옛" } }).renames, { "새": "옛" })
+  assert.deepEqual(parseImportConfig({}).renames, {})
+  assert.throws(() => parseImportConfig({ renames: { "새": "새" } }), /renames/)
+  assert.throws(() => parseImportConfig({ renames: { "새": " " } }), /renames/)
+  assert.throws(() => parseImportConfig({ renames: { "셋째": "둘째", "둘째": "첫째" } }), /한 단계/)
 })
