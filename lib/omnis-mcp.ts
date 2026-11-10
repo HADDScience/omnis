@@ -28,7 +28,8 @@ import { askOmnis, buildCrmOverview, SOURCE_LABEL } from "@/lib/omnis-ask"
 import { postChatMessage } from "@/lib/chat-post"
 import { listWeeklyReports, updateWeeklyReport, upsertThisWeekReport } from "@/lib/weekly-report"
 import { createOmnisCard, updateOmnisCard } from "@/lib/omnis-cards"
-import { listReadableRooms, readableRooms, readRoomFeed, readChatFeed, ROOM_KIND_LABEL, type FeedView } from "@/lib/chat-feed"
+import { listReadableRooms, readableRooms, readRoomFeed, readChatFeed, ROOM_KIND_LABEL, searchRoomMessages, type FeedView } from "@/lib/chat-feed"
+import { formatRoomHit, mergeResults, roomLimit } from "@/lib/chat-room-search"
 import { pickByMembers, pickByRef, type PickableRoom } from "@/lib/chat-room-pick"
 import type { Prisma } from "@/generated/prisma/client"
 import { createNotification } from "@/lib/notifications"
@@ -137,15 +138,15 @@ export const OMNIS_TOOLS = [
   {
     name: "search_knowledge",
     description:
-      "의미 검색. 질문에 가까운 채팅·업무·지식 카드·주간보고·지식재산권·사진(설명) 조각을 유사도 순으로 돌려준다. ask_omnis 가 답을 만들기 전에 무엇을 근거로 삼는지 직접 보고 싶을 때, 또는 원문 조각이 필요할 때. 단톡방 · 1:1 · 옴니스 1:1 글은 색인에 없다 — 그 방 글은 list_rooms 로 방을 찾고 list_chat(view=room, query)로 찾는다.",
+      "의미 검색. 질문에 가까운 채팅(전사방)·업무·지식 카드·주간보고·지식재산권·사진(설명) 조각을 유사도 순으로 돌려주고, 내가 지금 참여자인 단톡방 · 1:1 · 옴니스 1:1 글도 질문의 낱말로 찾아 섞는다(「[n] 방 · …」 머리줄, 앞뒤 대화 2줄씩, 결과의 절반까지). 방 글은 의미가 아니라 낱말이 맞아야 걸린다 — 한 방을 날짜로 훑으려면 list_rooms 로 방을 찾고 list_chat(view=room)으로 읽는다. ask_omnis 가 무엇을 근거로 삼는지 직접 보고 싶을 때, 또는 원문 조각이 필요할 때.",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string" },
         sources: {
           type: "array",
-          items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO"] },
-          description: "생략하면 전부",
+          items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO", "ROOM_MESSAGE"] },
+          description: "생략하면 전부. ROOM_MESSAGE 는 내가 든 단톡방 · 1:1 · 옴니스 1:1 글(낱말 검색) — 빼면 방 글을 찾지 않는다",
         },
         limit: { type: "integer", description: "기본 8, 최대 30" },
       },
@@ -887,17 +888,35 @@ export async function runTool(
     case "search_knowledge": {
       const query = str(args.query)
       if (!query) return { error: "query 가 비어 있습니다." }
-      const sources = Array.isArray(args.sources)
-        ? (args.sources.filter((s): s is EmbeddingSource => typeof s === "string" && s in SOURCE_LABEL))
-        : undefined
-      const chunks = await withFollowUps(
-        await retrieveContext(query, { limit: clampInt(args.limit, 8, 30), sources, minSimilarity: 0.25, userId: caller.userId })
-      )
-      if (chunks.length === 0) return { text: "비슷한 조각이 없습니다." }
+      const limit = clampInt(args.limit, 8, 30)
+      const asked = Array.isArray(args.sources) ? args.sources.filter((s): s is string => typeof s === "string") : undefined
+      const embedSources = asked?.filter((s): s is EmbeddingSource => s in SOURCE_LABEL)
+      // sources 를 주면 그 안에 든 것만 — 방 글만 달라면 색인 검색(Gemini 호출)을 하지 않는다
+      const wantEmbedded = !asked || (embedSources?.length ?? 0) > 0
+      const wantRooms = !asked || asked.includes("ROOM_MESSAGE")
+      const [embedded, roomHits] = await Promise.all([
+        wantEmbedded
+          ? retrieveContext(query, { limit, sources: embedSources, minSimilarity: 0.25, userId: caller.userId })
+              .then(withFollowUps)
+              .then((chunks) => ({ chunks, error: null as unknown }), (error: unknown) => ({ chunks: [], error }))
+          : Promise.resolve({ chunks: [], error: null as unknown }),
+        wantRooms ? searchRoomMessages({ currentUserId: caller.userId, query, take: roomLimit(limit) }) : Promise.resolve([]),
+      ])
+      // 의미 검색(임베딩 호출)이 실패해도 방 글이 찾아졌으면 그것만이라도 돌려준다. 방 글도 없으면 도구 오류로 —
+      // 예전에는 던져서 MCP 응답이 500 이었다
+      const embedError = embedded.error instanceof Error ? embedded.error.message.slice(0, 200) : embedded.error ? String(embedded.error) : ""
+      if (embedded.error && roomHits.length === 0) return { error: `의미 검색을 하지 못했습니다: ${embedError}` }
+      if (embedded.error) console.warn("[search_knowledge] 의미 검색 실패 — 방 글만 돌려준다:", embedError)
+      const merged = mergeResults(embedded.chunks, roomHits, limit)
+      if (merged.length === 0) return { text: "비슷한 조각이 없습니다." }
       return {
-        text: chunks
-          // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
-          .map((c, i) => `[${i + 1}] ${SOURCE_LABEL[c.source]} · ${c.title} (${Math.round(c.similarity * 100)}%)\n${c.content.slice(0, c.source === "CHAT_MESSAGE" || c.source === "PHOTO" ? 1500 : 600)}`)
+        text: (embedded.error ? "(의미 검색을 하지 못해 방 글만 보입니다)\n\n" : "") + merged
+          .map((m, i) =>
+            m.kind === "room"
+              ? formatRoomHit(i + 1, m.item, ROOM_KIND_LABEL)
+              : // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
+                `[${i + 1}] ${SOURCE_LABEL[m.item.source]} · ${m.item.title} (${Math.round(m.item.similarity * 100)}%)\n${m.item.content.slice(0, m.item.source === "CHAT_MESSAGE" || m.item.source === "PHOTO" ? 1500 : 600)}`,
+          )
           .join("\n\n"),
       }
     }

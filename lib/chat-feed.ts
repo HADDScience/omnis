@@ -3,8 +3,9 @@
 import { prisma } from "@/lib/db"
 import { listRooms, PUBLIC_MESSAGE_WHERE, roomAccess } from "@/lib/chat-rooms"
 import { peopleRoomTitle } from "@/lib/chat-people-rules"
-import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
+import { displayAuthor, EXTERNAL_SPEAKER_SELECT, externalSpeakerLabel } from "@/lib/external-speaker"
 import type { PickableRoom } from "@/lib/chat-room-pick"
+import { escapeLike, keepPermitted, searchableRooms, splitWords, type RoomHit } from "@/lib/chat-room-search"
 
 export type FeedView = "all" | "task" | "dm" | "ai"
 
@@ -174,4 +175,110 @@ export async function readRoomFeed(input: {
       files: m.files,
     })),
   }
+}
+
+// ─── 방 글 낱말 검색 — MCP search_knowledge 가 의미 검색 결과에 섞는다(lib/chat-room-search.ts) ─────────────
+// 방은 readableRooms 가 고른다 — list_rooms · list_chat(view=room)과 같은 권한(지금 참여자인 방만).
+// 전사방은 뺀다: 그 글은 이미 임베딩 색인(CHAT_MESSAGE)으로 찾는다. 쿼리는 방 목록 1번 + 검색 1번으로, 방 수와 무관하다.
+
+type RoomSearchRow = {
+  hitId: string
+  hitRoomId: string
+  hitCreatedAt: Date
+  hitContent: string
+  hitAuthor: string
+  hitExtName: string | null
+  hitExtOrg: string | null
+  hitExtTitle: string | null
+  score: number
+  /** 0 = 맞은 글 자신, -1 앞 대화, 1 뒤 대화 */
+  dir: number
+  ctxCreatedAt: Date | null
+  ctxContent: string | null
+  ctxAuthor: string | null
+  ctxExtName: string | null
+  ctxExtOrg: string | null
+  ctxExtTitle: string | null
+}
+
+const authorLabel = (user: string | null, extName: string | null, extOrg: string | null, extTitle: string | null) =>
+  extName ? externalSpeakerLabel({ name: extName, org: extOrg, title: extTitle }) : (user ?? "")
+
+/**
+ * 내가 지금 참여자인 단톡 · 1:1 · 옴니스 1:1 방에서 낱말이 든 글. 맞은 낱말 수 → 최근 순.
+ * 글마다 앞뒤 대화 2줄씩을 붙인다(같은 방, 지운 글 제외).
+ */
+export async function searchRoomMessages(input: { currentUserId: string; query: string; take: number }): Promise<RoomHit[]> {
+  const words = splitWords(input.query)
+  if (words.length === 0 || input.take <= 0) return []
+  const rooms = searchableRooms(await readableRooms(input.currentUserId))
+  if (rooms.length === 0) return []
+  // 자리표($1…)와 값 배열을 직접 만든다. 낱말은 값으로만 넘긴다(문자열에 이어 붙이지 않는다).
+  // Prisma.sql 조각을 겹쳐 넘기면 dev 묶음에서 조각이 jsonb 값으로 넘어갔다(2026-11-10, 「argument of AND must be type boolean」)
+  const values: unknown[] = [rooms.map((r) => r.id), input.take]
+  const like = words.map((w) => {
+    values.push(`%${escapeLike(w)}%`)
+    return `m."content" ILIKE $${values.length} ESCAPE '\\'`
+  })
+  const sql = `
+    WITH hits AS (
+      SELECT m."id", m."roomId", m."createdAt", m."content", m."authorId", m."externalSpeakerId",
+             (${like.map((l) => `(CASE WHEN ${l} THEN 1 ELSE 0 END)`).join(" + ")})::int AS "score"
+      FROM "ChatMessage" m
+      WHERE m."roomId" = ANY($1::text[])
+        AND m."deletedAt" IS NULL
+        AND (${like.join(" OR ")})
+      ORDER BY "score" DESC, m."createdAt" DESC, m."id" DESC
+      LIMIT $2
+    )
+    SELECT
+      h."id" AS "hitId", h."roomId" AS "hitRoomId", h."createdAt" AS "hitCreatedAt", h."content" AS "hitContent", h."score",
+      hu."name" AS "hitAuthor", he."name" AS "hitExtName", he."org" AS "hitExtOrg", he."title" AS "hitExtTitle",
+      c."dir", c."createdAt" AS "ctxCreatedAt", c."content" AS "ctxContent",
+      cu."name" AS "ctxAuthor", ce."name" AS "ctxExtName", ce."org" AS "ctxExtOrg", ce."title" AS "ctxExtTitle"
+    FROM hits h
+    JOIN "User" hu ON hu."id" = h."authorId"
+    LEFT JOIN "ExternalSpeaker" he ON he."id" = h."externalSpeakerId"
+    LEFT JOIN LATERAL (
+      (SELECT p."createdAt", p."content", p."authorId", p."externalSpeakerId", -1 AS "dir"
+         FROM "ChatMessage" p
+        WHERE p."roomId" = h."roomId" AND p."deletedAt" IS NULL AND (p."createdAt", p."id") < (h."createdAt", h."id")
+        ORDER BY p."createdAt" DESC, p."id" DESC LIMIT 2)
+      UNION ALL
+      (SELECT n."createdAt", n."content", n."authorId", n."externalSpeakerId", 1 AS "dir"
+         FROM "ChatMessage" n
+        WHERE n."roomId" = h."roomId" AND n."deletedAt" IS NULL AND (n."createdAt", n."id") > (h."createdAt", h."id")
+        ORDER BY n."createdAt" ASC, n."id" ASC LIMIT 2)
+    ) c ON TRUE
+    LEFT JOIN "User" cu ON cu."id" = c."authorId"
+    LEFT JOIN "ExternalSpeaker" ce ON ce."id" = c."externalSpeakerId"
+  `
+  const rows = await prisma.$queryRawUnsafe<RoomSearchRow[]>(sql, ...values)
+
+  const byRoom = new Map(rooms.map((r) => [r.id, r]))
+  const hits = new Map<string, RoomHit>()
+  for (const row of rows) {
+    const room = byRoom.get(row.hitRoomId)
+    if (!room) continue
+    let hit = hits.get(row.hitId)
+    if (!hit) {
+      hit = {
+        messageId: row.hitId, roomId: row.hitRoomId, roomTitle: room.title, roomKind: room.kind,
+        createdAt: row.hitCreatedAt, author: authorLabel(row.hitAuthor, row.hitExtName, row.hitExtOrg, row.hitExtTitle),
+        content: row.hitContent, score: Number(row.score), before: [], after: [],
+      }
+      hits.set(row.hitId, hit)
+    }
+    if (row.ctxCreatedAt && row.ctxContent !== null) {
+      const line = { createdAt: row.ctxCreatedAt, author: authorLabel(row.ctxAuthor, row.ctxExtName, row.ctxExtOrg, row.ctxExtTitle), content: row.ctxContent }
+      ;(Number(row.dir) < 0 ? hit.before : hit.after).push(line)
+    }
+  }
+  // 방 목록 밖 글은 쿼리가 고르지 않지만, 여기서 한 번 더 막는다
+  const ordered = keepPermitted([...hits.values()], rooms).sort((a, b) => b.score - a.score || b.createdAt.getTime() - a.createdAt.getTime() || (a.messageId < b.messageId ? 1 : -1))
+  for (const h of ordered) {
+    h.before.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    h.after.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+  }
+  return ordered
 }
