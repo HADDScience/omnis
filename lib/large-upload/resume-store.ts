@@ -11,6 +11,8 @@ export interface ResumeRecord {
   partBytes: number
   parts: { partNumber: number; etag: string }[]
   updatedAt: number
+  /** "r2" 면 R2 로 올리는 중이다 — 남은 조각은 저장소(ListParts)에 물어본다. 없으면 Blob(#158) */
+  backend?: "r2"
 }
 
 const DB_NAME = "omnis-large-upload"

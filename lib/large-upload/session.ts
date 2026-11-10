@@ -10,6 +10,8 @@ const payloadSchema = z.object({
   m: z.string(), // 형식
   p: z.boolean(), // 참여자만 보는 파일
   e: z.number().int(), // 만료(초)
+  b: z.literal("r2").optional(), // 저장소 — 없으면 Blob 임시본(#158)
+  x: z.string().min(1).optional(), // R2 멀티파트 업로드 번호
 })
 
 export type UploadSession = {
@@ -20,6 +22,8 @@ export type UploadSession = {
   mimeType: string
   isPrivate: boolean
   expiresAt: number
+  /** R2 로 올리는 세션이면 그 멀티파트 번호. 서명에 들어 있어 다른 업로드의 조각을 서명받지 못한다 */
+  r2UploadId?: string
 }
 
 function secret(): string {
@@ -35,6 +39,7 @@ export function signUploadSession(session: UploadSession): string {
     JSON.stringify({
       f: session.fileId, u: session.userId, n: session.name, s: session.size, m: session.mimeType, p: session.isPrivate,
       e: Math.floor(session.expiresAt / 1000),
+      ...(session.r2UploadId ? { b: "r2", x: session.r2UploadId } : {}),
     }),
   ).toString("base64url")
   return `${payload}.${sign(payload)}`
@@ -57,5 +62,6 @@ export function verifyUploadSession(token: unknown, now = Date.now()): UploadSes
   const parsed = payloadSchema.safeParse(raw)
   if (!parsed.success || parsed.data.e * 1000 <= now) return null
   const p = parsed.data
-  return { fileId: p.f, userId: p.u, name: p.n, size: p.s, mimeType: p.m, isPrivate: p.p, expiresAt: p.e * 1000 }
+  if ((p.b === "r2") !== Boolean(p.x)) return null
+  return { fileId: p.f, userId: p.u, name: p.n, size: p.s, mimeType: p.m, isPrivate: p.p, expiresAt: p.e * 1000, ...(p.x ? { r2UploadId: p.x } : {}) }
 }

@@ -652,6 +652,8 @@ model File {
   privateToUserId String?
   /// 큰 첨부(4MB 초과)를 임시 저장소에서 NAS 로 옮기는 상태. 행이 없으면 지금처럼 NAS 파일이다
   transfer FileTransfer?
+  /// R2(S3 호환)에 올린 큰 첨부. 행이 있으면 실물은 R2 에 있고 열람은 서명 주소로 간다(mydocs/manual/r2-upload.md)
+  r2Object FileR2Object?
 
   @@index([privateToUserId])
 }
@@ -689,6 +691,23 @@ model FileTransfer {
   runId          String?
 
   @@index([state, updatedAt])
+  @@index([uploadedAt])
+}
+
+/// R2 에 올린 큰 첨부의 기록. 다 올라가 합쳐진 뒤에만 만든다 — 올리는 중인 것은 서명된 세션 표가 들고 있다.
+/// 올리다 버린 조각은 버킷 수명 규칙(미완료 멀티파트 중단)이 지운다
+model FileR2Object {
+  fileId     String   @id
+  file       File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  bucket     String
+  /// 저장 키. 파일 이름을 넣지 않는다(uploads/{fileId}/{fileId})
+  key        String
+  /// 합친 뒤 R2 가 준 ETag — 감사용
+  etag       String?
+  partBytes  Int
+  partCount  Int
+  uploadedAt DateTime @default(now())
+
   @@index([uploadedAt])
 }
 
