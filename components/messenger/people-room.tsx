@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type ComponentProps } from "react"
+import { useEffect, useMemo, useState, type ComponentProps } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -79,6 +79,9 @@ export function PeopleRoom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveRoom])
 
+  // @ 후보 — 참여자 뒤에 옴니스. 고르면 「@옴니스 」 가 들어가고, 그 뒤 글로 옴니스 세션이 열린다(lib/omnis-mention.ts)
+  const mentionables = useMemo(() => ({ members: [...room.activeMembers, { id: "omnis", name: "옴니스" }] }), [room.activeMembers])
+
   return (
     <div data-chat-room-chrome className="relative flex min-h-0 flex-1 flex-col">
       <RoomHeader
@@ -125,7 +128,7 @@ export function PeopleRoom({
           currentUserId={currentUserId}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
-          people={{ members: room.activeMembers }}
+          people={mentionables}
           handoffKey={`room:${room.id}`}
         />
       </div>

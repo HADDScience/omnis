@@ -87,6 +87,8 @@ jobs:
       # 옴니스 실행을 벤더 없이 되받아 답하는 시험 모델(lib/agent/fake-model.ts) — @옴니스 세션 시험이 Workflow · 저장까지 돈다.
       # 운영 배포(VERCEL_ENV=production)에서는 이 값이 있어도 켜지지 않는다
       OMNIS_AGENT_FAKE: "1"
+      # 승인 서명 자리값(32자 이상) — 에이전트 라우트가 이것 없이는 503 이다. 운영 값은 Vercel 환경변수에만
+      OMNIS_AGENT_APPROVAL_SECRET: ci-only-agent-approval-secret-not-real
 
     steps:
       - uses: actions/checkout@v4

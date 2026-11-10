@@ -37,6 +37,8 @@ const env = {
   NEXT_PUBLIC_UI_METRICS: "1",
   // 옴니스 실행은 시험 모델로 — 벤더를 부르지 않는다(lib/agent/fake-model.ts, CI 와 같다)
   OMNIS_AGENT_FAKE: "1",
+  // 승인 서명 — 없으면 에이전트 라우트가 503 이다. 로컬 .env 에 없으면 시험 자리값(CI 와 같은 길이 조건)
+  OMNIS_AGENT_APPROVAL_SECRET: local.OMNIS_AGENT_APPROVAL_SECRET ?? "e2e-only-agent-approval-secret-not-real",
   BASE_URL: `http://localhost:${port}`,
 }
 let server

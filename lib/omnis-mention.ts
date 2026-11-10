@@ -7,6 +7,7 @@
 import { prisma } from "@/lib/db"
 import { postNotice } from "@/lib/omnis-mention-notice"
 import { startAgentRoom } from "@/lib/agent/service"
+import { agentOffReason } from "@/lib/agent/http"
 import { mentionPrompt, sessionNameFrom, sessionNotice } from "@/lib/omnis-mention-rules"
 
 export type MentionOutcome = { sessionId: string } | { refused: string } | null
@@ -24,6 +25,12 @@ export async function callOmnisFromRoom(input: {
   const prompt = mentionPrompt(input.message)
   if (!prompt) return null
   const { room, requester } = input
+  // 에이전트 라우트와 같은 조건 — 꺼져 있으면 방에 그렇게만 알린다
+  const off = agentOffReason()
+  if (off) {
+    await postNotice(room.id, sessionNotice({ kind: "refused", error: off }), null)
+    return { refused: off }
+  }
   let noticeId: string | null = null
   const r = await startAgentRoom(requester.id, prompt, [], {
     origin: {
