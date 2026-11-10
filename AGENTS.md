@@ -147,7 +147,8 @@ pnpm 은 **package.json 에 적지 않은 패키지를 import 하면 잡아낸�
 | `app/` · `components/` 레이아웃 | `AUDIT_USER=… AUDIT_PASS=… node scripts/narrow-audit.mjs` — 320~200px 에서 넘침 · 잘림 · 44px 미만 터치 타깃. 깨지면 exit 1 |
 | 인증 · SSO | `tsx scripts/verify-sso.ts` + `verify-sso-live.ts` |
 | ip 스키마 · 함수 | `tsx scripts/verify-ip-import.ts` |
-| 사용자 흐름 | `pnpm run test:e2e` (dev 서버가 떠 있는 상태에서) |
+| `app/` · `components/` · `tests/feature/` | **push 전에** `pnpm run test:e2e:affected` — 바꾼 파일에 닿는 영역 태그만 격리 DB 에서 돌린다(셸·공통 파일이면 전체, 약 3분). 테스트를 고쳤으면 PR 본문에 그 테스트의 「지키는 것」과 고친 이유를 적는다 ([`tests/feature/README.md`](tests/feature/README.md)) |
+| 사용자 흐름 전체 | `pnpm run test:e2e:local` — CI 와 같은 데모 시드 · 격리 DB ([`e2e-local.md`](mydocs/manual/e2e-local.md)) |
 | 배포본 | 실제 HTTP 요청. 화면 확인만으로는 부족하다 |
 | 문서만 | 게이트 없음 |
 

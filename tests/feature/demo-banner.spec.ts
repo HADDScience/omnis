@@ -5,9 +5,10 @@ const IS_DEMO =
   process.env.NEXT_PUBLIC_IS_DEMO === "true" ||
   !!process.env.BASE_URL?.includes("vercel")
 
-test.describe("시연용 데모 배너 + 테스트 계정 카드", () => {
+test.describe("시연용 데모 배너 + 테스트 계정 카드", { tag: ["@auth", "@nav"] }, () => {
   test.skip(!IS_DEMO, "데모 모드에서만 노출됨")
 
+  // 지키는 것: 데모 사이트에서는 로그인 전부터 「익명 더미 데이터」임을 알린다
   test("로그인 페이지에 floating 배너가 나타난다", async ({ page }) => {
     await page.goto("/login")
     await expect(
@@ -20,6 +21,7 @@ test.describe("시연용 데모 배너 + 테스트 계정 카드", () => {
     ).toBeVisible()
   })
 
+  // 지키는 것: 시연자는 데모 계정 다섯을 한 번 눌러 들어갈 수 있다
   test("로그인 페이지에 5인 quick-login 버튼이 모두 보인다", async ({
     page,
   }) => {
@@ -31,6 +33,7 @@ test.describe("시연용 데모 배너 + 테스트 계정 카드", () => {
     }
   })
 
+  // 지키는 것: 로그인한 뒤에도 데모 사이트라는 표시가 남는다
   test("로그인 후 대시보드에서도 배너가 유지된다 (sticky/fixed)", async ({
     page,
   }) => {
@@ -40,6 +43,7 @@ test.describe("시연용 데모 배너 + 테스트 계정 카드", () => {
     ).toBeVisible()
   })
 
+  // 지키는 것: 데모 배너가 주 메뉴를 가리지 않는다
   test("배너가 떠 있는 nav 와 겹치지 않는다 (회귀 방지)", async ({ page }) => {
     await login(page, "팀장")
     const banner = page

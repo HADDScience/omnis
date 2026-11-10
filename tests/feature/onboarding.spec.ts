@@ -27,7 +27,7 @@ const NAV_TARGET: Partial<Record<(typeof STOPS)[number], string>> = {
   archive: "resources",
 }
 
-test.describe("onboarding", () => {
+test.describe("onboarding", { tag: ["@onboarding", "@nav"] }, () => {
   test.skip(
     !!process.env.BASE_URL &&
       !/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(process.env.BASE_URL),
@@ -148,6 +148,7 @@ test.describe("onboarding", () => {
       .toBe("ok")
   }
 
+  // 지키는 것: 화면 안내가 장면마다 실제 화면으로 옮겨 가 대상을 비추고, 끝나면 시작한 화면으로 돌아온다
   test("장면 순서대로 화면을 옮겨 다니며 비추고, 끝나면 시작한 화면으로 돌아온다", async ({
     page,
   }) => {
@@ -203,6 +204,7 @@ test.describe("onboarding", () => {
     expect(errors).toEqual([])
   })
 
+  // 지키는 것: 시연은 화면에서만 움직이고 실제 데이터를 읽거나 쓰지 않는다
   test("옴니스 시연은 실제 컴포넌트로 대본을 재생하고 API 를 부르거나 쓰지 않는다", async ({
     page,
   }) => {
@@ -271,6 +273,7 @@ test.describe("onboarding", () => {
     ).toBe(0)
   })
 
+  // 지키는 것: 폰 · 다크 · 모션 줄이기에서도 안내가 화면 안에 있고 하단 nav 를 가리킨다
   test("폰 폭 · 다크 · 모션 감소에서 시연은 끝 장면을 바로 보이고 탭 장면은 하단 nav 를 비춘다", async ({
     page,
   }) => {
@@ -319,6 +322,7 @@ test.describe("onboarding", () => {
     await expect.poll(completed).toBe(true)
   })
 
+  // 지키는 것: 간편 로그인 장면은 건너뛸 수 있고, 연결하러 다녀와도 다음 장면부터 이어진다
   test("간편 로그인 장면 — 「나중에」 로 넘어가고, 연결하고 돌아오면 다음 장면부터 잇는다", async ({
     page,
   }) => {
@@ -374,6 +378,7 @@ test.describe("onboarding", () => {
     await expect(page.getByRole("button", { name: "카카오 연결하기" })).toBeVisible()
   })
 
+  // 지키는 것: 온보딩을 마친 기록은 계정에 남아 다른 브라우저에서 다시 뜨지 않고, 마이에서 다시 볼 수 있다
   test("계정 저장·새 브라우저·다른 계정·다시 보기·MCP 주소 복사", async ({
     page,
     browser,
@@ -425,6 +430,7 @@ test.describe("onboarding", () => {
     }
   })
 
+  // 지키는 것: 온보딩 기록 API 는 남의 계정 · 비활성 계정 · 잘못된 요청을 거부한다
   test("잘못된 요청·타 계정 쓰기·비활성 계정 거부, 반복 완료 멱등성", async ({
     page,
     request,
@@ -474,6 +480,7 @@ test.describe("onboarding", () => {
     ).toBe(401)
   })
 
+  // 지키는 것: 예전 영상만 본 사람도 새 안내를 보고, 저장이 실패해도 앱은 쓸 수 있다
   test("영상만 본 사람도 새 안내를 처음부터 보고, 저장에 실패해도 서비스는 쓸 수 있다", async ({
     page,
   }) => {
@@ -498,6 +505,7 @@ test.describe("onboarding", () => {
     await expect.poll(completed).toBe(true)
   })
 
+  // 지키는 것: 다른 탭에 가 있으면 멈추고, 키보드만으로 멈추고 닫을 수 있다
   test("숨은 탭에서는 멈추고, 일시정지 · Esc 종료 · 포커스 가두기", async ({
     page,
   }) => {
