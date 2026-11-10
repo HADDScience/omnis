@@ -18,6 +18,9 @@ import { PencilEdit01Icon, Add01Icon, Delete02Icon } from "@hugeicons/core-free-
 import { format } from "date-fns"
 import { apiUrl } from "@/lib/base-path"
 import { personOptions } from "@/lib/active-members"
+import { showQuickAssign } from "@/lib/quick-assign"
+import { QuickAssign } from "@/components/tasks/quick-assign"
+import { toast } from "sonner"
 
 interface Checklist {
   id: string
@@ -218,6 +221,30 @@ export function TaskDetail({
     }
   }
 
+  // 미배정 칸에서 한 사람 지정 — 화면을 먼저 바꾸고, 실패하면 되돌린다. 알림 · 이력은 PATCH 가 낸다
+  const [quickPendingId, setQuickPendingId] = useState<string | null>(null)
+  async function quickAssign(person: { id: string; name: string }) {
+    const before = task.assignees
+    setQuickPendingId(person.id)
+    setTask((prev) => ({ ...prev, assignees: [person] }))
+    try {
+      const res = await fetch(apiUrl(`/api/tasks/${task.id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigneeIds: [person.id] }),
+      })
+      if (!res.ok) throw new Error(`지정하지 못했습니다 (${res.status})`)
+      setDraftOwnerIds([person.id])
+      toast.success(`${person.name}님을 담당으로 지정했어요`)
+      router.refresh()
+    } catch (err) {
+      setTask((prev) => ({ ...prev, assignees: before }))
+      toast.error(err instanceof Error ? err.message : "지정하지 못했습니다")
+    } finally {
+      setQuickPendingId(null)
+    }
+  }
+
   function cancelPeople() {
     setEditingPeople(false)
     setDraftOwnerIds(task.assignees.map((a) => a.id))
@@ -266,6 +293,11 @@ export function TaskDetail({
           </div>
         </CardContent>
       </Card>
+
+      {/* 담당 미배정 — 상세를 연 자리에서 한 번 눌러 맡긴다. 지정되면 사라지고 아래 담당 표시로 넘어간다 */}
+      {!editingPeople && showQuickAssign(task) && (
+        <QuickAssign choices={peopleChoices} pendingId={quickPendingId} onAssign={(p) => void quickAssign(p)} />
+      )}
 
       {/* 상태 + 메타 */}
       <Card>

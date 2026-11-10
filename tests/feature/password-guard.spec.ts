@@ -134,10 +134,18 @@ test.describe("비밀번호 로그인 보호", () => {
   })
 
   test("임시 비밀번호 안내는 아래쪽에 떠서 폰 nav · 입력창과 겹치지 않는다", async ({ browser }) => {
+    // 안내는 입력창을 잰 다음 프레임에 자리를 옮긴다 — 한 번 읽고 끝내지 않고 자리가 잡힐 때까지 본다
     const below = async (page: Page, upper: string, lower: string) => {
-      const a = await page.locator(upper).first().boundingBox()
-      const b = await page.locator(lower).first().boundingBox()
-      expect(a!.y + a!.height, `${upper} 가 ${lower} 위에 있다`).toBeLessThanOrEqual(b!.y + 1)
+      await expect
+        .poll(
+          async () => {
+            const a = await page.locator(upper).first().boundingBox()
+            const b = await page.locator(lower).first().boundingBox()
+            return a!.y + a!.height - (b!.y + 1)
+          },
+          { message: `${upper} 가 ${lower} 위에 있다`, timeout: 5_000 },
+        )
+        .toBeLessThanOrEqual(0)
     }
     const notice = '[role="status"][aria-label="비밀번호 변경 안내"]'
 
