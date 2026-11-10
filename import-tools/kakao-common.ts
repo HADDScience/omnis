@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import { basename, dirname } from "path"
 import { PrismaClient } from "../generated/prisma"
 import { dmKeyOf } from "../lib/chat-people-rules"
-import { loadImportConfig, plannedDmRoomId, restoreNames, type ImportRoom } from "./rooms-config"
+import { loadImportConfig, normalizeBody, plannedDmRoomId, speakerKey, type ImportRoom } from "./rooms-config"
 
 export const prisma = new PrismaClient()
 
@@ -103,13 +103,22 @@ export function parseKakaoCsv(path: string): RawRow[] {
     if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date)) continue
     out.push({ room, t: date, u: user, m: message })
   }
-  return out.map((r) => restoreNames(r, IMPORT_CONFIG.renames))
+  return out.map(normalizeRow)
 }
 
-export const rowKey = (r: RawRow) => `${r.room}|${r.t}|${r.u}|${r.m}`
+/** 본문의 표시명(멘션 · 초대 줄)을 계정 이름으로. 원문에 한 번만 — 파서와 이전 스크립트만 부른다. 보낸 사람 표시명(u)은 그대로 두고 키는 speakerKey 로 센다 */
+export function normalizeRow<T extends { u: string; m: string }>(r: T): T {
+  const m = normalizeBody(r.m, IMPORT_CONFIG)
+  return m === r.m ? r : { ...r, m }
+}
+
+/** 보낸 사람의 정체 — 표시명이 바뀌어도 같은 사람이면 같다 */
+export const speakerOf = (u: string) => speakerKey(u, IMPORT_CONFIG)
+
+export const rowKey = (r: RawRow) => `${r.room}|${r.t}|${speakerOf(r.u)}|${r.m}`
 
 /** 휴대폰 txt 와 PC CSV 를 견줄 때의 키 — 휴대폰은 분 단위라 초를 버리고, 줄바꿈·공백 차이를 접는다. */
-export const minuteKey = (r: RawRow) => `${r.room}|${r.t.slice(0, 16)}|${r.u}|${r.m.replace(/\s+/g, " ").trim()}`
+export const minuteKey = (r: RawRow) => `${r.room}|${r.t.slice(0, 16)}|${speakerOf(r.u)}|${r.m.replace(/\s+/g, " ").trim()}`
 
 // ─── 휴대폰 「대화 내보내기」 txt ───────────────────────────
 //
@@ -147,14 +156,20 @@ export function parseKakaoMobileTxt(path: string, room: string): RawRow[] {
     } else if (MOBILE_SYSTEM.test(line) || MOBILE_DAY.test(line) || line.startsWith("저장한 날짜")) open = false
     else if (open) out[out.length - 1].m += "\n" + line
   }
-  return out.map((r) => restoreNames({ ...r, m: mobileToCsvWords(r.m.replace(/\n+$/, "")) }, IMPORT_CONFIG.renames))
+  return out.map((r) => normalizeRow({ ...r, m: mobileToCsvWords(r.m.replace(/\n+$/, "")) }))
 }
 
 /** 원본 메시지 마스터. 지금까지 받은 모든 CSV 의 합집합이다. */
 const RAW_PATH = `${DATA_DIR}/raw/messages.json`
+/** 마스터 · 제외 목록이 새 키(계정 · 이름 바꾼 본문)로 옮겨졌다는 표식 — migrate-source-ids.ts 가 쓴다 */
+export const KEYS_V2_MARK = `${DATA_DIR}/raw/keys-v2`
 
 export function loadRawMessages(): RawRow[] {
-  if (existsSync(RAW_PATH)) return readJson<RawRow[]>(RAW_PATH, [])
+  if (existsSync(RAW_PATH)) {
+    // 옛 키(표시명 · 원문)의 마스터를 새 키로 읽으면 모든 글이 새 글로 다시 들어간다
+    if (!existsSync(KEYS_V2_MARK)) throw new Error(`마스터가 아직 옛 키다 — 먼저 migrate-source-ids.ts 로 옮기세요 (${RAW_PATH})`)
+    return readJson<RawRow[]>(RAW_PATH, [])
+  }
   // 마스터가 없으면 처음 이식 때의 sessions.json 에서 되살린다.
   const rows: RawRow[] = []
   for (const s of loadSessions()) for (const m of s.msgs) rows.push({ room: s.room, ...m })
@@ -212,7 +227,7 @@ export function mergeRawMessages(incoming: RawRow[]): { all: RawRow[]; added: nu
   const bucket = new Map<string, RawRow[]>()
   const bucketKey = (r: RawRow, shiftMin = 0) => {
     const t = new Date(`${r.t.slice(0, 16).replace(" ", "T")}:00+09:00`).getTime() + shiftMin * 60000
-    return `${r.room}|${r.u}|${t}`
+    return `${r.room}|${speakerOf(r.u)}|${t}`
   }
   for (const r of all) {
     const mk = minuteKey(r); byMinute.set(mk, [...(byMinute.get(mk) ?? []), r])
@@ -330,12 +345,19 @@ export async function touchRooms(): Promise<void> {
 }
 
 /**
- * 메시지 멱등성 키.
+ * 메시지 멱등성 키 — 방 키 | 시각 | 누구(speakerKey: 계정 · 외부 발화자) | 표시명을 계정 이름으로 바꾼 본문(파서가 바꿔 둔 m).
  * 같은 사람이 같은 시각에 같은 말을 두 번 할 수는 없으므로 이 조합이면 충분하다.
+ * 카톡 표시명은 사람마다 저장한 이름이라 키에 넣지 않는다 — 이름이 바뀌어도 키가 그대로다.
+ * 예전 키(표시명 · 원문)에서 옮기는 것은 migrate-source-ids.ts.
  */
 export function messageSourceId(room: string, m: RawMessage): string {
-  const h = createHash("sha1").update(`${room}|${m.t}|${m.u}|${m.m}`).digest("hex")
+  const h = createHash("sha1").update(`${room}|${m.t}|${speakerOf(m.u)}|${m.m}`).digest("hex")
   return `kakao:${h}`
+}
+
+/** 옛 키(2026-11 이전) — 표시명 · 원문 그대로. 이전 스크립트만 쓴다 */
+export function legacyMessageSourceId(room: string, m: RawMessage): string {
+  return `kakao:${createHash("sha1").update(`${room}|${m.t}|${m.u}|${m.m}`).digest("hex")}`
 }
 
 export const taskSourceId = (sessionId: string) => `kakao-task:${sessionId}`
