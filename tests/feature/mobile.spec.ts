@@ -23,7 +23,8 @@ test.describe("폰 화면", { tag: "@mobile" }, () => {
     const box = await nav.boundingBox()
     expect(box!.y, "폰의 주 메뉴는 화면 아래쪽에 있다").toBeGreaterThan(844 / 2)
     for (const name of ["채팅", "업무", "캘린더", "아카이브"]) {
-      await expect(nav.getByRole(name === "채팅" ? "button" : "link", { name, exact: true })).toBeVisible()
+      // 채팅 탭은 패널을 여는 단추였다가 채팅 홈이 생기며 링크가 됐다(CHAT_HOME_READY)
+      await expect(nav.getByRole("link", { name, exact: true })).toBeVisible()
     }
     await expectNoHorizontalScroll(page)
     for (const tab of ["캘린더", "아카이브", "업무"] as const) {
@@ -46,6 +47,8 @@ test.describe("폰 화면", { tag: "@mobile" }, () => {
   // 지키는 것: 업무 현황 칩 · 툴바 버튼은 보이는 모양이 작고(알약으로 부풀지 않고) 누르는 자리는 44px 이며,
   // 업무 툴바는 한 줄에 들어간다
   test("업무 현황 칩·툴바가 부풀지 않고 툴바는 한 줄", async ({ page }) => {
+    // 로그인하면 채팅 화면으로 들어온다 — 업무 탭으로 옮겨 간다
+    await gotoTab(page, "업무")
     const controls = [
       page.getByRole("link", { name: /^멈춤/ }),
       page.getByRole("button", { name: /^진행률 기간/ }),
