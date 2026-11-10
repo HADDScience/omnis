@@ -7,6 +7,9 @@ import { openFileObject } from "@/lib/file-object"
 import { demoStorageBlocked } from "@/lib/demo"
 import { NOSNIFF, fileResponseHeaders, safeInlineType } from "@/lib/file-serving"
 import { ATTACH_READ_MAX_BYTES } from "@/lib/agent/attachments"
+import { MAX_UPLOAD_BYTES } from "@/lib/constants"
+import { findR2Object } from "@/lib/r2/read"
+import { r2Config, signedGetUrl } from "@/lib/r2/server"
 
 interface Props {
   params: Promise<{ fileId: string }>
@@ -31,6 +34,16 @@ export async function GET(req: NextRequest, { params }: Props) {
   const wantsThumb = Number(req.nextUrl.searchParams.get("w")) > 0 && safeInlineType(file.mimeType, file.name)?.startsWith("image/")
   if (wantsThumb && file.size > ATTACH_READ_MAX_BYTES) {
     return NextResponse.json({ error: "파일이 커서 미리보기를 만들지 않습니다" }, { status: 413, headers: NOSNIFF })
+  }
+
+  // R2 에 있는 큰 첨부 — 권한을 본 뒤 짧은 서명 주소로 보낸다. 바이트 · 범위 요청(영상 탐색 206)은 브라우저와 R2 사이에서 오간다.
+  // 형식 · 내려받기 이름은 서명에 넣어 R2 가 우리 값으로 답하게 한다(#155 규칙)
+  // 썸네일(?w=)은 서버가 줄여야 하므로 아래 openFileObject 로 읽는다
+  const r2 = !wantsThumb && file.size > MAX_UPLOAD_BYTES && r2Config() ? await findR2Object(file.id) : null
+  if (r2) {
+    const url = await signedGetUrl(r2.key, fileResponseHeaders({ mimeType: file.mimeType, name: file.name }), { isPrivate: file.isPrivate })
+    // 주소에 만료가 있어 302 자체는 저장하지 않는다 — 다시 열면 새 주소를 받는다
+    return new NextResponse(null, { status: 302, headers: { Location: url, "Cache-Control": "private, no-store", ...NOSNIFF } })
   }
 
   const object = await openFileObject(file, { rangeHeader: req.headers.get("range") })

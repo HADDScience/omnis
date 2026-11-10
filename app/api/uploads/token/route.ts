@@ -12,6 +12,6 @@ export async function POST(req: NextRequest) {
   const given = ((await req.json().catch(() => null)) as { session?: unknown } | null)?.session
   const upload = verifyUploadSession(given)
   // 남의 세션 · 만료된 세션은 구별하지 않는다
-  if (!upload || upload.userId !== session.user.id) return NextResponse.json({ error: "이어 올릴 수 없습니다. 처음부터 다시 올려 주세요." }, { status: 410 })
+  if (!upload || upload.userId !== session.user.id || upload.r2UploadId) return NextResponse.json({ error: "이어 올릴 수 없습니다. 처음부터 다시 올려 주세요." }, { status: 410 })
   return NextResponse.json({ token: await clientTokenFor(upload, given as string, req.nextUrl.origin) })
 }

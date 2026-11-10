@@ -20,11 +20,11 @@ const MiB = 1024 * 1024
 const sha = (b: Buffer | Uint8Array) => createHash("sha256").update(b).digest("hex")
 
 test.describe("큰 첨부 — 꺼져 있을 때", () => {
-  test.skip(ON, "LARGE_UPLOAD_E2E 가 켜져 있다")
+  test.skip(ON || process.env.R2_E2E === "1", "큰 첨부가 켜진 서버로 돌리고 있다")
 
   test("새 경로가 없다", async ({ page }) => {
     await login(page, "팀장")
-    for (const path of ["/api/uploads", "/api/uploads/token", "/api/uploads/complete", "/api/uploads/webhook"]) {
+    for (const path of ["/api/uploads", "/api/uploads/token", "/api/uploads/complete", "/api/uploads/webhook", "/api/uploads/r2/sign", "/api/uploads/r2/state", "/api/uploads/r2/abort"]) {
       const res = await page.request.post(path, { data: {} })
       expect(res.status(), path).toBe(404)
     }

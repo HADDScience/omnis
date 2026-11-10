@@ -32,3 +32,12 @@ test("거부: 다른 비밀로 서명한 세션", () => {
   assert.equal(verifyUploadSession(token), null)
   process.env.AUTH_SECRET = "시험용-비밀"
 })
+
+test("R2 세션은 업로드 번호를 함께 서명한다 — 번호를 바꾸면 거부", () => {
+  const token = signUploadSession({ ...session, r2UploadId: "up-1" })
+  assert.equal(verifyUploadSession(token)?.r2UploadId, "up-1")
+  assert.equal(verifyUploadSession(signUploadSession(session))?.r2UploadId, undefined)
+  const [payload, mac] = token.split(".")
+  const raw = JSON.parse(Buffer.from(payload, "base64url").toString())
+  assert.equal(verifyUploadSession(`${Buffer.from(JSON.stringify({ ...raw, x: "up-2" })).toString("base64url")}.${mac}`), null)
+})
