@@ -22,3 +22,37 @@ export function quickAssignChoices<T extends { id: string; name: string; former?
   const q = query.replace(/\s+/g, "").toLowerCase()
   return choices.filter((u) => !u.former && (q === "" || u.name.replace(/\s+/g, "").toLowerCase().includes(q)))
 }
+
+// ─── 업무 목록 · 보드의 「담당 지정」(2026-11-10) ─────────────────────────
+
+/** 저장을 기다리는 동안 화면에 먼저 보일 담당 — 업무 id → 고른 사람 */
+export type AssignOverrides = Record<string, { id: string; name: string }>
+
+/**
+ * 고른 사람을 먼저 그린다. 서버가 이미 담당이 있다고 내려 준 업무에는 덮어쓰지 않는다 — 새로고침 뒤에는 서버 값이 맞다.
+ * 덮을 것이 없으면 받은 배열을 그대로 돌려준다(보드는 배열이 바뀌면 끌던 상태를 버린다).
+ */
+export function withAssignOverrides<T extends { id: string; unassigned?: boolean; ownerName: string | null }>(
+  tasks: T[],
+  overrides: AssignOverrides,
+): T[] {
+  if (Object.keys(overrides).length === 0) return tasks
+  let changed = false
+  const next = tasks.map((t) => {
+    const person = overrides[t.id]
+    if (!person || !t.unassigned) return t
+    changed = true
+    return { ...t, unassigned: false, ownerName: person.name }
+  })
+  return changed ? next : tasks
+}
+
+/** 서버 값이 담당 있음으로 따라온 업무의 덮어쓰기를 걷는다. 걷을 것이 없으면 같은 객체 */
+export function pruneAssignOverrides(overrides: AssignOverrides, tasks: { id: string; unassigned?: boolean }[]): AssignOverrides {
+  const ids = Object.keys(overrides)
+  if (ids.length === 0) return overrides
+  const stillOpen = new Set(tasks.filter((t) => t.unassigned).map((t) => t.id))
+  const keep = ids.filter((id) => stillOpen.has(id))
+  if (keep.length === ids.length) return overrides
+  return Object.fromEntries(keep.map((id) => [id, overrides[id]]))
+}

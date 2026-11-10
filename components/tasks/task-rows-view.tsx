@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { TaskCard, type TaskCardData } from "./task-card"
-import { AssignTaskMenu } from "./assign-task-menu"
+import { QuickAssignChip } from "./list-quick-assign"
+import { StartWithOmnisIcon } from "./start-with-omnis"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Search01Icon, CheckListIcon } from "@hugeicons/core-free-icons"
 
@@ -14,8 +15,10 @@ import { Search01Icon, CheckListIcon } from "@hugeicons/core-free-icons"
 
 interface TaskRowsViewProps {
   tasks: TaskCardData[]
-  /** 담당 미배정 줄에 「담당 지정」 을 띄울 사람들. 없으면 단추를 그리지 않는다 */
+  /** 담당 미배정 줄에 「담당 지정」 을 띄울 사람들. 없으면 칩을 그리지 않는다 */
   members?: { id: string; name: string }[]
+  /** 칩에서 고른 사람 — 저장 · 되돌림은 부모(useListQuickAssign)가 맡는다 */
+  onAssign?: (task: { id: string }, person: { id: string; name: string }) => void
   /** 받은 순서를 지킨다 — 담당 미배정 보기는 마감순으로 받는다 */
   keepOrder?: boolean
 }
@@ -27,7 +30,7 @@ const STATUS_ORDER: Record<string, number> = {
   DONE: 3,
 }
 
-export function TaskRowsView({ tasks, members, keepOrder = false }: TaskRowsViewProps) {
+export function TaskRowsView({ tasks, members, onAssign, keepOrder = false }: TaskRowsViewProps) {
   const [query, setQuery] = useState("")
 
   const filtered = useMemo(() => {
@@ -79,12 +82,24 @@ export function TaskRowsView({ tasks, members, keepOrder = false }: TaskRowsView
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {filtered.map((t) => (
-            <div key={t.id} className="flex items-center gap-1.5">
-              <TaskCard task={t} variant="list" className="min-w-0 flex-1" />
-              {t.unassigned && members && <AssignTaskMenu taskId={t.id} taskName={t.name} members={members} />}
-            </div>
-          ))}
+          {filtered.map((t) => {
+            const canAssign = !!(t.unassigned && members && onAssign)
+            return (
+              <TaskCard
+                key={t.id}
+                task={t}
+                variant="list"
+                className="min-w-0"
+                assignInActions={canAssign}
+                actions={
+                  <>
+                    {canAssign && <QuickAssignChip taskId={t.id} taskName={t.name} members={members!} onAssign={(p) => onAssign!(t, p)} />}
+                    <StartWithOmnisIcon taskId={t.id} taskName={t.name} />
+                  </>
+                }
+              />
+            )
+          })}
         </div>
       )}
     </div>

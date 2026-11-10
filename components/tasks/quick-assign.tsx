@@ -23,11 +23,6 @@ export function QuickAssign({
   pendingId: string | null
   onAssign: (person: { id: string; name: string }) => void
 }) {
-  const [query, setQuery] = useState("")
-  const all = quickAssignChoices(choices)
-  const shown = quickAssignChoices(choices, query)
-  const searchable = all.length > QUICK_ASSIGN_SEARCH_AT
-
   return (
     <section
       data-quick-assign
@@ -40,7 +35,31 @@ export function QuickAssign({
         </h3>
         <p className="text-xs text-muted-foreground">누르면 바로 담당으로 지정되고 알림이 갑니다</p>
       </div>
+      <QuickAssignChips choices={choices} pendingId={pendingId} onAssign={onAssign} />
+    </section>
+  )
+}
 
+/**
+ * 이름 칩 목록(+ 사람이 많으면 이름 검색). 업무 상세의 칸(QuickAssign)과 업무 목록의 담당 지정 팝오버 · 바텀시트가 함께 쓴다.
+ * 폰: 칩이 44px 높이로 줄바꿈된다. PC: 같은 칩이 낮아져 한 줄로 붙는다.
+ */
+export function QuickAssignChips({
+  choices,
+  pendingId,
+  onAssign,
+}: {
+  choices: Person[]
+  pendingId: string | null
+  onAssign: (person: { id: string; name: string }) => void
+}) {
+  const [query, setQuery] = useState("")
+  const all = quickAssignChoices(choices)
+  const shown = quickAssignChoices(choices, query)
+  const searchable = all.length > QUICK_ASSIGN_SEARCH_AT
+
+  return (
+    <>
       {searchable && (
         <Input
           value={query}
@@ -74,6 +93,6 @@ export function QuickAssign({
         ))}
         {shown.length === 0 && <li className="py-2 text-xs text-muted-foreground">맞는 이름이 없어요</li>}
       </ul>
-    </section>
+    </>
   )
 }
