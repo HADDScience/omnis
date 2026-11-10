@@ -383,10 +383,12 @@ test.describe("큰 첨부 R2 — 켜져 있을 때", () => {
     const [payload, mac] = opened.session.split(".")
     const raw = JSON.parse(Buffer.from(payload, "base64url").toString())
     const forged = `${Buffer.from(JSON.stringify({ ...raw, s: 300 * MiB })).toString("base64url")}.${mac}`
-    for (const path of ["/api/uploads/r2/sign", "/api/uploads/r2/state", "/api/uploads/r2/abort", "/api/uploads/complete", "/api/uploads/token"])
+    for (const path of ["/api/uploads/r2/sign", "/api/uploads/r2/state", "/api/uploads/r2/abort", "/api/uploads/complete"])
       expect((await page.request.post(path, { data: { session: forged, parts: [1] } })).status(), path).toBe(410)
-    // R2 세션으로 Blob 토큰은 받지 못한다
-    expect((await page.request.post("/api/uploads/token", { data: { session: opened.session } })).status()).toBe(410)
+    // R2 세션으로 Blob 토큰은 받지 못한다. Blob 경로(LARGE_UPLOAD_ENABLED)가 꺼져 있으면 경로 자체가 없다
+    const blobToken = process.env.LARGE_UPLOAD_ENABLED === "1" ? 410 : 404
+    expect((await page.request.post("/api/uploads/token", { data: { session: forged } })).status()).toBe(blobToken)
+    expect((await page.request.post("/api/uploads/token", { data: { session: opened.session } })).status()).toBe(blobToken)
 
     const other = await as(browser, "사원2")
     for (const path of ["/api/uploads/r2/sign", "/api/uploads/r2/state", "/api/uploads/r2/abort", "/api/uploads/complete"])
