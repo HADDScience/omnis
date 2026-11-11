@@ -4,6 +4,7 @@
  *
  *   pnpm run test:e2e:local tests/feature/settings-ai-survey.spec.ts
  *
+ * 설문은 허용한 계정에만 열린다 — CI · test:e2e:local 은 AI_SURVEY_ALLOW_USER_IDS="*" 로 전원에게 열고 돈다(허용 밖 404 는 lib/ai-survey/access.test.ts).
  * CI 는 시험 모델(OMNIS_AGENT_FAKE)이라 질문은 준비된 질문(lib/ai-survey/rules.ts fallbackAsk)으로 나온다 —
  * 모델이 만든 질문이어도 통과하도록 칸 종류(data-kind)만 보고 답한다. AI_SURVEY_SHOTS 에 절대 경로를 주면 화면을 남긴다.
  */

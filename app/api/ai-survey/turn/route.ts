@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server"
 
 import { apiError, parseJson } from "@/lib/api"
 import { auth } from "@/lib/auth"
+import { surveyAllowed } from "@/lib/ai-survey/access"
 import { advanceSurvey, type SurveyEvent } from "@/lib/ai-survey/service"
 import { SurveyTurnSchema } from "@/lib/schemas/ai-survey"
 
@@ -16,6 +17,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   const userId = session?.user?.id
   if (!userId) return apiError(401, "인증 필요")
+  if (!surveyAllowed(userId)) return apiError(404, "없는 주소입니다")
   const parsed = SurveyTurnSchema.safeParse((await parseJson(req)) ?? {})
   if (!parsed.success) return apiError(400, parsed.error.issues[0]?.message ?? "잘못된 요청입니다")
 

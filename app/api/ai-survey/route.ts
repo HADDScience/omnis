@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { apiError } from "@/lib/api"
 import { auth } from "@/lib/auth"
+import { surveyAllowed } from "@/lib/ai-survey/access"
 import { getSurvey, resetSurvey } from "@/lib/ai-survey/service"
 
 export const runtime = "nodejs"
@@ -10,6 +11,7 @@ export const runtime = "nodejs"
 export async function GET() {
   const session = await auth()
   if (!session?.user?.id) return apiError(401, "인증 필요")
+  if (!surveyAllowed(session.user.id)) return apiError(404, "없는 주소입니다")
   return NextResponse.json(await getSurvey(session.user.id))
 }
 
@@ -17,6 +19,7 @@ export async function GET() {
 export async function DELETE() {
   const session = await auth()
   if (!session?.user?.id) return apiError(401, "인증 필요")
+  if (!surveyAllowed(session.user.id)) return apiError(404, "없는 주소입니다")
   await resetSurvey(session.user.id)
   return NextResponse.json({ ok: true })
 }

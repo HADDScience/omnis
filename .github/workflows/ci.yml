@@ -89,6 +89,8 @@ jobs:
       OMNIS_AGENT_FAKE: "1"
       # 승인 서명 자리값(32자 이상) — 에이전트 라우트가 이것 없이는 503 이다. 운영 값은 Vercel 환경변수에만
       OMNIS_AGENT_APPROVAL_SECRET: ci-only-agent-approval-secret-not-real
+      # AI 활용 설문은 허용한 계정에만 열린다(lib/ai-survey/access.ts). 시험은 전원에게 열고 돈다 — 운영 값은 Vercel 환경변수에만
+      AI_SURVEY_ALLOW_USER_IDS: "*"
 
     steps:
       - uses: actions/checkout@v4
