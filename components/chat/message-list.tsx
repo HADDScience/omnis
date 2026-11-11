@@ -26,6 +26,8 @@ import { arrivals, followOnAppend, unseenLabel } from "@/lib/chat-follow"
 import { isStuckToBottom } from "@/lib/agent/scroll-follow"
 import { AuthorAvatar, DayDivider, MessageTime } from "@/components/chat/message-parts"
 import { SystemPill } from "@/components/chat/system-pill"
+import { OmnisInlineIcon } from "@/components/chat/robot-text"
+import { stripRobotMark } from "@/lib/robot-mark"
 
 import { apiUrl } from "@/lib/base-path"
 import { thumbSrcSet, thumbUrl } from "@/lib/thumb"
@@ -439,7 +441,11 @@ export function MessageList({
             if (msg._isSystem || msg.author.id === "system" || msg.content.startsWith("🤖")) {
               return (
                 <SystemPill key={msg.id} messageId={msg.sessionRoomId ? msg.id : undefined}>
-                  {msg.content.startsWith("🤖") ? msg.content : `🤖 ${msg.content}`}
+                  {/* 저장된 🤖 표식은 화면에서 옴니스 아이콘으로(lib/robot-mark.ts) — 판별은 위처럼 표식 그대로 */}
+                  <span>
+                    <OmnisInlineIcon />
+                    {stripRobotMark(msg.content)}
+                  </span>
                   {msg.sessionRoomId && (
                     // 옴니스 세션으로 — 알약 높이는 그대로 두고 누르는 자리만 44px 로 넓힌다
                     <Link

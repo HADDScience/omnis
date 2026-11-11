@@ -14,6 +14,7 @@ import { assignmentTargets } from "@/lib/notify-rules"
 import type { TaskEventVia } from "@/lib/schemas/task-event"
 import type { Prisma, Priority, TaskStatus } from "@/generated/prisma/client"
 import { ACTIVE_MEMBER_WHERE, newlyChosen } from "@/lib/active-members"
+import { assigneeDiff } from "@/lib/quick-assign"
 
 export interface UpdateTaskInput {
   status?: TaskStatus
@@ -73,7 +74,7 @@ export async function updateTask(
   if (!before) return { error: "업무를 찾을 수 없습니다" }
 
   // 사람 바꾸기 — 지시자와 담당자를 반대로 넣어도 고칠 길이 없었다(2026-09-16).
-  // 담당자는 통째로 갈아끼운다. 부분 추가·삭제를 따로 두면 화면이 두 가지 요청을 조립해야 한다.
+  // 요청은 담당자 전체 목록 하나다(화면 · MCP 가 한 가지 모양만 보낸다). 저장은 이전과의 차이만 — 아래 assigneeDiff.
   let nextAssigneeIds: string[] = []
   const previousAssigneeIds = before.assignees.map((a) => a.userId)
 
@@ -85,7 +86,14 @@ export async function updateTask(
     const added = newlyChosen(nextAssigneeIds, previousAssigneeIds)
     const found = await prisma.user.count({ where: { id: { in: added }, ...ACTIVE_MEMBER_WHERE } })
     if (found !== added.length) return { error: "담당자 중에 없거나 재직 중이 아닌 사람이 있습니다" }
-    data.assignees = { deleteMany: {}, create: nextAssigneeIds.map((userId) => ({ userId })) }
+    // 차이만 반영한다 — 남는 사람의 행(assignedAt)은 그대로 둔다. 통째로 지우고 다시 만들면 언제 맡았는지가 저장할 때마다 지워졌다
+    const diff = assigneeDiff(previousAssigneeIds, nextAssigneeIds)
+    if (diff.added.length || diff.removed.length) {
+      data.assignees = {
+        ...(diff.removed.length ? { deleteMany: { userId: { in: diff.removed } } } : {}),
+        ...(diff.added.length ? { create: diff.added.map((userId) => ({ userId })) } : {}),
+      }
+    }
   }
 
   if (instructorId !== undefined) {

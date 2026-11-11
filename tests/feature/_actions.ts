@@ -1,4 +1,4 @@
-import { type Page, expect } from "@playwright/test"
+import { type Locator, type Page, expect } from "@playwright/test"
 
 /**
  * 사용자가 하려는 일 하나 = 함수 하나. spec 은 버튼을 직접 찾지 않고 이 함수를 부른다.
@@ -82,4 +82,19 @@ export async function openTasksOverview(page: Page) {
 export async function visibleTaskCount(page: Page) {
   const text = await page.getByText(/^업무 · \d+$/).textContent()
   return Number(text?.replace(/\D/g, ""))
+}
+
+/**
+ * 담당 고르기(여러 명) — 칩을 눌러 넣고 빼고 「저장」(또는 「n명 지정」). 업무 상세 칸 · 목록 팝오버 · 폰 시트가 같은 칩이다.
+ * names 의 사람 칩을 차례로 누른 뒤 저장 단추를 누른다. tap 이면 폰.
+ */
+export async function chooseAssignees(scope: Locator, names: string[], opts: { tap?: boolean } = {}) {
+  for (const name of names) {
+    const chip = scope.getByRole("button", { name, exact: true })
+    if (opts.tap) await chip.tap()
+    else await chip.click()
+  }
+  const save = scope.locator("[data-quick-assign-save]")
+  if (opts.tap) await save.tap()
+  else await save.click()
 }

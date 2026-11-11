@@ -25,7 +25,8 @@ interface TasksViewsProps {
   boardTasks: KanbanTask[]
   /** 보드 카드의 「담당 지정」 후보와 고른 뒤 할 일 */
   members: { id: string; name: string }[]
-  onAssign: (task: { id: string }, person: { id: string; name: string }) => void
+  /** 담당 바꾸기 — 고른 사람 전체(여러 명) */
+  onAssign: (task: { id: string; owners?: { id: string; name: string }[] }, people: { id: string; name: string }[]) => void
   listSlot: ReactNode
   workspace: WorkspaceViewProps
   /** 툴바 왼쪽 — 건수와 걸린 필터 */

@@ -18,8 +18,9 @@ import { PencilEdit01Icon, Add01Icon, Delete02Icon } from "@hugeicons/core-free-
 import { format } from "date-fns"
 import { apiUrl } from "@/lib/base-path"
 import { personOptions } from "@/lib/active-members"
-import { showQuickAssign } from "@/lib/quick-assign"
-import { QuickAssign } from "@/components/tasks/quick-assign"
+import { assignSummary, showQuickAssign, toggleAssignee } from "@/lib/quick-assign"
+import { AssigneeChips, QuickAssign } from "@/components/tasks/quick-assign"
+import { AssigneeStack } from "@/components/tasks/assignee-stack"
 import { toast } from "sonner"
 import { kakaoMissingAttachment, missingAttachmentRest } from "@/lib/kakao-placeholder"
 import { MissingAttachmentInline } from "@/components/chat/missing-attachment"
@@ -227,27 +228,27 @@ export function TaskDetail({
     }
   }
 
-  // 미배정 칸에서 한 사람 지정 — 화면을 먼저 바꾸고, 실패하면 되돌린다. 알림 · 이력은 PATCH 가 낸다
-  const [quickPendingId, setQuickPendingId] = useState<string | null>(null)
-  async function quickAssign(person: { id: string; name: string }) {
+  // 미배정 칸에서 여러 명 지정 — 화면을 먼저 바꾸고, 실패하면 되돌린다. 알림 · 이력은 PATCH 가 낸다
+  const [quickPending, setQuickPending] = useState(false)
+  async function quickAssign(people: { id: string; name: string }[]) {
     const before = task.assignees
-    setQuickPendingId(person.id)
-    setTask((prev) => ({ ...prev, assignees: [person] }))
+    setQuickPending(true)
+    setTask((prev) => ({ ...prev, assignees: people }))
     try {
       const res = await fetch(apiUrl(`/api/tasks/${task.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assigneeIds: [person.id] }),
+        body: JSON.stringify({ assigneeIds: people.map((p) => p.id) }),
       })
       if (!res.ok) throw new Error(`지정하지 못했습니다 (${res.status})`)
-      setDraftOwnerIds([person.id])
-      toast.success(`${person.name}님을 담당으로 지정했어요`)
+      setDraftOwnerIds(people.map((p) => p.id))
+      toast.success(assignSummary([], people.map((p) => p.id), people))
       router.refresh()
     } catch (err) {
       setTask((prev) => ({ ...prev, assignees: before }))
       toast.error(err instanceof Error ? err.message : "지정하지 못했습니다")
     } finally {
-      setQuickPendingId(null)
+      setQuickPending(false)
     }
   }
 
@@ -302,7 +303,7 @@ export function TaskDetail({
 
       {/* 담당 미배정 — 상세를 연 자리에서 한 번 눌러 맡긴다. 지정되면 사라지고 아래 담당 표시로 넘어간다 */}
       {!editingPeople && showQuickAssign(task) && (
-        <QuickAssign choices={peopleChoices} pendingId={quickPendingId} onAssign={(p) => void quickAssign(p)} />
+        <QuickAssign choices={peopleChoices} pending={quickPending} onAssign={(p) => void quickAssign(p)} />
       )}
 
       {/* 상태 + 메타 */}
@@ -313,32 +314,13 @@ export function TaskDetail({
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <div>
                   <div className="mb-1 text-xs text-muted-foreground">담당자</div>
-                  {/* 인원이 10명 안쪽이라 칩 토글이 드롭다운보다 빠르다 — /업무 모달과 같은 방식 */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {peopleChoices.map((u) => {
-                      const on = draftOwnerIds.includes(u.id)
-                      return (
-                        <button
-                          key={u.id}
-                          type="button"
-                          aria-pressed={on}
-                          onClick={() =>
-                            setDraftOwnerIds((prev) =>
-                              on ? prev.filter((id) => id !== u.id) : [...prev, u.id]
-                            )
-                          }
-                          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                            on
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-input hover:bg-muted"
-                          }`}
-                        >
-                          {u.name}
-                          {u.former && " · 과거 구성원"}
-                        </button>
-                      )
-                    })}
-                  </div>
+                  {/* 여러 명 — 눌러 넣고 빼는 칩(목록 · 보드의 담당 바꾸기와 같은 부품). 폰은 칩이 44px */}
+                  <AssigneeChips
+                    choices={peopleChoices}
+                    selected={draftOwnerIds}
+                    disabled={saving === "people"}
+                    onToggle={(id) => setDraftOwnerIds((prev) => toggleAssignee(prev, id))}
+                  />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs text-muted-foreground">지시</span>
@@ -370,23 +352,13 @@ export function TaskDetail({
             ) : (
             <div className="group flex items-center gap-2">
               {/* 담당자가 여러 명이면 아바타를 겹쳐 쌓고 이름은 한 줄로 적는다 */}
-              <div className="flex -space-x-2">
-                {task.assignees.slice(0, 3).map((a) => (
-                  <Avatar key={a.id} className="h-8 w-8 ring-2 ring-background">
-                    <AvatarFallback className="text-xs">{a.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                ))}
-                {task.assignees.length > 3 && (
-                  <Avatar className="h-8 w-8 ring-2 ring-background">
-                    <AvatarFallback className="text-[10px]">+{task.assignees.length - 3}</AvatarFallback>
-                  </Avatar>
-                )}
-                {task.assignees.length === 0 && (
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="text-xs">?</AvatarFallback>
-                  </Avatar>
-                )}
-              </div>
+              {task.assignees.length > 0 ? (
+                <AssigneeStack people={task.assignees} size="md" />
+              ) : (
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="text-xs">?</AvatarFallback>
+                </Avatar>
+              )}
               <div>
                 <div className="text-sm font-medium">
                   {task.assignees.length > 0 ? task.assignees.map((a) => a.name).join(", ") : "미배정"}
@@ -404,7 +376,8 @@ export function TaskDetail({
                 // 담당이 비어 있으면 숨기지 않는다 — 터치 기기에는 hover 가 없어 지정할 길이 안 보였다
                 className={task.assignees.length === 0
                   ? "touch-hit rounded border border-destructive/40 px-1.5 py-0.5 text-[11px] font-medium text-destructive transition-colors hover:bg-destructive/5"
-                  : "rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"}
+                  // 마우스가 있는 기기에서만 숨긴다 — 폰에는 hover 가 없어 담당을 바꿀 길이 안 보였다
+                  : "touch-hit rounded p-0.5 transition-opacity hover:bg-muted [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"}
                 aria-label="담당자·지시자 편집"
               >
                 {task.assignees.length === 0 ? "담당 지정" : <HugeiconsIcon icon={PencilEdit01Icon} size={14} className="text-muted-foreground" />}

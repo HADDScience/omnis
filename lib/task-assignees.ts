@@ -27,3 +27,12 @@ export function assigneeLabel(rows: AssigneeRow[], max = 3): string {
   if (names.length <= max) return names.join(", ")
   return `${names.slice(0, max).join(", ")} 외 ${names.length - max}명`
 }
+
+/**
+ * 겹친 아바타로 보일 사람과 나머지 수 — 목록 · 보드 · 상세가 같이 쓴다(components/tasks/assignee-stack.tsx).
+ * max 명을 넘으면 앞의 max 명만 얼굴로 그리고 「외 n명」 을 붙인다.
+ */
+export function assigneeStack<T>(people: readonly T[], max = 3): { shown: T[]; rest: number } {
+  if (people.length <= max) return { shown: [...people], rest: 0 }
+  return { shown: people.slice(0, max), rest: people.length - max }
+}

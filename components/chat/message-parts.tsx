@@ -6,6 +6,7 @@
 // 메신저 안(`data-messenger`, components/messenger/messenger-shell.tsx)에서는 `in-data-[messenger]:` 변형으로 크기를 키운다 —
 // 오른쪽 패널 · 업무 상세는 이 셸 밖이라 그대로다.
 
+import { stripRobotMark } from "@/lib/robot-mark"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { AiMagicIcon, CheckmarkCircle02Icon, Clock01Icon, Task01Icon } from "@hugeicons/core-free-icons"
 import { avatarText, avatarTone, fullTimeLabel, timeLabel } from "@/lib/chat-layout"
@@ -88,7 +89,7 @@ const EVENT_ICON = {
  * 스레드는 이미 그 업무 안이라 #slug 는 군더더기다.
  */
 export function eventSummary(kind: ChatEventKind, content: string): string {
-  const rest = content.replace(/^🤖\s*/, "").replace(/^#[^\s]+\s*/, "")
+  const rest = stripRobotMark(content).replace(/^#[^\s]+\s*/, "")
   if (kind === "TASK_REBUILT") return `업무를 갱신했습니다 · ${rest.replace(/^재구성\s*·\s*/, "")}`
   return rest
 }

@@ -18,7 +18,8 @@ interface TaskRowsViewProps {
   /** 담당 미배정 줄에 「담당 지정」 을 띄울 사람들. 없으면 칩을 그리지 않는다 */
   members?: { id: string; name: string }[]
   /** 칩에서 고른 사람 — 저장 · 되돌림은 부모(useListQuickAssign)가 맡는다 */
-  onAssign?: (task: { id: string }, person: { id: string; name: string }) => void
+  /** 담당 바꾸기 — 고른 사람 전체(여러 명). 담당이 있는 업무도 겹친 아바타를 눌러 넣고 뺀다 */
+  onAssign?: (task: { id: string; owners?: { id: string; name: string }[] }, people: { id: string; name: string }[]) => void
   /** 받은 순서를 지킨다 — 담당 미배정 보기는 마감순으로 받는다 */
   keepOrder?: boolean
 }
@@ -83,7 +84,7 @@ export function TaskRowsView({ tasks, members, onAssign, keepOrder = false }: Ta
       ) : (
         <div className="flex flex-col gap-1.5">
           {filtered.map((t) => {
-            const canAssign = !!(t.unassigned && members && onAssign)
+            const canAssign = !!(members && onAssign)
             return (
               <TaskCard
                 key={t.id}
@@ -93,7 +94,9 @@ export function TaskRowsView({ tasks, members, onAssign, keepOrder = false }: Ta
                 assignInActions={canAssign}
                 actions={
                   <>
-                    {canAssign && <QuickAssignChip taskId={t.id} taskName={t.name} members={members!} onAssign={(p) => onAssign!(t, p)} />}
+                    {canAssign && (
+                      <QuickAssignChip taskId={t.id} taskName={t.name} members={members!} current={t.owners ?? []} onAssign={(p) => onAssign!(t, p)} />
+                    )}
                     <StartWithOmnisIcon taskId={t.id} taskName={t.name} />
                   </>
                 }
