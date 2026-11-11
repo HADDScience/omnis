@@ -148,7 +148,10 @@ test("요약 글 — 답한 것만 문장이 된다", () => {
   assert.match(s, /주 5일 · 주당 약 15시간 씁니다\(헤비\)/)
   assert.match(s, /개인 부담 · 월 30,000원/)
   assert.match(s, /코딩 · 자동화 60%/)
-  assert.match(s, /사내 자료 찾기, 반복 업무 자동화, 특허 검색/)
+  assert.match(s, /옴니스에 바라는 것: 사내 자료 찾기, 반복 업무 자동화, 특허 검색/)
+  // 아쉬운 점은 옴니스가 아니라 범용 AI 에 대한 것으로 적는다
+  assert.match(s, /범용 AI 에서 아쉬운 점: 회사 자료를 모른다/)
+  assert.ok(!/(?<!범용 AI 에서 )아쉬운 점:/.test(s))
   assert.equal(summaryText(computeMetrics({})), "답한 내용이 거의 없습니다.")
 })
 

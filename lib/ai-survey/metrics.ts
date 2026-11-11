@@ -50,6 +50,7 @@ export interface Metrics {
   wishTags: WishTag[]
   /** 「기타」 로 적은 바람 */
   wishNotes: string[]
+  /** 범용 AI(ChatGPT · Claude · Gemini 같은 것)를 쓰며 아쉬운 점 — 옴니스에 대한 것이 아니다 */
   pains: string[]
   /** 지표 → 그 값이 나온 응답(turnId) */
   evidence: Record<string, string[]>
@@ -242,7 +243,7 @@ export function summaryText(m: Metrics): string {
   if (tasks.length) lines.push(`주로 하는 작업: ${tasks.join(" · ")}.`)
   const wishes = [...m.wishTags.filter((t) => t !== "other").map((t) => WISH_TAGS[t]), ...m.wishNotes]
   if (wishes.length) lines.push(`옴니스에 바라는 것: ${wishes.join(", ")}.`)
-  if (m.pains.length) lines.push(`아쉬운 점: ${m.pains.join(", ")}.`)
+  if (m.pains.length) lines.push(`범용 AI 에서 아쉬운 점: ${m.pains.join(", ")}.`)
   return lines.join(" ") || "답한 내용이 거의 없습니다."
 }
 

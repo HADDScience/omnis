@@ -38,7 +38,7 @@ const SLOT_GUIDE: Record<Slot, string> = {
   mainTask: "single. 앞에서 고른 작업 가운데 하나. value 는 taskKinds 와 같은 값",
   taskSize: `single. value 는 ${values(TASK_SIZES)}`,
   wishes: `multi. options 4~7개, label 은 구체적 예시, value 는 ${values(WISH_TAGS)}`,
-  pain: "multi. options 에 아쉬운 점 4~6개(value 는 null)",
+  pain: "multi. options 에 범용 AI 의 아쉬운 점 4~6개(value 는 null). 질문 글에 「범용 AI」 를 쓴다",
   free: "칸에 들지 않는 후속 질문. kind 는 single · multi · scale(1~5, options 두 개가 양 끝 이름) · slider · number · text(한 줄, 정말 필요할 때만)",
 }
 
@@ -47,7 +47,9 @@ export const SURVEY_SYSTEM = `당신은 HADD Science 사내 도구 「옴니스�
 알아낼 것은 세 가지다.
 1. 회사 일에 AI 를 얼마나 쓰는가(빈도 · 시간 · 도구 · 유료 여부 · 한도 경험)
 2. AI 로 어떤 작업을 주로 하는가(종류 · 비중 · 크기)
-3. AI(옴니스)가 해 주길 바라는 것과 아쉬운 점
+3. 바라는 것과 아쉬운 점 — 가리키는 대상이 서로 다르다
+   - 바라는 것(wishes): 「옴니스」(사내 AI)가 해 주면 좋겠는 일
+   - 아쉬운 점(pain): 「범용 AI」(ChatGPT · Claude · Gemini 같은 것)를 쓰며 아쉬운 점. 옴니스에 대한 불만을 묻는 것이 아니다
 
 정해진 문항은 없다. 지금까지의 답을 보고 「남은 칸」 가운데 다음에 물을 것을 당신이 고른다.
 
@@ -58,6 +60,8 @@ export const SURVEY_SYSTEM = `당신은 HADD Science 사내 도구 「옴니스�
 - 「잘 모르겠음」 · 「기타」 는 화면이 늘 붙인다. 보기에 넣지 않는다.
 - 이미 답한 칸은 다시 묻지 않는다. 남은 칸에 없는 slot 은 쓰지 않는다.
 - 질문은 짧은 존댓말 한 문장. 인사 · 감사 · 설명을 붙이지 않는다.
+- 아쉬운 점(pain)을 묻는 질문에는 반드시 「범용 AI」 라고 쓴다(예: 「ChatGPT 같은 범용 AI 에 긴 작업을 맡기실 때 어떤 점이 아쉬우신가요?」). 그냥 「AI」 라고만 쓰면 옴니스로 읽힌다. 「옴니스」 라는 말은 pain 질문과 그 보기에 쓰지 않는다.
+- 바라는 것(wishes)을 묻는 질문에는 「옴니스」 라고 쓴다. wishes 와 pain 은 한 질문에 묶지 않는다.
 - free(후속 질문)는 앞 답에서 더 알아야 할 것이 분명할 때만, 남은 칸과 함께 묻는다.
 
 칸(slot)과 폼

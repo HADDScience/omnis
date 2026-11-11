@@ -235,6 +235,27 @@ test("모델 지시 — 칸 전부와 값 목록이 들어 있고, 기록에는 
   assert.match(p, /free 는 더 쓸 수 없다/)
 })
 
+test("아쉬운 점은 범용 AI, 바라는 것은 옴니스 — 준비된 질문과 모델 지시가 둘을 가른다", () => {
+  const done: Facts = { daysPerWeek: { turnId: "t", num: 0 } }
+  const wish = fallbackAsk(done)!
+  assert.equal(wish.fields[0].slot, "wishes")
+  assert.match(wish.question, /옴니스/)
+  assert.ok(!wish.question.includes("범용 AI"))
+  const pain = fallbackAsk({ ...done, wishes: { turnId: "t", unknown: true } })!
+  assert.equal(pain.fields[0].slot, "pain")
+  assert.match(pain.question, /범용 AI/)
+  assert.match(pain.question, /ChatGPT · Claude · Gemini/)
+  assert.ok(!pain.question.includes("옴니스"), "아쉬운 점 질문은 옴니스를 가리키지 않는다")
+  assert.ok(SLOTS.pain.shape.defaults.every((d) => !d.includes("옴니스")))
+  // 모델 지시 — 대상을 갈라 적고, pain 질문에 「범용 AI」 를 쓰라고 시킨다
+  assert.ok(!SURVEY_SYSTEM.includes("AI(옴니스)가 해 주길 바라는 것과 아쉬운 점"), "둘을 한 줄로 묶지 않는다")
+  assert.match(SURVEY_SYSTEM, /바라는 것\(wishes\): 「옴니스」/)
+  assert.match(SURVEY_SYSTEM, /아쉬운 점\(pain\): 「범용 AI」\(ChatGPT · Claude · Gemini/)
+  assert.match(SURVEY_SYSTEM, /아쉬운 점\(pain\)을 묻는 질문에는 반드시 「범용 AI」 라고 쓴다/)
+  assert.match(SURVEY_SYSTEM, /- pain: 범용 AI\(ChatGPT · Claude · Gemini/)
+  assert.match(SURVEY_SYSTEM, /wishes 와 pain 은 한 질문에 묶지 않는다/)
+})
+
 test("모델 출력 스키마 — 모양이 맞으면 통과, 칸 이름이 틀리면 거부", () => {
   const good = { question: "q", fields: [{ slot: "tools", kind: "multi", label: null, options: [{ label: "ChatGPT", value: null }], min: null, max: null, step: null, unit: null }] }
   assert.equal(AskOutputSchema.safeParse(good).success, true)

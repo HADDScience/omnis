@@ -68,8 +68,8 @@ export const SLOTS = {
   taskKinds: { purpose: "tasks", weight: 50, about: "AI 로 하는 작업 종류(여러 개)", shape: { type: "tags", values: TASK_KINDS } },
   mainTask: { purpose: "tasks", weight: 25, about: "그중 가장 많이 하는 작업 하나", shape: { type: "enum", values: TASK_KINDS } },
   taskSize: { purpose: "tasks", weight: 25, about: "한 번 맡기는 작업의 보통 크기", shape: { type: "enum", values: TASK_SIZES } },
-  wishes: { purpose: "wishes", weight: 60, about: "옴니스(사내 AI)가 해 주면 좋겠는 일(여러 개)", shape: { type: "tags", values: WISH_TAGS } },
-  pain: { purpose: "wishes", weight: 40, about: "지금 AI 를 쓰며 아쉬운 점(여러 개)", shape: { type: "labels", defaults: ["답이 부정확하다", "회사 자료를 모른다", "한도 · 비용이 부담된다", "쓰는 법을 잘 모르겠다", "보안이 걱정된다"] } },
+  wishes: { purpose: "wishes", weight: 60, about: "옴니스(사내 AI)가 해 주면 좋겠는 일(여러 개). 범용 AI 가 아니라 옴니스에 바라는 것이다", shape: { type: "tags", values: WISH_TAGS } },
+  pain: { purpose: "wishes", weight: 40, about: "범용 AI(ChatGPT · Claude · Gemini 같은 것)를 쓰며 아쉬운 점(여러 개). 옴니스에 대한 것이 아니다", shape: { type: "labels", defaults: ["답이 부정확하다", "회사 자료를 모른다", "한도 · 비용이 부담된다", "쓰는 법을 잘 모르겠다", "보안이 걱정된다"] } },
   /** 칸에 넣지 않는 후속 질문 — 원문에만 남는다. 충족도에 들지 않고 3번까지 */
   free: { purpose: null, weight: 0, about: "위 칸에 들지 않는 짧은 후속 질문", shape: { type: "free" } },
 } as const satisfies Record<string, SlotDef>
@@ -338,7 +338,8 @@ const FALLBACK_QUESTION: Record<Exclude<Slot, "free">, string> = {
   mainTask: "그중 가장 많이 하는 일은 무엇인가요?",
   taskSize: "한 번에 맡기는 일은 보통 어느 정도 크기인가요?",
   wishes: "옴니스(사내 AI)가 해 주면 좋겠는 일은 무엇인가요?",
-  pain: "지금 AI 를 쓰면서 아쉬운 점은 무엇인가요?",
+  // 여기서 AI 는 옴니스가 아니라 범용 AI 다 — 옴니스에 바라는 것은 wishes 가 따로 묻는다(작업지시자 2026-11-11)
+  pain: "ChatGPT · Claude · Gemini 같은 범용 AI 를 쓰면서 아쉬운 점은 무엇인가요?",
 }
 
 const FALLBACK_OPTIONS: Partial<Record<Slot, { label: string; value: string }[]>> = {

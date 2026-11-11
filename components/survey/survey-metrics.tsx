@@ -68,13 +68,13 @@ export function SurveyMetrics({ metrics: m, turns }: { metrics: Metrics; turns: 
         </Row>
       )}
       {wishes.length > 0 && (
-        <Row label="바라는 것">
+        <Row label="옴니스에 바라는 것">
           {wishes.join(", ")}
           <Source ids={m.evidence.wishes} turns={turns} />
         </Row>
       )}
       {m.pains.length > 0 && (
-        <Row label="아쉬운 점">
+        <Row label="범용 AI 의 아쉬운 점">
           {m.pains.join(", ")}
           <Source ids={m.evidence.pains} turns={turns} />
         </Row>
