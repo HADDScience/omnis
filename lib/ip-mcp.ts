@@ -704,7 +704,8 @@ export async function runTool(
        WHERE entity_kind = ${kind} AND entity_id = ${id}
        ORDER BY occurred_on DESC`
 
-    const images = await listImagesFor(kind as EntityKind, id)
+    // 표가 아직 없어도(마이그레이션 전) get_ip 는 답한다
+    const images = await listImagesFor(kind as EntityKind, id).catch(() => [])
 
     return {
       text: JSON.stringify(

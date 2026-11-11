@@ -35,15 +35,26 @@ const toImage = (r: Row): CaseImage => ({
   createdAt: r.created_at.toISOString(),
 })
 
-/** 전부 — 화면 스냅샷용. 백여 건 × 몇 장이라 한 번에 읽는다 */
+/**
+ * 전부 — 화면 스냅샷용. 백여 건 × 몇 장이라 한 번에 읽는다.
+ * 표가 아직 없으면(코드가 마이그레이션보다 먼저 배포된 경우) 빈 목록 — 이미지 때문에 IP 화면 전체가 멈추지 않게
+ */
 export async function listCaseImages(): Promise<CaseImage[]> {
-  const rows = await prisma.$queryRaw<Row[]>`
-    SELECT i.id::text, i.entity_kind, i.entity_id, i.file_id, f.name, f."mimeType" AS mime_type,
-           i.memo, i.taken_on, i.is_primary, i.created_at
-      FROM ip.case_images i
-      JOIN public."File" f ON f.id = i.file_id
-     ORDER BY i.entity_kind, i.entity_id, i.created_at`
-  return rows.map(toImage)
+  try {
+    const rows = await prisma.$queryRaw<Row[]>`
+      SELECT i.id::text, i.entity_kind, i.entity_id, i.file_id, f.name, f."mimeType" AS mime_type,
+             i.memo, i.taken_on, i.is_primary, i.created_at
+        FROM ip.case_images i
+        JOIN public."File" f ON f.id = i.file_id
+       ORDER BY i.entity_kind, i.entity_id, i.created_at`
+    return rows.map(toImage)
+  } catch (err) {
+    if (/case_images" does not exist|42P01/.test(String((err as Error)?.message ?? err))) {
+      console.error("[ip/images] ip.case_images 표가 없습니다 — 마이그레이션 20261111150000_ip_case_images 를 적용하세요")
+      return []
+    }
+    throw err
+  }
 }
 
 /** 한 건의 이미지 — 대표가 맨 앞 */
