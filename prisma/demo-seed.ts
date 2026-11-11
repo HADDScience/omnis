@@ -715,10 +715,64 @@ async function main() {
 
   const context = await seedCompanyContext(projectByName["지원사업 — 바이오 소재 실증연구"].id)
   const crm = await seedCrm(teamLead.id)
+  await seedOmnisTableAnswer(bMng.id)
 
   console.log(
     `✓ 익명 데모 시드 완료 — 사용자 ${users.length}, 카테고리 ${categories.length}, 프로젝트 ${projectDefs.length}, 업무 ${tasks.length}, Omnis 카드 ${cards.length}, ${context}, ${crm}`,
   )
+}
+
+// ─── 7-1. 옴니스 표 답변 — 복사 시험용(한글 · 워드 · PPT · 엑셀 붙여넣기) ──────────
+// 부팀장의 옴니스 1:1 방 하나. 다른 시험이 세는 사람(팀장 · 사원1~3)의 방 수를 바꾸지 않게 부팀장에게 둔다.
+// 표 · 굵게 · 목록 · 각주가 한 답에 다 있다 — components/omnis/answer-actions.tsx 의 복사 · 표 칸 복사를 이 답으로 본다
+const DEMO_TABLE_ROOM_ID = "demo-omnis-table-answer"
+async function seedOmnisTableAnswer(ownerId: string) {
+  const system = await prisma.user.upsert({
+    where: { id: "system" },
+    update: {},
+    create: { id: "system", name: "Omnis", passwordHash: "!", role: "MEMBER", isActive: false, position: "시스템" },
+    select: { id: true },
+  })
+  const at = new Date(Date.now() - 2 * 60 * 60_000)
+  await prisma.chatRoom.create({
+    data: {
+      id: DEMO_TABLE_ROOM_ID,
+      name: "시험 — 표 답변 복사",
+      kind: "OMNIS_DM",
+      createdById: ownerId,
+      lastMessageAt: new Date(at.getTime() + 60_000),
+      members: { create: { userId: ownerId } },
+    },
+  })
+  await prisma.chatMessage.create({
+    data: { roomId: DEMO_TABLE_ROOM_ID, authorId: ownerId, content: "지원사업 세 건 진행 현황을 표로 정리해줘", createdAt: at },
+  })
+  const answer = [
+    "지원사업 **세 건**의 진행 현황입니다 [1].",
+    "",
+    "| 사업 | 담당 | 단계 | 마감 |",
+    "|---|---|---|---|",
+    "| 바이오 소재 실증연구 | 사원1 | 서류 보완 [2] | 11월 14일 |",
+    "| 공급망 안정화 | 부팀장 | 신청서 검토 | 11월 11일 |",
+    "| 제품 B 인허가 | 부팀장 | 일정표 작성 | 11월 10일 |",
+    "",
+    "- 가장 급한 것은 **제품 B 인허가 일정표**입니다.",
+    "- 바이오 소재 실증연구는 가산점 서류가 남았습니다 [2].",
+  ].join("\n")
+  const query = await prisma.omnisQuery.create({
+    data: {
+      userId: ownerId,
+      question: "지원사업 세 건 진행 현황을 표로 정리해줘",
+      answer,
+      sources: [
+        { id: crypto.randomUUID(), source: "TASK", sourceId: "demo", title: "지원사업 현황", sourceLabel: "업무", similarity: 0.9 },
+        { id: crypto.randomUUID(), source: "TASK", sourceId: "demo-2", title: "가산점 서류", sourceLabel: "업무", similarity: 0.8 },
+      ],
+    },
+  })
+  await prisma.chatMessage.create({
+    data: { roomId: DEMO_TABLE_ROOM_ID, authorId: system.id, content: answer, omnisQueryId: query.id, createdAt: new Date(at.getTime() + 60_000) },
+  })
 }
 
 // ─── 8. 회사 Context (HADD DB → 회사·기록·시장·인력) — 가상 수치 ──────────
