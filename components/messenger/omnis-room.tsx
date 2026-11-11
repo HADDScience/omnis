@@ -664,16 +664,18 @@ export function OmnisRoom({
             roomId ? (
               <>
                 {shareInfo.isOwner && (
-                  <button
-                    type="button"
+                  // 머리줄의 다른 단추(알림 끄기)와 같은 크기 · 같은 누르는 자리(폰 44px)
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="touch-target"
                     data-session-share-open
                     aria-label="이 대화 공유"
                     title="공유"
                     onClick={() => setShareOpen(true)}
-                    className="touch-hit flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
-                    <HugeiconsIcon icon={UserAdd01Icon} size={20} aria-hidden />
-                  </button>
+                    <HugeiconsIcon icon={UserAdd01Icon} size={15} aria-hidden />
+                  </Button>
                 )}
                 <RoomMuteButton key={roomId} roomKey={`room:${roomId}`} initialMuted={muted} />
               </>

@@ -78,7 +78,7 @@ test.describe("옴니스 세션 공유 · 해제 · 인계 @chat", () => {
   test("사람에게 공유 → 알림 · 목록 「공유됨 · 팀장님」 · 이어 묻기는 쓴 사람 몫", async ({ browser }) => {
     const owner = await as(browser, OWNER)
     await owner.page.goto(`/chat/${sessionId}`)
-    await owner.page.locator("[data-session-share-open]").click()
+    await owner.page.locator("[data-session-share-open]").filter({ visible: true }).click()
     const dialog = owner.page.locator("[data-session-share-dialog]")
     await expect(dialog).toBeVisible()
     await expect(dialog.locator("[data-share-current]")).toContainText("아직 나만 보는 대화예요")
@@ -102,7 +102,7 @@ test.describe("옴니스 세션 공유 · 해제 · 인계 @chat", () => {
     await person.page.goto(`/chat/${sessionId}`)
     await expect(person.page.getByText(`공유됨 · ${OWNER}님의 대화`).filter({ visible: true }).first()).toBeVisible()
     // 받은 사람에게는 공유 단추가 없다 — 공유 · 해제 · 인계는 주인만
-    await expect(person.page.locator("[data-session-share-open]")).toHaveCount(0)
+    await expect(person.page.locator("[data-session-share-open]").filter({ visible: true })).toHaveCount(0)
     await expect(sessionLog(person.page).locator("[data-peer-message]").filter({ hasText: QUESTION })).toContainText(OWNER)
     const box = person.page.locator("[data-composer-pill] textarea").first()
     await expect.poll(() => box.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps")))).toBe(true)
@@ -165,7 +165,7 @@ test.describe("옴니스 세션 공유 · 해제 · 인계 @chat", () => {
   test("공유 해제 — 사람 · 방, 해제된 사람은 404", async ({ browser }) => {
     const owner = await as(browser, OWNER)
     await owner.page.goto(`/chat/${sessionId}`)
-    await owner.page.locator("[data-session-share-open]").click()
+    await owner.page.locator("[data-session-share-open]").filter({ visible: true }).click()
     const dialog = owner.page.locator("[data-session-share-dialog]")
     await dialog.getByRole("button", { name: `${PERSON}님 공유 해제` }).click()
     await expect(dialog.locator(`[data-share-person="${ids.get(PERSON)}"]`)).toHaveCount(0)
@@ -186,7 +186,7 @@ test.describe("옴니스 세션 공유 · 해제 · 인계 @chat", () => {
   test("인계 — 확인 한 번 · 새 주인에게 공유 단추 · 이전 주인은 참여자로", async ({ browser }) => {
     const owner = await as(browser, OWNER)
     await owner.page.goto(`/chat/${sessionId}`)
-    await owner.page.locator("[data-session-share-open]").click()
+    await owner.page.locator("[data-session-share-open]").filter({ visible: true }).click()
     const dialog = owner.page.locator("[data-session-share-dialog]")
     await dialog.locator("[data-share-tab=handover]").click()
     await dialog.locator(`[data-handover-pick="${ids.get(HEIR)}"]`).click()
@@ -195,7 +195,7 @@ test.describe("옴니스 세션 공유 · 해제 · 인계 @chat", () => {
     await shot(owner.page, "pc-handover-confirm")
     await dialog.locator("[data-handover-save]").click()
     await expect(dialog).toHaveCount(0)
-    await expect(owner.page.locator("[data-session-share-open]")).toHaveCount(0)
+    await expect(owner.page.locator("[data-session-share-open]").filter({ visible: true })).toHaveCount(0)
     await expect(owner.page.getByText(`공유됨 · ${HEIR}님의 대화`).filter({ visible: true }).first()).toBeVisible()
     expect((await owner.page.request.post(`/api/agent/rooms/${sessionId}/share`, { data: { userIds: [ids.get(PERSON)] } })).status()).toBe(403)
     await owner.ctx.close()
@@ -207,8 +207,8 @@ test.describe("옴니스 세션 공유 · 해제 · 인계 @chat", () => {
 
     const heir = await as(browser, HEIR, true)
     await heir.page.goto(`/chat/${sessionId}`)
-    await expect(heir.page.locator("[data-session-share-open]")).toBeVisible()
-    await heir.page.locator("[data-session-share-open]").tap()
+    await expect(heir.page.locator("[data-session-share-open]").filter({ visible: true })).toBeVisible()
+    await heir.page.locator("[data-session-share-open]").filter({ visible: true }).tap()
     await expect(heir.page.locator("[data-share-current]")).toContainText(HEIR)
     await shot(heir.page, "phone-heir-share")
     await heir.ctx.close()

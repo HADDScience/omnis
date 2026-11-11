@@ -190,11 +190,11 @@ test.describe("옴니스 답 복사 · 동작 줄", () => {
     await expect(dialog.locator("[data-answer-share-preview]")).toContainText("공급망 안정화")
     await expect(dialog.locator("[data-answer-share-note]")).toContainText("회사 구성원만 볼 수 있음(로그인 필요)")
     // 바깥 공유 · 공개 링크는 없다
-    // 미리보기 밖의 단추는 링크 복사 · 닫기 둘뿐
+    // 미리보기 밖의 단추는 링크 복사 · 닫기, 그리고 대화 주인에게만 사내 세션 공유 바로가기(#196) — 바깥으로 내보내는 길은 없다
     const outside = await dialog.evaluate((d) =>
       Array.from(d.querySelectorAll("button, a")).filter((b) => !b.closest("[data-answer-share-preview]")).map((b) => b.getAttribute("aria-label") ?? b.textContent?.trim()),
     )
-    expect(outside.sort()).toEqual(["Close", "링크 복사"].sort())
+    expect(outside.sort()).toEqual(["Close", "링크 복사", "이 대화를 공유하기"].sort())
     await shot(page, "pc-share")
     await dialog.getByRole("button", { name: "링크 복사" }).click()
     const link = await page.evaluate(() => navigator.clipboard.readText())
