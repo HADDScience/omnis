@@ -5,6 +5,9 @@
 import { expect, test, type Page } from "@playwright/test"
 import { login } from "./_setup"
 
+/** IP API 는 같은 오리진 요청만 쿠키로 받는다(lib/ip-api.ts authorize). 브라우저가 붙이는 머리글을 시험 요청에도 단다 */
+const SAME = { "sec-fetch-site": "same-origin" }
+
 const NAS = process.env.E2E_FAKE_NAS_URL
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==",
@@ -13,18 +16,18 @@ const PNG = Buffer.from(
 
 /** 시험 건을 만든다 — 아이디어(출원전) 단계의 상표. 지울 때는 removeCase */
 async function createCase(page: Page, name: string): Promise<string> {
-  const res = await page.request.post("/api/ip/cases", { data: { kind: "trademark", name, status: "출원전" } })
+  const res = await page.request.post("/api/ip/cases", { headers: SAME, data: { kind: "trademark", name, status: "출원전" } })
   expect(res.status(), "건 만들기").toBe(200)
   return ((await res.json()) as { id: string }).id
 }
 
 async function removeCase(page: Page, id: string) {
-  await page.request.delete(`/api/ip/entity?entity=trademarks&id=${encodeURIComponent(id)}`)
+  await page.request.delete(`/api/ip/entity?entity=trademarks&id=${encodeURIComponent(id)}`, { headers: SAME })
 }
 
 /** IP 목록을 연다. 첫 방문 튜토리얼은 본 것으로 둔다 */
 async function openRegister(page: Page) {
-  await page.request.post("/api/ip/prefs", { data: { tutorialSeen: true } })
+  await page.request.post("/api/ip/prefs", { headers: SAME, data: { tutorialSeen: true } })
   await page.goto("/ip/register")
   await expect(page.getByRole("radiogroup", { name: "보기" })).toBeVisible({ timeout: 30_000 })
 }
@@ -93,11 +96,11 @@ test.describe("지식재산권 갤러리 @archive", () => {
       await expect(cover).toBeVisible()
       await expect(page.locator(`[data-gallery-card="${id}"] [data-gallery-placeholder]`)).toHaveCount(0)
 
-      const res = await page.request.get(`/api/ip/images?kind=trademark&id=${encodeURIComponent(id)}`)
+      const res = await page.request.get(`/api/ip/images?kind=trademark&id=${encodeURIComponent(id)}`, { headers: SAME })
       const { images } = (await res.json()) as { images: { id: string; isPrimary: boolean }[] }
       expect(images).toHaveLength(1)
       expect(images[0].isPrimary).toBe(true)
-      await page.request.delete(`/api/ip/images?id=${images[0].id}`)
+      await page.request.delete(`/api/ip/images?id=${images[0].id}`, { headers: SAME })
     } finally {
       await removeCase(page, id)
     }
