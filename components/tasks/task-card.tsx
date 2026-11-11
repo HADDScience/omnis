@@ -9,6 +9,7 @@ import { PriorityRating } from "@/components/ui/priority-rating"
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS } from "@/lib/constants"
 import { UNASSIGNED_LABEL } from "@/lib/task-unassigned"
 import { cn } from "@/lib/utils"
+import { AssigneeStack } from "./assignee-stack"
 
 /**
  * 단일 도메인 (Task) → 단일 카드 컴포넌트 + variant (omnis/CLAUDE.md 규칙 19).
@@ -25,6 +26,8 @@ export interface TaskCardData {
   ownerName: string | null
   /** 목록 검색용 담당자 전체 이름 — ownerName 은 3명을 넘으면 접혀 뒤 사람을 찾지 못한다 */
   ownerSearch?: string
+  /** 담당자 전체 — 겹친 아바타 · 담당 바꾸기 칩이 쓴다. 없으면 ownerName 첫 글자 하나로 그린다(옛 데이터 · 시연) */
+  owners?: { id: string; name: string }[]
   /** 미완료인데 담당자가 없다 — lib/task-unassigned.ts */
   unassigned?: boolean
   projectName: string | null
@@ -135,11 +138,8 @@ export function TaskCard({ task, variant = "board", className, readOnly = false,
         </span>
         {task.priority && <PriorityRating value={task.priority} disabled size={12} />}
         {task.unassigned && !assignInActions && UNASSIGNED_BADGE}
-        {task.ownerName && (
-          <Avatar className="h-6 w-6 shrink-0">
-            <AvatarFallback className="text-[10px]">{task.ownerName.charAt(0)}</AvatarFallback>
-          </Avatar>
-        )}
+        {/* 담당 단추가 행 오른쪽(actions)에 있으면 거기서 겹친 아바타를 그린다 — 두 번 그리지 않는다 */}
+        {!assignInActions && <OwnerFaces task={task} size="sm" />}
         {deadlineInfo && (
           <span className={cn("shrink-0 font-mono text-[10.5px]", deadlineInfo.className)}>
             {deadlineInfo.text}
@@ -198,11 +198,7 @@ export function TaskCard({ task, variant = "board", className, readOnly = false,
         {task.priority && <PriorityRating value={task.priority} disabled size={11} />}
         {projectChip}
         {task.unassigned && UNASSIGNED_BADGE}
-        {task.ownerName && (
-          <Avatar className="ml-auto h-5 w-5 shrink-0">
-            <AvatarFallback className="text-[9px]">{task.ownerName.charAt(0)}</AvatarFallback>
-          </Avatar>
-        )}
+        <OwnerFaces task={task} size="xs" className="ml-auto" />
         {deadlineInfo && (
           <span className={cn("shrink-0 font-mono text-[10px]", deadlineInfo.className)}>
             {deadlineInfo.text}
@@ -210,5 +206,16 @@ export function TaskCard({ task, variant = "board", className, readOnly = false,
         )}
       </div>
     </CardSurface>
+  )
+}
+
+/** 담당 얼굴 — 담당 목록이 있으면 겹친 아바타 + 「외 n명」, 없으면(옛 데이터) 한 줄 이름의 첫 글자 */
+function OwnerFaces({ task, size, className }: { task: TaskCardData; size: "xs" | "sm"; className?: string }) {
+  if (task.owners && task.owners.length > 0) return <AssigneeStack people={task.owners} size={size} className={className} />
+  if (!task.ownerName) return null
+  return (
+    <Avatar className={cn(size === "xs" ? "h-5 w-5" : "h-6 w-6", "shrink-0", className)}>
+      <AvatarFallback className={size === "xs" ? "text-[9px]" : "text-[10px]"}>{task.ownerName.charAt(0)}</AvatarFallback>
+    </Avatar>
   )
 }

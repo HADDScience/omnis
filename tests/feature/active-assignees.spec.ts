@@ -133,9 +133,9 @@ test.describe("격리된 시험 DB 에서만", () => {
     await search.fill(`미배정 ${stamp}`)
     await page.getByRole("button", { name: `미배정 ${stamp} 담당 지정` }).click()
     const pop = page.locator("[data-quick-assign-pop]")
-    await expect(pop.getByRole("button", { name: "사원1님을 담당으로 지정", exact: true })).toBeVisible()
-    await expect(pop.getByRole("button", { name: `${offName}님을 담당으로 지정` })).toHaveCount(0)
-    await expect(pop.getByRole("button", { name: `${formerName}님을 담당으로 지정` })).toHaveCount(0)
+    await expect(pop.getByRole("button", { name: "사원1", exact: true })).toBeVisible()
+    await expect(pop.getByRole("button", { name: offName, exact: true })).toHaveCount(0)
+    await expect(pop.getByRole("button", { name: formerName, exact: true })).toHaveCount(0)
     await page.keyboard.press("Escape")
 
     // 담당이 넷이면 카드 이름은 「외 1명」 으로 접힌다 — 넷째 자리 퇴사자도 검색으로 찾는다

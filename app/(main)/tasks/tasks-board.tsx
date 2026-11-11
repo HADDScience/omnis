@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { apiUrl } from "@/lib/base-path"
 import { QuickAssignChip } from "@/components/tasks/list-quick-assign"
+import { AssigneeStack } from "@/components/tasks/assignee-stack"
 import { StartWithOmnisIcon } from "@/components/tasks/start-with-omnis"
 
 type Status = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE"
@@ -40,6 +41,8 @@ export interface KanbanTask {
   name: string
   status: Status
   ownerName: string | null
+  /** 담당자 전체 — 겹친 아바타 · 담당 바꾸기 */
+  owners?: { id: string; name: string }[]
   /** 미완료인데 담당자가 없다 — lib/task-unassigned.ts */
   unassigned?: boolean
   projectName: string | null
@@ -94,7 +97,7 @@ function formatDeadline(deadline: string, isDone: boolean) {
 }
 
 type Person = { id: string; name: string }
-type AssignFn = (task: { id: string }, person: Person) => void
+type AssignFn = (task: { id: string; owners?: Person[] }, people: Person[]) => void
 
 /**
  * 카드 안 단추(담당 지정 · Omnis 와 시작)와 그 단추가 띄운 창은 끌기를 시작하지 않는다.
@@ -157,20 +160,22 @@ function TaskCard({ task, members, onAssign }: { task: KanbanTask; members?: Per
       </Link>
       <div className="mt-1 truncate text-[10.5px] text-muted-foreground">#{task.slug}</div>
       <div className="mt-2 flex items-center gap-1.5">
-        {task.unassigned && members && onAssign ? (
+        {/* 담당 단추 — 비었으면 「담당 지정」, 있으면 겹친 아바타. 눌러 여러 명을 넣고 뺀다(끌기와 겹치지 않게 data-no-drag) */}
+        {members && onAssign ? (
           <span data-no-drag className="contents">
-            <QuickAssignChip taskId={task.id} taskName={task.name} members={members} onAssign={(p) => onAssign(task, p)} />
+            <QuickAssignChip taskId={task.id} taskName={task.name} members={members} current={task.owners ?? []} onAssign={(p) => onAssign(task, p)} />
           </span>
         ) : task.unassigned ? (
           <Badge variant="outline" className="h-5 shrink-0 border-destructive/40 px-1.5 text-[10px] text-destructive">
             {UNASSIGNED_LABEL}
           </Badge>
-        ) : null}
-        {task.ownerName && (
+        ) : task.owners && task.owners.length > 0 ? (
+          <AssigneeStack people={task.owners} size="xs" />
+        ) : task.ownerName ? (
           <Avatar className="h-5 w-5 shrink-0">
             <AvatarFallback className="text-[9px]">{task.ownerName.charAt(0)}</AvatarFallback>
           </Avatar>
-        )}
+        ) : null}
         {(task.productName || task.projectName) && (
           <span
             className={[
