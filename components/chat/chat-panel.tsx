@@ -182,6 +182,12 @@ export function ChatPanel({
   // 높이가 바뀌어도 보던 자리를 지킨다(맨 아래였으면 맨 아래). 넓은 화면은 이 변수를 쓰지 않는다
   const chromeRoot = useRef<HTMLDivElement>(null)
   const composerBox = useRef<HTMLDivElement>(null)
+  /** 답장 — 답장 단추 · 폰에서 글을 오른쪽으로 민 것(swipe-reply.tsx) 모두. 그 글을 물고 입력창에 포커스 —
+   *  손가락을 뗀 그 자리(사용자 몸짓 안)에서 바로 focus() 해야 폰 키보드가 뜬다 */
+  const replyAndFocus = useCallback((m: { id: string; authorName: string; content: string }) => {
+    setReplyTo(m)
+    composerBox.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true })
+  }, [])
   const searchBox = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const root = chromeRoot.current
@@ -819,7 +825,7 @@ export function ChatPanel({
         onLoadOlder={loadOlder}
         hasMoreOlder={hasMoreOlder}
         loadingOlder={loadingOlder}
-        onReply={setReplyTo}
+        onReply={replyAndFocus}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onResend={resend}
