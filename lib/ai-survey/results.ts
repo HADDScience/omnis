@@ -2,6 +2,7 @@
 import { prisma } from "@/lib/db"
 import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { recordsByUser } from "./entry"
 import { companyEstimate, latencyTable, type CompanyEstimate, type LatencyRow, type Metrics } from "./metrics"
 import type { Turn } from "./rules"
 
@@ -14,6 +15,10 @@ export interface PersonResult {
   summary: string | null
   metrics: Metrics | null
   submittedAt: Date | null
+  /** 제출한 응답 수 — 둘 이상이면 다시 한 사람이다 */
+  records: number
+  /** 다시 하는 중 — 위 지표 · 원문은 앞서 제출한 응답이다 */
+  redoing: boolean
 }
 
 export interface SurveyResults {
@@ -32,11 +37,16 @@ export async function loadSurveyResults(): Promise<SurveyResults> {
     prisma.aiSurvey.findMany(),
     prisma.aiUsage.aggregate({ where: { feature: "survey" }, _count: true, _sum: { costKrw: true, inputTokens: true, cachedInputTokens: true, outputTokens: true } }),
   ])
-  const byUser = new Map(rows.map((r) => [r.userId, r]))
+  // 사람마다 가장 최근에 제출한 1건을 센다. 제출한 적이 없으면 지금 응답(답하는 중)을 보인다
+  const byUser = recordsByUser(rows)
+  const shown = rows.filter((r) => { const u = byUser.get(r.userId)!; return r === (u.counted ?? u.current) })
   const people: PersonResult[] = members.map((m) => {
-    const r = byUser.get(m.id)
+    const u = byUser.get(m.id)
+    const r = u ? u.counted ?? u.current : undefined
     return {
       userId: m.id, name: m.name,
+      records: u?.submitted ?? 0,
+      redoing: !!u && u.counted !== null && u.current !== u.counted,
       status: r?.status ?? null,
       turns: (r?.turns as unknown as Turn[] | undefined) ?? [],
       summary: r?.summary ?? null,
@@ -47,7 +57,7 @@ export async function loadSurveyResults(): Promise<SurveyResults> {
   const allTurns = rows.map((r) => r.turns as unknown as Turn[])
   const flat = allTurns.flat()
   return {
-    estimate: companyEstimate({ members, surveys: rows.map((r) => ({ userId: r.userId, status: r.status, metrics: r.metrics as unknown as Metrics | null })) }),
+    estimate: companyEstimate({ members, surveys: shown.map((r) => ({ userId: r.userId, status: r.status, metrics: r.metrics as unknown as Metrics | null })) }),
     people,
     latency: latencyTable(allTurns),
     cost: {

@@ -13,6 +13,7 @@ import { budgetGate } from "@/lib/ai-budget"
 import { checkBudgetAlertsSoon } from "@/lib/ai-budget-alerts"
 import { realModel } from "@/lib/agent/model"
 import { fakeAgentEnabled } from "@/lib/agent/fake-model"
+import { bannerNeeded, surveyEntry, type SurveyEntry } from "./entry"
 import { computeMetrics, summaryText, type Metrics } from "./metrics"
 import { AskOutputSchema, SAY_SYSTEM, SURVEY_SYSTEM, SayOutputSchema, sayPrompt, surveyPrompt } from "./prompt"
 import {
@@ -26,6 +27,8 @@ export type SurveyStatus = "NONE" | "IN_PROGRESS" | "CONFIRM" | "SUBMITTED"
 export type TurnView = Turn & { dead?: true }
 
 export interface SurveyState {
+  /** 앞서 제출한 응답 수(지금 응답 빼고) — 기록으로 남아 있다 */
+  earlier?: number
   status: SurveyStatus
   turns: TurnView[]
   coverage: Record<Purpose, number>
@@ -65,8 +68,22 @@ function stateOf(row: Row | null): SurveyState {
   }
 }
 
+/** 그 사람의 지금 응답 = 가장 최근 행. 다시 하면 새 행이 생기고 앞 행은 기록으로 남는다 */
+const latestRow = (userId: string) => prisma.aiSurvey.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } })
+
 export async function getSurvey(userId: string): Promise<SurveyState> {
-  return stateOf(await prisma.aiSurvey.findUnique({ where: { userId } }))
+  const row = await latestRow(userId)
+  const earlier = row ? await prisma.aiSurvey.count({ where: { userId, status: "SUBMITTED", id: { not: row.id } } }) : 0
+  return { ...stateOf(row), earlier }
+}
+
+/** 마이 화면 카드 · 맨 위 안내 띠가 읽는 것 */
+export async function surveyEntryFor(userId: string): Promise<{ entry: SurveyEntry; banner: boolean }> {
+  const [row, submitted] = await Promise.all([
+    prisma.aiSurvey.findFirst({ where: { userId }, orderBy: { createdAt: "desc" }, select: { status: true } }),
+    prisma.aiSurvey.count({ where: { userId, status: "SUBMITTED" } }),
+  ])
+  return { entry: surveyEntry(row), banner: bannerNeeded(submitted) }
 }
 
 /** 모델을 쓸 수 있나 — 시험 모델 · 키 없음 · 비용 상한 도달이면 준비된 질문으로 간다 */
@@ -171,6 +188,8 @@ export interface AdvanceInput {
   say?: { text: string; turnId?: string }
   /** 화면에서 잰 그 질문의 대기 시간 */
   seen?: { turnId: string; first: number; ready: number }
+  /** 제출한 뒤 다시 한다 — 새 응답을 시작한다. 앞 응답은 기록으로 남는다 */
+  restart?: boolean
 }
 
 /**
@@ -180,8 +199,9 @@ export interface AdvanceInput {
  */
 export async function advanceSurvey(userId: string, input: AdvanceInput, emit: (e: SurveyEvent) => void): Promise<void> {
   const started = Date.now()
-  let row: Row = await prisma.aiSurvey.upsert({ where: { userId }, create: { userId }, update: {} })
-  if (row.status === "SUBMITTED") return emit({ t: "error", status: 409, error: "이미 제출한 설문입니다" })
+  const latest = await latestRow(userId)
+  if (latest?.status === "SUBMITTED" && !input.restart) return emit({ t: "error", status: 409, error: "이미 제출한 설문입니다" })
+  let row: Row = latest && latest.status !== "SUBMITTED" ? latest : await prisma.aiSurvey.create({ data: { userId } })
 
   let turns = row.turns as Turn[]
   const now = () => new Date().toISOString()
@@ -295,16 +315,18 @@ export type SubmitResult = { ok: true; state: SurveyState } | { ok: false; statu
 
 /** 응답자가 요약을 확인하고 제출한다 */
 export async function submitSurvey(userId: string): Promise<SubmitResult> {
-  const row = await prisma.aiSurvey.findUnique({ where: { userId } })
+  const row = await latestRow(userId)
   if (!row) return { ok: false, status: 404, error: "설문이 없습니다" }
   if (row.status === "SUBMITTED") return { ok: true, state: stateOf(row) }
   if (row.status !== "CONFIRM") return { ok: false, status: 409, error: "아직 답하지 않은 질문이 있습니다" }
   const r = await prisma.aiSurvey.updateMany({ where: { id: row.id, status: "CONFIRM" }, data: { status: "SUBMITTED", submittedAt: new Date() } })
   if (r.count !== 1) return { ok: false, status: 409, error: "다른 곳에서 설문이 바뀌었어요. 새로고침해 주세요" }
-  return { ok: true, state: stateOf(await prisma.aiSurvey.findUnique({ where: { userId } })) }
+  return { ok: true, state: await getSurvey(userId) }
 }
 
-/** 처음부터 다시 — 내 설문을 지운다(제출한 것도) */
+/** 처음부터 다시 — 답하던 응답을 지운다 */
 export async function resetSurvey(userId: string): Promise<void> {
-  await prisma.aiSurvey.deleteMany({ where: { userId } })
+  // 답하던 응답만 지운다. 제출한 응답은 기록이라 지우지 않는다 — 다시 하면 새 응답이 생긴다(advanceSurvey 의 restart)
+  const row = await latestRow(userId)
+  if (row && row.status !== "SUBMITTED") await prisma.aiSurvey.delete({ where: { id: row.id } })
 }

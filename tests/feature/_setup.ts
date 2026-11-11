@@ -12,6 +12,7 @@ export async function login(
   name: DemoUser,
   password = DEMO_PASSWORD
 ) {
+  await hideSurveyBanner(page)
   await page.goto("/login")
   await page.getByRole("textbox", { name: "이름" }).fill(name)
   await page.getByRole("textbox", { name: "비밀번호" }).fill(password)
@@ -19,7 +20,16 @@ export async function login(
   await page.waitForURL("**/chat", { timeout: 15_000 })
 }
 
+/**
+ * AI 활용 설문 안내 띠(components/layout/survey-banner.tsx)는 시험에서 닫아 둔다 — CI 는 설문을 전원에게 열고 돌아
+ * 띠가 모든 화면 맨 위에 떠서, 화면 높이 · 자리를 재는 다른 시험이 흔들린다. 띠를 보는 시험만 이 쿠키를 지운다.
+ */
+export async function hideSurveyBanner(page: Page) {
+  await page.context().addCookies([{ name: "omnis_survey_banner_dismissed", value: "1", url: process.env.BASE_URL ?? "http://localhost:3000" }])
+}
+
 export async function quickLogin(page: Page, name: DemoUser) {
+  await hideSurveyBanner(page)
   await page.goto("/login")
   await page.getByRole("button", { name, exact: true }).click()
   await page.waitForURL("**/chat", { timeout: 15_000 })

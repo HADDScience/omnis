@@ -15,6 +15,8 @@ export const SurveyTurnSchema = z
     edit: formAnswer.optional(),
     /** 입력창에 쓴 글 — 서버가 칸 값으로 옮긴다. turnId 는 고치는 중인 질문 */
     say: z.object({ text: z.string().min(1).max(300), turnId: z.string().min(1).max(64).optional() }).optional(),
+    /** 제출한 뒤 다시 한다 — 새 응답을 시작한다(앞 응답은 기록으로 남는다) */
+    restart: z.boolean().optional(),
     /** 화면에서 잰 그 질문의 대기 시간(ms) */
     seen: z.object({ turnId: z.string().min(1).max(64), first: ms, ready: ms }).optional(),
   })
