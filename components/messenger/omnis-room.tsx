@@ -27,6 +27,7 @@ import { writeSnapshot } from "@/lib/room-snapshot"
 import { resolveHandoff } from "@/lib/chat-entry"
 import { claimTaskStart } from "@/lib/task-start"
 import { useComposerHandoff } from "@/hooks/use-composer-handoff"
+import { useChatDraft } from "@/hooks/use-chat-draft"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
 import { ToolTrail } from "./tool-trail"
@@ -476,6 +477,8 @@ export function OmnisRoom({
     if (sendNow) send(queued)
     setDraft(queued !== null && !sendNow ? (text ? `${queued}\n${text}` : queued) : text)
   })
+  // 쓰던 글 임시저장(lib/chat-draft.ts) — 오른쪽 패널 · 아직 없는 방은 두지 않는다
+  useChatDraft(embedded || !roomId ? undefined : `room:${roomId}`, draft, setDraft)
 
   // 업무에서 넘어온 첫 글 — 화면이 뜬 뒤 한 번. 보냈다고 먼저 적고(claimTaskStart) 보낸다
   const sendRef = useRef(send)

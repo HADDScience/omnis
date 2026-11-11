@@ -84,6 +84,8 @@ import type { RoomList as RoomListData, RoomListItem } from "@/lib/chat-rooms"
 import { usePublishUnreadRooms } from "./room-back-link"
 import { chatPrefs } from "./chat-prefs-client"
 import { LIST_CACHE_KEY, readCache, writeCache } from "@/lib/chat-cache"
+import { DRAFT_LABEL, draftPreview } from "@/lib/chat-draft"
+import { useChatDrafts } from "@/hooks/use-chat-draft"
 import { rememberRoomList } from "@/lib/chat-entry"
 import { FolderManager } from "./folder-manager"
 import { NewChatMenu } from "./new-chat-menu"
@@ -425,10 +427,13 @@ export function RoomList({ version, userId }: { version: number; userId: string 
     },
     [userId],
   )
+  // 입력칸 임시저장(lib/chat-draft.ts) — 쓰던 글이 남은 방은 미리보기 자리에 「임시저장: …」. 지금 연 방은 입력칸에 보이니 뺀다
+  const drafts = useChatDrafts(userId)
   const renderRow = (r: RoomListItem) => (
     <RoomRow
       key={r.key}
       room={r}
+      draft={r.key === activeKey ? undefined : drafts.get(r.key)}
       active={r.key === activeKey}
       folders={folders}
       swiped={swiped?.key === r.key ? swiped.side : null}
@@ -837,11 +842,12 @@ const LEFT_W = 276
  */
 function RoomRow({
   room,
+  draft,
   active,
   swiped,
   onSwipe,
   ...actions
-}: { room: RoomListItem; active: boolean; swiped: SwipeSide | null; onSwipe: (side: SwipeSide | null) => void } & RowActions) {
+}: { room: RoomListItem; draft?: string; active: boolean; swiped: SwipeSide | null; onSwipe: (side: SwipeSide | null) => void } & RowActions) {
   const removal = roomRemoval(room.kind)
   const manual = actions.folders.filter((f) => !f.rule)
   const startEntry = useStartRoomEntry()
@@ -962,7 +968,7 @@ function RoomRow({
               }}
               className={ROW}
             >
-              <RoomRowContent room={room} />
+              <RoomRowContent room={room} draft={draft} />
               {/* 누르는 즉시 줄이 눌린 색 — 방 화면이 오기 전에도 받은 것이 보인다 */}
               <LinkPendingMark />
             </Link>
@@ -977,7 +983,8 @@ function RoomRow({
 }
 
 /** 목록 한 줄의 보이는 부분 — 아이콘 · 이름 · 시각 · 미리보기 · 안 읽음. RoomRow 와 랜딩 시연(RoomRowPreview)이 함께 쓴다 */
-function RoomRowContent({ room }: { room: RoomListItem }) {
+/** draft: 이 방에 남은 임시저장 글 — 있으면 마지막 글 대신 보인다 */
+function RoomRowContent({ room, draft }: { room: RoomListItem; draft?: string }) {
   const unread = room.unread > 0
   return (
     <>
@@ -1023,7 +1030,13 @@ function RoomRowContent({ room }: { room: RoomListItem }) {
             </span>
           )}
           <span className={cn("min-w-0 flex-1 truncate text-[14.5px] max-md:line-clamp-2 max-md:whitespace-normal max-md:text-[15px] max-md:leading-[20px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
-            {room.preview ?? "아직 글이 없어요"}
+            {draft ? (
+              <span data-draft-preview>
+                <span className="font-medium text-primary">{DRAFT_LABEL}</span> {draftPreview(draft).slice(DRAFT_LABEL.length + 1)}
+              </span>
+            ) : (
+              (room.preview ?? "아직 글이 없어요")
+            )}
           </span>
           {unread && (
             <Badge className="h-[22px] min-w-[22px] max-md:h-[19px] max-md:min-w-[19px] max-md:text-[11px] shrink-0 px-1.5 text-[12px] tabular-nums" aria-label={`안 읽은 글 ${room.unread}개`}>

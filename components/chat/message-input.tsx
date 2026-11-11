@@ -11,6 +11,7 @@ import { resolveHandoff } from "@/lib/chat-entry"
 import { composerTrigger, type ComposerTrigger } from "@/lib/composer-trigger"
 import { isTouchTyping } from "@/lib/enter-to-send"
 import { useComposerHandoff } from "@/hooks/use-composer-handoff"
+import { useChatDraft } from "@/hooks/use-chat-draft"
 import { reportIncident } from "@/lib/report-client-error"
 import { AttachChips, ComposerPlus, RoomComposer, type PickedFile } from "./room-composer"
 
@@ -119,6 +120,8 @@ export function MessageInput({
         if (h.focused) requestAnimationFrame(() => textareaRef.current?.focus())
       })
   })
+  // 방마다 쓰던 글을 기기에 둔다 — 나갔다 오거나 새로 고친 뒤 되살리고, 보내서 비면 지운다(lib/chat-draft.ts). 이어받은 글 다음에 본다
+  useChatDraft(handoffKey, content, setContent)
 
   /** 보내지 못한 글을 입력칸 맨 앞으로 — 그 사이 쓴 글은 뒤에 남는다. 실패가 잇따르면 먼저 쓴 글이 위다 */
   function putBack(text: string) {
