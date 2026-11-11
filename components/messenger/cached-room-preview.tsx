@@ -15,6 +15,7 @@ import { peekHandoff, queuedIsFresh, rememberedRoom, roomFromList, writeHandoff 
 import { tidyBody } from "@/lib/chat-layout"
 import { kakaoMissingAttachment, missingAttachmentRest } from "@/lib/kakao-placeholder"
 import { MissingAttachmentInline } from "@/components/chat/missing-attachment"
+import { RobotText } from "@/components/chat/robot-text"
 import { IS_DEMO } from "@/lib/demo"
 import type { RoomList, RoomListItem } from "@/lib/chat-rooms"
 import { cn } from "@/lib/utils"
@@ -158,7 +159,8 @@ function CachedMessages({ messages }: { messages: SnapshotLine[] }) {
                   <MissingAttachmentInline attachment={missing} />
                 </>
               ) : (
-                tidyBody(m.content)
+                // 옴니스 시스템 글의 🤖 표식은 아이콘으로(lib/robot-mark.ts)
+                <RobotText text={tidyBody(m.content)} />
               )}
             </div>
           </div>

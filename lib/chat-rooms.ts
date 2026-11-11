@@ -7,6 +7,7 @@
 //   OMNIS_DM 옴니스 1:1 — 만든 사람만
 //   GROUP    단톡방 — 사람끼리. 참여자만(lib/chat-people.ts)
 //   DM       사람끼리 1:1 — 두 사람만. 같은 두 사람의 방은 하나(dmKey). 나와의 대화도 이 종류다(dmKey 나:나, 참여자 나뿐)
+import { hasRobotMark } from "@/lib/robot-mark"
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
@@ -78,6 +79,8 @@ export interface RoomListItem {
   faceNames?: string[]
   /** 옴니스 세션만 — 사람 방의 @옴니스 로 연 공유 세션이면 그 방 이름(보는 사람 기준). 목록에 「공유됨 · 방 이름」 */
   sharedFrom?: string
+  /** 마지막 글이 옴니스의 시스템 글(맨 앞 🤖 표식)이다 — 목록은 미리보기 앞에 옴니스 아이콘(표식은 미리보기 글에서 뗀다) */
+  previewByOmnis?: boolean
 }
 
 export interface RoomList {
@@ -108,7 +111,8 @@ export function previewText(content: string, kind: string, files: { mimeType: st
   const missing = sourceId ? kakaoMissingAttachment({ sourceId, content, files }) : null
   if (missing) return missingAttachmentLabel(missing)
   const flat = content
-    .replace(/^🤖\s*/, "")
+    // 맨 앞 🤖 표식은 글에서 떼고, 목록은 옴니스 아이콘을 앞에 둔다(previewByOmnis · room-list.tsx)
+    .replace(/^\u{1F916}\uFE0F?\s*/u, "")
     .replace(/\*\*|__|`|^#{1,6}\s+|\|/gm, "")
     .replace(/\s?\[\d+(?:\s*[,，~–-]\s*\d+)*\]/g, "")
     .replace(/\s+/g, " ")
@@ -312,6 +316,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       name: peopleRoomTitle(r, people, userId),
       lastAt: (r.lastMessageAt ?? r.createdAt).toISOString(),
       preview: last ? `${last.externalSpeaker ? externalSpeakerLabel(last.externalSpeaker) : authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind, last.files, last.sourceId)}` : null,
+      ...(last && hasRobotMark(last.content) ? { previewByOmnis: true } : {}),
       unread: 0,
       favorite: false,
       muted: false,
@@ -333,6 +338,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
         name: r.name,
         lastAt: (last?.createdAt ?? r.createdAt).toISOString(),
         preview: last ? `${authorLabel(last.authorId, last.author.name)}: ${previewText(last.content, last.kind, last.files, last.sourceId)}` : null,
+        ...(last && hasRobotMark(last.content) ? { previewByOmnis: true } : {}),
         unread: 0,
         favorite: false,
         muted: false,
@@ -357,6 +363,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       mine: t.mine,
       lastAt: t.createdAt.toISOString(),
       preview: `${authorLabel(t.authorId, t.authorName)}: ${previewText(t.content, t.kind)}`,
+      ...(hasRobotMark(t.content) ? { previewByOmnis: true } : {}),
       unread: 0,
       favorite: false,
       muted: false,
