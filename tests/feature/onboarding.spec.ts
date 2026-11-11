@@ -227,6 +227,15 @@ test.describe("onboarding", () => {
     await page.clock.runFor(1800)
     await expect(demo.locator("textarea")).toHaveValue(/^다음 주 금요일까지/)
     await expect(demo.locator("textarea")).not.toHaveValue(/사원2$/)
+    // 보내기 단추는 원형(정사각), 한 줄 글자와 단추의 세로 가운데가 같다 — 실제 메신저 입력칸과 같은 크기
+    const fit = await demo.locator("[data-composer-pill]").evaluate((pill) => {
+      const ta = pill.querySelector("textarea")!
+      const btn = pill.querySelector('button[aria-label="보내기"]')!
+      const t = ta.getBoundingClientRect(), b = btn.getBoundingClientRect()
+      return { square: Math.abs(b.width - b.height), mid: Math.abs((t.top + t.bottom) / 2 - (b.top + b.bottom) / 2) }
+    })
+    expect(fit.square).toBeLessThan(1)
+    expect(fit.mid).toBeLessThan(1.5)
     // 보냄 → 내 말풍선 · 도구 줄
     await page.clock.runFor(2500)
     await expect(demo.locator("textarea")).toHaveValue("")

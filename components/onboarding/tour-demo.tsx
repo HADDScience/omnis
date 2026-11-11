@@ -355,15 +355,19 @@ export function TourDemo({
           </div>
         </div>
       </div>
-      <Composer
-        textareaRef={textarea}
-        value={frame.draft}
-        onChange={() => {}}
-        onSend={() => {}}
-        busy={busy}
-        autoFocus={false}
-        waitingCard={frame.card?.status === "PENDING"}
-      />
+      {/* 입력칸만 메신저 크기로 — 실제 옴니스 방(메신저 셸, data-messenger) 입력칸과 같은 높이 · 여백 · 줄 높이라 글자와 보내기 단추가
+          같은 가운데 선에 온다. 시연 층은 메신저 셸 밖(안내 층)에 그려져 그 크기를 받지 못했다(2026-11-11) */}
+      <div data-messenger className="contents">
+        <Composer
+          textareaRef={textarea}
+          value={frame.draft}
+          onChange={() => {}}
+          onSend={() => {}}
+          busy={busy}
+          autoFocus={false}
+          waitingCard={frame.card?.status === "PENDING"}
+        />
+      </div>
     </div>
   )
 }
