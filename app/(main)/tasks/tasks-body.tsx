@@ -87,6 +87,7 @@ export function TasksBody({ tasks, members, currentUserId, products, projects, t
         name: t.name,
         status: t.status as KanbanTask["status"],
         ownerName: t.ownerName,
+        owners: t.owners,
         unassigned: t.unassigned,
         projectName: t.projectName,
         productName: t.productName,

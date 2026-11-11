@@ -11,6 +11,7 @@
 import path from "node:path"
 import { expect, test, type Page } from "@playwright/test"
 import { PrismaClient } from "../../generated/prisma/client"
+import { chooseAssignees } from "./_actions"
 import { login } from "./_setup"
 
 test.skip(process.env.E2E_ISOLATED !== "true", "담당 없는 업무를 DB 에 직접 넣는다")
@@ -73,7 +74,8 @@ async function openList(page: Page, name: string) {
 test.describe("PC", () => {
   test.use({ viewport: { width: 1440, height: 900 } })
 
-  test("목록 — 담당 지정 칩 → 팝오버 칩 한 번에 지정, 행은 그대로 · 상세로 넘어가지 않는다", async ({ page }) => {
+  // 지키는 것: 목록에서 상세로 가지 않고 담당을 여러 명 지정 · 해제할 수 있다
+  test("목록 — 담당 지정 칩 → 팝오버에서 두 명 지정, 다시 열어 한 명 해제 · 상세로 넘어가지 않는다", async ({ page }) => {
     const task = await unassignedTask("PC지정")
     await prepare(page, "list")
     await login(page, "팀장")
@@ -89,14 +91,26 @@ test.describe("PC", () => {
       await page.waitForTimeout(400)
       await page.screenshot({ path: path.join(shots, "pc-1-list-assign.png") })
     }
-    await pop.getByRole("button", { name: "사원1님을 담당으로 지정", exact: true }).click()
-    // 저장을 기다리지 않고 바로 바뀐다
-    await expect(chip).toHaveCount(0)
-    await expect(row(page, task.id).locator("[data-slot=avatar]")).toHaveCount(1)
+    await chooseAssignees(pop, ["사원1", "사원2"])
+    // 저장을 기다리지 않고 바로 바뀐다 — 칩 자리에 겹친 아바타(같은 단추)
+    await expect(chip).not.toContainText("담당 지정")
+    await expect(row(page, task.id).locator("[data-assignee-stack]")).toHaveAttribute("data-assignee-stack", "2")
     expect(new URL(page.url()).pathname).toBe("/tasks")
-    await expect.poll(() => assigneeNames(task.id)).toEqual(["사원1"])
+    await expect.poll(async () => (await assigneeNames(task.id)).sort()).toEqual(["사원1", "사원2"])
+
+    // 다시 열면 지금 담당이 골라져 있고, 한 명을 빼서 저장한다
+    await chip.click()
+    await expect(pop.getByRole("button", { name: "사원1", exact: true })).toHaveAttribute("aria-pressed", "true")
+    await expect(pop.getByRole("button", { name: "사원2", exact: true })).toHaveAttribute("aria-pressed", "true")
+    // 바꾸지 않으면 저장할 수 없다
+    await expect(pop.locator("[data-quick-assign-save]")).toBeDisabled()
+    if (shots) await page.screenshot({ path: path.join(shots, "pc-1b-list-reassign.png") })
+    await chooseAssignees(pop, ["사원1"])
+    await expect(row(page, task.id).locator("[data-assignee-stack]")).toHaveAttribute("data-assignee-stack", "1")
+    await expect.poll(() => assigneeNames(task.id)).toEqual(["사원2"])
   })
 
+  // 지키는 것: 저장이 실패하면 목록이 지정된 척하지 않는다
   test("목록 — 저장이 실패하면 칩이 돌아온다", async ({ page }) => {
     const task = await unassignedTask("PC실패")
     await prepare(page, "list")
@@ -106,9 +120,9 @@ test.describe("PC", () => {
     await login(page, "팀장")
     await openList(page, task.name)
     await row(page, task.id).locator(`[data-quick-assign-chip="${task.id}"]`).click()
-    await page.locator(`[data-quick-assign-pop="${task.id}"]`).getByRole("button", { name: "사원1님을 담당으로 지정", exact: true }).click()
+    await chooseAssignees(page.locator(`[data-quick-assign-pop="${task.id}"]`), ["사원1"])
     await expect(page.getByText("지정하지 못했습니다 (500)")).toBeVisible()
-    await expect(row(page, task.id).locator(`[data-quick-assign-chip="${task.id}"]`)).toBeVisible()
+    await expect(row(page, task.id).locator(`[data-quick-assign-chip="${task.id}"]`)).toContainText("담당 지정")
     expect(await assigneeNames(task.id)).toEqual([])
   })
 
@@ -163,9 +177,9 @@ test.describe("폰", () => {
       await page.waitForTimeout(600)
       await page.screenshot({ path: path.join(shots, "phone-2-assign-sheet.png") })
     }
-    await sheet.getByRole("button", { name: "사원1님을 담당으로 지정", exact: true }).tap()
+    await chooseAssignees(sheet, ["사원1"], { tap: true })
     await expect(sheet).toHaveCount(0)
-    await expect(row(page, task.id).locator(`[data-quick-assign-chip="${task.id}"]`)).toHaveCount(0)
+    await expect(row(page, task.id).locator(`[data-quick-assign-chip="${task.id}"]`)).not.toContainText("담당 지정")
     expect(new URL(page.url()).pathname).toBe("/tasks")
     await expect.poll(() => assigneeNames(task.id)).toEqual(["사원1"])
 

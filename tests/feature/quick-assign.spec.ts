@@ -1,5 +1,5 @@
 /**
- * 미배정 업무 상세의 「담당자 지정」 칸 — 한 번 눌러 지정 · 실패하면 되돌림 · 폰에서 44px.
+ * 미배정 업무 상세의 「담당자 지정」 칸 — 여러 명을 골라 지정(2026-11-11) · 실패하면 되돌림 · 폰에서 44px.
  * 계획: mydocs/plans/2026-11-09-quick-assign.md
  *
  *   pnpm run test:e2e:local tests/feature/quick-assign.spec.ts
@@ -12,6 +12,7 @@ import path from "node:path"
 import { expect, test, type Page } from "@playwright/test"
 import { PrismaClient } from "../../generated/prisma/client"
 import { login } from "./_setup"
+import { chooseAssignees } from "./_actions"
 
 test.skip(process.env.E2E_ISOLATED !== "true", "담당 없는 업무를 DB 에 직접 넣는다")
 
@@ -42,7 +43,8 @@ test.afterAll(async () => {
   await prisma.$disconnect()
 })
 
-test("PC — 칩을 한 번 누르면 담당이 되고 칸이 사라진다", async ({ page }) => {
+// 지키는 것: 담당 없는 업무를 상세에서 바로 맡길 수 있다 — 여러 명도 한 번에
+test("PC — 칩으로 두 명을 골라 지정하면 둘 다 담당이 되고 칸이 사라진다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await login(page, "팀장")
   const id = await unassignedTask("PC")
@@ -50,13 +52,19 @@ test("PC — 칩을 한 번 누르면 담당이 되고 칸이 사라진다", asy
 
   const box = page.locator("[data-quick-assign]")
   await expect(box).toBeVisible({ timeout: 30_000 })
-  await expect(box.getByRole("button", { name: "사원1님을 담당으로 지정" })).toBeVisible()
+  await expect(box.getByRole("button", { name: "사원1", exact: true })).toHaveAttribute("aria-pressed", "false")
+  // 아무도 고르지 않으면 저장할 수 없다
+  await expect(box.locator("[data-quick-assign-save]")).toBeDisabled()
+  await box.getByRole("button", { name: "사원1", exact: true }).click()
+  await box.getByRole("button", { name: "사원2", exact: true }).click()
+  await expect(box.getByRole("button", { name: "사원2", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await expect(box.locator("[data-quick-assign-save]")).toHaveText("2명 지정")
   if (shots) await page.screenshot({ path: path.join(shots, "quick-assign-pc.png") })
 
-  await box.getByRole("button", { name: "사원1님을 담당으로 지정" }).click()
+  await box.locator("[data-quick-assign-save]").click()
   await expect(box).toHaveCount(0)
-  await expect(page.getByText("사원1", { exact: true }).first()).toBeVisible()
-  await expect.poll(() => assigneeNames(page, id)).toEqual(["사원1"])
+  await expect(page.locator("[data-assignee-stack]").first()).toHaveAttribute("data-assignee-stack", "2")
+  await expect.poll(async () => (await assigneeNames(page, id)).sort()).toEqual(["사원1", "사원2"])
 
   // 새로 열어도 칸이 없다 — 저장된 값으로 그린다
   await page.reload()
@@ -64,6 +72,7 @@ test("PC — 칩을 한 번 누르면 담당이 되고 칸이 사라진다", asy
   await expect(page.locator("[data-quick-assign]")).toHaveCount(0)
 })
 
+// 지키는 것: 저장이 실패하면 화면이 지정된 척하지 않는다
 test("저장이 실패하면 칸이 되돌아오고 담당은 비어 있다", async ({ page }) => {
   await login(page, "팀장")
   const id = await unassignedTask("실패")
@@ -73,13 +82,14 @@ test("저장이 실패하면 칸이 되돌아오고 담당은 비어 있다", as
   await page.goto(`/tasks/${id}`)
   const box = page.locator("[data-quick-assign]")
   await expect(box).toBeVisible({ timeout: 30_000 })
-  await box.getByRole("button", { name: "사원2님을 담당으로 지정" }).click()
+  await chooseAssignees(box, ["사원2"])
   await expect(page.getByText("지정하지 못했습니다 (500)")).toBeVisible()
   await expect(box).toBeVisible()
   expect(await assigneeNames(page, id)).toEqual([])
 })
 
-test("폰 — 칩은 엄지 크기(44px 이상)이고 눌러서 지정된다", async ({ page }) => {
+// 지키는 것: 폰에서도 엄지로 골라 지정할 수 있다
+test("폰 — 칩은 엄지 크기(44px 이상)이고 골라서 지정된다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await login(page, "팀장")
   const id = await unassignedTask("폰")
@@ -94,7 +104,7 @@ test("폰 — 칩은 엄지 크기(44px 이상)이고 눌러서 지정된다", a
   }
   if (shots) await page.screenshot({ path: path.join(shots, "quick-assign-mobile.png") })
 
-  await box.getByRole("button", { name: "사원3님을 담당으로 지정" }).click()
+  await chooseAssignees(box, ["사원3"])
   await expect(box).toHaveCount(0)
   await expect.poll(() => assigneeNames(page, id)).toEqual(["사원3"])
 })
