@@ -105,9 +105,9 @@ for (const width of [1440, 1280]) {
       await page.goto("/tasks")
       await openPanel(page)
 
-      // 목록으로 열린다 — 예전 「전체 / 옴니스」 탭은 없다
+      // 목록으로 열린다 — 예전 「전체 / 옴니스」 탭(패널 보기)은 없다. 업무 상세가 아니면 탭 줄 자체가 없다
       await expect(messenger(page)).toHaveAttribute("data-panel-messenger", "list")
-      await expect(panel(page).getByRole("button", { name: "옴니스", exact: true })).toHaveCount(0)
+      await expect(panel(page).getByRole("group", { name: "패널 보기" })).toHaveCount(0)
       const row = panel(page).locator(`a[href$="/chat/${omnisRoomId}"]`)
       await expect(row).toBeVisible({ timeout: 30_000 })
       await expectNoOverflow(page)
@@ -116,7 +116,8 @@ for (const width of [1440, 1280]) {
       // 옴니스 대화 — 본문 주소는 그대로
       await row.click()
       await expect(messenger(page)).toHaveAttribute("data-panel-messenger", "room")
-      const answer = panel(page).locator(".omnis-md table").first()
+      // 답의 표는 복사할 수 있는 표(CopyableSheet)로 그린다 — 넘침은 그 상자 안에서 가로로 민다(#199)
+      const answer = panel(page).locator("[data-copyable-sheet]").filter({ visible: true }).first()
       await expect(answer).toBeVisible({ timeout: 30_000 })
       expect(new URL(page.url()).pathname).toBe("/tasks")
       await expectNoOverflow(page)
@@ -156,12 +157,12 @@ test.describe("PC 1440 — 채팅 탭으로 넘기기", () => {
     await page.goto("/calendar")
     await openPanel(page)
     await panel(page).locator(`a[href$="/chat/${omnisRoomId}"]`).click()
-    await expect(panel(page).locator(".omnis-md table").first()).toBeVisible({ timeout: 30_000 })
+    await expect(panel(page).locator("[data-copyable-sheet]").filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 })
 
     await page.locator('nav[aria-label="주 메뉴"]').filter({ visible: true }).getByRole("link", { name: "채팅" }).click()
     await page.waitForURL(`**/chat/${omnisRoomId}`, { timeout: 30_000 })
     await expect(panel(page)).toHaveAttribute("aria-hidden", "true")
-    await expect(page.locator("[data-messenger] .omnis-md table").first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator("[data-messenger] [data-copyable-sheet]").filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 })
     await shot(page, "pc-1440-5-handoff.png")
 
     // 다른 탭으로 가서 패널을 다시 열면 그 방 그대로
@@ -198,7 +199,7 @@ test.describe("폰", () => {
     await expect(panel(page)).toBeHidden()
     await shot(page, "phone-1-list.png")
     await page.locator(`a[href$="/chat/${omnisRoomId}"]`).filter({ visible: true }).tap()
-    await expect(page.locator(".omnis-md table").filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator("[data-copyable-sheet]").filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
     await shot(page, "phone-2-omnis-table.png")
   })
