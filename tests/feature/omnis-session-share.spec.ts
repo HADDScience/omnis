@@ -100,7 +100,7 @@ test.describe("옴니스 세션 공유 · 해제 · 인계 @chat", () => {
     await expect(person.page.locator(`[data-shared-from][aria-label="공유됨 · ${OWNER}님"]`).first()).toBeVisible({ timeout: 15_000 })
     await shot(person.page, "phone-list-shared")
     await person.page.goto(`/chat/${sessionId}`)
-    await expect(person.page.getByText(`공유됨 · ${OWNER}님의 대화`).first()).toBeVisible()
+    await expect(person.page.getByText(`공유됨 · ${OWNER}님의 대화`).filter({ visible: true }).first()).toBeVisible()
     // 받은 사람에게는 공유 단추가 없다 — 공유 · 해제 · 인계는 주인만
     await expect(person.page.locator("[data-session-share-open]")).toHaveCount(0)
     await expect(sessionLog(person.page).locator("[data-peer-message]").filter({ hasText: QUESTION })).toContainText(OWNER)
@@ -143,7 +143,7 @@ test.describe("옴니스 세션 공유 · 해제 · 인계 @chat", () => {
     await shot(member.page, "phone-room-notice")
     await pill.locator("[data-omnis-session-link]").click()
     await member.page.waitForURL((u) => u.pathname.endsWith(sessionId), { timeout: 15_000 })
-    await expect(member.page.getByText(`공유됨 · ${ROOM_NAME}`).first()).toBeVisible()
+    await expect(member.page.getByText(`공유됨 · ${ROOM_NAME}`).filter({ visible: true }).first()).toBeVisible()
     await member.ctx.close()
     expect((await prisma.chatRoomMember.findUniqueOrThrow({ where: { roomId_userId: { roomId: sessionId, userId: ids.get(ROOM_MEMBER)! } } })).shareKind).toBe("ROOM")
   })
@@ -196,7 +196,7 @@ test.describe("옴니스 세션 공유 · 해제 · 인계 @chat", () => {
     await dialog.locator("[data-handover-save]").click()
     await expect(dialog).toHaveCount(0)
     await expect(owner.page.locator("[data-session-share-open]")).toHaveCount(0)
-    await expect(owner.page.getByText(`공유됨 · ${HEIR}님의 대화`).first()).toBeVisible()
+    await expect(owner.page.getByText(`공유됨 · ${HEIR}님의 대화`).filter({ visible: true }).first()).toBeVisible()
     expect((await owner.page.request.post(`/api/agent/rooms/${sessionId}/share`, { data: { userIds: [ids.get(PERSON)] } })).status()).toBe(403)
     await owner.ctx.close()
 
