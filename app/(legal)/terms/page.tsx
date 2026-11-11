@@ -1,16 +1,16 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { LegalDoc, Section, companyLabel } from "@/components/legal/legal-doc"
-import { loadLegalCompany } from "@/lib/legal/company"
+import { ContactValue, LegalDoc, Section } from "@/components/legal/legal-doc"
+import { PROVIDER_PLACEHOLDER } from "@/lib/legal/placeholders"
 
 export const metadata: Metadata = { title: "서비스 이용약관 — Omnis" }
-// 회사 정보를 DB 에서 읽는다(lib/legal/company.ts)
+// 문의처를 실행 환경의 설정값(LEGAL_CONTACT)에서 읽는다
 export const dynamic = "force-dynamic"
 
 /** 서비스 이용약관 — 사내 서비스(임직원 · 회사가 계정을 준 사람)를 전제로 쓴다 */
-export default async function TermsPage() {
-  const c = await loadLegalCompany()
-  const who = companyLabel(c)
+export default function TermsPage() {
+  // 제공자(운영사)는 정해지지 않았다 — 자리표시 그대로(lib/legal/placeholders.ts)
+  const who = PROVIDER_PLACEHOLDER
 
   return (
     <LegalDoc title="서비스 이용약관" current="terms">
@@ -102,9 +102,7 @@ export default async function TermsPage() {
       </Section>
 
       <p className="text-[12.5px] text-muted-foreground">
-        {c.name}
-        {c.representative ? ` · 대표 ${c.representative}` : ""}
-        {c.address ? ` · ${c.address}` : ""}
+        문의: <ContactValue />
       </p>
     </LegalDoc>
   )

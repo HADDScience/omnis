@@ -1,7 +1,6 @@
 import Link from "next/link"
 import type { ReactNode } from "react"
-import type { LegalCompany } from "@/lib/legal/company"
-import { LEGAL_EFFECTIVE_DATE } from "@/lib/legal/company"
+import { LEGAL_EFFECTIVE_DATE, legalContact } from "@/lib/legal/placeholders"
 
 /**
  * 약관 · 개인정보 처리방침 화면의 틀(app/(legal)). 로그인 없이 열린다 — 로그인 화면 아래 링크에서도 온다.
@@ -86,7 +85,13 @@ export function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
   )
 }
 
-/** 회사를 부르는 말 — 「하드사이언스(이하 「회사」)」 */
-export function companyLabel(c: LegalCompany) {
-  return c.nameEn ? `${c.name}(${c.nameEn})` : c.name
+/** 문의처 — 설정값(LEGAL_CONTACT)이 있으면 링크, 없으면 {{문의처}} */
+export function ContactValue() {
+  const c = legalContact(process.env.LEGAL_CONTACT)
+  if (c.kind === "placeholder") return <span data-legal-contact>{c.value}</span>
+  return (
+    <a data-legal-contact href={c.href} className="underline underline-offset-4" {...(c.kind === "url" ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+      {c.value}
+    </a>
+  )
 }

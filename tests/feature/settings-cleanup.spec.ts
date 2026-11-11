@@ -1,6 +1,6 @@
 /**
  * 마이 화면 정리(2026-11-11) — 일반 탭(테마 · 키보드 단축키), 앱 정보(버전 · 약관 링크, 시스템 설정 · 사용 기록 안내 걷음),
- * 개인정보 처리방침 · 서비스 이용약관(로그인 없이 열린다 · 회사 정보는 DB 의 회사 기본정보에서).
+ * 개인정보 처리방침 · 서비스 이용약관(로그인 없이 열린다 · 제공자는 정하지 않아 {{제공자}} 자리표시, 문의처만 설정값 LEGAL_CONTACT).
  * 임시 비밀번호 안내 · 경고 점은 password-guard.spec.ts.
  */
 import { expect, test, type Page } from "@playwright/test"
@@ -136,7 +136,7 @@ test.describe("앱 정보", () => {
 })
 
 test.describe("약관 · 개인정보 처리방침", () => {
-  test("로그인 없이 열리고, 회사 정보는 회사 기본정보(데모 시드)에서 온다", async ({ page }) => {
+  test("로그인 없이 열리고, 제공자 자리는 자리표시 · 회사 정보는 싣지 않는다", async ({ page }) => {
     await page.goto("/privacy")
     await expect(page).toHaveURL(/\/privacy$/)
     const doc = page.locator("[data-legal-doc=privacy]")
@@ -144,9 +144,13 @@ test.describe("약관 · 개인정보 처리방침", () => {
     for (const text of ["처리 목적", "카카오톡 이식 데이터", "보유 기간", "처리 위탁 · 국외 이전", "Vercel", "Neon", "Cloudflare", "OpenAI", "Google", "Anthropic", "이용자의 권리", "개인정보 보호책임자"]) {
       await expect(doc).toContainText(text)
     }
-    // 데모 시드의 익명 회사 · 대표(prisma/demo-seed.ts)
-    await expect(doc).toContainText("데모바이오")
-    await expect(doc).toContainText("팀장 (대표)")
+    // 운영사는 사용자 결정 보류 — 회사 기본정보(데모 시드의 익명 회사 · 대표)를 읽지 않고 자리표시로 둔다
+    await expect(doc).toContainText("{{제공자}}")
+    await expect(doc).not.toContainText("데모바이오")
+    await expect(doc).not.toContainText("사업자등록번호")
+    // 문의처는 설정값(LEGAL_CONTACT) — 없으면 자리표시
+    const contact = doc.locator("[data-legal-contact]")
+    await expect(contact).toHaveText(process.env.LEGAL_CONTACT?.trim() || "{{문의처}}")
     // 사용 기록 안내가 여기로 왔다
     await expect(doc.locator("#ui-metrics [data-ui-metrics-notice]")).toContainText("모으는 것")
     // 초안 표시는 본문에 두지 않는다
@@ -156,7 +160,8 @@ test.describe("약관 · 개인정보 처리방침", () => {
     await page.waitForURL("**/terms")
     const terms = page.locator("[data-legal-doc=terms]")
     await expect(terms.getByRole("heading", { level: 1 })).toHaveText("서비스 이용약관")
-    await expect(terms).toContainText("데모바이오")
+    await expect(terms).toContainText("{{제공자}}")
+    await expect(terms).not.toContainText("데모바이오")
     await expect(terms).not.toContainText("초안")
   })
 
