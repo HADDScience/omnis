@@ -27,6 +27,7 @@ export const ASSUMPTIONS = [
   `1인 월 토큰은 등급별 대표값(가벼움 2,200만 · 보통 6,000만 · 헤비 1.2억, 외부 통계)에 작업 크기 보정(짧음 ×0.5 · 문서 ×1 · 긴 작업 ×1.5)을 곱한다`,
   `횟수와 시간 중 하나만 답하면 한 번에 ${MINUTES_PER_SESSION}분으로 다른 쪽을 어림한다`,
   `작업 비중은 고른 작업을 같은 비중으로 두고 가장 많이 하는 작업만 ${MAIN_TASK_WEIGHT}배로 센다`,
+  `하루 횟수 · 월 구독료는 구간으로 받아 구간의 대표값으로 센다. 「그 이상」 끝값(하루 10시간 이상 · 50번 넘게 · 40만원 넘게)은 그 하한으로 세고 「이상」 을 붙인다`,
   `API 환산은 100만 토큰당 ${KRW_PER_MTOK.cache66.toLocaleString("ko-KR")}원(캐시 66.6%) · ${KRW_PER_MTOK.cache89.toLocaleString("ko-KR")}원(캐시 89%)`,
 ] as const
 
@@ -37,6 +38,8 @@ export interface Metrics {
   sessionsPerWeek: number | null
   /** 시간 · 횟수 중 어림한 쪽 */
   derived: "hours" | "sessions" | null
+  /** 「그 이상」 끝값을 골라 하한으로 센 것 — 화면에 「이상」 을 붙인다 */
+  atLeast: { amount?: true; fee?: true }
   /** 작업 종류별 비중(%) — 합 100 */
   taskShare: Partial<Record<TaskKind, number>>
   taskSize: string | null
@@ -108,6 +111,8 @@ export function computeMetrics(facts: Facts): Metrics {
       derived = "sessions"
     }
   }
+  const atLeast: Metrics["atLeast"] = {}
+  if (days !== 0 && (known(facts, "hoursPerDay")?.over || known(facts, "sessionsPerDay")?.over)) atLeast.amount = true
   const intensity = intensityOf(days, hoursPerWeek)
   src("intensity", "daysPerWeek", "hoursPerDay", "sessionsPerDay")
   src("perWeek", "daysPerWeek", "hoursPerDay", "sessionsPerDay")
@@ -121,6 +126,7 @@ export function computeMetrics(facts: Facts): Metrics {
 
   const payer = known(facts, "payer")?.values?.[0] ?? null
   const fee = payer && payer !== "none" ? known(facts, "monthlyFeeKrw")?.num ?? null : payer === "none" ? 0 : null
+  if (payer && payer !== "none" && known(facts, "monthlyFeeKrw")?.over) atLeast.fee = true
   src("subscription", "payer", "monthlyFeeKrw", "tools")
   src("limitHit", "limitHit")
 
@@ -131,7 +137,7 @@ export function computeMetrics(facts: Facts): Metrics {
   src("pains", "pain")
 
   return {
-    intensity, daysPerWeek: days, hoursPerWeek, sessionsPerWeek, derived,
+    intensity, daysPerWeek: days, hoursPerWeek, sessionsPerWeek, derived, atLeast,
     taskShare, taskSize,
     monthlyTokens,
     apiKrw: monthlyTokens === null ? null : { cache66: Math.round((monthlyTokens / 1e6) * KRW_PER_MTOK.cache66), cache89: Math.round((monthlyTokens / 1e6) * KRW_PER_MTOK.cache89) },
@@ -233,12 +239,12 @@ export function summaryText(m: Metrics): string {
   const lines: string[] = []
   if (m.intensity === "none") lines.push("회사 일에는 AI 를 쓰지 않습니다.")
   else if (m.daysPerWeek !== null) {
-    const amount = m.hoursPerWeek !== null ? ` · 주당 약 ${m.hoursPerWeek}시간` : ""
+    const amount = m.hoursPerWeek !== null ? ` · 주당 약 ${m.hoursPerWeek}시간${m.atLeast?.amount ? " 이상" : ""}` : ""
     lines.push(`회사 일에 AI 를 주 ${m.daysPerWeek}일${amount} 씁니다(${INTENSITY_LABEL[m.intensity]}).`)
   }
   if (m.tools.length) lines.push(`쓰는 도구: ${m.tools.join(", ")}.`)
   if (m.payer === "none") lines.push("유료 구독은 없습니다.")
-  else if (m.payer) lines.push(`유료 구독: ${{ company: "회사 부담", personal: "개인 부담", both: "회사 · 개인 둘 다" }[m.payer] ?? m.payer}${m.monthlyFeeKrw ? ` · 월 ${m.monthlyFeeKrw.toLocaleString("ko-KR")}원` : ""}.`)
+  else if (m.payer) lines.push(`유료 구독: ${{ company: "회사 부담", personal: "개인 부담", both: "회사 · 개인 둘 다" }[m.payer] ?? m.payer}${m.monthlyFeeKrw ? ` · 월 ${m.monthlyFeeKrw.toLocaleString("ko-KR")}원${m.atLeast?.fee ? " 이상" : "쯤"}` : ""}.`)
   const tasks = (Object.entries(m.taskShare) as [TaskKind, number][]).sort((a, b) => b[1] - a[1]).map(([k, p]) => `${TASK_KINDS[k]} ${p}%`)
   if (tasks.length) lines.push(`주로 하는 작업: ${tasks.join(" · ")}.`)
   const wishes = [...m.wishTags.filter((t) => t !== "other").map((t) => WISH_TAGS[t]), ...m.wishNotes]

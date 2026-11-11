@@ -1,8 +1,12 @@
 // AI 활용 설문 — 순수 규칙(prisma · 모델 없음). 시험: lib/ai-survey/rules.test.ts
 //
 // 정해진 문항은 없다. 대신 세 목적이 「채워졌다」 고 볼 칸(slot)만 정해 둔다 —
-// 에이전트는 남은 칸 가운데 무엇을 어떤 말 · 어떤 보기로 물을지 정하고, 코드는 폼 응답을 칸에 그대로 옮긴다.
+// 에이전트는 남은 칸 가운데 무엇을 어떤 말 · 어떤 보기로 물을지 정하고, 코드는 응답을 칸에 그대로 옮긴다.
 // 그래서 충족도 · 끝낼 때 · 수치 지표는 모델이 아니라 코드가 정한다(같은 응답이면 같은 숫자).
+//
+// 입력은 두 갈래다(작업지시자 2026-11-11):
+//   range — 범위 · 숫자 칸. 슬라이더 · 구간 칩 · 척도로만 답한다. 글로 받지 않는다(글에서 숫자를 읽어도 범위 입력으로 확정한다).
+//   chat  — 나머지 칸. 입력창에 말로 답하고, 보기 칩은 추천 답이다. 말로 한 답은 모델이 칸 값으로 옮기되 값 목록은 코드가 검증한다.
 // 계획: mydocs/plans/2026-11-11-ai-usage-survey.md
 
 export const PURPOSES = ["usage", "tasks", "wishes"] as const
@@ -38,11 +42,27 @@ export const PAYERS = { none: "유료로 쓰지 않음", company: "회사가 냄
 export const LIMIT_HITS = { never: "없음", sometimes: "가끔", often: "자주" } as const
 export const TASK_SIZES = { short: "한두 문장 주고받기", medium: "문서 한 건 정도", long: "여러 파일 · 긴 작업" } as const
 
-export type FieldKind = "single" | "multi" | "slider" | "number" | "scale" | "text"
-const FIELD_KINDS: readonly FieldKind[] = ["single", "multi", "slider", "number", "scale", "text"]
+export type FieldKind = "single" | "multi" | "slider" | "bucket" | "scale" | "text"
+export type FieldMode = "range" | "chat"
+/** 이 칸은 범위 입력으로 답하나, 말(과 추천 칩)로 답하나 */
+export const fieldMode = (f: { kind: FieldKind }): FieldMode => (f.kind === "slider" || f.kind === "bucket" || f.kind === "scale" ? "range" : "chat")
+
+interface Bucket {
+  label: string
+  /** 지표가 쓰는 대표값. 「그 이상」 구간이면 그 구간의 하한 */
+  num: number
+  /** 이 구간에 드는 가장 큰 수 — 글에서 읽은 숫자를 구간에 넣을 때 쓴다. 「그 이상」 구간에는 없다 */
+  upTo?: number
+  over?: true
+}
+
+type NumberInput =
+  /** max 가 「그 이상」 끝값이면 overLabel — 그 자리를 고르면 하한으로 센다 */
+  | { kind: "slider"; min: number; max: number; step: number; unit: string; overLabel?: string }
+  | { kind: "bucket"; unit: string; buckets: readonly Bucket[] }
 
 type SlotType =
-  | { type: "number"; kind: "slider" | "number"; min: number; max: number; step: number; unit: string }
+  | { type: "number"; input: NumberInput }
   | { type: "enum"; values: Record<string, string> }
   | { type: "tags"; values: Record<string, string> }
   | { type: "labels"; defaults: readonly string[] }
@@ -57,13 +77,39 @@ interface SlotDef {
   shape: SlotType
 }
 
+// 범위의 근거는 omnis-reports/ai-usage-survey-261111/chat-style/v2-ranges.md 표에 있다. 고치면 그 표도 같이 고친다.
 export const SLOTS = {
-  daysPerWeek: { purpose: "usage", weight: 30, about: "회사 일에 AI 를 쓰는 날 수(주 5일 중)", shape: { type: "number", kind: "slider", min: 0, max: 5, step: 1, unit: "일" } },
-  hoursPerDay: { purpose: "usage", weight: 25, about: "쓰는 날 하루에 AI 와 보내는 시간", shape: { type: "number", kind: "slider", min: 0, max: 8, step: 0.5, unit: "시간" } },
-  sessionsPerDay: { purpose: "usage", weight: 25, about: "쓰는 날 하루에 AI 에게 묻는 횟수(hoursPerDay 대신 물어도 된다)", shape: { type: "number", kind: "number", min: 0, max: 200, step: 1, unit: "번" } },
+  // 주말에도 쓰는 사람이 있다 — 근무일(5)이 아니라 일주일(7)이 상한이다(작업지시자 2026-11-11)
+  daysPerWeek: { purpose: "usage", weight: 30, about: "회사 일에 AI 를 쓰는 날 수(일주일 7일 중, 주말 포함)", shape: { type: "number", input: { kind: "slider", min: 0, max: 7, step: 1, unit: "일" } } },
+  hoursPerDay: { purpose: "usage", weight: 25, about: "쓰는 날 하루에 AI 와 보내는 시간", shape: { type: "number", input: { kind: "slider", min: 0, max: 10, step: 0.5, unit: "시간", overLabel: "10시간 이상" } } },
+  sessionsPerDay: {
+    purpose: "usage", weight: 25, about: "쓰는 날 하루에 AI 에게 묻는 횟수(hoursPerDay 대신 물어도 된다)",
+    shape: {
+      type: "number",
+      input: {
+        kind: "bucket", unit: "번",
+        buckets: [
+          { label: "1~2번", num: 2, upTo: 2 }, { label: "3~5번", num: 4, upTo: 5 }, { label: "6~10번", num: 8, upTo: 10 },
+          { label: "11~30번", num: 20, upTo: 30 }, { label: "31~50번", num: 40, upTo: 50 }, { label: "50번 넘게", num: 50, over: true },
+        ],
+      },
+    },
+  },
   tools: { purpose: "usage", weight: 15, about: "쓰는 AI 도구", shape: { type: "labels", defaults: ["ChatGPT", "Claude", "Gemini", "Copilot", "옴니스"] } },
   payer: { purpose: "usage", weight: 10, about: "유료 구독 여부와 누가 내는지", shape: { type: "enum", values: PAYERS } },
-  monthlyFeeKrw: { purpose: "usage", weight: 10, about: "유료 구독 월 금액 합계(원)", shape: { type: "number", kind: "number", min: 0, max: 1_000_000, step: 1000, unit: "원" } },
+  monthlyFeeKrw: {
+    purpose: "usage", weight: 10, about: "유료 구독 월 금액 합계(원)",
+    shape: {
+      type: "number",
+      input: {
+        kind: "bucket", unit: "원",
+        buckets: [
+          { label: "3만원 미만", num: 15_000, upTo: 24_999 }, { label: "3만원쯤 (20달러 요금제 하나)", num: 30_000, upTo: 39_999 }, { label: "4~8만원", num: 60_000, upTo: 89_999 },
+          { label: "9~20만원 (100달러 요금제)", num: 150_000, upTo: 209_999 }, { label: "21~40만원 (200달러 요금제)", num: 300_000, upTo: 400_000 }, { label: "40만원 넘게", num: 400_000, over: true },
+        ],
+      },
+    },
+  },
   limitHit: { purpose: "usage", weight: 10, about: "사용 한도에 걸려 본 경험", shape: { type: "enum", values: LIMIT_HITS } },
   taskKinds: { purpose: "tasks", weight: 50, about: "AI 로 하는 작업 종류(여러 개)", shape: { type: "tags", values: TASK_KINDS } },
   mainTask: { purpose: "tasks", weight: 25, about: "그중 가장 많이 하는 작업 하나", shape: { type: "enum", values: TASK_KINDS } },
@@ -80,14 +126,19 @@ export const MAX_FREE_TURNS = 3
 /** 이만큼 물었으면 남은 칸이 있어도 마무리한다 — 끝나지 않는 설문을 막는다 */
 export const MAX_TURNS = 14
 export const MAX_FIELDS = 3
-export const OTHER_MAX = 80
-export const TEXT_MAX = 120
+/** 말로 한 답의 길이 */
+export const SAY_MAX = 300
+const LABEL_MAX = 60
 
 export interface FieldOption {
   id: string
   label: string
   /** enum · tags 칸이면 그 값 */
   value?: string
+  /** 구간 칩이면 대표값 · 그 구간에 드는 가장 큰 수 */
+  num?: number
+  upTo?: number
+  over?: true
 }
 
 export interface Field {
@@ -101,8 +152,8 @@ export interface Field {
   max?: number
   step?: number
   unit?: string
-  /** 「기타」 한 줄 */
-  allowOther?: boolean
+  /** 슬라이더 끝값이 「그 이상」 일 때 그 자리의 이름 */
+  overLabel?: string
   /** 척도 양 끝 */
   minLabel?: string
   maxLabel?: string
@@ -113,8 +164,11 @@ export interface Ask {
   fields: Field[]
 }
 
-/** 「잘 모르겠음」 은 어느 칸에서나 고를 수 있다 */
-export type FieldAnswer = { unknown: true } | { choice: string[]; other?: string } | { num: number } | { text: string }
+/**
+ * 한 칸의 응답. 「잘 모르겠음」 은 어느 칸에서나 고를 수 있다.
+ * said 는 말로 한 답 — 서버가 만든다(화면이 보내는 것은 글뿐이다). labels 는 「…로 이해했어요」 에 보이는, 칸으로 옮긴 결과.
+ */
+export type FieldAnswer = { unknown: true } | { choice: string[] } | { num: number } | { said: string; values?: string[]; labels: string[]; others?: string[] }
 export type AnswerValues = Record<string, FieldAnswer>
 
 export interface Fact {
@@ -122,11 +176,12 @@ export interface Fact {
   turnId: string
   unknown?: true
   num?: number
+  /** 「그 이상」 끝값을 골랐다 — num 은 하한이다 */
+  over?: true
   values?: string[]
   labels?: string[]
   /** tags 칸에서 「기타」 로 센 글 */
   others?: string[]
-  text?: string
 }
 export type Facts = Partial<Record<Slot, Fact>>
 
@@ -136,6 +191,12 @@ export interface Turn {
   answer?: AnswerValues
   askedAt: string
   answeredAt?: string
+  /** 답을 고쳤다 — from 은 고치기 전 답(말풍선에 「앞 답 → 새 답 · 수정됨」) */
+  edited?: { from: string; at: string }
+  /** 이 질문을 만들 때 가장 최근에 답한 질문 — 후속 질문(free)의 근거 */
+  basis?: string
+  /** 근거가 된 답이 바뀌어 버린 후속 질문 */
+  stale?: true
   /** 질문을 만든 쪽 — 모델이 못 만들면 준비된 질문(fallback) */
   source: "model" | "fallback"
   /** 서버에서 잰 시간(ms) — 요청을 받은 때부터 질문 첫 글자 · 폼 완성까지 */
@@ -242,7 +303,7 @@ function tagOptions(values: Record<string, string>, raw: RawField["options"]): F
     const v = clean(o?.value, 40)
     if (!label || seen.has(label) || out.length >= 8) continue
     seen.add(label)
-    // 「기타」 는 폼이 따로 한 줄로 받는다
+    // 「기타」 는 말로 받는다 — 칩으로 두지 않는다
     if (v === "other") continue
     out.push({ id: `o${out.length + 1}`, label, value: v in values ? v : "other" })
   }
@@ -255,14 +316,17 @@ function labelOptions(defaults: readonly string[], raw: RawField["options"]): Fi
   return (labels.length >= 2 ? labels : [...defaults]).map((label, i) => ({ id: `o${i + 1}`, label }))
 }
 
-/** 칸 하나의 폼. 범위 · 값 목록은 코드가 정하고 모델에게서는 말(보기 이름)만 받는다. 만들 수 없으면 null */
+/** 칸 하나의 폼. 범위 · 구간 · 값 목록은 코드가 정하고 모델에게서는 말(보기 이름)만 받는다. 만들 수 없으면 null */
 function buildField(id: string, slot: Slot, raw: RawField, facts: Facts): Field | null {
   const def = SLOTS[slot]
   const label = clean(raw.label, 30) || undefined
   const shape: SlotType = def.shape
   switch (shape.type) {
-    case "number":
-      return { id, slot, kind: raw.kind === "slider" || raw.kind === "number" ? raw.kind : shape.kind, label, min: shape.min, max: shape.max, step: shape.step, unit: shape.unit }
+    case "number": {
+      const i = shape.input
+      if (i.kind === "slider") return { id, slot, kind: "slider", label, min: i.min, max: i.max, step: i.step, unit: i.unit, ...(i.overLabel ? { overLabel: i.overLabel } : {}) }
+      return { id, slot, kind: "bucket", label, unit: i.unit, options: i.buckets.map((b: Bucket, n) => ({ id: `o${n + 1}`, label: b.label, num: b.num, ...(b.upTo !== undefined ? { upTo: b.upTo } : {}), ...(b.over ? { over: true as const } : {}) })) }
+    }
     case "enum": {
       // 가장 많이 하는 작업은 앞에서 고른 작업 안에서만
       const allow = slot === "mainTask" ? facts.taskKinds?.values : undefined
@@ -270,17 +334,17 @@ function buildField(id: string, slot: Slot, raw: RawField, facts: Facts): Field 
       return options.length >= 2 ? { id, slot, kind: "single", label, options } : null
     }
     case "tags":
-      return { id, slot, kind: "multi", label, options: tagOptions(shape.values, raw.options), allowOther: true }
+      return { id, slot, kind: "multi", label, options: tagOptions(shape.values, raw.options) }
     case "labels":
-      return { id, slot, kind: "multi", label, options: labelOptions(shape.defaults, raw.options), allowOther: true }
+      return { id, slot, kind: "multi", label, options: labelOptions(shape.defaults, raw.options) }
     case "free": {
-      const kind = FIELD_KINDS.includes(raw.kind as FieldKind) ? (raw.kind as FieldKind) : null
-      if (!kind) return null
+      // 숫자를 글로 받지 않는다 — number 는 슬라이더로
+      const kind = raw.kind === "number" ? "slider" : raw.kind
       if (kind === "single" || kind === "multi") {
         const options = labelOptions([], raw.options)
-        return options.length >= 2 ? { id, slot, kind, label, options, allowOther: true } : null
+        return options.length >= 2 ? { id, slot, kind, label, options } : null
       }
-      if (kind === "slider" || kind === "number") {
+      if (kind === "slider") {
         const min = Number(raw.min ?? 0)
         const max = Number(raw.max)
         if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min || max - min > 1_000_000) return null
@@ -291,7 +355,7 @@ function buildField(id: string, slot: Slot, raw: RawField, facts: Facts): Field 
         const ends = (raw.options ?? []).map((o) => clean(o?.label, 20)).filter(Boolean)
         return { id, slot, kind, label, min: 1, max: 5, step: 1, minLabel: ends[0] ?? "전혀 아니다", maxLabel: ends[1] ?? "매우 그렇다" }
       }
-      return { id, slot, kind: "text", label }
+      return kind === "text" ? { id, slot, kind: "text", label } : null
     }
   }
 }
@@ -301,6 +365,7 @@ export const freeTurns = (turns: Pick<Turn, "ask">[]) => turns.filter((t) => t.a
 
 /**
  * 모델이 낸 질문 → 화면에 그릴 폼. 이미 채운 칸 · 지금 물을 수 없는 칸 · 모르는 칸은 버린다.
+ * 한 질문은 한 갈래다: 범위 칸끼리는 3개까지 묶고, 말로 답하는 칸은 하나만 묻는다(첫 칸의 갈래를 따른다).
  * 남는 칸이 없거나 질문 글이 비면 null — 부르는 쪽이 준비된 질문(fallbackAsk)을 쓴다.
  */
 export function normalizeAsk(raw: RawAsk | null | undefined, facts: Facts, freeUsed = 0): Ask | null {
@@ -318,16 +383,15 @@ export function normalizeAsk(raw: RawAsk | null | undefined, facts: Facts, freeU
     if ((slot === "hoursPerDay" && used.has("sessionsPerDay")) || (slot === "sessionsPerDay" && used.has("hoursPerDay"))) continue
     const f = buildField(`f${fields.length + 1}`, slot, rf, facts)
     if (!f) continue
+    if (fields.length > 0 && (fieldMode(fields[0]) === "chat" || fieldMode(f) === "chat")) continue
     used.add(slot)
     fields.push(f)
   }
-  // 후속 질문만으로는 설문이 나아가지 않는다 — 칸이 남았으면 칸을 하나는 물어야 한다
-  if (fields.length === 0 || (open.size > 0 && fields.every((f) => f.slot === "free"))) return null
-  return { question, fields }
+  return fields.length ? { question, fields } : null
 }
 
 const FALLBACK_QUESTION: Record<Exclude<Slot, "free">, string> = {
-  daysPerWeek: "회사 일을 하면서 AI 를 일주일에 며칠 쓰세요?",
+  daysPerWeek: "회사 일을 하면서 AI 를 일주일에 며칠 쓰세요? 주말도 넣어서요.",
   hoursPerDay: "쓰는 날에는 하루에 얼마나 쓰세요?",
   sessionsPerDay: "쓰는 날에는 하루에 몇 번쯤 물어보세요?",
   tools: "어떤 AI 도구를 쓰세요?",
@@ -373,7 +437,10 @@ export function fallbackAsk(facts: Facts): Ask | null {
 
 // ─── 응답 ─────────────────────────────────────────────
 
-/** 폼에 맞지 않는 응답이면 까닭, 맞으면 null */
+/**
+ * 화면이 폼으로 보낸 응답이 그 폼에 맞나. 맞지 않으면 까닭, 맞으면 null.
+ * 글만 받는 칸(text)과 말로 한 답(said)은 여기로 오지 않는다 — 글은 서버가 칸으로 옮긴다(resolveSay).
+ */
 export function validateAnswer(ask: Ask, values: unknown): string | null {
   if (!values || typeof values !== "object" || Array.isArray(values)) return "응답 모양이 잘못됐습니다"
   const v = values as Record<string, unknown>
@@ -382,63 +449,259 @@ export function validateAnswer(ask: Ask, values: unknown): string | null {
     const a = v[f.id] as Record<string, unknown> | undefined
     if (!a || typeof a !== "object") return "답하지 않은 칸이 있습니다"
     if (a.unknown === true) continue
-    if (f.kind === "single" || f.kind === "multi") {
+    if (f.kind === "text") return "이 질문은 입력창에 말로 답해 주세요"
+    if (f.kind === "single" || f.kind === "multi" || f.kind === "bucket") {
       const choice = a.choice
-      if (!Array.isArray(choice) || choice.some((c) => typeof c !== "string")) return "보기를 골라 주세요"
+      if (!Array.isArray(choice) || choice.some((c) => typeof c !== "string") || choice.length === 0) return "보기를 골라 주세요"
       if (new Set(choice).size !== choice.length || choice.some((c) => !f.options?.some((o) => o.id === c))) return "폼에 없는 보기입니다"
-      const other = a.other === undefined ? "" : typeof a.other === "string" ? a.other.trim() : null
-      if (other === null || other.length > OTHER_MAX) return `기타는 ${OTHER_MAX}자까지입니다`
-      if (other && !f.allowOther) return "이 칸은 기타를 받지 않습니다"
-      const picked = choice.length + (other ? 1 : 0)
-      if (picked === 0) return "보기를 골라 주세요"
-      if (f.kind === "single" && picked !== 1) return "하나만 골라 주세요"
-      continue
-    }
-    if (f.kind === "text") {
-      if (typeof a.text !== "string" || !a.text.trim()) return "내용을 적어 주세요"
-      if (a.text.trim().length > TEXT_MAX) return `${TEXT_MAX}자까지입니다`
+      if (f.kind !== "multi" && choice.length !== 1) return "하나만 골라 주세요"
       continue
     }
     const n = a.num
-    if (typeof n !== "number" || !Number.isFinite(n)) return "숫자를 넣어 주세요"
+    if (typeof n !== "number" || !Number.isFinite(n)) return "범위에서 골라 주세요"
     if (n < (f.min ?? 0) || n > (f.max ?? Number.MAX_SAFE_INTEGER)) return "범위를 벗어난 값입니다"
     if (f.kind === "scale" && !Number.isInteger(n)) return "1~5 중에서 골라 주세요"
   }
   return null
 }
 
-/** 폼 응답을 칸에 옮긴다. validateAnswer 를 통과한 값만 넘긴다 */
+/** 응답을 칸에 옮긴다. validateAnswer 를 통과했거나 서버가 만든(said) 값만 넘긴다 */
 export function applyAnswer(facts: Facts, ask: Ask, values: AnswerValues, turnId: string): Facts {
   const next: Facts = { ...facts }
   for (const f of ask.fields) {
     if (f.slot === "free") continue
     const a = values[f.id]
     if (!a) continue
+    const shape: SlotType = SLOTS[f.slot].shape
     if ("unknown" in a) {
       next[f.slot] = { turnId, unknown: true }
     } else if ("choice" in a) {
       const picked = (f.options ?? []).filter((o) => a.choice.includes(o.id))
-      const other = a.other?.trim()
-      const labels = [...picked.map((o) => o.label), ...(other ? [other] : [])]
-      const shape: SlotType = SLOTS[f.slot].shape
-      const values2 = shape.type === "labels" ? undefined : [...new Set([...picked.map((o) => o.value ?? "other"), ...(other ? ["other"] : [])])]
-      // 값 목록에 없던 보기 · 직접 적은 글 — 태그로는 「기타」 하나지만 글은 남긴다
-      const others = shape.type === "tags" ? [...picked.filter((o) => (o.value ?? "other") === "other").map((o) => o.label), ...(other ? [other] : [])] : []
-      next[f.slot] = { turnId, labels, ...(values2 ? { values: values2 } : {}), ...(others.length ? { others } : {}) }
+      const labels = picked.map((o) => o.label)
+      if (shape.type === "number") {
+        // 구간 칩 — 대표값. 「그 이상」 이면 하한
+        const o = picked[0]
+        if (o?.num !== undefined) next[f.slot] = { turnId, num: o.num, labels, ...(o.over ? { over: true as const } : {}) }
+      } else if (shape.type === "labels") {
+        next[f.slot] = { turnId, labels }
+      } else {
+        // 값 목록에 없던 보기 — 태그로는 「기타」 하나지만 글은 남긴다
+        const others = shape.type === "tags" ? picked.filter((o) => (o.value ?? "other") === "other").map((o) => o.label) : []
+        next[f.slot] = { turnId, labels, values: [...new Set(picked.map((o) => o.value ?? "other"))], ...(others.length ? { others } : {}) }
+      }
     } else if ("num" in a) {
-      next[f.slot] = { turnId, num: a.num }
-    } else {
-      next[f.slot] = { turnId, text: a.text.trim() }
+      next[f.slot] = { turnId, num: a.num, ...(f.overLabel && a.num >= (f.max ?? Infinity) ? { over: true as const } : {}) }
+    } else if (shape.type === "labels") {
+      next[f.slot] = { turnId, labels: a.labels }
+    } else if (shape.type !== "number" && a.values?.length) {
+      next[f.slot] = { turnId, labels: a.labels, values: a.values, ...(a.others?.length ? { others: a.others } : {}) }
     }
   }
   return next
 }
 
-/** 응답 한 칸을 사람이 읽는 글로 — 지난 답 목록 · 모델에게 주는 대화 기록 */
+/** 앞 답이 바뀌어 뜻이 없어진 칸을 지운다 — 0일이면 사용량 · 작업, 유료가 아니면 금액, 작업이 하나면(또는 고른 작업 밖이면) 가장 많이 하는 작업 */
+export function pruneFacts(facts: Facts): Facts {
+  const next: Facts = { ...facts }
+  if (num(next, "daysPerWeek") === 0) {
+    for (const s of SLOT_NAMES) if (s !== "daysPerWeek" && (SLOTS[s].purpose === "usage" || SLOTS[s].purpose === "tasks")) delete next[s]
+  }
+  const p = next.payer
+  if (p && (p.unknown || p.values?.[0] === "none")) delete next.monthlyFeeKrw
+  const k = next.taskKinds
+  const main = next.mainTask?.values?.[0]
+  if (k && (k.unknown || (k.values?.length ?? 0) <= 1 || (main !== undefined && !k.values?.includes(main)))) delete next.mainTask
+  return next
+}
+
+/** 지금의 답 전부 → 칸. 고친 답도 제자리에서 다시 옮기므로 순서와 무관하게 같은 결과가 나온다 */
+export function factsOf(turns: Turn[]): Facts {
+  let facts: Facts = {}
+  for (const t of turns) if (t.answer) facts = applyAnswer(facts, t.ask, t.answer, t.id)
+  return pruneFacts(facts)
+}
+
+/** 이 답은 더 쓰이지 않는다 — 앞 답이 바뀌어 칸에서 지워졌거나, 근거가 바뀐 후속 질문이다. 말풍선을 흐리게 그린다 */
+export function turnDead(turn: Turn, facts: Facts): boolean {
+  if (!turn.answer) return false
+  const real = turn.ask.fields.filter((f) => f.slot !== "free")
+  if (real.length === 0) return turn.stale === true
+  return real.every((f) => facts[f.slot]?.turnId !== turn.id)
+}
+
+/** 묻던 질문이 아직 필요한가 — 고친 답 때문에 물을 필요가 없어졌으면 그 질문을 걷는다 */
+export function pendingNeeded(turn: Turn, facts: Facts): boolean {
+  const open = new Set<Slot>(missingSlots(facts))
+  const real = turn.ask.fields.filter((f) => f.slot !== "free")
+  return real.length === 0 ? turn.stale !== true : real.every((f) => open.has(f.slot))
+}
+
+/**
+ * 지난 답 하나를 고친다 — 그 자리에서 답만 바꾼다(대화를 되돌리지 않는다).
+ * 그 답을 근거로 물었던 후속 질문(free)은 버린다. 칸은 부르는 쪽이 factsOf 로 다시 만든다.
+ * 없는 질문 · 아직 답하지 않은 질문이면 null.
+ */
+export function editTurn(turns: Turn[], turnId: string, answer: AnswerValues, at: string): Turn[] | null {
+  const i = turns.findIndex((t) => t.id === turnId)
+  const old = turns[i]
+  if (!old?.answer) return null
+  const before = old.ask.fields.map((f) => answerText(f, old.answer?.[f.id])).join(" / ")
+  const after = old.ask.fields.map((f) => answerText(f, answer[f.id])).join(" / ")
+  // 같은 답을 다시 고르면 고친 것이 아니다. 여러 번 고쳐도 「처음 답」 을 남긴다
+  const edited = before === after ? old.edited : { from: old.edited?.from ?? before, at }
+  return turns.map((t, n) => {
+    if (n === i) return { ...t, answer, ...(edited ? { edited } : {}) }
+    if (n > i && t.basis === turnId && t.ask.fields.some((f) => f.slot === "free")) return { ...t, stale: true as const }
+    return t
+  })
+}
+
+/** 응답 한 칸을 사람이 읽는 글로 — 내 말풍선 · 모델에게 주는 대화 기록 */
 export function answerText(f: Field, a: FieldAnswer | undefined): string {
   if (!a) return ""
   if ("unknown" in a) return "잘 모르겠음"
-  if ("choice" in a) return [...(f.options ?? []).filter((o) => a.choice.includes(o.id)).map((o) => o.label), ...(a.other?.trim() ? [a.other.trim()] : [])].join(", ")
-  if ("num" in a) return f.kind === "scale" ? `${a.num} / 5` : `${a.num.toLocaleString("ko-KR")}${f.unit ?? ""}`
-  return a.text
+  if ("choice" in a) return (f.options ?? []).filter((o) => a.choice.includes(o.id)).map((o) => o.label).join(", ")
+  if ("num" in a) {
+    if (f.kind === "scale") return `${a.num} / 5`
+    return f.overLabel && a.num >= (f.max ?? Infinity) ? f.overLabel : `${a.num.toLocaleString("ko-KR")}${f.unit ?? ""}`
+  }
+  return a.said
+}
+
+/** 말로 한 답을 칸으로 옮긴 결과 — 「…로 이해했어요」. 말로 한 답이 아니거나 글 그대로면 빈 글 */
+export function understoodText(a: FieldAnswer | undefined): string {
+  if (!a || !("said" in a)) return ""
+  const got = a.labels.join(", ")
+  return got === a.said ? "" : got
+}
+
+// ─── 말로 한 답 ─────────────────────────────────────────────
+
+/** 모델(또는 guessSay)이 글에서 읽어 낸 것. 값 목록 · 범위는 resolveSay 가 다시 검증한다 */
+export interface RawSay {
+  /** 어느 칸에 대한 말인가 */
+  target?: string | null
+  /** enum · tags 칸의 값 */
+  values?: (string | null | undefined)[] | null
+  /** 값 목록에 없는 것 · 이름 그대로 남길 것(도구 · 아쉬운 점) */
+  labels?: (string | null | undefined)[] | null
+  /** 범위 칸의 숫자 */
+  num?: number | null
+  unknown?: boolean | null
+}
+
+export type SayResult =
+  /** 범위 칸 — 글로 확정하지 않는다. 화면이 그 질문의 범위 입력을 이 값으로 맞춰 띄운다 */
+  | { kind: "range"; turnId: string; fieldId: string; num: number | null }
+  | { kind: "set"; turnId: string; answer: AnswerValues }
+  | { kind: "unclear"; reason: "no-target" | "not-asked" | "no-value" }
+
+/** 범위 입력이 받을 수 있는 값으로 맞춘다 — 슬라이더는 눈금, 구간 칩은 그 수가 드는 구간의 대표값 */
+export function snapNum(f: Field, n: number): number | null {
+  if (!Number.isFinite(n)) return null
+  if (f.kind === "bucket") {
+    // 그 수가 드는 첫 구간. 어느 구간의 끝보다도 크면 마지막(그 이상) 구간
+    const opts = (f.options ?? []).filter((o) => o.num !== undefined)
+    if (opts.length === 0 || n < 0) return null
+    return (opts.find((o) => o.upTo !== undefined && n <= o.upTo) ?? opts[opts.length - 1]).num!
+  }
+  const min = f.min ?? 0
+  const max = f.max ?? min
+  const step = f.step ?? 1
+  const snapped = Math.round((Math.min(Math.max(n, min), max) - min) / step) * step + min
+  return Math.round(snapped * 1000) / 1000
+}
+
+function saidAnswer(f: Field, raw: RawSay, text: string): FieldAnswer | null {
+  if (raw.unknown === true) return { unknown: true }
+  const said = clean(text, SAY_MAX)
+  const shape: SlotType = SLOTS[f.slot].shape
+  const labels = [...new Set((raw.labels ?? []).map((l) => clean(l, LABEL_MAX)).filter(Boolean))].slice(0, 6)
+  const values = [...new Set((raw.values ?? []).map((v) => clean(v, 40)).filter(Boolean))]
+  if (shape.type === "free") return said ? { said, labels: labels.length ? labels : [said] } : null
+  if (shape.type === "labels") {
+    const got = labels.length ? labels : said && said.length <= LABEL_MAX ? [said] : []
+    return got.length ? { said, labels: got } : null
+  }
+  if (shape.type === "enum") {
+    // 폼이 낸 보기 안에서만(가장 많이 하는 작업은 고른 작업 안에서만)
+    const o = (f.options ?? []).find((x) => x.value !== undefined && values.includes(x.value))
+    return o ? { said, values: [o.value!], labels: [shape.values[o.value!] ?? o.label] } : null
+  }
+  if (shape.type === "tags") {
+    const ok = values.filter((v) => v in shape.values && v !== "other")
+    if (ok.length + labels.length === 0) return null
+    return { said, values: [...ok, ...(labels.length ? ["other"] : [])], labels: [...ok.map((v) => shape.values[v]), ...labels], ...(labels.length ? { others: labels } : {}) }
+  }
+  return null
+}
+
+/**
+ * 글에서 읽어 낸 것 → 무엇을 할지. 대상은 지금 묻는 질문이거나 이미 답한 질문이다(「아까 4일 아니고 3일」).
+ * only 를 주면 그 질문만 본다(말풍선을 눌러 고치는 중).
+ */
+export function resolveSay(raw: RawSay | null | undefined, text: string, turns: Turn[], only?: string): SayResult {
+  const scope = only ? turns.filter((t) => t.id === only) : turns
+  const pending = scope.findLast((t) => !t.answer) ?? (only ? scope[0] : undefined)
+  const target = SLOT_NAMES.includes(raw?.target as Slot) ? (raw!.target as Slot) : null
+  // 가장 최근 것부터 — 같은 칸을 두 번 물었으면 뒤의 것이 지금의 답이다
+  let hit: { turn: Turn; field: Field } | undefined
+  if (target) {
+    for (const t of [...scope].reverse()) {
+      const f = t.ask.fields.find((x) => x.slot === target)
+      if (f && !t.stale) {
+        hit = { turn: t, field: f }
+        break
+      }
+    }
+  }
+  // 대상을 못 짚었어도 지금 묻는 질문이 칸 하나면 그 답으로 본다
+  if (!hit && pending && pending.ask.fields.length === 1 && (!target || only)) hit = { turn: pending, field: pending.ask.fields[0] }
+  if (!hit) return { kind: "unclear", reason: target ? "not-asked" : "no-target" }
+  const { turn, field } = hit
+  if (fieldMode(field) === "range") {
+    return { kind: "range", turnId: turn.id, fieldId: field.id, num: typeof raw?.num === "number" ? snapNum(field, raw.num) : null }
+  }
+  const a = saidAnswer(field, raw ?? {}, text)
+  if (!a) return { kind: "unclear", reason: "no-value" }
+  return { kind: "set", turnId: turn.id, answer: { ...(turn.answer ?? {}), [field.id]: a } }
+}
+
+const norm = (s: string) => s.toLowerCase().replace(/[\s·.,/()~]+/g, "")
+
+/**
+ * 모델 없이 글을 읽는다 — 키 없음 · 비용 상한 · 오류 · 시험. 숫자 + 단위는 그 범위 칸으로,
+ * 그 밖에는 지금 묻는 질문의 보기 이름이 글에 들어 있는지 본다. 모델만큼 알아듣지는 못한다.
+ */
+export function guessSay(text: string, turns: Turn[], only?: string): RawSay {
+  const scope = only ? turns.filter((t) => t.id === only) : turns
+  if (/모르겠|몰라|글쎄/.test(text)) {
+    const p = scope.findLast((t) => !t.answer) ?? scope[0]
+    return { target: p?.ask.fields[0]?.slot ?? null, unknown: true }
+  }
+  const asked = (slot: Slot) => scope.some((t) => t.ask.fields.some((f) => f.slot === slot))
+  const last = (re: RegExp) => {
+    const m = [...text.matchAll(re)].at(-1)
+    return m ? Number(m[1].replace(/,/g, "")) : null
+  }
+  const units: [Slot, number | null][] = [
+    ["monthlyFeeKrw", (() => { const man = last(/(\d[\d,.]*)\s*만\s*원?/g); return man !== null ? man * 10_000 : last(/(\d[\d,]*)\s*원/g) })()],
+    ["hoursPerDay", last(/(\d+(?:\.\d+)?)\s*시간/g)],
+    ["sessionsPerDay", last(/(\d+)\s*(?:번|회)/g)],
+    ["daysPerWeek", /매일/.test(text) ? 7 : last(/(\d+)\s*일/g)],
+  ]
+  for (const [slot, n] of units) if (n !== null && asked(slot)) return { target: slot, num: n }
+  const p = scope.findLast((t) => !t.answer) ?? (only ? scope[0] : undefined)
+  const f = p?.ask.fields.length === 1 ? p.ask.fields[0] : undefined
+  if (!f) return { target: null }
+  const t = norm(text)
+  const picked = (f.options ?? []).filter((o) => norm(o.label).length >= 2 && t.includes(norm(o.label)))
+  const shape: SlotType = SLOTS[f.slot].shape
+  if (shape.type === "enum" || shape.type === "tags") {
+    const byName = Object.entries(shape.values).filter(([v, name]) => v !== "other" && t.includes(norm(name))).map(([v]) => v)
+    const values = [...new Set([...picked.map((o) => o.value).filter((v): v is string => !!v && v !== "other"), ...byName])]
+    // 보기에 없는 말은 글 그대로 「기타」 로
+    return { target: f.slot, values, labels: shape.type === "tags" && values.length === 0 ? [text] : [] }
+  }
+  return { target: f.slot, labels: picked.length ? picked.map((o) => o.label) : [text] }
 }
