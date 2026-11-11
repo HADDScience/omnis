@@ -10,7 +10,24 @@
  */
 import path from "node:path"
 import { expect, test, type Page } from "@playwright/test"
+import { PrismaClient } from "../../generated/prisma/client"
 import { quickLogin } from "./_setup"
+
+/**
+ * 제출한 응답은 API 로 지울 수 없다(기록으로 남는다) — 다시 돌릴 때 「아직 안 한 사람」 으로 시작하려면 DB 에서 비운다.
+ * 격리된 시험 DB(E2E_ISOLATED — CI · test:e2e:local)에서만. 데모 계정만
+ */
+async function clearSurveys(names: string[]) {
+  if (process.env.E2E_ISOLATED !== "true") return
+  const prisma = new PrismaClient()
+  const users = await prisma.user.findMany({ where: { name: { in: names } }, select: { id: true } })
+  await prisma.aiSurvey.deleteMany({ where: { userId: { in: users.map((u) => u.id) } } })
+  await prisma.$disconnect()
+}
+
+test.beforeAll(async () => {
+  await clearSurveys(["사원1", "사원2"])
+})
 
 const shots = process.env.AI_SURVEY_SHOTS
 
@@ -18,26 +35,38 @@ const shots = process.env.AI_SURVEY_SHOTS
 async function answerTurn(page: Page) {
   const turn = page.locator("[data-survey-turn]")
   const id = await turn.getAttribute("data-survey-turn")
-  const fields = turn.locator("[data-survey-field]")
-  const n = await fields.count()
+  // 묶음 범위 질문은 한 번에 한 칸만 펼친다 — 펼친 칸을 답하고, 아직 안 고른 접힌 칸이 있으면 펼쳐서 또 답한다
+  const done = new Set<string>()
+  let n = 0
   let instant = false
-  for (let i = 0; i < n; i++) {
-    const f = fields.nth(i)
-    const kind = await f.getAttribute("data-kind")
-    if (kind === "single" || kind === "bucket") {
-      instant = n === 1
-      await f.locator("[data-survey-option]").nth(1).click()
-    } else if (kind === "multi") {
-      await f.locator("[data-survey-option]").nth(0).click()
-      await f.locator("[data-survey-option]").nth(1).click()
-    } else if (kind === "slider") {
-      const box = (await f.locator("[data-slot=slider]").boundingBox())!
-      await page.mouse.click(box.x + box.width * 0.6, box.y + box.height / 2)
-    } else if (kind === "scale") {
-      await f.locator("[data-survey-scale='4']").click()
-    } else {
-      await turn.locator("[data-survey-input]").fill("시험 답")
+  for (let guard = 0; guard < 6; guard++) {
+    const fields = turn.locator("[data-survey-field]")
+    const count = await fields.count()
+    n = Math.max(n, count + (await turn.locator("[data-survey-field-summary]").count()))
+    for (let i = 0; i < count; i++) {
+      const f = fields.nth(i)
+      const slot = (await f.getAttribute("data-slot-name"))!
+      if (done.has(slot)) continue
+      done.add(slot)
+      const kind = await f.getAttribute("data-kind")
+      if (kind === "single" || kind === "bucket") {
+        instant = n === 1
+        await f.locator("[data-survey-option]").nth(1).click()
+      } else if (kind === "multi") {
+        await f.locator("[data-survey-option]").nth(0).click()
+        await f.locator("[data-survey-option]").nth(1).click()
+      } else if (kind === "slider") {
+        const box = (await f.locator("[data-slot=slider]").boundingBox())!
+        await page.mouse.click(box.x + box.width * 0.6, box.y + box.height / 2)
+      } else if (kind === "scale") {
+        await f.locator("[data-survey-scale='4']").click()
+      } else {
+        await turn.locator("[data-survey-input]").fill("시험 답")
+      }
     }
+    const left = turn.locator("[data-survey-field-summary]").filter({ hasText: "아직 안 골랐어요" })
+    if ((await left.count()) === 0) break
+    await left.first().click()
   }
   if (!instant) await turn.getByRole("button", { name: "보내기", exact: true }).click()
   // 다음 질문(또는 요약)이 뜰 때까지 — 기다리는 동안에는 폼이 없다
@@ -88,7 +117,24 @@ test.describe("AI 활용 설문 @settings", () => {
     await expect(turn.locator("[data-survey-unknown]").first()).toBeVisible()
     await expect(turn.getByRole("button", { name: "보내기", exact: true })).toBeDisabled()
     // 첫 질문은 주 사용 일수 — 일주일(0~7일)에서 고른다. 숫자를 글로 치는 칸이 없다
-    await expect(turn.locator('[data-slot-name="daysPerWeek"]')).toContainText("0일 ~ 7일")
+    const days0 = turn.locator('[data-slot-name="daysPerWeek"]')
+    await expect(days0).toContainText("0일")
+    await expect(days0).toContainText("7일")
+    // 슬라이더 위에 지금 값이 뜬다
+    const box0 = (await days0.locator("[data-slot=slider]").boundingBox())!
+    await page.mouse.click(box0.x + box0.width * 0.6, box0.y + box0.height / 2)
+    await expect(days0.locator("[data-survey-slider-value]")).toHaveText(/^\d일$/)
+    // 펼친 칸은 늘 하나 — 묶음 질문(모델)의 다른 칸은 한 줄 요약으로 접힌다(준비된 질문은 칸이 하나다) · 아래 시트는 화면의 40% 를 넘지 않는다
+    await expect(turn.locator("[data-survey-field]")).toHaveCount(1)
+    const dockH = (await page.locator("[data-survey-dock]").boundingBox())!.height
+    expect(dockH).toBeLessThanOrEqual(844 * 0.4 + 2)
+    // 「처음부터 다시」 는 아래 시트가 아니라 위 ⋯ 메뉴에 있다
+    await expect(page.locator("[data-survey-dock]").getByText("처음부터 다시")).toHaveCount(0)
+    await page.locator("[data-survey-menu]").click()
+    await expect(page.getByRole("menuitem", { name: "처음부터 다시" })).toBeVisible()
+    await page.keyboard.press("Escape")
+    await page.reload()
+    await expect(turn).toBeVisible({ timeout: 30_000 })
     await expect(turn.locator("input[type=number]")).toHaveCount(0)
     // 폰에서 가로로 넘치지 않는다
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
@@ -124,6 +170,8 @@ test.describe("AI 활용 설문 @settings", () => {
     await expect(answers).toHaveCount(3)
 
     // 말로 고친다 — 범위 칸은 범위 입력을 그 값으로 맞춰 띄워 확정한다
+    // 지금 질문이 범위 칸이면 입력창은 연필 단추 뒤에 접혀 있다
+    if (!(await input.isVisible())) await page.locator("[data-survey-fix]").click()
     await input.fill("아까 며칠이라고 했는데 6일로 고쳐줘")
     await page.locator("[data-survey-turn]").getByRole("button", { name: "보내기", exact: true }).click()
     await expect(editing.locator("[data-survey-slider-value]")).toHaveText("6일", { timeout: 30_000 })

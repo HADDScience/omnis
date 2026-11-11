@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { toast } from "sonner"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { ArrowUp01Icon, Cancel01Icon, MoreHorizontalIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons"
 
 import { MESSAGE_ENTER } from "@/components/chat/message-list"
 import { OmnisAvatar } from "@/components/messenger/omnis-room"
@@ -9,6 +11,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Spinner } from "@/components/ui/spinner"
 import { SURVEY_CHANGED_EVENT } from "@/lib/ai-survey/entry"
 import { PURPOSES, PURPOSE_LABEL, SAY_MAX, answerText, fieldMode, understoodText, type AnswerValues, type Field, type FieldAnswer, type Purpose } from "@/lib/ai-survey/rules"
@@ -22,10 +25,10 @@ import { SurveyMetrics } from "./survey-metrics"
 const MIN_TYPING_MS = 450
 
 /** 세 목적 충족도 — 대화 위에 얇게 붙어 있다 */
-function CoverageBars({ coverage }: { coverage: Record<Purpose, number> }) {
+function CoverageBars({ coverage, menu }: { coverage: Record<Purpose, number>; menu?: ReactNode }) {
   return (
-    <div className="shrink-0 border-b bg-background">
-      <div data-survey-coverage className="mx-auto grid w-full max-w-[720px] grid-cols-3 items-end gap-3 px-4 py-2 sm:px-6">
+    <div className="flex shrink-0 items-center gap-2 border-b bg-background pr-2 sm:pr-4">
+      <div data-survey-coverage className="mx-auto grid w-full max-w-[720px] min-w-0 flex-1 grid-cols-3 items-end gap-3 py-2 pl-4 sm:pl-6">
         {PURPOSES.map((p) => (
           <div key={p} className="flex min-w-0 flex-col gap-1">
             {/* 좁은 화면(200px)에서는 이름이 줄을 바꾼다 — 말줄임으로 자르지 않는다 */}
@@ -39,6 +42,7 @@ function CoverageBars({ coverage }: { coverage: Record<Purpose, number> }) {
           </div>
         ))}
       </div>
+      {menu}
     </div>
   )
 }
@@ -159,6 +163,22 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
   /** 지금 질문을 받기까지 화면에서 잰 시간 — 그 질문의 응답과 함께 보낸다 */
   const seen = useRef<{ turnId: string; first: number; ready: number } | null>(null)
   const thread = useRef<HTMLDivElement>(null)
+  /** 떠 있는 시트 — 그 높이만큼 대화 끝을 비운다 */
+  const dockRef = useRef<HTMLDivElement>(null)
+  const [dockH, setDockH] = useState(120)
+  useEffect(() => {
+    const el = dockRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setDockH(el.getBoundingClientRect().height))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  /** 묶음 범위 질문에서 펼친 칸 */
+  const [focusIdx, setFocusIdx] = useState(0)
+  /** 연필 단추로 연 「고칠 답 말하기」 입력창 */
+  const [fixOpen, setFixOpen] = useState(false)
+  /** 슬라이더에서 손을 뗀 순간의 값 — 상태는 다음 그리기에야 바뀐다 */
+  const draftRef = useRef<AnswerValues>({})
 
   const current = state.turns.at(-1)
   const pending = current && !current.answer ? current : null
@@ -169,6 +189,15 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
   const active = editing ?? pending
   const mode = active ? fieldMode(active.ask.fields[0]) : null
   const lastAnswered = state.turns.findLast((t) => t.answer && !t.dead)
+  draftRef.current = draft
+  // 다른 질문으로 넘어가면 첫 칸부터 펼치고 연필 입력창은 접는다
+  const activeKey = `${active?.id ?? ""}:${editingId ?? ""}:${state.status}`
+  const [seenKey, setSeenKey] = useState(activeKey)
+  if (seenKey !== activeKey) {
+    setSeenKey(activeKey)
+    setFocusIdx(0)
+    setFixOpen(false)
+  }
 
   // 새 말이 나타나면 대화를 맨 아래로 — 입력 폼의 높이가 바뀔 때도
   useEffect(() => {
@@ -234,6 +263,7 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
               setEditingId(null)
               setDraft({})
               setText("")
+              setFixOpen(false)
             }
           } else if (e.t === "error") {
             failed = true
@@ -330,6 +360,7 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
     }
     // 한 번의 누름에 두 번 불릴 수 있다(슬라이더) — 앞 값을 받아 고친다
     setDraft(apply)
+    draftRef.current = apply(draftRef.current)
     // 하나만 고르는 질문은 누르는 즉시 보낸다
     if (sendNow && a) sendForm(turn, apply(draft))
   }
@@ -347,93 +378,171 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
   }
 
   const primary = "touch-target h-[44px] shrink-0 rounded-full px-5 text-[15px]"
-  const resetButton = (
-    <Button type="button" variant={done ? "outline" : "ghost"} className={cn("touch-target", done ? "h-[44px] rounded-full px-5 text-[15px]" : "text-muted-foreground")} disabled={busy} onClick={() => setConfirmReset(true)}>
-      {done ? "다시 하기" : "처음부터 다시"}
+  const talking = state.status === "IN_PROGRESS" || state.status === "CONFIRM"
+  /** 말로 고치는 입력창을 연다 — 범위 질문 · 요약 확인 중에는 연필 단추 뒤에 접어 둔다 */
+  const typingOpen = mode === "chat" || fixOpen
+  const placeholder = editing ? "다시 말하기" : mode === "chat" ? "직접 말하기" : "고칠 답 말하기"
+
+  /** 묶음 범위 질문 — 한 번에 한 칸만 펼치고 나머지는 한 줄 요약. 슬라이더에서 손을 떼면 다음 칸으로 */
+  const fields = active?.ask.fields ?? []
+  const grouped = mode === "range" && fields.length > 1
+  const openIdx = Math.min(focusIdx, Math.max(fields.length - 1, 0))
+  const nextOpen = () => {
+    const after = fields.findIndex((f, i) => i > openIdx && !isAnswered(f, draftRef.current[f.id]))
+    if (after >= 0) setFocusIdx(after)
+  }
+  const fieldValue = (f: Field) => answerText(f, draft[f.id]) || "아직 안 골랐어요"
+
+  const sendButton = (
+    <Button type="submit" size="icon" aria-label="보내기" className="touch-target size-[44px] shrink-0 rounded-full" disabled={!text.trim() && !formReady}>
+      <HugeiconsIcon icon={ArrowUp01Icon} size={24} aria-hidden />
     </Button>
   )
-  const talking = state.status === "IN_PROGRESS" || state.status === "CONFIRM"
-  const placeholder = editing
-    ? "다시 말해 주세요"
-    : mode === "chat" ? "직접 말해도 돼요"
-    : "고칠 답이 있으면 말해 주세요 — 예: 아까 4일 아니고 3일"
+  const fixButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      aria-label={fixOpen ? "고칠 답 말하기 닫기" : "고칠 답 말하기"}
+      aria-pressed={fixOpen}
+      data-survey-fix
+      className="touch-target size-[44px] shrink-0 rounded-full text-muted-foreground"
+      onClick={() => {
+        setFixOpen((v) => !v)
+        setText("")
+      }}
+    >
+      <HugeiconsIcon icon={fixOpen ? Cancel01Icon : PencilEdit02Icon} size={19} aria-hidden />
+    </Button>
+  )
+  const input = (
+    <textarea
+      data-survey-input
+      rows={1}
+      autoFocus={fixOpen}
+      aria-label="옴니스에게 말하기"
+      placeholder={placeholder}
+      maxLength={SAY_MAX}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        if (enterSends(e, isTouchTyping())) {
+          e.preventDefault()
+          send()
+        }
+      }}
+      // 채팅 입력창과 같은 알약 — 글자는 16px 밑으로 내리지 않는다(iOS 확대 방지). placeholder 는 한 줄로 짧게
+      className="max-h-[120px] min-h-[44px] min-w-0 flex-1 resize-none rounded-[22px] border border-transparent bg-background/70 px-4 py-[11px] text-[16px] leading-[22px] whitespace-pre-wrap shadow-[inset_0_0_0_1px_var(--glass-edge)] outline-none placeholder:truncate placeholder:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50 [field-sizing:content]"
+    />
+  )
 
-  /** 입력창 자리 — 지금 질문의 폼(범위 입력 또는 추천 답)과, 그 아래 입력창 */
+  /** 떠 있는 시트 안 — 지금 할 수 있는 것 하나 */
   let dock: ReactNode
   if (state.status === "NONE") {
     dock = (
-      <Button type="button" className={primary} disabled={busy} onClick={() => void request(restart.current ? { restart: true } : {})}>
-        {busy ? <Spinner /> : null}
-        시작하기
-      </Button>
+      <div className="flex justify-center">
+        <Button type="button" className={primary} disabled={busy} onClick={() => void request(restart.current ? { restart: true } : {})}>
+          {busy ? <Spinner /> : null}
+          시작하기
+        </Button>
+      </div>
     )
   } else if (done) {
-    dock = resetButton
+    dock = (
+      <div className="flex justify-center">
+        <Button type="button" variant="outline" className={primary} disabled={busy} onClick={() => setConfirmReset(true)}>다시 하기</Button>
+      </div>
+    )
   } else if (busy) {
-    dock = <span className="flex h-[44px] items-center gap-2 text-[14px] text-muted-foreground">{asking ? "옴니스가 쓰고 있어요" : <Spinner />}</span>
+    dock = <span className="flex h-[44px] items-center justify-center gap-2 text-[14px] text-muted-foreground">{asking ? "옴니스가 쓰고 있어요" : <Spinner />}</span>
   } else if (!active && !closing) {
     // 질문을 받다가 끊긴 자리 — 답은 저장돼 있다
-    dock = <Button type="button" className={primary} onClick={() => void request({})}>이어서 하기</Button>
+    dock = (
+      <div className="flex justify-center">
+        <Button type="button" className={primary} onClick={() => void request({})}>이어서 하기</Button>
+      </div>
+    )
   } else {
     dock = (
       <form
         data-survey-turn={active?.id}
         data-survey-editing={editing ? "" : undefined}
-        className="flex w-full flex-col gap-3"
+        className="flex w-full flex-col gap-2.5"
         onSubmit={(e) => {
           e.preventDefault()
           send()
         }}
       >
         {editing && (
-          <div className="flex items-start justify-between gap-3 text-[13px]">
-            <span className="min-w-0 break-keep text-muted-foreground"><span className="font-medium text-foreground">고치는 중</span> · {editing.ask.question}</span>
-            <button type="button" onClick={cancelEdit} className="touch-target shrink-0 underline underline-offset-4">취소</button>
+          <div className="flex items-center justify-between gap-3 text-[13px]">
+            <span className="min-w-0 truncate text-muted-foreground"><span className="font-medium text-foreground">고치는 중</span> · {editing.ask.question}</span>
+            <button type="button" onClick={cancelEdit} className="touch-hit shrink-0 underline underline-offset-4">취소</button>
           </div>
         )}
-        {active?.ask.fields.map((f) => (
-          <SurveyField key={`${active.id}:${f.id}`} field={f} value={draft[f.id]} onChange={(a, picked) => setField(active, f.id, a, instant && picked)} />
-        ))}
-        <div className="flex items-end justify-end gap-2">
+        {fields.map((f, i) =>
+          grouped && i !== openIdx ? (
+            // 접힌 칸 — 한 줄 요약. 누르면 이 칸을 펼친다
+            <button
+              key={`${active!.id}:${f.id}`}
+              type="button"
+              data-survey-field-summary={f.id}
+              onClick={() => setFocusIdx(i)}
+              className="touch-hit flex w-full items-center justify-between gap-3 rounded-full px-3 py-1.5 text-left text-[13.5px] transition-colors hover:bg-muted/60"
+            >
+              <span className="min-w-0 truncate text-muted-foreground">{f.label ?? `칸 ${i + 1}`}</span>
+              <span className={cn("shrink-0 font-semibold tabular-nums", !isAnswered(f, draft[f.id]) && "font-normal text-muted-foreground")}>{fieldValue(f)}</span>
+            </button>
+          ) : (
+            <div key={`${active!.id}:${f.id}`} className="flex flex-col gap-1">
+              {grouped && (
+                <div className="flex items-center justify-between gap-2 px-1 text-[13px]">
+                  <span className="min-w-0 truncate font-medium">{f.label}</span>
+                  <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">{i + 1} / {fields.length}</span>
+                </div>
+              )}
+              <SurveyField field={f} value={draft[f.id]} hideLabel={grouped} onCommit={grouped ? nextOpen : undefined} onChange={(a, picked) => setField(active!, f.id, a, instant && picked)} />
+            </div>
+          ),
+        )}
+        <div className="flex items-end gap-2">
           {/* 범위 칸을 고치는 중에는 입력창을 두지 않는다 — 범위는 글로 확정하지 않는다 */}
-          {talking && !(editing && mode === "range") && (
-            <textarea
-              data-survey-input
-              rows={1}
-              aria-label="옴니스에게 말하기"
-              placeholder={placeholder}
-              maxLength={SAY_MAX}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (enterSends(e, isTouchTyping())) {
-                  e.preventDefault()
-                  send()
-                }
-              }}
-              // 글자는 16px 밑으로 내리지 않는다(iOS 확대 방지). 한 줄일 때 단추와 높이가 같다
-              className="max-h-[120px] min-h-[44px] min-w-0 flex-1 resize-none rounded-[22px] border bg-background px-4 py-[10px] text-[16px] leading-[22px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 [field-sizing:content]"
-            />
-          )}
-          <Button type="submit" className={primary} disabled={!text.trim() && !formReady}>보내기</Button>
-        </div>
-        {closing && !editing && (
-          <div className="flex flex-wrap items-center gap-2">
+          {talking && !(editing && mode === "range") && mode !== "chat" && fixButton}
+          {talking && !(editing && mode === "range") && typingOpen ? input : <span className="flex-1" />}
+          {closing && !editing && !fixOpen ? (
             <Button type="button" className={primary} disabled={busy} onClick={() => void submit()}>맞아요, 제출</Button>
-            {resetButton}
-          </div>
-        )}
-        {!closing && !editing && <div className="flex">{resetButton}</div>}
+          ) : (
+            sendButton
+          )}
+        </div>
       </form>
     )
   }
 
+  // 「처음부터 다시」 는 위 ⋯ 메뉴로 — 아래 시트에는 지금 답하는 일만 둔다
+  const menu = talking ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="설문 메뉴"
+        data-survey-menu
+        className="touch-target flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        <HugeiconsIcon icon={MoreHorizontalIcon} size={18} aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem className="touch-target" disabled={busy} onClick={() => setConfirmReset(true)}>
+          처음부터 다시
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null
+
   return (
-    <section data-ai-survey={state.status === "NONE" ? "intro" : done ? "submitted" : state.status === "CONFIRM" ? "confirm" : "asking"} data-messenger className="flex min-h-0 flex-1 flex-col">
-      <CoverageBars coverage={state.coverage} />
+    <section data-ai-survey={state.status === "NONE" ? "intro" : done ? "submitted" : state.status === "CONFIRM" ? "confirm" : "asking"} data-messenger className="relative flex min-h-0 flex-1 flex-col">
+      <CoverageBars coverage={state.coverage} menu={menu} />
 
       <div ref={thread} role="log" aria-label="설문 대화" data-survey-thread className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 pb-5 sm:px-6">
+        {/* 끝 여백 = 떠 있는 시트 높이 — 마지막 말이 시트 위에 멈추고, 그 위로는 대화가 시트 뒤로 비쳐 지나간다 */}
+        <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 sm:px-6" style={{ paddingBottom: dockH + 20 }}>
           <OmnisSays data-survey-intro="">
             안녕하세요. AI 를 어떻게 쓰고 계신지 몇 가지 여쭤볼게요.
             <div className="mt-1.5 text-[15px] text-muted-foreground">
@@ -479,9 +588,11 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
         </div>
       </div>
 
-      {/* 입력창 자리 — 폼이 길어도 화면 절반을 넘기지 않고 그 안에서 스크롤한다 */}
-      <div data-survey-dock className="shrink-0 border-t bg-background">
-        <div className="mx-auto flex max-h-[52vh] w-full max-w-[720px] flex-wrap items-center gap-2 overflow-y-auto px-4 py-3 sm:px-6">{dock}</div>
+      {/* 떠 있는 하단 시트 — 채팅 입력창 · 하단 nav 와 같은 유리(.glass). 높이는 내용만큼, 화면의 40% 를 넘으면 시트 안에서 스크롤 */}
+      <div className="room-edge-bottom pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-6">
+        <div ref={dockRef} data-survey-dock className="glass pointer-events-auto mx-auto w-full max-w-[720px] rounded-[28px]">
+          <div className="max-h-[calc(var(--app-vh)*0.4)] overflow-y-auto overscroll-contain p-3">{dock}</div>
+        </div>
       </div>
 
       <AlertDialog open={confirmReset} onOpenChange={setConfirmReset}>
