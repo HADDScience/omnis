@@ -18,7 +18,7 @@ import { PencilEdit01Icon, Add01Icon, Delete02Icon } from "@hugeicons/core-free-
 import { format } from "date-fns"
 import { apiUrl } from "@/lib/base-path"
 import { personOptions } from "@/lib/active-members"
-import { assignSummary, sameAssignees, showQuickAssign, toggleAssignee } from "@/lib/quick-assign"
+import { assignSummary, showQuickAssign, toggleAssignee } from "@/lib/quick-assign"
 import { AssigneeChips, QuickAssign } from "@/components/tasks/quick-assign"
 import { AssigneeStack } from "@/components/tasks/assignee-stack"
 import { toast } from "sonner"
@@ -340,11 +340,7 @@ export function TaskDetail({
                     size="sm"
                     className="h-7 text-xs"
                     onClick={savePeople}
-                    disabled={
-                      saving === "people" ||
-                      draftOwnerIds.length === 0 ||
-                      (sameAssignees(task.assignees.map((a) => a.id), draftOwnerIds) && draftInstructorId === task.instructor.id)
-                    }
+                    disabled={saving === "people" || draftOwnerIds.length === 0}
                   >
                     저장
                   </Button>

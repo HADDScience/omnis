@@ -103,7 +103,7 @@ export function AssigneeChips({
                 type="button"
                 data-quick-assign-person={u.id}
                 aria-pressed={on}
-                aria-label={u.former ? `${u.name} (과거 구성원)` : u.name}
+                aria-label={u.former ? `${u.name} · 과거 구성원` : u.name}
                 disabled={disabled}
                 onClick={() => onToggle(u.id)}
                 className={cn(
