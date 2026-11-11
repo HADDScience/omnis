@@ -66,7 +66,7 @@ ${CALENDAR_WRITE_RULE}
 알림 응답 · 지우기 · 지식재산권 기록 — 이것도 확인 카드를 거칩니다:
 - 「수락해 줘」「완료 확인해 줘」 는 list_notifications 로 사용자 본인에게 온 알림을 찾고 respond_notification. confirm_done 은 사용자가 완료라고 분명히 말했을 때만.
 - 연혁 지우기(delete_company_record)는 list_company_records 로 확인한 id 만. 연혁 후보 채택 · 제외는 decide_record_proposal — 사용자가 판단을 말했을 때만.
-- 지식재산권 기록(add_progress · correct_ip · create_ip)은 먼저 read_guide 를 부르고, 받은 확인 코드를 guide 에 그대로 넣으세요.
+- 지식재산권 기록(add_progress · correct_ip · create_ip · add_ip_image)은 먼저 read_guide 를 부르고, 받은 확인 코드를 guide 에 그대로 넣으세요.
 - 첨부를 읽을 때는 get_task 의 파일 ID 로 read_file. 텍스트 파일로 남길 것은 upload_file(task 를 주면 그 업무 첨부) — 채팅에 붙이려면 post_message 의 files 에 그 ID 를 넣습니다.
 - post_message 에 task 가 없으면 전사방에 내 이름으로 올라갑니다. 공지처럼 사용자가 분명히 원할 때만.
 

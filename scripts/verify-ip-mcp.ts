@@ -271,9 +271,9 @@ async function main() {
   console.log("\n[8] 도구 — 읽기")
   const list = await rpc("tools/list", undefined, accessToken)
   const tools = (list.body.result as { tools?: { name: string }[] })?.tools ?? []
-  // omnis-hadd 로 넓어지면서 옴니스 도구가 앞에 붙는다. 여기서는 지식재산권 도구 8개가 그대로 있는지만 본다.
-  const ipNames = ["read_guide", "list_stages", "list_ip", "get_ip", "list_todo", "add_progress", "correct_ip", "create_ip"]
-  check(`지식재산권 도구 8개가 그대로 있다 (전체 ${tools.length})`, ipNames.every((n) => tools.some((t) => t.name === n)), tools.map((t) => t.name).join(", "))
+  // omnis-hadd 로 넓어지면서 옴니스 도구가 앞에 붙는다. 여기서는 지식재산권 도구 9개가 그대로 있는지만 본다.
+  const ipNames = ["read_guide", "list_stages", "list_ip", "get_ip", "list_todo", "add_progress", "correct_ip", "create_ip", "add_ip_image"]
+  check(`지식재산권 도구 9개가 그대로 있다 (전체 ${tools.length})`, ipNames.every((n) => tools.some((t) => t.name === n)), tools.map((t) => t.name).join(", "))
 
   const listIp = await rpc(
     "tools/call",

@@ -18,6 +18,15 @@ import { ExportViewButton } from "@/components/ip/export-button"
 import { StageOrderDialog } from "@/components/ip/stage-order-dialog"
 import { CorrectionForm, ProgressHistory } from "@/components/ip/record-detail"
 import { MailDialog } from "@/components/ip/mail-thread"
+import { CaseImages } from "@/components/ip/case-images"
+import { CaseGallery, LayoutToggle } from "@/components/ip/case-gallery"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ip/ip-dialog"
 import { useData } from "@/components/ip/data-provider"
 import { useAuth } from "@/components/ip/auth-gate"
 import { useToday } from "@/hooks/ip/use-today"
@@ -34,7 +43,14 @@ import {
 import { formatDate } from "@/lib/ip/date"
 import { sortByDefault } from "@/lib/ip/stage-order"
 import { cn } from "@/lib/utils"
-import type { Patent, Trademark } from "@/lib/ip/types"
+import {
+  groupImages,
+  readLayout,
+  writeLayout,
+  type CaseImage,
+  type RegisterLayout,
+} from "@/lib/ip-images"
+import type { Patent, ProgressEntry, Trademark } from "@/lib/ip/types"
 
 /**
  * IP — 보유한 상표·특허 목록.
@@ -99,7 +115,7 @@ function countAs(status: string): string {
 export function RegisterView() {
   const today = useToday()
   const { member, canWrite } = useAuth()
-  const { trademarks, patents, progress, statusOptions, refresh } = useData()
+  const { trademarks, patents, progress, statusOptions, images, refresh } = useData()
 
   // 대시보드에서 넘어올 때의 초기 탭만 쿼리로 받는다. 이후 전환은 화면 안에서만.
   const initialTab = useQueryParam("kind", "trademark")
@@ -121,6 +137,21 @@ export function RegisterView() {
   const [opening, setOpening] = useState<Map<string, OpeningState>>(new Map())
   // 반짝임은 한 번만. 정렬·검색을 바꿀 때마다 다시 번쩍이면 성가시다.
   const [flashed, setFlashed] = useState(false)
+  // 목록 / 갤러리. 이 기기에 기억한다 — 첫 그림은 서버와 같게 목록으로 그리고, 붙은 뒤 기억한 것으로 바꾼다
+  const [layout, setLayout] = useState<RegisterLayout>("list")
+  // 갤러리에서 누른 건 — 목록의 펼침과 같은 상세를 창으로 연다
+  const [detailKey, setDetailKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    const saved = readLayout(typeof window === "undefined" ? null : window.localStorage)
+    if (saved !== "list") setLayout(saved)
+  }, [])
+
+  function changeLayout(next: RegisterLayout) {
+    setLayout(next)
+    setOpen(null)
+    writeLayout(typeof window === "undefined" ? null : window.localStorage, next)
+  }
 
   const isPatent = tab === "patent"
   const kind: Kind = isPatent ? "patent" : "trademark"
@@ -164,6 +195,7 @@ export function RegisterView() {
     [trademarks, patents, today, progress]
   )
   const byId = useMemo(() => issuesById(issues), [issues])
+  const imagesByCase = useMemo(() => groupImages(images), [images])
 
   const historyOf = useMemo(() => {
     const map = new Map<string, typeof progress>()
@@ -348,6 +380,8 @@ export function RegisterView() {
           ) : null}
         </button>
 
+        <LayoutToggle value={layout} onChange={changeLayout} />
+
         {issues.length > 0 ? (
           <Badge className="ml-auto bg-amber-500/15 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300">
             확인 필요 {issues.length}건
@@ -441,6 +475,15 @@ export function RegisterView() {
         </div>
       ) : null}
 
+      {layout === "gallery" ? (
+        <CaseGallery
+          kind={kind}
+          rows={visible}
+          images={imagesByCase}
+          focusId={flashed ? undefined : focusId}
+          onOpen={(row) => setDetailKey(`${kind}:${row.id}`)}
+        />
+      ) : (
       <div className="overflow-x-auto rounded-xl border bg-card">
         <table className="w-full min-w-[720px] text-[13px]">
           <thead className="bg-muted/50 text-[12px] text-muted-foreground">
@@ -556,108 +599,18 @@ export function RegisterView() {
                   {expanded ? (
                     <tr className="bg-muted/20">
                       <td colSpan={columns.length + 1} className="px-3 py-3">
-                        <div className="flex flex-col gap-3">
-                          {mine.length > 0 ? (
-                            <div className="flex flex-col gap-1.5">
-                              {mine.map((i) => (
-                                <div
-                                  key={i.key}
-                                  className={cn(
-                                    "flex flex-wrap items-baseline gap-x-2 border-l-2 pl-2",
-                                    i.level === "error"
-                                      ? "border-red-500"
-                                      : "border-amber-500"
-                                  )}
-                                >
-                                  <span className="font-medium">{i.title}</span>
-                                  <span className="text-muted-foreground">
-                                    {i.detail}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-
-                          <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
-                            {!isPatent ? (
-                              <>
-                                <Detail
-                                  label="지정상품"
-                                  value={(row as Trademark).goods}
-                                />
-                                <Detail
-                                  label="류"
-                                  value={
-                                    (row as Trademark).classes.join(", ") ||
-                                    null
-                                  }
-                                />
-                                <Detail
-                                  label="등록가능성"
-                                  value={
-                                    (row as Trademark).probability === null
-                                      ? null
-                                      : `${(row as Trademark).probability}%`
-                                  }
-                                />
-                              </>
-                            ) : null}
-                            <Detail
-                              label="마지막 진행"
-                              value={row.date ? formatDate(row.date) : null}
-                            />
-                            <Detail label="비고" value={row.note || null} />
-                          </dl>
-
-                          {/*
-                            메일 원문은 여기서 펼치지 않는다 — 표 한가운데서
-                            길어지면 아래 건들이 화면 밖으로 밀려난다.
-                          */}
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <MailDialog
-                              kind={kind}
-                              id={row.id}
-                              title={
-                                isPatent
-                                  ? (row as Patent).title
-                                  : (row as Trademark).name
-                              }
-                            />
-                          </div>
-
-                          {canWrite ? (
-                            <CorrectionForm
-                              entityKind={kind}
-                              entityId={row.id}
-                              stage={row.status}
-                              today={today}
-                              current={{
-                                name: isPatent
-                                  ? (row as Patent).title
-                                  : (row as Trademark).name,
-                                holder: isPatent
-                                  ? (row as Patent).applicant
-                                  : (row as Trademark).holder,
-                                appNo: row.appNo,
-                                regNo: row.regNo,
-                                filedOn: row.filedOn,
-                                registeredOn: row.registeredOn,
-                              }}
-                              stageOptions={pipeline}
-                              onSaved={refresh}
-                            />
-                          ) : null}
-
-                          <ProgressHistory
-                            entries={historyOf.get(key) ?? []}
-                            opening={opening.get(key)}
-                            title={
-                              isPatent
-                                ? (row as Patent).title
-                                : (row as Trademark).name
-                            }
-                          />
-                        </div>
+                        <CaseDetail
+                          kind={kind}
+                          row={row}
+                          issues={mine}
+                          history={historyOf.get(key) ?? []}
+                          opening={opening.get(key)}
+                          images={imagesByCase.get(key) ?? []}
+                          pipeline={pipeline}
+                          today={today}
+                          canWrite={canWrite}
+                          onSaved={refresh}
+                        />
                       </td>
                     </tr>
                   ) : null}
@@ -678,6 +631,31 @@ export function RegisterView() {
           </tbody>
         </table>
       </div>
+      )}
+
+      <GalleryDetailDialog
+        detailKey={detailKey}
+        onClose={() => setDetailKey(null)}
+        trademarks={trademarks}
+        patents={patents}
+        render={(k, row) => (
+          <CaseDetail
+            kind={k}
+            row={row}
+            issues={byId.get(row.id) ?? []}
+            history={historyOf.get(`${k}:${row.id}`) ?? []}
+            opening={opening.get(`${k}:${row.id}`)}
+            images={imagesByCase.get(`${k}:${row.id}`) ?? []}
+            pipeline={statusOptions
+              .filter((s) => s.kind === k)
+              .sort((a, b) => a.sortOrder - b.sortOrder)
+              .map((s) => s.value)}
+            today={today}
+            canWrite={canWrite}
+            onSaved={refresh}
+          />
+        )}
+      />
 
       <StageOrderDialog
         open={orderOpen}
@@ -738,5 +716,143 @@ function Detail({ label, value }: { label: string; value: string | null }) {
       <dt className="w-20 shrink-0 text-muted-foreground">{label}</dt>
       <dd className="min-w-0 flex-1">{value}</dd>
     </div>
+  )
+}
+
+/**
+ * 건 하나의 상세 — 목록의 펼침과 갤러리 카드를 눌렀을 때 뜨는 창이 같은 것을 그린다.
+ * 정합성 경고 · 지정상품 · 이미지 · 메일 · 값 정정 · 진행 이력.
+ */
+function CaseDetail({
+  kind,
+  row,
+  issues,
+  history,
+  opening,
+  images,
+  pipeline,
+  today,
+  canWrite,
+  onSaved,
+}: {
+  kind: Kind
+  row: Row
+  issues: Issue[]
+  history: ProgressEntry[]
+  opening: OpeningState | undefined
+  images: CaseImage[]
+  pipeline: string[]
+  today: string
+  canWrite: boolean
+  onSaved: () => Promise<void>
+}) {
+  const isPatent = kind === "patent"
+  const title = isPatent ? (row as Patent).title : (row as Trademark).name
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      {issues.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          {issues.map((i) => (
+            <div
+              key={i.key}
+              className={cn(
+                "flex flex-wrap items-baseline gap-x-2 border-l-2 pl-2",
+                i.level === "error" ? "border-red-500" : "border-amber-500"
+              )}
+            >
+              <span className="font-medium">{i.title}</span>
+              <span className="text-muted-foreground">{i.detail}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+        {!isPatent ? (
+          <>
+            <Detail label="지정상품" value={(row as Trademark).goods} />
+            <Detail label="류" value={(row as Trademark).classes.join(", ") || null} />
+            <Detail
+              label="등록가능성"
+              value={(row as Trademark).probability === null ? null : `${(row as Trademark).probability}%`}
+            />
+          </>
+        ) : null}
+        <Detail label="마지막 진행" value={row.date ? formatDate(row.date) : null} />
+        <Detail label="비고" value={row.note || null} />
+      </dl>
+
+      <CaseImages kind={kind} entityId={row.id} title={title} images={images} canWrite={canWrite} today={today} onChanged={onSaved} />
+
+      {/*
+        메일 원문은 여기서 펼치지 않는다 — 표 한가운데서
+        길어지면 아래 건들이 화면 밖으로 밀려난다.
+      */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <MailDialog kind={kind} id={row.id} title={title} />
+      </div>
+
+      {canWrite ? (
+        <CorrectionForm
+          entityKind={kind}
+          entityId={row.id}
+          stage={row.status}
+          today={today}
+          current={{
+            name: title,
+            holder: isPatent ? (row as Patent).applicant : (row as Trademark).holder,
+            appNo: row.appNo,
+            regNo: row.regNo,
+            filedOn: row.filedOn,
+            registeredOn: row.registeredOn,
+          }}
+          stageOptions={pipeline}
+          onSaved={onSaved}
+        />
+      ) : null}
+
+      <ProgressHistory entries={history} opening={opening} title={title} />
+    </div>
+  )
+}
+
+/**
+ * 갤러리 카드를 눌렀을 때의 상세 창. 건은 키(`kind:id`)로 들고 있다가 그때의 값으로 그린다 —
+ * 이미지를 올리거나 값을 고쳐 스냅샷이 바뀌면 창도 새 값을 보인다.
+ */
+function GalleryDetailDialog({
+  detailKey,
+  onClose,
+  trademarks,
+  patents,
+  render,
+}: {
+  detailKey: string | null
+  onClose: () => void
+  trademarks: Trademark[]
+  patents: Patent[]
+  render: (kind: Kind, row: Row) => React.ReactNode
+}) {
+  const cut = detailKey ? detailKey.indexOf(":") : -1
+  const k = cut > 0 ? (detailKey!.slice(0, cut) as Kind) : null
+  const id = cut > 0 ? detailKey!.slice(cut + 1) : null
+  const row: Row | undefined =
+    k === "patent" ? patents.find((p) => p.id === id) : k === "trademark" ? trademarks.find((t) => t.id === id) : undefined
+  const title = row ? (k === "patent" ? (row as Patent).title : (row as Trademark).name) : ""
+  return (
+    <Dialog open={!!row} onOpenChange={(v) => (!v ? onClose() : undefined)}>
+      <DialogContent className="sm:max-w-[44rem]">
+        <DialogHeader>
+          <DialogTitle className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="min-w-0 truncate">{title}</span>
+            {row ? <StatusBadge status={row.status} /> : null}
+          </DialogTitle>
+          <DialogDescription className="font-mono text-[12px] break-all">
+            {row ? [row.id, row.regNo ? `등록 ${row.regNo}` : row.appNo ? `출원 ${row.appNo}` : null].filter(Boolean).join(" · ") : ""}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 text-[13px]">{row && k ? render(k, row) : null}</div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -12,7 +12,9 @@
  * 왜 옮겼는지는 Omnis 저장소의 mydocs/troubleshootings/supabase-limits.md 에 있다.
  */
 
-import { api } from "@/lib/ip/omnis"
+import { api, OmnisError } from "@/lib/ip/omnis"
+import { apiUrl } from "@/lib/base-path"
+import type { CaseImage } from "@/lib/ip-images"
 import type {
   ActionItem,
   ActionState,
@@ -73,6 +75,8 @@ export interface Snapshot {
   statusOptions: StatusOption[]
   stages: Stage[]
   meta: OrgMeta
+  /** 건별 이미지(상표 도안 · 특허 대표 도면) — lib/ip-images.ts */
+  images: CaseImage[]
 }
 
 /** 서버가 한 번에 주는 것 전부. 화면이 쓰는 조각들로 갈라 쓴다. */
@@ -109,7 +113,45 @@ export async function fetchSnapshot(): Promise<Snapshot> {
     statusOptions: data.statusOptions,
     stages: data.stages,
     meta: data.meta,
+    // 이미지 기능 이전 서버가 주지 않아도 화면은 돈다
+    images: data.images ?? [],
   }
+}
+
+// ---------------------------------------------------------------------------
+// 이미지 (상표 도안 · 로고 · 시안, 특허 대표 도면)
+// ---------------------------------------------------------------------------
+
+/**
+ * 파일을 올린 뒤 건에 건다. 실물은 기존 첨부 경로(POST /api/files → NAS)를 그대로 쓴다 —
+ * 지식재산권만의 저장소를 두지 않는다. 걸기에 실패하면 올린 파일은 어디에도 안 붙은 채 남는다(첨부와 같다).
+ */
+export async function uploadCaseImage(
+  input: { kind: "trademark" | "patent"; entityId: string; file: File; memo: string; date: string | null }
+): Promise<CaseImage> {
+  const form = new FormData()
+  form.append("file", input.file)
+  const res = await fetch(apiUrl("/api/files"), { method: "POST", body: form, credentials: "same-origin" }).catch(() => null)
+  if (!res) throw new OmnisError("network", "서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.")
+  const uploaded = (await res.json().catch(() => null)) as { id?: string; error?: string } | null
+  if (!res.ok || !uploaded?.id) throw new OmnisError("upload", uploaded?.error ?? "이미지를 올리지 못했습니다.")
+  const { image } = await api<{ image: CaseImage }>("/images", {
+    method: "POST",
+    body: { kind: input.kind, entityId: input.entityId, fileId: uploaded.id, memo: input.memo, date: input.date },
+  })
+  return image
+}
+
+export async function updateCaseImage(
+  id: string,
+  patch: { memo?: string; date?: string | null; isPrimary?: boolean }
+): Promise<CaseImage> {
+  const { image } = await api<{ image: CaseImage }>("/images", { method: "PATCH", body: { id, ...patch } })
+  return image
+}
+
+export async function removeCaseImage(id: string): Promise<void> {
+  await api(`/images?id=${encodeURIComponent(id)}`, { method: "DELETE" })
 }
 
 // ---------------------------------------------------------------------------

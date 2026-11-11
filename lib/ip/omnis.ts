@@ -34,7 +34,8 @@ function messageFor(code: string): string {
     case "invalid_session":
       return "로그인이 만료되었습니다. 새로고침해 다시 로그인해 주세요."
     default:
-      return "요청을 처리하지 못했습니다. 다시 시도해 주세요."
+      // 서버가 사람에게 보일 문장을 그대로 보낸 경우(bad("…한국어 문장")) — 코드가 아니라 그 문장을 보인다
+      return /[^\x00-\x7f]/.test(code) ? code : "요청을 처리하지 못했습니다. 다시 시도해 주세요."
   }
 }
 
