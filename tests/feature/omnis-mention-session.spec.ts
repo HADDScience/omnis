@@ -43,7 +43,9 @@ async function send(page: Page, text: string) {
   const box = page.locator("[data-composer-pill] textarea").first()
   await expect.poll(() => box.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps")))).toBe(true)
   await box.fill(text)
-  await box.press("Enter")
+  // 폰은 Enter 가 줄바꿈이다 — 보내기 단추로
+  if (page.viewportSize()!.width < 768) await page.getByRole("button", { name: "보내기", exact: true }).click()
+  else await box.press("Enter")
 }
 
 async function shot(page: Page, name: string) {
@@ -51,6 +53,8 @@ async function shot(page: Page, name: string) {
 }
 
 test.describe("@옴니스 로 부르기 · 세션 공유 @chat", () => {
+  // 앞 시험이 만든 세션을 뒤 시험이 쓴다 — 한 워커에서 차례로
+  test.describe.configure({ mode: "serial" })
   let roomId = ""
   let sessionId = ""
   const ids = new Map<DemoUser, string>()
@@ -121,8 +125,12 @@ test.describe("@옴니스 로 부르기 · 세션 공유 @chat", () => {
     await expect(peer).toBeVisible()
     await expect(peer).toContainText(REQUESTER)
     await send(page, FOLLOW)
-    await expect(page.getByText(`「${FOLLOW}」 를 받았어요`).first()).toBeVisible({ timeout: 45_000 })
+    await expect(page.getByText(`「${FOLLOW}」 를 받았어요`).filter({ visible: true }).first()).toBeVisible({ timeout: 45_000 })
     await shot(page, "phone-session")
+    // 새로 읽어도 내 이어 묻기는 내 글(오른쪽)이고, 부른 사람의 글만 이름과 함께 왼쪽이다
+    await page.reload()
+    await expect(page.locator("[data-peer-message]").filter({ hasText: PROMPT })).toBeVisible()
+    await expect(page.locator("[data-peer-message]").filter({ hasText: FOLLOW })).toHaveCount(0)
 
     const runs = await prisma.agentRun.findMany({ where: { roomId: sessionId }, orderBy: { createdAt: "asc" }, select: { userId: true, notifyOrigin: true } })
     expect(runs.map((r) => r.userId)).toEqual([ids.get(REQUESTER), ids.get(MEMBER)])
@@ -203,7 +211,7 @@ test.describe("@옴니스 로 부르기 · 세션 공유 @chat", () => {
     test.skip(!sessionId, "앞 시험이 세션을 만들지 못했다")
     const { ctx, page } = await as(browser, LEAVER)
     expect((await page.request.get(`/api/agent/rooms/${sessionId}`)).status()).toBe(200)
-    expect((await page.request.post(`/api/chat/people-rooms/${roomId}/leave`)).ok()).toBe(true)
+    expect((await page.request.delete(`/api/chat/people-rooms/${roomId}/members`)).ok()).toBe(true)
     expect((await page.request.get(`/api/agent/rooms/${sessionId}`)).status()).toBe(404)
     expect(await (await page.request.get("/api/chat/rooms")).text()).not.toContain(sessionId)
     await ctx.close()

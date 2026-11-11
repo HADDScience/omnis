@@ -570,7 +570,7 @@ export function OmnisRoom({
   }
 
   // 글과 카드를 시간 순으로 한 줄에
-  const rows = layoutMessages(messages.map((m) => ({ ...m, author: { id: m.fromOmnis ? "omnis" : isPeer(m, userId) ? m.author!.id : "me", name: "" } })))
+  const rows = layoutMessages(messages.map((m) => ({ ...m, author: m.fromOmnis ? { id: "omnis", name: "" } : (m.author ?? { id: "me", name: "" }) })))
   const timeline: ({ kind: "row"; row: (typeof rows)[number]; at: string } | { kind: "card"; card: AgentCardData; at: string })[] = []
   {
     let ci = 0
@@ -829,7 +829,8 @@ export function LiveOmnis({ text, tools, resuming = false, stopping = false }: {
 
 /** 공유 세션의 남의 글 — 내 글(오른쪽)과 갈라 왼쪽에 이름과 함께 */
 function isPeer(m: OmnisRoomMessage, viewerId: string | null | undefined): boolean {
-  return !m.fromOmnis && !!m.author && !!viewerId && m.author.id !== viewerId
+  // 「me」 는 작성자를 모르는 옛 글 · 저장본의 자리값이다 — 내 글로 본다
+  return !m.fromOmnis && !!m.author && m.author.id !== "me" && !!viewerId && m.author.id !== viewerId
 }
 
 function PeerMessage({ name, content, iso, fresh = false, files }: { name: string; content: string; iso: string; fresh?: boolean; files?: FileInfo[] }) {
