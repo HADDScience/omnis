@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { clipFromTree, rangeClip, sheetRangeClip, stripCitations, tableToHtml, tableToTsv, type ClipNode } from "./answer-clipboard"
+import { clipFromTree, rangeClip, rtfEscape, sheetRangeClip, stripCitations, tableToHtml, tableToRtf, tableToTsv, wrapClipboardHtml, type ClipNode } from "./answer-clipboard"
 import { anchoredMessageId, answerLink, answerTimeLabel } from "./answer-actions"
 
 const el = (tag: string, children: ClipNode[] = [], className?: string): ClipNode => ({ type: "el", tag, className, children })
@@ -16,7 +16,8 @@ test("각주를 뺀다 — 연도 · 큰 범위 · 0 은 글로 둔다", () => {
 
 test("표 html — 머리 굵게 · 테두리 · 칸 여백이 inline style, 글은 이스케이프", () => {
   const html = tableToHtml(["이름", "단계 [1]"], [["A<b>", "출원"], ["B", "등록 [2]"]])
-  assert.match(html, /^<table style="border-collapse:collapse;[^"]*">/)
+  // 속성(border=1 · cellspacing · cellpadding)도 함께 — CSS 를 덜 읽는 붙여넣기(한글 등)도 칸 선이 남는다
+  assert.match(html, /^<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;[^"]*">/)
   assert.match(html, /<thead><tr><th style="[^"]*font-weight:bold;[^"]*">이름<\/th><th [^>]*>단계<\/th><\/tr><\/thead>/)
   assert.match(html, /<td style="border:1px solid #999;padding:4px 8px;[^"]*">A&lt;b&gt;<\/td>/)
   assert.ok(!html.includes("[2]"))
@@ -37,6 +38,7 @@ test("칸 범위 — 두 칸 이상이면 고른 열의 머리를 붙이고, 칸
   assert.ok(!r.html.includes(">A<"))
   // 거꾸로 끈 범위도 같다
   assert.deepEqual(rangeClip(headers, rows, { start: { row: 2, column: 2 }, end: { row: 1, column: 1 } }), r)
+  assert.ok(r.rtf?.includes("\\trowd") && r.rtf.includes("\\cell"))
   assert.deepEqual(rangeClip(headers, rows, { start: { row: 0, column: 0 }, end: { row: 0, column: 0 } }), { html: "A", text: "A" })
   // 표 밖은 자른다
   assert.equal(rangeClip(headers, rows, { start: { row: 2, column: 2 }, end: { row: 9, column: 9 } }).text, "3/3")
@@ -60,7 +62,7 @@ test("화면 선택 정리 — 표 밖 글과 함께 고르면 글은 꾸밈을 
   ]
   const clip = clipFromTree(tree)
   assert.ok(clip.html.includes("<p>특허는 <strong>두 건</strong>입니다.</p><div><table"), clip.html)
-  assert.match(clip.html, /<table style="[^"]+"><thead><tr><th [^>]*>건<\/th><th [^>]*>단계<\/th><\/tr><\/thead><tbody><tr><td [^>]*>ADD<\/td><td [^>]*>출원<\/td><\/tr><\/tbody><\/table>/)
+  assert.match(clip.html, /<table [^>]*style="[^"]+"><thead><tr><th [^>]*>건<\/th><th [^>]*>단계<\/th><\/tr><\/thead><tbody><tr><td [^>]*>ADD<\/td><td [^>]*>출원<\/td><\/tr><\/tbody><\/table>/)
   assert.ok(clip.html.includes("<ul><li>하나</li><li>둘</li></ul>"))
   assert.ok(!/class=|button|\[1\]|>1</.test(clip.html), clip.html)
   assert.equal(clip.text, "특허는 두 건입니다.\n\n건\t단계\nADD\t출원\n\n- 하나\n- 둘")
@@ -108,4 +110,59 @@ test("읽기 표의 머리글 칸(td.omnis-sheet-head)도 표 머리가 된다",
   ])])])
   assert.match(clip.html, /<thead><tr><th[^>]*>건<\/th><th[^>]*>단계<\/th><\/tr><\/thead><tbody><tr><td[^>]*>ADD<\/td>/)
   assert.equal(clip.text, "건\t단계\nADD\t출원")
+})
+
+test("클립보드 html 은 완전한 문서 — 글자셋 · body · StartFragment 표식", () => {
+  const doc = wrapClipboardHtml("<table border=\"1\"><tr><td>가</td></tr></table>")
+  assert.match(doc, /^<html><head><meta [^>]*charset=utf-8"><meta charset="utf-8"><\/head><body><!--StartFragment--><table border="1">/)
+  assert.ok(doc.endsWith("<!--EndFragment--></body></html>"))
+})
+
+test("RTF 글 — \\ { } 이스케이프, 한글 · 이모지는 \\uN?(16비트 부호 있는 수)", () => {
+  assert.equal(rtfEscape("a{b}\\c"), "a\\{b\\}\\\\c")
+  assert.equal(rtfEscape("가"), "\\u-21504?") // U+AC00 = 44032 → 44032 - 65536
+  // U+1F916 → 서로게이트 쌍 D83E DD16 → 부호 있는 16비트
+  assert.equal(rtfEscape("🤖"), "\\u-10178?\\u-8938?")
+  assert.equal(rtfEscape("a\tb\nc\u0000"), "a\\tab b\\line c")
+})
+
+test("RTF 표 — 줄마다 \\trowd … \\row, 칸마다 테두리 · \\cellx, 머리는 굵게 · 회색, 각주는 빠진다", () => {
+  const rtf = tableToRtf(["이름", "단계 [1]"], [["A", "출원"], ["B", "등록"]])
+  assert.ok(rtf.startsWith("{\\rtf1\\ansi\\ansicpg949"))
+  assert.ok(rtf.includes("\\fcharset129"))
+  assert.ok(rtf.endsWith("}"))
+  assert.equal(rtf.match(/\\trowd/g)?.length, 3)
+  assert.equal(rtf.match(/\\row\b/g)?.length, 3)
+  assert.equal(rtf.match(/\\cell\b/g)?.length, 6)
+  assert.equal(rtf.match(/\\clbrdrt\\brdrs/g)?.length, 6)
+  assert.ok(rtf.includes("{\\b \\u-14476?\\u-18044?}"), "머리 「이름」 굵게")
+  assert.equal(rtf.match(/\\clcbpat1/g)?.length, 2)
+  assert.ok(!rtf.includes("[1]"))
+  // 열린 괄호 · 닫힌 괄호 수가 같다(이스케이프한 것 제외)
+  const bare = rtf.replace(/\\[{}\\]/g, "")
+  assert.equal((bare.match(/{/g) ?? []).length, (bare.match(/}/g) ?? []).length)
+  // 칸 경계는 오른쪽으로만 는다
+  const xs = [...rtf.split("\\row")[0].matchAll(/\\cellx(\d+)/g)].map((m) => Number(m[1]))
+  assert.ok(xs[0] < xs[1])
+})
+
+test("화면 선택의 RTF — 글은 꾸밈 · 목록, 표는 표, 각주 배지는 빠진다", () => {
+  const clip = clipFromTree([
+    el("div", [
+      el("p", [t("특허는 "), el("strong", [t("두 건")]), t("입니다 "), el("button", [t("1")], "omnis-citation"), t(".")]),
+      el("table", [el("tbody", [el("tr", [el("th", [t("건")])]), el("tr", [el("td", [t("ADD")])])])]),
+      el("ul", [el("li", [t("하나")])]),
+    ]),
+  ])
+  assert.ok(clip.rtf)
+  const rtf = clip.rtf!
+  assert.ok(rtf.includes("{\\b \\u-19376? \\u-21388?}"), "굵게 「두 건」")
+  assert.ok(rtf.includes("\\trowd") && rtf.includes("\\intbl"))
+  assert.ok(rtf.includes("\\bullet"))
+  assert.ok(!/omnis-citation|button/.test(rtf))
+  // 각주를 뺀 자리의 앞 빈칸도 걷는다 — 「입니다.」
+  assert.ok(rtf.includes("\\u-14459?\\u-19768?\\u-19740?."), rtf)
+  assert.ok(!rtf.includes("\u0000"))
+  const bare = rtf.replace(/\\[{}\\]/g, "")
+  assert.equal((bare.match(/{/g) ?? []).length, (bare.match(/}/g) ?? []).length)
 })

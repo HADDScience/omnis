@@ -17,11 +17,10 @@ export default async function AiSurveyPage() {
   if (!surveyAllowed(session.user.id)) notFound()
   const state = await getSurvey(session.user.id)
   return (
-    <>
+    // 채팅처럼 화면 높이에 묶는다 — 대화만 스크롤하고 입력 폼은 아래에 붙는다. 높이는 셸이 nav 를 뺀 칸 안에서 h-full(ux-rules 「떠 있는 nav」)
+    <div className="flex h-full min-h-0 flex-col">
       <Header crumbs={["마이", "AI 활용 설문"]} />
-      <div className="mx-auto w-full max-w-[640px] px-4 py-6 sm:px-6">
-        <AiSurvey initial={state} />
-      </div>
-    </>
+      <AiSurvey initial={state} />
+    </div>
   )
 }

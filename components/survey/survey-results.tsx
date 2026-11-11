@@ -109,6 +109,8 @@ function PersonRow({ p }: { p: PersonResult }) {
         <span className="font-medium">{p.name}</span>
         <span className="tabular-nums text-muted-foreground">
           {p.status ? STATUS_LABEL[p.status] ?? p.status : "시작 전"}
+          {p.redoing && " · 다시 하는 중"}
+          {p.records > 1 && ` · 기록 ${p.records}건`}
           {m && ` · ${INTENSITY_LABEL[m.intensity]}`}
           {m?.monthlyTokens != null && ` · 월 약 ${tokensLabel(m.monthlyTokens)}`}
         </span>
@@ -117,6 +119,11 @@ function PersonRow({ p }: { p: PersonResult }) {
         <p className="py-2 text-[13px] text-muted-foreground">아직 시작하지 않았습니다.</p>
       ) : (
         <div className="flex flex-col gap-3 py-2">
+          {(p.redoing || p.records > 1) && (
+            <p className="text-[12px] text-muted-foreground break-keep">
+              가장 최근에 제출한 응답입니다 — 집계에는 이 1건만 씁니다.{p.redoing && " 지금 다시 답하는 중이고, 제출하면 그 응답으로 바뀝니다."}
+            </p>
+          )}
           {p.summary && <p className="rounded-lg bg-muted/60 p-3 text-[13px] leading-relaxed break-keep">{p.summary}</p>}
           {m && <SurveyMetrics metrics={m} turns={p.turns} />}
           <div>
