@@ -83,6 +83,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <NotificationKinds />
           </TabsContent>
           <TabsContent value="usage" className="mt-3">
+            {/* AI 활용 설문(2026-11-11) — 누구나 자기 것 하나. 결과(회사 전체 추정 · 원문)는 관리자만 */}
+            <div data-ai-survey-entry className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border bg-card px-4 py-3">
+              <div className="flex min-w-0 flex-col">
+                <span className="text-sm font-medium">AI 활용 설문</span>
+                <span className="text-xs text-muted-foreground">AI 를 얼마나 · 어디에 쓰는지 눌러서 답합니다. 2~3분.</span>
+              </div>
+              <span className="flex flex-wrap gap-x-4">
+                <Link href="/settings/ai-survey" className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
+                  설문 하기
+                </Link>
+                {role === "ADMIN" && (
+                  <Link href="/settings/ai-survey/results" className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
+                    결과 보기
+                  </Link>
+                )}
+              </span>
+            </div>
             {user?.id ? <AiCostUsage userId={user.id} isAdmin={role === "ADMIN"} /> : null}
           </TabsContent>
           <TabsContent value="info" className="mt-3">

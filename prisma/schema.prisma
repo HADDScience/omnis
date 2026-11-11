@@ -2037,6 +2037,25 @@ model AiUsage {
   @@index([userId, createdAt])
 }
 
+/// AI 활용 설문(2026-11-11) — 한 사람에 한 건. 질문 · 제시한 폼 · 응답 원문(turns)과 거기서 환산한 지표(metrics).
+/// 원문은 본인과 관리자만 본다. 모양: lib/ai-survey/rules.ts(Turn · Facts) · metrics.ts(Metrics)
+model AiSurvey {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  /// IN_PROGRESS · CONFIRM(요약 확인 대기) · SUBMITTED
+  status      String    @default("IN_PROGRESS")
+  turns       Json      @default("[]")
+  /// 칸별 응답 — 충족도 · 지표의 원천
+  facts       Json      @default("{}")
+  summary     String?
+  metrics     Json?
+  submittedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+}
+
 // ─── UI 변경 적응 부담 측정 ───────────────────────────────
 
 /// 화면 사용 기록. 이름 · 숫자 · 경로 형태 · 배포 커밋만 둔다. 내용은 받지 않는다(lib/ui-metrics/rules.ts).
