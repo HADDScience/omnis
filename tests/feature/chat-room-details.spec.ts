@@ -82,7 +82,9 @@ for (const theme of ["light", "dark"] as const) {
       const pills = page.locator("section [data-system-pill]")
       await expect(pills).toHaveCount(2)
       await expect(pills.first()).toHaveText("삭제된 메시지입니다")
-      await expect(pills.last()).toHaveText("🤖 시스템 안내 글")
+      // 저장된 🤖 표식은 화면에서 옴니스 아이콘으로 — 글자로는 남지 않는다
+      await expect(pills.last()).toHaveText("시스템 안내 글")
+      await expect(pills.last().locator("[data-omnis-inline-icon]")).toBeVisible()
       await expect(page.getByText(DELETED_BODY)).toHaveCount(0)
       const g = await pills.first().evaluate((el) => {
         const r = el.firstElementChild!.getBoundingClientRect()

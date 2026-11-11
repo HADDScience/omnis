@@ -19,10 +19,12 @@ import {
   NotificationOff03Icon,
   Search01Icon,
   StarIcon,
+  UserMultiple02Icon,
   Task01Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons"
 import { Badge } from "@/components/ui/badge"
+import { OmnisInlineIcon } from "@/components/chat/robot-text"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -997,6 +999,18 @@ function RoomRowContent({ room, draft }: { room: RoomListItem; draft?: string })
               {room.kind === "TASK" && <span className="mr-0.5 text-muted-foreground">#</span>}
               {room.name}
             </span>
+            {/* 사람 방의 @옴니스 로 연 공유 세션 — 제목 옆 작은 사람들 아이콘 하나. 어느 방에서 왔는지는 aria-label · title 로 남긴다 */}
+            {room.sharedFrom && (
+              <span
+                data-shared-from
+                role="img"
+                aria-label={`공유됨 · ${room.sharedFrom}`}
+                title={`공유됨 · ${room.sharedFrom}`}
+                className="inline-flex shrink-0 self-center text-muted-foreground/70"
+              >
+                <HugeiconsIcon icon={UserMultiple02Icon} aria-hidden className="size-[0.95em]" />
+              </span>
+            )}
             {room.kind === "GROUP" && room.memberCount ? (
               <span data-member-count aria-label={`참여자 ${room.memberCount}명`} className="shrink-0 font-normal text-muted-foreground tabular-nums">
                 {room.memberCount}
@@ -1029,17 +1043,17 @@ function RoomRowContent({ room, draft }: { room: RoomListItem; draft?: string })
               {TASK_STATUS_LABELS[room.status] ?? room.status}
             </span>
           )}
-          {/* 사람 방의 @옴니스 로 연 세션 — 그 방 참여자 모두가 본다 */}
-          {room.sharedFrom && (
-            <span data-shared-from className="max-w-[45%] shrink-0 truncate rounded-md bg-primary/10 px-1.5 py-px text-[12px] text-primary">
-              공유됨 · {room.sharedFrom}
-            </span>
-          )}
           <span className={cn("min-w-0 flex-1 truncate text-[14.5px] max-md:line-clamp-2 max-md:whitespace-normal max-md:text-[15px] max-md:leading-[20px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
             {draft ? (
               <span data-draft-preview>
                 <span className="font-medium text-primary">{DRAFT_LABEL}</span> {draftPreview(draft).slice(DRAFT_LABEL.length + 1)}
               </span>
+            ) : room.preview && room.previewByOmnis ? (
+              // 옴니스 시스템 글 — 저장된 🤖 표식 대신 옴니스 아이콘(미리보기 글에서는 표식을 뗐다)
+              <>
+                <OmnisInlineIcon className="mr-1" />
+                {room.preview}
+              </>
             ) : (
               (room.preview ?? "아직 글이 없어요")
             )}

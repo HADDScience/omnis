@@ -1,5 +1,7 @@
 "use client"
 
+import { RobotText } from "@/components/chat/robot-text"
+import { stripRobotMark } from "@/lib/robot-mark"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -60,7 +62,7 @@ export function NotificationBell() {
         const fresh = data.filter((n) => !seenIds.current.has(n.id))
         for (const n of fresh.slice().reverse()) {
           seenIds.current.add(n.id)
-          toast(n.title, { description: n.content ?? undefined })
+          toast(stripRobotMark(n.title), { description: n.content ? stripRobotMark(n.content) : undefined })
         }
       }
     } catch {
@@ -247,11 +249,11 @@ export function NotificationBell() {
                         onClick={() => openNotification(n)}
                       >
                         <span className={`text-xs ${!n.read ? "font-medium" : "text-muted-foreground"}`}>
-                          {n.title}
+                          <RobotText text={n.title} />
                         </span>
                         {n.content && (
                           <span className="text-[11px] text-muted-foreground line-clamp-2">
-                            {n.content}
+                            <RobotText text={n.content} />
                           </span>
                         )}
                         <span className="text-[10px] text-muted-foreground">

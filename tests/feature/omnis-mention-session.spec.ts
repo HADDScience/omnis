@@ -122,7 +122,10 @@ test.describe("@옴니스 로 부르기 · 세션 공유 @chat", () => {
     const list = (await (await page.request.get("/api/chat/rooms")).json()) as { omnis: { id: string; sharedFrom?: string }[] }
     expect(list.omnis.find((r) => r.id === sessionId)?.sharedFrom).toBe(ROOM_NAME)
     await page.goto("/chat")
-    await expect(page.locator("[data-shared-from]").filter({ hasText: ROOM_NAME }).first()).toBeVisible({ timeout: 15_000 })
+    // 목록은 제목 옆 작은 사람들 아이콘 하나 — 어느 방에서 왔는지는 aria-label · title 에
+    const shared = page.locator(`[data-shared-from][aria-label="공유됨 · ${ROOM_NAME}"]`).first()
+    await expect(shared).toBeVisible({ timeout: 15_000 })
+    await expect(shared).toHaveAttribute("title", `공유됨 · ${ROOM_NAME}`)
     await shot(page, "phone-list")
 
     await page.goto(`/chat/${sessionId}`)
