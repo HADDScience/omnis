@@ -16,6 +16,8 @@ import { NotificationKinds } from "@/components/settings/notification-kinds"
 import { GeneralSettings } from "@/components/settings/general-settings"
 import { auth } from "@/lib/auth"
 import { currentAppVersion } from "@/lib/app-version"
+import { appUpdates } from "@/lib/app-info"
+import { FeedbackDialog } from "@/components/settings/feedback-dialog"
 import { passwordNoticeFor } from "@/lib/password-state"
 import Link from "next/link"
 
@@ -48,6 +50,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const profile = user?.id ? await loadMyProfile(user.id) : null
   const password = user?.id ? await passwordNoticeFor(user.id) : null
   const version = currentAppVersion()
+  const updates = appUpdates()
 
   return (
     <>
@@ -139,10 +142,31 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 {version.builtOn && <span className="text-muted-foreground"> · {version.builtOn}</span>}
               </dd>
             </dl>
+            {/* 업데이트 소식 — 머지된 PR 제목에서 빌드 때 만든 최근 10건(lib/app-info-build.mjs) */}
+            {updates.length > 0 && (
+              <section data-app-updates aria-labelledby="app-updates-title" className="rounded-xl border bg-card px-4 py-3">
+                <h2 id="app-updates-title" className="mb-2 text-sm font-medium">
+                  업데이트 소식
+                </h2>
+                <ul className="flex flex-col gap-1.5 text-[13px] leading-5">
+                  {updates.map((u) => (
+                    <li key={`${u.date}-${u.text}`} className="flex gap-2">
+                      <span className="w-[5.5rem] shrink-0 text-[12px] text-muted-foreground tabular-nums">{u.date}</span>
+                      <span className="min-w-0">
+                        <span className={u.kind === "새 기능" ? "font-medium text-primary" : "font-medium text-muted-foreground"}>{u.kind}</span> {u.text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {/* 옴니스가 받는 기능 요청과 같은 곳으로 간다(app/api/feedback) */}
+            <FeedbackDialog />
             <nav aria-label="약관" className="flex flex-col divide-y rounded-xl border bg-card">
               {[
                 { href: "/terms", label: "서비스 이용약관" },
                 { href: "/privacy", label: "개인정보 처리방침" },
+                { href: "/licenses", label: "오픈소스 라이선스" },
               ].map((l) => (
                 <Link key={l.href} href={l.href} className="touch-target flex items-center justify-between px-4 py-3 text-sm transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-muted/60">
                   {l.label}

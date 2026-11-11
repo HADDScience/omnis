@@ -62,6 +62,8 @@ export interface SubmitCtx {
   runId?: string | null
   /** 메일 본문의 대화 링크 앞부분 — 없으면 경로만 */
   base?: string
+  /** 옴니스 대화가 아닌 곳에서 왔으면 그곳 — 「앱 정보의 문의·의견 보내기」(app/api/feedback). 메일에 「옴니스가 해 본 것」 대신 적는다 */
+  via?: string
 }
 
 /** 저장하고 개발자에게 알린다. 같은 요청이면 묶는다 */
@@ -95,7 +97,7 @@ export async function submitFeatureRequest(input: FeatureInput, ctx: SubmitCtx):
       "",
       `요청한 사람: ${ctx.userName}`,
       `필요한 것: ${input.detail}`,
-      `옴니스가 해 본 것: ${input.attempted || "(없음)"}`,
+      ctx.via ? `보낸 곳: ${ctx.via}` : `옴니스가 해 본 것: ${input.attempted || "(없음)"}`,
       roomPath ? `대화: ${ctx.base ?? ""}${roomPath} (요청한 사람만 열 수 있습니다)` : "",
       `관리: ${ctx.base ?? ""}${FEATURE_ADMIN_PATH}`,
     ].filter((l) => l !== "").join("\n"),

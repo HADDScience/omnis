@@ -4,7 +4,10 @@
  * 임시 비밀번호 안내 · 경고 점은 password-guard.spec.ts.
  */
 import { expect, test, type Page } from "@playwright/test"
+import { PrismaClient } from "../../generated/prisma/client"
 import { quickLogin } from "./_setup"
+
+const LOCAL_DB = /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? "")
 
 const PC = { viewport: { width: 1280, height: 860 } }
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }
@@ -73,6 +76,54 @@ test.describe("앱 정보", () => {
     await page.getByRole("link", { name: "개인정보 처리방침" }).click()
     await page.waitForURL("**/privacy")
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("개인정보 처리방침")
+  })
+
+  test("업데이트 소식은 최근 10건 안이고 브랜치명 · 종류 머리가 없다 · 오픈소스 라이선스 목록", async ({ page }) => {
+    await quiet(page)
+    await quickLogin(page, "사원1")
+    await page.goto("/settings?tab=info")
+    const updates = page.locator("[data-app-updates] li")
+    const n = await updates.count()
+    expect(n).toBeLessThanOrEqual(10)
+    for (const text of await updates.allTextContents()) {
+      expect(text).not.toMatch(/(feat|fix|chore)(\(|:)|feat\/|fix\/|HADDScience|Merge pull request/)
+      expect(text).toMatch(/새 기능|고침|빨라짐/)
+    }
+    await page.getByRole("link", { name: "오픈소스 라이선스" }).click()
+    await page.waitForURL("**/licenses")
+    const list = page.locator("[data-license-list] li")
+    expect(await list.count()).toBeGreaterThan(50)
+    await expect(page.locator("[data-license-list]")).toContainText("next")
+    await expect(page.locator("[data-license-list]")).toContainText("MIT")
+  })
+
+  test("문의·의견 보내기 — 기능 요청과 같은 곳에 쌓인다", async ({ page }) => {
+    test.skip(!LOCAL_DB, "시험 DB 를 직접 읽는다")
+    const prisma = new PrismaClient()
+    const marker = `설정정리시험 ${Date.now()}`
+    try {
+      await quiet(page)
+      await quickLogin(page, "사원1")
+      await page.goto("/settings?tab=info")
+      await page.locator("[data-feedback-open]").click()
+      const dialog = page.getByRole("dialog", { name: "문의·의견 보내기" })
+      await dialog.getByRole("radio", { name: "불편 · 오류" }).click()
+      await expect(dialog.getByRole("button", { name: "보내기" })).toBeDisabled()
+      await dialog.getByRole("textbox", { name: "내용" }).fill(`${marker}\n폰에서 사진이 안 열려요`)
+      await dialog.getByRole("button", { name: "보내기" }).click()
+      await expect(page.getByText("보냈습니다")).toBeVisible()
+      await expect(dialog).toBeHidden()
+      const row = await prisma.featureRequest.findFirst({ where: { title: { contains: marker } }, include: { entries: { include: { requester: true } } } })
+      expect(row?.title).toBe(`[불편 · 오류] ${marker}`)
+      expect(row?.entries[0]?.requester.name).toBe("사원1")
+      expect(row?.entries[0]?.detail).toContain("폰에서 사진이 안 열려요")
+      // 빈 내용 · 모르는 종류는 API 가 거절한다
+      expect((await page.request.post("/api/feedback", { data: { kind: "bug", text: "  " } })).status()).toBe(400)
+      expect((await page.request.post("/api/feedback", { data: { kind: "x", text: "a" } })).status()).toBe(400)
+    } finally {
+      await prisma.featureRequest.deleteMany({ where: { title: { contains: marker } } })
+      await prisma.$disconnect()
+    }
   })
 
   test("관리자 — 관리 화면 링크 한 줄이 남는다", async ({ page }) => {

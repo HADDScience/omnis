@@ -7,7 +7,18 @@ import { LEGAL_EFFECTIVE_DATE } from "@/lib/legal/company"
  * 약관 · 개인정보 처리방침 화면의 틀(app/(legal)). 로그인 없이 열린다 — 로그인 화면 아래 링크에서도 온다.
  * 본문은 서버에서 그린 글이다. 표는 좁은 화면에서 가로로 밀린다.
  */
-export function LegalDoc({ title, current, children }: { title: string; current: "terms" | "privacy"; children: ReactNode }) {
+export function LegalDoc({
+  title,
+  current,
+  dated = true,
+  children,
+}: {
+  title: string
+  current: "terms" | "privacy" | "licenses"
+  /** 시행일을 보이는가 — 라이선스 목록은 시행일이 없다 */
+  dated?: boolean
+  children: ReactNode
+}) {
   return (
     <main className="min-h-dvh bg-background">
       <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">
@@ -22,10 +33,13 @@ export function LegalDoc({ title, current, children }: { title: string; current:
           <Link href="/privacy" aria-current={current === "privacy" ? "page" : undefined} className="hover:text-foreground aria-[current=page]:font-semibold aria-[current=page]:text-foreground">
             개인정보 처리방침
           </Link>
+          <Link href="/licenses" aria-current={current === "licenses" ? "page" : undefined} className="hover:text-foreground aria-[current=page]:font-semibold aria-[current=page]:text-foreground">
+            오픈소스 라이선스
+          </Link>
         </nav>
         <article data-legal-doc={current} className="legal-doc text-[14px] leading-7 text-foreground">
           <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">시행일 {LEGAL_EFFECTIVE_DATE}</p>
+          {dated && <p className="mt-1 text-[12.5px] text-muted-foreground">시행일 {LEGAL_EFFECTIVE_DATE}</p>}
           <div className="mt-6 flex flex-col gap-8">{children}</div>
         </article>
       </div>
