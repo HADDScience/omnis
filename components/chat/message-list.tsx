@@ -33,6 +33,7 @@ import { usePhotoViewer } from "@/components/photo-viewer/context"
 import { safeInlineType } from "@/lib/file-serving"
 import { isLargeUpload } from "@/lib/large-upload/rules"
 import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arrival"
+import { SwipeReply } from "./swipe-reply"
 import { kakaoMissingAttachment, missingAttachmentRest } from "@/lib/kakao-placeholder"
 import { MissingAttachmentTile } from "@/components/chat/missing-attachment"
 export interface FileInfo {
@@ -443,9 +444,11 @@ export function MessageList({
             const flashing = flashId === msg.id
             const pending = msg.id.startsWith("temp-")
             const fresh = !msg._settled && new Date(msg.createdAt).getTime() > mountedAt
+            const reply = () => onReply?.({ id: msg.id, authorName: msg.author.name, content: msg.content.slice(0, 80) })
             return (
+              // 폰 — 오른쪽으로 밀면 답장(components/chat/swipe-reply.tsx). 고르기 · 보내는 중 · 고치는 중에는 끈다
+              <SwipeReply key={msg.id} enabled={!!onReply && !selectionMode && !pending && editingId !== msg.id} onReply={reply}>
               <div
-                key={msg.id}
                 data-message-id={msg.id}
                 className={`group/msg flex gap-2.5 rounded-lg transition-colors duration-700 in-data-[messenger]:gap-3 max-md:in-data-[messenger]:gap-[8px] motion-reduce:transition-none ${mine ? "flex-row-reverse" : ""} ${
                   row.groupStart ? "mt-3 in-data-[messenger]:mt-5 max-md:in-data-[messenger]:mt-[12px]" : "mt-0.5 in-data-[messenger]:mt-1 max-md:in-data-[messenger]:mt-[6px]"
@@ -558,9 +561,7 @@ export function MessageList({
                             type="button"
                             aria-label="답장"
                             title="답장"
-                            onClick={() =>
-                              onReply({ id: msg.id, authorName: msg.author.name, content: msg.content.slice(0, 80) })
-                            }
+                            onClick={reply}
                             className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
                           >
                             <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
@@ -650,6 +651,7 @@ export function MessageList({
                   )}
                 </div>
               </div>
+              </SwipeReply>
             )
           })}
           {loadingNewer && (
