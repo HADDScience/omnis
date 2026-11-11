@@ -20,7 +20,8 @@ export function lastUserText(prompt: CallOptions["prompt"]): string {
 
 export function fakeAnswer(question: string): string {
   const q = question.replace(/\s+/g, " ").slice(0, 40)
-  return `시험 답입니다 — 「${q}」 를 받았어요.\n실제 모델은 부르지 않았습니다.`
+  // 세 줄 — 방 안내는 앞 두 줄만 싣는다(lib/omnis-mention-rules.ts answerSummary). 셋째 줄은 세션에만 있어야 한다
+  return `시험 답입니다 — 「${q}」 를 받았어요.\n실제 모델은 부르지 않았습니다.\n셋째 줄은 세션에만 있습니다.`
 }
 
 const USAGE = {

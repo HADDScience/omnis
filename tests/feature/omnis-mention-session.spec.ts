@@ -82,16 +82,18 @@ test.describe("@옴니스 로 부르기 · 세션 공유 @chat", () => {
     await expect(start).toBeVisible({ timeout: 20_000 })
     const done = page.locator("[data-system-pill]").filter({ hasText: "옴니스 답 · 시험 답입니다" })
     await expect(done).toBeVisible({ timeout: 45_000 })
-    // 긴 답은 방에 붙지 않는다 — 요약 한 줄만
-    await expect(page.getByText("실제 모델은 부르지 않았습니다")).toHaveCount(0)
+    // 긴 답은 방에 붙지 않는다 — 앞 두 줄 요약만(셋째 줄은 세션에만)
+    await expect(done).not.toContainText("셋째 줄은 세션에만 있습니다")
+    await expect(page.locator("[data-system-pill]").filter({ hasText: "셋째 줄" })).toHaveCount(0)
     await shot(page, "pc-room-notice")
 
     await done.locator("[data-omnis-session-link]").click()
-    await page.waitForURL(/\/chat\/(?!new)[^/]+$/, { timeout: 15_000 })
+    // 지금 주소(이 방)도 /chat/<id> 라 「다른 방으로 바뀔 때까지」 를 기다린다
+    await page.waitForURL((u) => /^\/chat\/[^/]+$/.test(u.pathname) && !u.pathname.endsWith(roomId) && !u.pathname.endsWith("/new"), { timeout: 15_000 })
     sessionId = page.url().split("/").pop()!
     expect(sessionId).not.toBe(roomId)
     await expect(page.getByText(PROMPT).first()).toBeVisible()
-    await expect(page.getByText("실제 모델은 부르지 않았습니다").first()).toBeVisible()
+    await expect(page.getByText("셋째 줄은 세션에만 있습니다").first()).toBeVisible()
     await expect(page.getByText(`공유됨 · ${ROOM_NAME}`).first()).toBeVisible()
     await shot(page, "pc-session")
 
