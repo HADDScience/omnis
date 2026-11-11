@@ -1,7 +1,8 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
-  MAX_FREE_TURNS, SLOTS, SLOT_NAMES, answerText, applyAnswer, coverage, fallbackAsk, freeTurns, isComplete, missingSlots, normalizeAsk, notApplicable, validateAnswer,
+  MAX_FREE_TURNS, SLOTS, SLOT_NAMES, answerText, applyAnswer, coverage, fallbackAsk, freeTurns, isComplete, missingSlots, normalizeAsk, notApplicable, rewindTurns, validateAnswer,
+  type Turn,
   type Ask, type Facts, type Purpose,
 } from "./rules"
 import { AskOutputSchema, SURVEY_SYSTEM, surveyPrompt, transcript } from "./prompt"
@@ -261,4 +262,37 @@ test("모델 출력 스키마 — 모양이 맞으면 통과, 칸 이름이 틀�
   assert.equal(AskOutputSchema.safeParse(good).success, true)
   assert.equal(AskOutputSchema.safeParse({ ...good, fields: [{ ...good.fields[0], slot: "salary" }] }).success, false)
   assert.equal(AskOutputSchema.safeParse({ question: "q" }).success, false)
+})
+
+test("답 고치기 — 그 질문으로 돌아가 같은 질문을 다시 묻고, 그 뒤 문답은 버리고 칸을 다시 만든다", () => {
+  let facts: Facts = {}
+  const turns: Turn[] = []
+  for (let i = 0; i < 4; i++) {
+    const ask = fallbackAsk(facts)!
+    const f = ask.fields[0]
+    const answer = f.kind === "slider" ? { [f.id]: { num: 3 } } : { [f.id]: { choice: [f.options![1].id] } }
+    turns.push({ id: `t${i}`, ask, answer, askedAt: "", answeredAt: "x", source: "fallback", ms: { first: 1, total: 1 }, clientMs: { first: 1, ready: 1 } })
+    facts = applyAnswer(facts, ask, answer, `t${i}`)
+  }
+  assert.deepEqual(Object.keys(facts), ["daysPerWeek", "hoursPerDay", "tools", "payer"])
+  const back = rewindTurns(turns, "t1")!
+  assert.deepEqual(back.turns.map((x) => x.id), ["t0", "t1"])
+  assert.equal(back.turns[1].answer, undefined)
+  assert.equal(back.turns[1].answeredAt, undefined)
+  assert.equal(back.turns[1].clientMs, undefined)
+  assert.equal(back.turns[1].ask, turns[1].ask, "같은 질문을 그대로 다시 묻는다")
+  assert.deepEqual(back.facts, { daysPerWeek: { turnId: "t0", num: 3 } })
+  // 원래 것은 건드리지 않는다
+  assert.equal(turns.length, 4)
+  assert.ok(turns[1].answer)
+  // 첫 질문으로 돌아가면 칸이 빈다
+  assert.deepEqual(rewindTurns(turns, "t0")!.facts, {})
+})
+
+test("거부 — 없는 질문 · 아직 답하지 않은 질문으로는 돌아가지 않는다", () => {
+  const ask = fallbackAsk({})!
+  const pending: Turn = { id: "p", ask, askedAt: "", source: "fallback", ms: { first: 1, total: 1 } }
+  assert.equal(rewindTurns([pending], "p"), null)
+  assert.equal(rewindTurns([pending], "없는-id"), null)
+  assert.equal(rewindTurns([], "p"), null)
 })

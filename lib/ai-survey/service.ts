@@ -16,7 +16,7 @@ import { fakeAgentEnabled } from "@/lib/agent/fake-model"
 import { computeMetrics, summaryText, type Metrics } from "./metrics"
 import { AskOutputSchema, SURVEY_SYSTEM, surveyPrompt } from "./prompt"
 import {
-  MAX_FREE_TURNS, MAX_TURNS, applyAnswer, coverage, fallbackAsk, freeTurns, isComplete, normalizeAsk, validateAnswer,
+  MAX_FREE_TURNS, MAX_TURNS, applyAnswer, coverage, fallbackAsk, freeTurns, isComplete, normalizeAsk, rewindTurns, validateAnswer,
   type AnswerValues, type Ask, type Facts, type Purpose, type Turn,
 } from "./rules"
 
@@ -210,4 +210,19 @@ export async function submitSurvey(userId: string): Promise<SubmitResult> {
 /** 처음부터 다시 — 내 설문을 지운다(제출한 것도) */
 export async function resetSurvey(userId: string): Promise<void> {
   await prisma.aiSurvey.deleteMany({ where: { userId } })
+}
+
+/** 지난 답을 고치러 그 질문으로 돌아간다(그 뒤 문답은 지운다). 제출한 설문은 고치지 않는다 — 「처음부터 다시」 로 */
+export async function rewindSurvey(userId: string, turnId: string): Promise<SubmitResult> {
+  const row = await prisma.aiSurvey.findUnique({ where: { userId } })
+  if (!row) return { ok: false, status: 404, error: "설문이 없습니다" }
+  if (row.status === "SUBMITTED") return { ok: false, status: 409, error: "이미 제출한 설문입니다" }
+  const back = rewindTurns(row.turns as unknown as Turn[], turnId)
+  if (!back) return { ok: false, status: 400, error: "고칠 수 없는 질문입니다" }
+  const r = await prisma.aiSurvey.updateMany({
+    where: { id: row.id, updatedAt: row.updatedAt },
+    data: { turns: json(back.turns), facts: json(back.facts), status: "IN_PROGRESS", summary: null, metrics: Prisma.DbNull },
+  })
+  if (r.count !== 1) return { ok: false, status: 409, error: "다른 곳에서 설문이 바뀌었어요. 새로고침해 주세요" }
+  return { ok: true, state: stateOf(await prisma.aiSurvey.findUnique({ where: { userId } })) }
 }

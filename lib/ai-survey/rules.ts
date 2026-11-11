@@ -442,3 +442,23 @@ export function answerText(f: Field, a: FieldAnswer | undefined): string {
   if ("num" in a) return f.kind === "scale" ? `${a.num} / 5` : `${a.num.toLocaleString("ko-KR")}${f.unit ?? ""}`
   return a.text
 }
+
+// ─── 답 고치기 ─────────────────────────────────────────────
+
+/**
+ * 지난 답 하나를 고치려고 그 질문으로 돌아간다. 그 질문은 그대로 다시 묻고(새로 만들지 않는다),
+ * 그 뒤의 문답은 버린다 — 뒤 질문은 앞 답을 보고 만든 것이라 앞 답이 바뀌면 맞지 않는다.
+ * 칸은 남은 응답을 처음부터 다시 옮겨 만든다. 없는 질문 · 아직 답하지 않은 질문이면 null.
+ */
+export function rewindTurns(turns: Turn[], turnId: string): { turns: Turn[]; facts: Facts } | null {
+  const i = turns.findIndex((t) => t.id === turnId)
+  if (i < 0 || !turns[i].answer) return null
+  const kept = turns.slice(0, i)
+  let facts: Facts = {}
+  for (const t of kept) if (t.answer) facts = applyAnswer(facts, t.ask, t.answer, t.id)
+  const asked: Turn = { ...turns[i] }
+  delete asked.answer
+  delete asked.answeredAt
+  delete asked.clientMs
+  return { turns: [...kept, asked], facts }
+}

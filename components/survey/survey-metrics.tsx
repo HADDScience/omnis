@@ -13,7 +13,7 @@ function Source({ ids, turns }: { ids: string[] | undefined; turns: Turn[] }) {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 border-b py-2 last:border-b-0 sm:flex-row sm:gap-3">
-      <dt className="shrink-0 text-[13px] text-muted-foreground sm:w-28">{label}</dt>
+      <dt className="shrink-0 text-[13px] text-muted-foreground sm:w-36">{label}</dt>
       <dd className="min-w-0 text-[14px] break-keep [overflow-wrap:anywhere]">{children}</dd>
     </div>
   )

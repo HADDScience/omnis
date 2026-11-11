@@ -41,7 +41,7 @@ async function answerTurn(page: Page) {
       await f.locator("input").fill("시험 답")
     }
   }
-  if (!instant) await turn.getByRole("button", { name: "다음", exact: true }).click()
+  if (!instant) await turn.getByRole("button", { name: "보내기", exact: true }).click()
   // 다음 질문(또는 요약)이 뜰 때까지 — 기다리는 동안에는 폼이 없다
   await expect(page.locator(`[data-survey-turn]:not([data-survey-turn="${id}"]), [data-ai-survey="confirm"]`).first()).toBeVisible({ timeout: 30_000 })
 }
@@ -63,7 +63,7 @@ test.describe("AI 활용 설문 @settings", () => {
     await expect(turn).toBeVisible({ timeout: 30_000 })
     // 어느 칸이든 「잘 모르겠음」 이 있고, 답하기 전에는 넘어갈 수 없다
     await expect(turn.locator("[data-survey-unknown]").first()).toBeVisible()
-    await expect(turn.getByRole("button", { name: "다음", exact: true })).toBeDisabled()
+    await expect(turn.getByRole("button", { name: "보내기", exact: true })).toBeDisabled()
     // 폰에서 가로로 넘치지 않는다
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     if (shots) await page.screenshot({ path: path.join(shots, "ai-survey-turn-mobile.png") })
@@ -74,8 +74,17 @@ test.describe("AI 활용 설문 @settings", () => {
     const pending = await turn.getAttribute("data-survey-turn")
     await page.reload()
     await expect(page.locator(`[data-survey-turn="${pending}"]`)).toBeVisible({ timeout: 30_000 })
-    await expect(page.locator("[data-survey-history]")).toContainText("지난 답 2개")
+    // 지난 문답이 대화로 남아 있다 — 옴니스의 질문과 내 답 말풍선
+    await expect(page.locator("[data-survey-answer]")).toHaveCount(2)
     expect(await page.locator('[data-survey-coverage] [data-purpose="usage"]').getAttribute("aria-valuenow")).not.toBe("0")
+
+    // 지난 답을 누르면 그 질문으로 돌아가 다시 답한다 — 그 뒤 답은 지워진다
+    await page.locator("[data-survey-answer] button").first().click()
+    await page.locator("[data-survey-edit-confirm]").getByRole("button", { name: "고치기", exact: true }).click()
+    await expect(page.locator("[data-survey-answer]")).toHaveCount(0)
+    await expect(turn).toBeVisible()
+    // 확인 창이 닫히는 동안에는 그 뒤 화면을 누를 수 없다
+    await expect(page.locator("[data-survey-edit-confirm]")).toHaveCount(0)
 
     for (let i = 0; i < 16 && (await turn.count()) > 0; i++) await answerTurn(page)
     const confirm = page.locator('[data-ai-survey="confirm"]')
