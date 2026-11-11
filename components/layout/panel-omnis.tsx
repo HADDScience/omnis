@@ -178,6 +178,8 @@ export function PanelOmnis({
           initialHasMore={state?.hasMore ?? false}
           initialStopped={state?.stopped ?? {}}
           activeRun={state?.activeRun ?? null}
+          origin={state?.room.origin ?? null}
+          busyBy={state?.busyBy ?? null}
           embedded={{
             onRoomCreated: (id) => {
               setCreated(id)

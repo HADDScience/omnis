@@ -100,7 +100,13 @@ export function AgentCard({
         </p>
       )}
 
-      {pending && (
+      {/* 공유 세션 — 남이 연 실행의 카드는 볼 수만 있다. 비용과 실행 책임이 그 사람에게 있다 */}
+      {pending && card.canDecide === false && (
+        <p data-agent-card-locked className="border-t px-3.5 py-2.5 text-right text-[12.5px] text-muted-foreground in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[15px]">
+          요청한 {card.requester?.name ? `${card.requester.name}님` : "사람"}만 확인할 수 있어요
+        </p>
+      )}
+      {pending && card.canDecide !== false && (
         <div className="flex justify-end gap-2 border-t px-3 py-2.5 in-data-[messenger]:gap-3 in-data-[messenger]:px-[14px] in-data-[messenger]:py-[12px]">
           <Button
             variant="outline"

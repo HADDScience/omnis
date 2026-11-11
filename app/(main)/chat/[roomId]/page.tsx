@@ -43,6 +43,8 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
         initialHasMore={loaded.hasMore}
         initialStopped={loaded.stopped}
         activeRun={loaded.activeRun}
+        origin={loaded.room.origin}
+        busyBy={loaded.busyBy}
         muted={muted}
       />
     )

@@ -6,6 +6,7 @@ import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
 import { MESSAGE_INCLUDE, shapeMessage, type MessageRow } from "@/lib/chat-message-shape"
 import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
+import { callOmnisFromRoom } from "@/lib/omnis-mention"
 import { AttachFileIdsSchema, ChatClientIdSchema } from "@/lib/schemas/chat-room"
 import { decideClientId, isUniqueViolation } from "@/lib/chat-client-id"
 import { changedSince, FIRST_CHANGE_LOOKBACK_MS, newerThan, olderThan, parseCursor, pollSince } from "@/lib/chat-cursor"
@@ -217,6 +218,17 @@ export async function POST(req: NextRequest) {
       return onClientIdRace(err, clientId, me, roomId)
     }
     if (!posted.ok) return NextResponse.json({ error: posted.error }, { status: posted.status })
+    // @옴니스 — 글은 바로 돌려주고 세션은 응답 뒤에 연다. 방에는 시작 · 끝 안내가 폴링으로 온다(lib/omnis-mention.ts).
+    // 이 길은 화면 · MCP 가 쓴 글만 지난다 — 카톡 이식 글은 오지 않는다(규칙도 kakao: 를 한 번 더 거른다)
+    const posting = posted.message
+    const myName = session.user.name ?? ""
+    after(async () => {
+      await callOmnisFromRoom({
+        room: { id: room.id, memberIds: room.members.map((m) => m.id) },
+        message: { content: posting.content, sourceId: posting.sourceId },
+        requester: { id: me, name: myName },
+      }).catch((err) => console.error("[chat] @옴니스 세션 실패", { roomId: room.id, err }))
+    })
     return NextResponse.json({ ...shapeReply(posted.message), _taskUpdate: null, _rebuild: null }, { status: 201 })
   }
   if (access && access.kind !== "COMPANY") {

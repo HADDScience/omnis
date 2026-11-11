@@ -67,6 +67,8 @@ export function OmnisRoom({
   muted = false,
   autoStartKey,
   onAutoStarted,
+  origin = null,
+  busyBy = null,
 }: {
   roomId: string | null
   roomName?: string
@@ -92,6 +94,10 @@ export function OmnisRoom({
   autoStartKey?: string
   /** 그 키를 받아 처리했다(보냈든 이미 보낸 것이든) — 패널이 요청을 지운다 */
   onAutoStarted?: (key: string) => void
+  /** 사람 방의 @옴니스 로 연 공유 세션이면 그 방(보는 사람 기준 이름). 참여자 누구나 보고 이어 묻는다 */
+  origin?: { id: string; title: string } | null
+  /** 남이 연 실행이 돌고 있으면 그 사람 이름 — 그 답은 끝나면 방에 남는다(남의 스트림에는 붙지 않는다) */
+  busyBy?: string | null
 }) {
   const reloadList = useRoomListReload()
   const nudgeRoomList = useRoomListNudge()
@@ -111,6 +117,8 @@ export function OmnisRoom({
    * 이 값이 있으면 「답을 못 받았다」 고 하지 않고 그 실행의 스트림에 다시 붙는다(lib/agent/room-view.ts)
    */
   const [running, setRunning] = useState<string | null>(activeRun?.status === "RUNNING" ? activeRun.id : null)
+  /** 공유 세션에서 남이 연 실행이 돌고 있다 — 그 사람 이름. 끝날 때까지 방을 몇 초마다 다시 읽는다(남의 스트림에는 붙지 않는다) */
+  const [busyName, setBusyName] = useState<string | null>(busyBy)
   const [deciding, setDeciding] = useState<{ id: string; decision: "approve" | "reject" } | null>(null)
   const [stopped, setStopped] = useState(initialStopped)
   /**
@@ -232,8 +240,8 @@ export function OmnisRoom({
       checkedAt: new Date().toISOString(),
       messages: messages.map((m) => ({
         id: m.id,
-        author: m.fromOmnis ? { id: "omnis", name: "옴니스" } : { id: userId, name: "나" },
-        mine: !m.fromOmnis,
+        author: m.fromOmnis ? { id: "omnis", name: "옴니스" } : isPeer(m, userId) ? m.author! : { id: userId, name: "나" },
+        mine: !m.fromOmnis && !isPeer(m, userId),
         fromOmnis: m.fromOmnis,
         content: m.content,
         createdAt: m.createdAt,
@@ -256,8 +264,15 @@ export function OmnisRoom({
       return { ...Object.fromEntries(Object.entries(prev).filter(([k]) => !ids.has(k))), ...(state.stopped ?? {}) }
     })
     setRunning(state.activeRun?.status === "RUNNING" ? state.activeRun.id : null)
+    setBusyName(state.busyBy ?? null)
     return state
   }, [])
+
+  useEffect(() => {
+    if (!busyName || !roomId) return
+    const t = window.setInterval(() => void refresh(roomId), 4000)
+    return () => window.clearInterval(t)
+  }, [busyName, roomId, refresh])
 
   /** 중지 — 아래 stopRun. consume 이 실행 id 를 받는 순간 부를 수 있게 ref 로 둔다 */
   const stopRunRef = useRef<(runId: string) => Promise<void>>(async () => {})
@@ -367,7 +382,9 @@ export function OmnisRoom({
   }, [roomId, refresh, follow])
 
   // 답을 못 받은 내 글 — 마지막이 내 질문이고, 읽는 스트림도 · 서버에 도는 실행도 · 기다리는 카드도 없을 때(새로고침해도 남는다)
-  const unanswered = unansweredQuestion({ messages, cards, busy, running: running !== null, stopped })
+  // 공유 세션에서 남의 질문은 그 사람 몫이다 — 「다시 묻기」 는 내 글에만
+  const lastAsked = unansweredQuestion({ messages, cards, busy, running: running !== null, stopped })
+  const unanswered = lastAsked && !isPeer(lastAsked, userId) ? lastAsked : null
   const waitingCard = cards.some((c) => c.status === "PENDING")
 
   /** 스트림이 끝난 뒤 — 방을 다시 읽고, 서버가 아직 돌고 있으면(스트림만 먼저 끝났으면) 다시 붙는다 */
@@ -579,7 +596,7 @@ export function OmnisRoom({
   }
 
   // 글과 카드를 시간 순으로 한 줄에
-  const rows = layoutMessages(messages.map((m) => ({ ...m, author: { id: m.fromOmnis ? "omnis" : "me", name: "" } })))
+  const rows = layoutMessages(messages.map((m) => ({ ...m, author: m.fromOmnis ? { id: "omnis", name: "" } : (m.author ?? { id: "me", name: "" }) })))
   const timeline: ({ kind: "row"; row: (typeof rows)[number]; at: string } | { kind: "card"; card: AgentCardData; at: string })[] = []
   {
     let ci = 0
@@ -618,7 +635,13 @@ export function OmnisRoom({
       {!embedded && (
         <RoomHeader
           title={shownTitle}
-          subtitle={isNew ? "옴니스와 1:1 · 첫 글을 보내면 대화방이 생깁니다" : "옴니스와 1:1 · 앞의 대화를 이어서 답합니다"}
+          subtitle={
+            isNew
+              ? "옴니스와 1:1 · 첫 글을 보내면 대화방이 생깁니다"
+              : origin
+                ? `공유됨 · ${origin.title} · 참여자 누구나 보고 이어서 물을 수 있어요`
+                : "옴니스와 1:1 · 앞의 대화를 이어서 답합니다"
+          }
           actions={roomId ? <RoomMuteButton key={roomId} roomKey={`room:${roomId}`} initialMuted={muted} /> : undefined}
         />
       )}
@@ -701,6 +724,11 @@ export function OmnisRoom({
                     })(),
                   }}
                 />
+              ) : isPeer(m, userId) ? (
+                <Fragment key={row.key}>
+                  {before}
+                  <PeerMessage name={m.author!.name} content={m.content} iso={m.createdAt} fresh={fresh} files={m.files} />
+                </Fragment>
               ) : (
                 <Fragment key={row.key}>
                   {before}
@@ -711,6 +739,11 @@ export function OmnisRoom({
             {bareStop()}
             {pending && showPendingBubble(messages, pending) && <MyMessage content={pending.content} sending files={pending.files} />}
             {(live || pending || running) && <LiveOmnis text={text} tools={live?.tools ?? []} resuming={!live && !pending} stopping={stopping} />}
+            {busyName && !live && !pending && !running && (
+              <p data-session-busy role="status" className="mt-3 text-center text-[12px] text-muted-foreground in-data-[messenger]:text-[14.5px]">
+                옴니스가 {busyName}님의 글에 답하는 중이에요 · 끝나면 여기에 남아요
+              </p>
+            )}
             {unanswered && roomId && (
               <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground in-data-[messenger]:mt-3 in-data-[messenger]:text-[14.5px]" role="status">
                 <span>{error ?? "이 질문에 아직 답을 받지 못했어요"}</span>
@@ -836,6 +869,29 @@ export function LiveOmnis({ text, tools, resuming = false, stopping = false }: {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/** 공유 세션의 남의 글 — 내 글(오른쪽)과 갈라 왼쪽에 이름과 함께 */
+function isPeer(m: OmnisRoomMessage, viewerId: string | null | undefined): boolean {
+  // 「me」 는 작성자를 모르는 옛 글 · 저장본의 자리값이다 — 내 글로 본다
+  return !m.fromOmnis && !!m.author && m.author.id !== "me" && !!viewerId && m.author.id !== viewerId
+}
+
+function PeerMessage({ name, content, iso, fresh = false, files }: { name: string; content: string; iso: string; fresh?: boolean; files?: FileInfo[] }) {
+  return (
+    <div data-peer-message className={cn("mt-3 flex flex-col items-start gap-0.5 in-data-[messenger]:mt-5 in-data-[messenger]:gap-1", fresh && MESSAGE_ENTER)}>
+      <span className="px-1 text-[11.5px] text-muted-foreground in-data-[messenger]:text-[13.5px]">{name}</span>
+      <div className="max-w-[85%] whitespace-pre-wrap break-keep rounded-2xl rounded-tl-md bg-muted px-3.5 py-2 text-[13.5px] leading-[1.6] [overflow-wrap:anywhere] in-data-[messenger]:rounded-[24px] in-data-[messenger]:rounded-tl-lg in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] in-data-[messenger]:leading-[1.6]">
+        {tidyBody(content)}
+      </div>
+      {files && files.length > 0 && (
+        <div className="flex max-w-[85%]">
+          <MessageFiles files={files} />
+        </div>
+      )}
+      <MessageTime iso={iso} className="text-[10.5px] in-data-[messenger]:text-[12.5px]" />
     </div>
   )
 }

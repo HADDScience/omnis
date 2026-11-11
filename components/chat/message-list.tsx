@@ -73,6 +73,8 @@ interface Message {
   /** 지운 글은 자리만 남는다 — 본문은 서버가 내려보내지 않는다 */
   deletedAt?: string | null
   replyTo?: { id: string; authorName: string; content: string } | null
+  /** 사람 방의 @옴니스 안내(시작 · 끝 줄)가 가리키는 옴니스 세션 — 알약에 「열기」 를 붙인다 */
+  sessionRoomId?: string | null
 }
 
 /** 말풍선 안에서 검색어가 걸린 자리들. 링크 · 칩 경계를 넘는 일치는 잡지 않는다 */
@@ -434,7 +436,21 @@ export function MessageList({
 
             // 시스템 메시지. 재구성 요약은 한 줄을 넘어 알약 안에서 줄을 바꾼다
             if (msg._isSystem || msg.author.id === "system" || msg.content.startsWith("🤖")) {
-              return <SystemPill key={msg.id}>{msg.content.startsWith("🤖") ? msg.content : `🤖 ${msg.content}`}</SystemPill>
+              return (
+                <SystemPill key={msg.id} messageId={msg.sessionRoomId ? msg.id : undefined}>
+                  {msg.content.startsWith("🤖") ? msg.content : `🤖 ${msg.content}`}
+                  {msg.sessionRoomId && (
+                    // 옴니스 세션으로 — 알약 높이는 그대로 두고 누르는 자리만 44px 로 넓힌다
+                    <Link
+                      href={`/chat/${msg.sessionRoomId}`}
+                      data-omnis-session-link
+                      className="-my-3 ml-1 inline-flex min-h-11 shrink-0 items-center px-2 font-semibold text-primary underline-offset-2 hover:underline"
+                    >
+                      열기
+                    </Link>
+                  )}
+                </SystemPill>
+              )
             }
 
             const mine = isMe && !selectionMode

@@ -1029,6 +1029,12 @@ function RoomRowContent({ room, draft }: { room: RoomListItem; draft?: string })
               {TASK_STATUS_LABELS[room.status] ?? room.status}
             </span>
           )}
+          {/* 사람 방의 @옴니스 로 연 세션 — 그 방 참여자 모두가 본다 */}
+          {room.sharedFrom && (
+            <span data-shared-from className="max-w-[45%] shrink-0 truncate rounded-md bg-primary/10 px-1.5 py-px text-[12px] text-primary">
+              공유됨 · {room.sharedFrom}
+            </span>
+          )}
           <span className={cn("min-w-0 flex-1 truncate text-[14.5px] max-md:line-clamp-2 max-md:whitespace-normal max-md:text-[15px] max-md:leading-[20px]", unread ? "text-foreground/80" : "text-muted-foreground")}>
             {draft ? (
               <span data-draft-preview>
