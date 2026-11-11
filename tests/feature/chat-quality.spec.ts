@@ -171,7 +171,8 @@ test("위로 올려 읽는 중에 남의 글이 오면 자리를 지키고 「�
   for (let i = 0; i < 25; i++) ids.push(await other.post(`채우기 ${i} ${"줄 ".repeat(20)}`))
   await openRoom(page)
 
-  const scroller = page.locator('[role="log"][aria-label="채팅 메시지"]').locator("..")
+  // 스트리밍 중 React 가 잠깐 숨겨 둔 사본(<div hidden id="S:…">)에도 같은 목록이 있을 수 있다 — 보이는 것만
+  const scroller = page.locator('[role="log"][aria-label="채팅 메시지"]').filter({ visible: true }).locator("..")
   // 방을 열면 맨 아래 — 목록을 비웠다 다시 채우는 사이 맨 위에 머물던 회귀(이 작업 중 시험이 잡았다)
   await expect.poll(() => scroller.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(80)
   await scroller.hover()
