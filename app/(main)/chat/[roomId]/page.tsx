@@ -44,6 +44,9 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
         initialStopped={loaded.stopped}
         activeRun={loaded.activeRun}
         origin={loaded.room.origin}
+        owner={loaded.room.owner ?? null}
+        isOwner={loaded.room.isOwner ?? true}
+        memberCount={loaded.room.memberCount ?? 1}
         busyBy={loaded.busyBy}
         muted={muted}
       />

@@ -144,9 +144,17 @@ model ChatRoomMember {
   joinedAt   DateTime  @default(now())
   /// 마지막으로 이 방을 연 시각. 안 읽은 글 표시가 쓴다
   lastReadAt DateTime?
+  /// 옴니스 세션(OMNIS_DM)에 공유로 들어온 길(2026-11-11). null 이면 세션 주인(만든 사람 · 인계받은 사람)이거나 세션이 아닌 방의 참여자.
+  /// PERSON = 주인이 사람을 골라 공유, ROOM = 방에 공유(originRoomId — 그 방 참여자와 같게 맞춘다). 방 동기화는 ROOM 행만 넣고 뺀다(lib/omnis-session-share.ts)
+  shareKind  SessionShareKind?
 
   @@id([roomId, userId])
   @@index([userId])
+}
+
+enum SessionShareKind {
+  PERSON
+  ROOM
 }
 
 /// 방 하나에 대한 내 설정 — 즐겨찾기 · 마지막으로 읽은 시각. 메신저 목록(lib/chat-prefs.ts)이 쓴다.

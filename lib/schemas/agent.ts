@@ -18,3 +18,19 @@ export const DecideAgentStepSchema = z.object({
   decision: z.enum(["approve", "reject"]),
   planHash: z.string().regex(/^[0-9a-f]{64}$/, "잘못된 제안 해시입니다"),
 })
+
+// ─── 옴니스 세션 공유 · 인계(2026-11-11, lib/omnis-session-share.ts) ─────────
+const userId = z.string().min(1).max(64)
+/** 공유 — 사람들 또는 방 하나 */
+export const ShareSessionSchema = z.union([
+  z.object({ userIds: z.array(userId).min(1, "공유할 사람을 골라 주세요").max(50) }),
+  z.object({ roomId: z.string().min(1).max(64) }),
+])
+/** 공유 해제 — 한 사람 · 방 공유 · 모두 */
+export const UnshareSessionSchema = z.union([
+  z.object({ userId }),
+  z.object({ room: z.literal(true) }),
+  z.object({ all: z.literal(true) }),
+])
+/** 인계 — 넘겨받을 사람 */
+export const HandoverSessionSchema = z.object({ userId })

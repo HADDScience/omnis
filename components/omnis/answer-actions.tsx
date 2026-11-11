@@ -44,6 +44,7 @@ export function AnswerActions({
   answerRef,
   preview,
   onRegenerate,
+  onShareSession,
 }: {
   messageId: string
   roomId: string | null
@@ -57,6 +58,8 @@ export function AnswerActions({
   preview: React.ReactNode
   /** 같은 질문을 다시 묻는다. 없으면 「응답 다시 생성」 이 흐리게 */
   onRegenerate?: () => void
+  /** 이 대화(세션)를 사람 · 방에 공유하는 창을 연다 — 주인에게만. 없으면 공유 창에 바로가기를 두지 않는다 */
+  onShareSession?: () => void
 }) {
   const [copied, setCopied] = useState(false)
   // TODO(answer-feedback): 좋아요 · 싫어요를 저장할 표가 아직 없다 — 지금은 이 화면에서만 표시한다
@@ -143,7 +146,15 @@ export function AnswerActions({
       </DropdownMenu>
 
       {roomId && (
-        <ShareDialog open={sharing} onOpenChange={setSharing} roomId={roomId} roomName={roomName} messageId={messageId} preview={preview} />
+        <ShareDialog
+          open={sharing}
+          onOpenChange={setSharing}
+          roomId={roomId}
+          roomName={roomName}
+          messageId={messageId}
+          preview={preview}
+          onShareSession={onShareSession ? () => { setSharing(false); onShareSession() } : undefined}
+        />
       )}
     </div>
   )
@@ -156,6 +167,7 @@ function ShareDialog({
   roomName,
   messageId,
   preview,
+  onShareSession,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -163,6 +175,7 @@ function ShareDialog({
   roomName?: string
   messageId: string
   preview: React.ReactNode
+  onShareSession?: () => void
 }) {
   const [copied, setCopied] = useState(false)
   async function copyLink() {
@@ -186,7 +199,7 @@ function ShareDialog({
         </div>
         <div className="flex flex-col items-center gap-3">
           <p data-answer-share-note className="text-center text-[12.5px] text-muted-foreground">
-            이 메시지 링크 — 회사 구성원만 볼 수 있음(로그인 필요). 옴니스 대화는 대화를 연 사람만 열 수 있습니다.
+            이 메시지 링크 — 회사 구성원만 볼 수 있음(로그인 필요). 옴니스 대화는 대화에 들어 있는 사람(연 사람 · 공유받은 사람)만 열 수 있습니다.
           </p>
           <div className="flex flex-col items-center gap-1">
             <Button type="button" data-answer-copy-link variant="secondary" size="icon-lg" className="size-12 rounded-full" aria-label="링크 복사" onClick={() => void copyLink()}>
@@ -194,6 +207,11 @@ function ShareDialog({
             </Button>
             <span className="text-[12px] text-muted-foreground">{copied ? "복사됨" : "링크 복사"}</span>
           </div>
+          {onShareSession && (
+            <Button type="button" variant="outline" data-answer-share-session className="h-11 md:h-9" onClick={onShareSession}>
+              이 대화를 공유하기
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
