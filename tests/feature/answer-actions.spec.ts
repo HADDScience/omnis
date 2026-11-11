@@ -85,7 +85,8 @@ test.describe("옴니스 답 복사 · 동작 줄", () => {
   test("PC — 표 칸 범위를 끌어 Ctrl/⌘+C 하면 고른 열의 머리와 함께 표 · 탭 글", async ({ browser }) => {
     const { ctx, page } = await open(browser, PC)
     const sheet = answer(page).locator("[data-copyable-sheet]")
-    const cell = (r: number, c: number) => sheet.locator("tbody tr").nth(r + 1).locator("td").nth(c)
+    // 0 줄은 머리글 칸(copyable-sheet.tsx) — 본문 첫 줄이 1
+    const cell = (r: number, c: number) => sheet.locator("tbody tr:has(td)").nth(r + 1).locator("td").nth(c)
     await expect(cell(0, 0)).toContainText("바이오 소재 실증연구")
     const a = (await cell(0, 0).boundingBox())!
     const b = (await cell(1, 1).boundingBox())!
@@ -100,6 +101,30 @@ test.describe("옴니스 답 복사 · 동작 줄", () => {
     expect(clip.html).not.toContain("단계")
     await shot(page, "pc-sheet-range")
     if (SHOTS) fs.writeFileSync(path.join(SHOTS, "clipboard-range.html"), clip.html)
+    await ctx.close()
+  })
+
+  test("PC — 머리글 칸부터 끌어 고를 수 있고, 선택 상자가 칸 경계에 맞는다", async ({ browser }) => {
+    const { ctx, page } = await open(browser, PC)
+    const sheet = answer(page).locator("[data-copyable-sheet]")
+    const cell = (r: number, c: number) => sheet.locator("tbody tr:has(td)").nth(r).locator("td").nth(c)
+    await expect(cell(0, 0)).toHaveText("사업")
+    const a = (await cell(0, 0).boundingBox())!
+    const b = (await cell(3, 1).boundingBox())!
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 5 })
+    await page.mouse.up()
+    const rect = (await sheet.locator(".Spreadsheet__floating-rect--selected").boundingBox())!
+    expect(Math.abs(rect.y - a.y)).toBeLessThan(2)
+    expect(Math.abs(rect.y + rect.height - (b.y + b.height))).toBeLessThan(2)
+    expect(Math.abs(rect.x - a.x)).toBeLessThan(2)
+    expect(Math.abs(rect.x + rect.width - (b.x + b.width))).toBeLessThan(2)
+    await page.keyboard.press("ControlOrMeta+c")
+    const clip = await readClipboard(page)
+    expect(clip.text).toBe("사업\t담당\n바이오 소재 실증연구\t사원1\n공급망 안정화\t부팀장\n제품 B 인허가\t부팀장")
+    expect(clip.html).toMatch(/<thead><tr><th[^>]*>사업<\/th><th[^>]*>담당<\/th><\/tr><\/thead>/)
+    await shot(page, "pc-sheet-header-range")
     await ctx.close()
   })
 
@@ -179,7 +204,8 @@ test.describe("옴니스 답 복사 · 동작 줄", () => {
     // 링크로 들어오면 그 답 자리로
     const other = await ctx.newPage()
     await other.goto(link)
-    await expect(other.locator(`#m-${id}`)).toBeInViewport({ timeout: 15_000 })
+    // 스트리밍 중 React 가 잠깐 숨겨 둔 사본(<div hidden id="S:…">)에도 같은 id 가 있을 수 있다 — 보이는 것만
+    await expect(other.locator(`#m-${id}`).filter({ visible: true })).toBeInViewport({ timeout: 15_000 })
     await ctx.close()
   })
 

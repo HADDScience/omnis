@@ -90,6 +90,30 @@ export function rangeClip(headers: string[], rows: string[][], range: CellRange)
   return { html: tableToHtml(head, body), text: tableToTsv(head, body) }
 }
 
+/**
+ * 표 칸 범위 — 머리글을 첫 줄(0)로 둔 표 좌표(components/omnis/copyable-sheet.tsx). 머리글 칸도 고르고 복사할 수 있다.
+ * 머리글 줄을 포함하면 그 머리를 표 머리로, 본문만 골랐으면 rangeClip 처럼 고른 열의 머리를 붙인다
+ */
+export function sheetRangeClip(headers: string[], rows: string[][], range: CellRange): Clip {
+  if (!headers.length) return rangeClip(headers, rows, range)
+  const r0 = Math.min(range.start.row, range.end.row)
+  const r1 = Math.max(range.start.row, range.end.row)
+  const cols = { start: Math.min(range.start.column, range.end.column), end: Math.max(range.start.column, range.end.column) }
+  if (r0 > 0) return rangeClip(headers, rows, { start: { row: r0 - 1, column: cols.start }, end: { row: r1 - 1, column: cols.end } })
+  const width = Math.max(headers.length, ...rows.map((r) => r.length))
+  const c0 = Math.max(0, cols.start)
+  const c1 = Math.min(width - 1, cols.end)
+  if (c1 < c0) return { html: "", text: "" }
+  const pick = (r: string[]) => Array.from({ length: c1 - c0 + 1 }, (_, i) => r[c0 + i] ?? "")
+  const head = pick(headers)
+  const body = rows.slice(0, Math.min(r1, rows.length)).map(pick)
+  if (!body.length && head.length === 1) {
+    const v = cellText(head[0])
+    return { html: escapeHtml(v), text: v }
+  }
+  return { html: tableToHtml(head, body), text: tableToTsv(head, body) }
+}
+
 // ─── 화면 선택 정리 ─────────────────────────────────────
 
 /** 남기는 꾸밈. 나머지 요소(div · span · a …)는 벗기고 속만 남긴다 */
@@ -122,7 +146,9 @@ function readTable(table: ClipNode & { type: "el" }): { headers: string[]; rows:
     .map((tr) => tr.children.filter((c): c is ClipNode & { type: "el" } => c.type === "el" && (c.tag === "td" || c.tag === "th")))
     .filter((cells) => cells.length > 0)
   let headers: string[] = []
-  if (lines.length && lines[0].every((c) => c.tag === "th")) headers = lines.shift()!.map(textOf)
+  // 머리 줄 — th 만으로 된 첫 줄, 또는 머리글을 첫 줄 칸(td.omnis-sheet-head)으로 그린 읽기 표(copyable-sheet.tsx)
+  const isHead = (c: ClipNode & { type: "el" }) => c.tag === "th" || /(^|\s)omnis-sheet-head(\s|$)/.test(c.className ?? "")
+  if (lines.length && lines[0].every(isHead)) headers = lines.shift()!.map(textOf)
   return { headers, rows: lines.map((cells) => cells.map(textOf)) }
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react"
 import Spreadsheet, { type CellBase, type Matrix, type Selection } from "react-spreadsheet"
-import { rangeClip, type CellRange } from "@/lib/answer-clipboard"
+import { sheetRangeClip, type CellRange } from "@/lib/answer-clipboard"
 import { putClip } from "./answer-copy"
 
 /**
@@ -10,9 +10,16 @@ import { putClip } from "./answer-copy"
  * react-spreadsheet 는 글(text/plain)만 싣는다. 그래서 이 표가 포커스를 가졌고 칸 범위를 골랐으면 복사 사건을
  * 잡기 단계에서 먼저 받아 두 형식을 싣고 멈춘다.
  * 옴니스 답 표(components/omnis/omnis-ask.tsx)와 카드 표(section-editor.tsx)가 같이 쓴다.
+ *
+ * 머리글은 react-spreadsheet 의 열 머리(columnLabels — 고를 수 없는 th)가 아니라 첫 줄 칸으로 그린다 —
+ * 머리글도 칸처럼 끌어 고르고 복사할 수 있게. 좌표는 머리글 줄이 0 이다(lib/answer-clipboard.ts sheetRangeClip).
  */
 export function CopyableSheet({ headers, rows, className = "" }: { headers: string[]; rows: string[][]; className?: string }) {
-  const data: Matrix<CellBase> = useMemo(() => rows.map((r) => r.map((value) => ({ value, readOnly: true }))), [rows])
+  const data: Matrix<CellBase> = useMemo(() => {
+    const body = rows.map((r) => r.map((value) => ({ value, readOnly: true })))
+    if (!headers.length) return body
+    return [headers.map((value) => ({ value, readOnly: true, className: "omnis-sheet-head" })), ...body]
+  }, [headers, rows])
   const root = useRef<HTMLDivElement>(null)
   const range = useRef<CellRange | null>(null)
   const latest = useRef({ headers, rows })
@@ -30,7 +37,7 @@ export function CopyableSheet({ headers, rows, className = "" }: { headers: stri
       // 화면 글을 끌어 고른 복사는 답 본문(OmnisAnswerBody)이 맡는다
       const sel = window.getSelection()
       if (sel && !sel.isCollapsed && sel.rangeCount > 0 && !el.contains(sel.getRangeAt(0).commonAncestorContainer)) return
-      const clip = rangeClip(latest.current.headers, latest.current.rows, r)
+      const clip = sheetRangeClip(latest.current.headers, latest.current.rows, r)
       if (!clip.text) return
       e.preventDefault()
       // react-spreadsheet 의 문서 듣기(글만 쓴다)까지 가지 않게 — 그쪽은 고른 칸이 바뀔 때마다 다시 붙어 순서를 믿을 수 없다
@@ -46,7 +53,7 @@ export function CopyableSheet({ headers, rows, className = "" }: { headers: stri
     <div ref={root} data-copyable-sheet className={`omnis-spreadsheet omnis-spreadsheet--readonly overflow-x-auto ${className}`}>
       <Spreadsheet
         data={data}
-        columnLabels={headers}
+        hideColumnIndicators
         hideRowIndicators
         onSelect={(s: Selection) => {
           range.current = s.toRange(data)

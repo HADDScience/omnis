@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { clipFromTree, rangeClip, stripCitations, tableToHtml, tableToTsv, type ClipNode } from "./answer-clipboard"
+import { clipFromTree, rangeClip, sheetRangeClip, stripCitations, tableToHtml, tableToTsv, type ClipNode } from "./answer-clipboard"
 import { anchoredMessageId, answerLink, answerTimeLabel } from "./answer-actions"
 
 const el = (tag: string, children: ClipNode[] = [], className?: string): ClipNode => ({ type: "el", tag, className, children })
@@ -83,4 +83,29 @@ test("사내 링크 — 그 대화 · 그 답, 해시로 다시 읽는다", () =
   assert.equal(answerLink("https://x.test", "r", "m", "/omnis"), "https://x.test/omnis/chat/r#m-m")
   assert.equal(anchoredMessageId("#m-msg-9"), "msg-9")
   assert.equal(anchoredMessageId("#other"), null)
+})
+
+test("표 좌표(머리글 = 0 줄) — 머리글 칸도 고르고, 본문만 고르면 머리를 붙인다", () => {
+  const headers = ["이름", "단계", "날짜"]
+  const rows = [["A", "출원", "1/1"], ["B", "등록", "2/2"]]
+  const at = (r0: number, c0: number, r1: number, c1: number) => sheetRangeClip(headers, rows, { start: { row: r0, column: c0 }, end: { row: r1, column: c1 } })
+  assert.deepEqual(at(0, 1, 0, 1), { html: "단계", text: "단계" })
+  assert.equal(at(0, 0, 0, 1).text, "이름\t단계")
+  assert.match(at(0, 0, 0, 1).html, /<thead><tr><th[^>]*>이름<\/th><th[^>]*>단계<\/th><\/tr><\/thead><\/table>$/)
+  // 머리글 한 칸 + 그 아래 한 칸도 표
+  assert.equal(at(0, 2, 1, 2).text, "날짜\n1/1")
+  assert.equal(at(1, 0, 2, 1).text, "이름\t단계\nA\t출원\nB\t등록")
+  assert.equal(at(2, 1, 0, 0).text, "이름\t단계\nA\t출원\nB\t등록")
+  assert.deepEqual(at(2, 2, 2, 2), { html: "2/2", text: "2/2" })
+  // 머리글 없는 표는 그대로
+  assert.equal(sheetRangeClip([], rows, { start: { row: 0, column: 0 }, end: { row: 0, column: 1 } }).text, "A\t출원")
+})
+
+test("읽기 표의 머리글 칸(td.omnis-sheet-head)도 표 머리가 된다", () => {
+  const clip = clipFromTree([el("table", [el("tbody", [
+    el("tr", [el("td", [t("건")], "Spreadsheet__cell omnis-sheet-head"), el("td", [t("단계")], "omnis-sheet-head")]),
+    el("tr", [el("td", [t("ADD")]), el("td", [t("출원")])]),
+  ])])])
+  assert.match(clip.html, /<thead><tr><th[^>]*>건<\/th><th[^>]*>단계<\/th><\/tr><\/thead><tbody><tr><td[^>]*>ADD<\/td>/)
+  assert.equal(clip.text, "건\t단계\nADD\t출원")
 })
