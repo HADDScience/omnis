@@ -19,6 +19,7 @@ import { IS_DEMO } from "@/lib/demo"
 import type { RoomList, RoomListItem } from "@/lib/chat-rooms"
 import { cn } from "@/lib/utils"
 import { useChatUserId, useRoomSurfaceReady } from "./messenger-context"
+import { useChatDraft } from "@/hooks/use-chat-draft"
 import { RoomHeader } from "./room-header"
 import { RoomSkeleton } from "./room-skeleton"
 
@@ -203,6 +204,8 @@ function EntryComposer({
   // 셸이 먼저 그린 입장 화면 → loading.tsx 로 갈아 끼울 때 쓰던 글 · 포커스를 잇는다(같은 맡김 칸을 쓴다)
   const [value, setValue] = useState(() => peekHandoff(roomKey)?.text ?? "")
   const ref = useRef<HTMLTextAreaElement>(null)
+  // 방이 오기 전에도 저장해 둔 글을 보인다(lib/chat-draft.ts) — 방 화면 입력창도 같은 초안을 되살린다
+  useChatDraft(roomKey, value, setValue)
   useLayoutEffect(() => {
     const h = peekHandoff(roomKey)
     if (!h?.focused) return

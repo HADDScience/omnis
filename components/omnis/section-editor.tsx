@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import Link from "next/link"
 import Spreadsheet, { type CellBase, type Matrix } from "react-spreadsheet"
+import { CopyableSheet } from "./copyable-sheet"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -111,11 +112,6 @@ function TextViewer({ section }: { section: TextSection }) {
 
 // ─── 테이블 뷰어 ────────────────────────────────────────
 function TableViewer({ section }: { section: TableSection }) {
-  const data: Matrix<CellBase> = useMemo(() =>
-    section.rows.map((row) =>
-      row.map((cell) => ({ value: cell, readOnly: true }))
-    ), [section.rows])
-
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -125,13 +121,8 @@ function TableViewer({ section }: { section: TableSection }) {
         {section.headers.length === 0 ? (
           <p className="text-sm text-muted-foreground">빈 테이블</p>
         ) : (
-          <div className="overflow-x-auto omnis-spreadsheet omnis-spreadsheet--readonly">
-            <Spreadsheet
-              data={data}
-              columnLabels={section.headers}
-              hideRowIndicators
-            />
-          </div>
+          // 칸을 끌어 고르고 Ctrl/⌘+C 하면 표 그대로 복사된다(./copyable-sheet.tsx)
+          <CopyableSheet headers={section.headers} rows={section.rows} />
         )}
       </CardContent>
     </Card>

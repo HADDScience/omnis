@@ -446,6 +446,10 @@ html[data-brand="v2"] {
 .omnis-spreadsheet .Spreadsheet table {
   border-collapse: collapse;
   width: 100%;
+  /* 답 본문(.omnis-md table)의 display:block · 위아래 margin 이 이 표에도 걸리면, react-spreadsheet 가 칸의
+     offsetTop(표 기준)으로 그리는 선택 상자가 margin 만큼 위로 어긋난다 — 표는 표로, 여백 없이 둔다 */
+  display: table;
+  margin: 0;
 }
 .omnis-spreadsheet .Spreadsheet th {
   background: var(--muted);
@@ -494,6 +498,16 @@ html[data-brand="v2"] {
 }
 .omnis-spreadsheet--readonly .Spreadsheet td {
   background: transparent;
+}
+/* 머리글 줄 — 첫 줄 칸(components/omnis/copyable-sheet.tsx). 고르고 복사할 수 있는 보통 칸이다 */
+.omnis-spreadsheet .Spreadsheet td.omnis-sheet-head,
+.omnis-spreadsheet--readonly .Spreadsheet tr:nth-child(even) td.omnis-sheet-head {
+  background: var(--muted);
+}
+.omnis-spreadsheet .Spreadsheet td.omnis-sheet-head .Spreadsheet__data-viewer {
+  color: var(--muted-foreground);
+  font-weight: 600;
+  white-space: nowrap;
 }
 .omnis-spreadsheet--readonly .Spreadsheet tr:nth-child(even) td {
   background: oklch(0 0 0 / 2%);

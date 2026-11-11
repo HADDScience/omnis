@@ -10,6 +10,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { DayDivider, MessageTime } from "@/components/chat/message-parts"
 import { MESSAGE_ENTER, MessageFiles, type FileInfo } from "@/components/chat/message-list"
 import { OmnisAnswerBody } from "@/components/omnis/omnis-ask"
+import { AnswerActions } from "@/components/omnis/answer-actions"
+import { anchoredMessageId, answerAnchorId } from "@/lib/answer-actions"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
 import type { BudgetBlock } from "@/lib/ai-budget-rules"
@@ -25,6 +27,7 @@ import { writeSnapshot } from "@/lib/room-snapshot"
 import { resolveHandoff } from "@/lib/chat-entry"
 import { claimTaskStart } from "@/lib/task-start"
 import { useComposerHandoff } from "@/hooks/use-composer-handoff"
+import { useChatDraft } from "@/hooks/use-chat-draft"
 import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type LiveAnswer, type LiveTool } from "@/lib/agent/client-stream"
 import { AgentCard } from "./agent-card"
 import { ToolTrail } from "./tool-trail"
@@ -179,6 +182,27 @@ export function OmnisRoom({
       anchor.current = null
     }
   }, [messages])
+
+  // 공유 링크(#m-<답 id>)로 들어오면 그 답으로 옮겨 잠깐 칠한다. 아래로 붙기는 놓는다 — 다음 새 글이 다시 끝으로 끌지 않게.
+  // 첫 페이지(최근 30개) 밖의 답이면 옮기지 않는다
+  useEffect(() => {
+    const id = embedded ? null : anchoredMessageId(window.location.hash)
+    if (!id) return
+    const el = document.getElementById(answerAnchorId(id))
+    if (!el) return
+    stickRef.current = false
+    const raf = requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "start" })
+      el.classList.add("bg-amber-200/40", "dark:bg-amber-400/10")
+    })
+    const t = setTimeout(() => el.classList.remove("bg-amber-200/40", "dark:bg-amber-400/10"), 2000)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(t)
+    }
+    // 들어온 순간 한 번만 — 패널 여부는 그사이 바뀌지 않는다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function followBottom() {
     const el = listRef.current
@@ -470,6 +494,8 @@ export function OmnisRoom({
     if (sendNow) send(queued)
     setDraft(queued !== null && !sendNow ? (text ? `${queued}\n${text}` : queued) : text)
   })
+  // 쓰던 글 임시저장(lib/chat-draft.ts) — 오른쪽 패널 · 아직 없는 방은 두지 않는다
+  useChatDraft(embedded || !roomId ? undefined : `room:${roomId}`, draft, setDraft)
 
   // 업무에서 넘어온 첫 글 — 화면이 뜬 뒤 한 번. 보냈다고 먼저 적고(claimTaskStart) 보낸다
   const sendRef = useRef(send)
@@ -588,7 +614,10 @@ export function OmnisRoom({
     for (; ci < sortedCards.length; ci++) timeline.push({ kind: "card", card: sortedCards[ci], at: sortedCards[ci].createdAt })
   }
   const isNew = roomId === null && messages.length === 0
+  const shownTitle = isNew ? "새 대화" : (roomName ?? (messages[0] ? messages[0].content.replace(/\s+/g, " ").slice(0, 30) : "옴니스"))
   let trailFor: string | null = null
+  /** 지금 줄 위의 마지막 내 질문 — 「응답 다시 생성」 은 그 질문을 다시 묻는다 */
+  let lastQuestion: { content: string } | null = null
   const text = live ? liveText(live) : ""
   // 멈춘 답 — 그때까지의 답 글에는 「중지됨」, 글 없이 멈춘 질문에는 그 질문의 차례 끝에 「답을 멈췄어요」
   const stoppedAnswers = new Set(Object.values(stopped).filter((v): v is string => v !== null))
@@ -605,7 +634,7 @@ export function OmnisRoom({
     <div className="flex min-h-0 flex-1 flex-col" data-onboarding={embedded ? undefined : "omnis-room"}>
       {!embedded && (
         <RoomHeader
-          title={isNew ? "새 대화" : (roomName ?? (messages[0] ? messages[0].content.replace(/\s+/g, " ").slice(0, 30) : "옴니스"))}
+          title={shownTitle}
           subtitle={
             isNew
               ? "옴니스와 1:1 · 첫 글을 보내면 대화방이 생깁니다"
@@ -650,6 +679,7 @@ export function OmnisRoom({
               if (item.kind === "row" && item.row.type !== "day") {
                 const m = item.row.message
                 if (!m.fromOmnis) {
+                  lastQuestion = { content: m.content }
                   before = bareStop()
                   trailFor = m.id
                   if (stopped[m.id] === null) stoppedBare = m.id
@@ -677,7 +707,23 @@ export function OmnisRoom({
                 trailFor = null
               }
               return m.fromOmnis ? (
-                <OmnisMessage key={row.key} message={m} fresh={fresh} tools={trail} stopped={stoppedAnswers.has(m.id)} />
+                <OmnisMessage
+                  key={row.key}
+                  message={m}
+                  fresh={fresh}
+                  tools={trail}
+                  stopped={stoppedAnswers.has(m.id)}
+                  actions={{
+                    roomId,
+                    roomName: shownTitle,
+                    anchor: !embedded,
+                    // 같은 질문을 대화 끝에 다시 묻는다 — 앞 답은 그대로 남는다. 답을 받는 중에는 묻지 않는다
+                    onRegenerate: (() => {
+                      const q = lastQuestion
+                      return q && !busy ? () => void ask({ content: q.content }, q.content) : undefined
+                    })(),
+                  }}
+                />
               ) : isPeer(m, userId) ? (
                 <Fragment key={row.key}>
                   {before}
@@ -884,9 +930,24 @@ function OmnisAvatar() {
   )
 }
 
-export function OmnisMessage({ message, fresh, tools, stopped = false }: { message: OmnisRoomMessage; fresh: boolean; tools: ToolUse[]; stopped?: boolean }) {
+export function OmnisMessage({
+  message,
+  fresh,
+  tools,
+  stopped = false,
+  actions,
+}: {
+  message: OmnisRoomMessage
+  fresh: boolean
+  tools: ToolUse[]
+  stopped?: boolean
+  /** 답 아래 동작 줄(복사 · 공유 …). 없으면 그리지 않는다 — 온보딩 시연 */
+  /** anchor: 공유 링크(#m-<id>)가 가리킬 자리 — 방 화면만. 오른쪽 패널에 같은 방이 함께 떠 있으면 id 가 둘이 된다 */
+  actions?: { roomId: string | null; roomName?: string; onRegenerate?: () => void; anchor?: boolean }
+}) {
+  const body = useRef<HTMLDivElement>(null)
   return (
-    <div className={cn("mt-4 flex gap-2.5 in-data-[messenger]:mt-6 in-data-[messenger]:gap-3", fresh && MESSAGE_ENTER)}>
+    <div id={actions?.anchor ? answerAnchorId(message.id) : undefined} data-omnis-message={message.id} className={cn("mt-4 flex scroll-mt-20 gap-2.5 rounded-lg transition-colors duration-700 in-data-[messenger]:mt-6 in-data-[messenger]:gap-3", fresh && MESSAGE_ENTER)}>
       <OmnisAvatar />
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-baseline gap-1.5 in-data-[messenger]:mb-1.5 in-data-[messenger]:gap-2">
@@ -894,12 +955,24 @@ export function OmnisMessage({ message, fresh, tools, stopped = false }: { messa
           <MessageTime iso={message.createdAt} />
         </div>
         <ToolTrail items={tools} />
-        <div className="min-w-0 py-1">
+        <div ref={body} className="min-w-0 py-1">
           <OmnisAnswerBody answer={message.content} sources={message.sources} />
         </div>
         {/* 옴니스가 만든 파일 — 눌러 내려받는다(방 주인만, lib/file-access.ts) */}
         {message.files && message.files.length > 0 && <MessageFiles files={message.files} />}
         {stopped && <StoppedTag />}
+        {actions && (
+          <AnswerActions
+            messageId={message.id}
+            roomId={actions.roomId}
+            roomName={actions.roomName}
+            content={message.content}
+            createdAt={message.createdAt}
+            answerRef={body}
+            preview={<OmnisAnswerBody answer={message.content} sources={message.sources} />}
+            onRegenerate={actions.onRegenerate}
+          />
+        )}
       </div>
     </div>
   )
