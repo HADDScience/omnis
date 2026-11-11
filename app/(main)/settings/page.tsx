@@ -11,7 +11,9 @@ import { SettingsTabs } from "@/components/settings/settings-tabs"
 import { legacySettingsRedirect, PROFILE_HREF, UI_METRICS_NOTICE_ANCHOR } from "@/lib/settings-tab"
 import { AiCostUsage } from "@/components/settings/ai-cost-usage"
 import { surveyAllowed } from "@/lib/ai-survey/access"
+import { surveyEntryFor } from "@/lib/ai-survey/service"
 import { MyShortcuts } from "@/components/settings/my-shortcuts"
+import { SurveyEntryCard } from "@/components/settings/survey-entry-card"
 import { PushNotifications } from "@/components/settings/push-notifications"
 import { NotificationKinds } from "@/components/settings/notification-kinds"
 import { auth } from "@/lib/auth"
@@ -41,6 +43,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const user = session?.user
   const role = (user as { role?: string } | undefined)?.role ?? "MEMBER"
   const profile = user?.id ? await loadMyProfile(user.id) : null
+  const survey = user?.id && surveyAllowed(user.id) ? await surveyEntryFor(user.id) : null
 
   return (
     <>
@@ -71,7 +74,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <HugeiconsIcon icon={ArrowRight01Icon} size={16} className="shrink-0 text-muted-foreground" aria-hidden />
         </Link>
 
-        <MyShortcuts />
+        {/* AI 활용 설문 카드(2026-11-11) — 로그아웃 줄 바로 아래. 허용한 계정에만 보인다(lib/ai-survey/access.ts) */}
+        <MyShortcuts below={survey ? <SurveyEntryCard entry={survey.entry} /> : null} />
 
         <SettingsTabs>
           <TabsList className="grid w-full grid-cols-3">
@@ -84,25 +88,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <NotificationKinds />
           </TabsContent>
           <TabsContent value="usage" className="mt-3">
-            {/* AI 활용 설문(2026-11-11) — 허용한 계정에만 보인다(lib/ai-survey/access.ts). 결과(회사 전체 추정 · 원문)는 그중 관리자만 */}
-            {surveyAllowed(user?.id) && (
-              <div data-ai-survey-entry className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border bg-card px-4 py-3">
-                <div className="flex min-w-0 flex-col">
-                  <span className="text-sm font-medium">AI 활용 설문</span>
-                  <span className="text-xs text-muted-foreground">AI 를 얼마나 · 어디에 쓰는지 눌러서 답합니다. 2~3분.</span>
-                </div>
-                <span className="flex flex-wrap gap-x-4">
-                  <Link href="/settings/ai-survey" className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
-                    설문 하기
-                  </Link>
-                  {role === "ADMIN" && (
-                    <Link href="/settings/ai-survey/results" className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
-                      결과 보기
-                    </Link>
-                  )}
-                </span>
-              </div>
-            )}
             {user?.id ? <AiCostUsage userId={user.id} isAdmin={role === "ADMIN"} /> : null}
           </TabsContent>
           <TabsContent value="info" className="mt-3">
@@ -122,6 +107,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                     <Link href="/settings/ai-budget" className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
                       AI 비용 상한
                     </Link>
+                    {/* 설문 결과(회사 전체 추정 · 원문) — 설문이 열린 관리자만 */}
+                    {survey && (
+                      <Link href="/settings/ai-survey/results" data-ai-survey-results-link className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
+                        AI 활용 설문 결과
+                      </Link>
+                    )}
                   </span>
                 )}
               </CardContent>

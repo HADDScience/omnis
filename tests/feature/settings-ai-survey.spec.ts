@@ -47,14 +47,37 @@ async function answerTurn(page: Page) {
 test.describe("AI 활용 설문 @settings", () => {
   test.describe.configure({ mode: "serial" })
 
-  // 지키는 것: 숫자는 범위 입력으로, 나머지는 말이나 추천 답으로 끝까지 답하고, 나갔다 와도 이어지며, 지난 답을 그 자리에서 고치고, 요약을 확인해 제출할 수 있다
+  // 지키는 것: 안 한 사람은 안내 띠 · 마이 화면 카드로 설문에 들어가 끝까지 답하고(숫자는 범위 입력, 나머지는 말이나 추천 답), 나갔다 와도 이어지며,
+  //   지난 답을 그 자리에서 고치고, 요약을 확인해 제출하고, 제출한 뒤에는 요약을 다시 보거나 새로 할 수 있다(앞 응답은 기록으로 남는다)
   test("구성원 — 대화로 답하고 이어 하고 고치고 제출한다", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await quickLogin(page, "사원1")
     await page.request.delete("/api/ai-survey")
+    // 아직 안 한 사람 — 들어오면 맨 위에 안내 띠, 마이 화면 로그아웃 아래에 「설문 참여하기」. 사용량 탭에는 설문 줄이 없다
+    await page.context().clearCookies({ name: "omnis_survey_banner_dismissed" })
+    await page.goto("/chat")
+    const banner = page.locator("[data-survey-banner]")
+    await expect(banner).toBeVisible({ timeout: 30_000 })
+    await expect(banner.getByRole("link", { name: "설문 참여하기" })).toHaveAttribute("href", "/settings/ai-survey")
+    // 닫으면 다시 들어와도 보이지 않는다(7일)
+    await banner.getByRole("button", { name: /설문 안내 닫기/ }).click()
+    await expect(banner).toHaveCount(0)
     await page.goto("/settings?tab=usage")
-    await page.locator("[data-ai-survey-entry]").getByRole("link", { name: "설문 하기" }).click()
+    await expect(page.locator("[data-ai-cost-usage]")).toBeVisible({ timeout: 30_000 })
+    await expect(banner).toHaveCount(0)
+    await expect(page.getByRole("link", { name: "설문 하기" })).toHaveCount(0)
+    const card = page.locator("[data-ai-survey-entry]")
+    await expect(card).toContainText("설문 참여하기")
+    // 카드는 로그아웃 줄 아래에 있다
+    const logoutY = (await page.getByRole("button", { name: "로그아웃" }).boundingBox())!.y
+    expect((await card.boundingBox())!.y).toBeGreaterThan(logoutY)
+    await card.click()
     await expect(page.locator('[data-ai-survey="intro"]')).toBeVisible({ timeout: 30_000 })
+    // 설문 화면에는 안내 띠를 띄우지 않는다
+    await page.context().clearCookies({ name: "omnis_survey_banner_dismissed" })
+    await page.reload()
+    await expect(page.locator('[data-ai-survey="intro"]')).toBeVisible({ timeout: 30_000 })
+    await expect(banner).toHaveCount(0)
     await page.getByRole("button", { name: "시작하기" }).click()
 
     const turn = page.locator("[data-survey-turn]")
@@ -133,6 +156,39 @@ test.describe("AI 활용 설문 @settings", () => {
     expect(mine.metrics.monthlyTokens).not.toBeNull()
     expect(mine.metrics.daysPerWeek).toBe(6)
     expect(mine.metrics.payer).toBe("none")
+
+    // 제출한 사람 — 안내 띠는 뜨지 않고(닫은 적이 없어도), 카드는 「설문 확인하기」. 들어가면 내 응답 요약이 보인다
+    await page.context().clearCookies({ name: "omnis_survey_banner_dismissed" })
+    await page.goto("/settings")
+    await expect(card).toContainText("설문 확인하기", { timeout: 30_000 })
+    await expect(banner).toHaveCount(0)
+    await card.click()
+    const submitted = page.locator('[data-ai-survey="submitted"]')
+    await expect(submitted.locator("[data-survey-summary]")).toContainText("주 6일", { timeout: 30_000 })
+
+    // 다시 하기 — 새 응답을 시작한다. 앞 응답은 지워지지 않고 기록으로 남는다
+    await submitted.getByRole("button", { name: "다시 하기", exact: true }).click()
+    await page.getByRole("alertdialog").getByRole("button", { name: "다시 하기", exact: true }).click()
+    await expect(page.locator('[data-ai-survey="intro"]')).toBeVisible({ timeout: 30_000 })
+    // 시작하기 전에 나가면 아무것도 바뀌지 않는다 — 여전히 제출한 응답이 내 응답이다
+    expect(((await (await page.request.get("/api/ai-survey")).json()) as { status: string }).status).toBe("SUBMITTED")
+    await page.getByRole("button", { name: "시작하기" }).click()
+    await expect(turn).toBeVisible({ timeout: 30_000 })
+    await answerTurn(page)
+    const redo = (await (await page.request.get("/api/ai-survey")).json()) as { status: string; earlier: number; turns: unknown[] }
+    expect(redo.status).toBe("IN_PROGRESS")
+    expect(redo.earlier).toBe(1)
+    await page.goto("/settings")
+    await expect(card).toContainText("설문 이어서 하기", { timeout: 30_000 })
+    // 다시 하다 그만두면(처음부터 다시) 답하던 것만 지워지고 앞서 제출한 응답으로 돌아간다
+    expect((await page.request.delete("/api/ai-survey")).status()).toBe(200)
+    const back = (await (await page.request.get("/api/ai-survey")).json()) as { status: string; earlier: number; metrics: { daysPerWeek: number } }
+    expect(back.status).toBe("SUBMITTED")
+    expect(back.earlier).toBe(0)
+    expect(back.metrics.daysPerWeek).toBe(6)
+    // 제출한 응답은 지우는 길이 없다
+    expect((await page.request.delete("/api/ai-survey")).status()).toBe(200)
+    expect(((await (await page.request.get("/api/ai-survey")).json()) as { status: string }).status).toBe("SUBMITTED")
   })
 
   // 지키는 것: 폼에 맞지 않는 응답 · 지금 질문이 아닌 응답 · 제출 뒤의 응답은 받지 않는다
@@ -169,7 +225,9 @@ test.describe("AI 활용 설문 @settings", () => {
     }
     expect(state.status).toBe("CONFIRM")
     expect((await page.request.post("/api/ai-survey/submit")).status()).toBe(200)
+    // 제출한 뒤에는 「다시 하기」 라고 해야만 새 응답이 시작된다
     expect((await events({})).at(-1)).toMatchObject({ t: "error", status: 409 })
+    expect((await events({ restart: true })).at(-1)!.state).toMatchObject({ status: "IN_PROGRESS" })
     await page.request.delete("/api/ai-survey")
   })
 
@@ -180,14 +238,14 @@ test.describe("AI 활용 설문 @settings", () => {
     await page.goto("/settings/ai-survey/results")
     await expect(page.getByText("관리자만 볼 수 있습니다")).toBeVisible({ timeout: 30_000 })
     await expect(page.locator("[data-survey-results]")).toHaveCount(0)
-    await page.goto("/settings?tab=usage")
+    await page.goto("/settings?tab=info")
     await expect(page.locator("[data-ai-survey-entry]")).toBeVisible({ timeout: 30_000 })
-    await expect(page.locator("[data-ai-survey-entry]").getByRole("link", { name: "결과 보기" })).toHaveCount(0)
+    await expect(page.locator("[data-ai-survey-results-link]")).toHaveCount(0)
 
     await page.context().clearCookies()
     await quickLogin(page, "팀장")
-    await page.goto("/settings?tab=usage")
-    await page.locator("[data-ai-survey-entry]").getByRole("link", { name: "결과 보기" }).click()
+    await page.goto("/settings?tab=info")
+    await page.locator("[data-ai-survey-results-link]").click()
     const results = page.locator("[data-survey-results]")
     await expect(results).toBeVisible({ timeout: 30_000 })
     // 앞 시험에서 사원1 이 제출했다

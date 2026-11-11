@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import { SURVEY_CHANGED_EVENT } from "@/lib/ai-survey/entry"
 import { PURPOSES, PURPOSE_LABEL, SAY_MAX, answerText, fieldMode, understoodText, type AnswerValues, type Field, type FieldAnswer, type Purpose } from "@/lib/ai-survey/rules"
 import type { SurveyEvent, SurveyState, TurnView } from "@/lib/ai-survey/service"
 import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
@@ -149,6 +150,8 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
   /** 옴니스의 짧은 말(못 알아들었을 때) — 저장되지 않는다 */
   const [note, setNote] = useState<string | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
+  /** 제출한 뒤 「다시 하기」 를 골랐다 — 시작하면 새 응답이 생기고 앞 응답은 기록으로 남는다 */
+  const restart = useRef(false)
   /** 이번에 새로 나타난 말 — 그것만 떠오른다 */
   const [freshId, setFreshId] = useState<string | null>(null)
   // 같은 순간 두 번 눌러도 한 번만 보낸다 — 상태는 다음 그리기에야 바뀐다
@@ -280,14 +283,20 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
     const res = await fetch("/api/ai-survey/submit", { method: "POST" })
     const json = await res.json().catch(() => null)
     if (!res.ok) throw new Error(json?.error ?? `제출하지 못했어요 (${res.status})`)
+    // 맨 위 안내 띠 · 마이 화면 카드가 바뀐다
+    window.dispatchEvent(new Event(SURVEY_CHANGED_EVENT))
     return json as SurveyState
   }, "제출하지 못했어요")
+  const blank = (earlier: number): SurveyState => ({ status: "NONE", turns: [], coverage: { usage: 0, tasks: 0, wishes: 0 }, summary: null, metrics: null, submittedAt: null, earlier })
   const reset = () => {
     setConfirmReset(false)
+    restart.current = true
+    // 제출한 응답은 지우지 않는다(기록) — 새로 시작할 때 새 응답이 생긴다. 답하던 응답은 지운다
+    if (done) return call(async () => blank((state.earlier ?? 0) + 1), "다시 시작하지 못했어요")
     return call(async () => {
       const res = await fetch("/api/ai-survey", { method: "DELETE" })
       if (!res.ok) throw new Error(`지우지 못했어요 (${res.status})`)
-      return { status: "NONE", turns: [], coverage: { usage: 0, tasks: 0, wishes: 0 }, summary: null, metrics: null, submittedAt: null }
+      return blank(state.earlier ?? 0)
     }, "지우지 못했어요")
   }
 
@@ -339,8 +348,8 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
 
   const primary = "touch-target h-[44px] shrink-0 rounded-full px-5 text-[15px]"
   const resetButton = (
-    <Button type="button" variant="ghost" className="touch-target text-muted-foreground" disabled={busy} onClick={() => setConfirmReset(true)}>
-      처음부터 다시
+    <Button type="button" variant={done ? "outline" : "ghost"} className={cn("touch-target", done ? "h-[44px] rounded-full px-5 text-[15px]" : "text-muted-foreground")} disabled={busy} onClick={() => setConfirmReset(true)}>
+      {done ? "다시 하기" : "처음부터 다시"}
     </Button>
   )
   const talking = state.status === "IN_PROGRESS" || state.status === "CONFIRM"
@@ -353,7 +362,7 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
   let dock: ReactNode
   if (state.status === "NONE") {
     dock = (
-      <Button type="button" className={primary} disabled={busy} onClick={() => void request({})}>
+      <Button type="button" className={primary} disabled={busy} onClick={() => void request(restart.current ? { restart: true } : {})}>
         {busy ? <Spinner /> : null}
         시작하기
       </Button>
@@ -457,6 +466,12 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
                 </div>
               )}
               {!done && <div className="mt-2 text-[14px] text-muted-foreground">고칠 답이 있으면 그 말풍선을 누르거나 아래에 말해 주세요.</div>}
+              {done && (
+                <div data-survey-redo-hint className="mt-2 text-[14px] text-muted-foreground">
+                  달라진 것이 있으면 「다시 하기」 로 새로 답할 수 있어요. 이 응답은 기록으로 남고, 집계에는 가장 최근에 제출한 응답이 쓰입니다.
+                  {(state.earlier ?? 0) > 0 && ` 앞서 제출한 응답 ${state.earlier}건도 기록으로 남아 있어요.`}
+                </div>
+              )}
             </OmnisSays>
           )}
 
@@ -472,8 +487,10 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
       <AlertDialog open={confirmReset} onOpenChange={setConfirmReset}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>처음부터 다시 할까요?</AlertDialogTitle>
-            <AlertDialogDescription>지금까지 답한 내용{done ? "과 제출한 결과" : ""}이 지워집니다.</AlertDialogDescription>
+            <AlertDialogTitle>{done ? "설문을 다시 할까요?" : "처음부터 다시 할까요?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {done ? "처음부터 새로 답합니다. 지금 제출한 응답은 기록으로 남고, 새로 제출하면 집계에는 새 응답이 쓰입니다." : "지금 답하던 내용이 지워집니다."}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="touch-target">취소</AlertDialogCancel>
