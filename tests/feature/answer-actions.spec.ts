@@ -54,8 +54,18 @@ async function shot(page: Page, name: string) {
 test.describe("옴니스 답 복사 · 동작 줄", () => {
   test.describe.configure({ mode: "serial" })
 
-  test("PC — 복사 단추는 표를 표로(text/html) · 마크다운 원문(text/plain)으로, 각주는 빠진다", async ({ browser }) => {
+  test("PC — 복사 단추는 표를 표로(완전한 html 문서 · RTF) · 탭 글(text/plain)로, 각주는 빠진다", async ({ browser }) => {
     const { ctx, page } = await open(browser, PC)
+    // 복사 사건에 실은 형식을 그대로 본다 — 비동기 클립보드로 다시 읽으면 크롬이 html 을 다듬고 RTF 는 보이지 않는다
+    await page.evaluate(() => {
+      const w = window as unknown as { __put: Record<string, string> }
+      w.__put = {}
+      const set = DataTransfer.prototype.setData
+      DataTransfer.prototype.setData = function (type: string, value: string) {
+        w.__put[type] = value
+        return set.call(this, type, value)
+      }
+    })
     await expect(toolbar(page)).toBeVisible()
     for (const name of ["답 복사", "좋은 답", "아쉬운 답", "소리내어 읽기", "공유", "더 보기"]) {
       await expect(toolbar(page).getByRole("button", { name, exact: true })).toBeVisible()
@@ -66,18 +76,29 @@ test.describe("옴니스 답 복사 · 동작 줄", () => {
     await toolbar(page).getByRole("button", { name: "답 복사" }).click()
     await expect(toolbar(page).locator("[data-answer-copied]")).toHaveText("복사됨")
     const clip = await readClipboard(page)
-    expect(clip.html).toMatch(/<table style="border-collapse:collapse;[^"]*">/)
+    expect(clip.html).toMatch(/<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;[^"]*">/)
     expect(clip.html).toMatch(/<th style="[^"]*font-weight:bold;[^"]*">사업<\/th>/)
     expect(clip.html).toMatch(/<td style="border:1px solid #999;padding:4px 8px;[^"]*">공급망 안정화<\/td>/)
     expect(clip.html).toContain("<strong>세 건</strong>")
     expect(clip.html).toMatch(/<ul><li>[^<]*<strong>제품 B 인허가 일정표<\/strong>/)
     expect(clip.html).not.toMatch(/class=|\[\d\]|<button/)
-    expect(clip.text).toContain("지원사업 **세 건**의 진행 현황입니다.")
-    expect(clip.text).toContain("| 바이오 소재 실증연구 | 사원1 | 서류 보완 | 11월 14일 |")
-    expect(clip.text).not.toMatch(/\[\d\]/)
+    // 글은 화면 그대로 — 표는 탭 · 줄바꿈(엑셀 · 구글 시트가 칸으로 나눈다), 마크다운 기호는 없다
+    expect(clip.text).toContain("지원사업 세 건의 진행 현황입니다.")
+    expect(clip.text).toContain("사업\t담당\t단계\t마감")
+    expect(clip.text).toContain("바이오 소재 실증연구\t사원1\t서류 보완\t11월 14일")
+    expect(clip.text).not.toMatch(/\[\d\]|\*\*|\| /)
+    // 실은 형식 — 완전한 html 문서와 RTF 표
+    const put = await page.evaluate(() => (window as unknown as { __put: Record<string, string> }).__put)
+    expect(put["text/html"]).toMatch(/^<html><head>.*charset=utf-8.*<\/head><body><!--StartFragment-->.*<table border="1"/)
+    expect(put["text/html"]).toMatch(/<!--EndFragment--><\/body><\/html>$/)
+    expect(put["text/rtf"]).toMatch(/^\{\\rtf1\\ansi\\ansicpg949/)
+    expect(put["text/rtf"].match(/\\trowd/g)?.length).toBe(4)
+    expect(put["text/plain"]).toBe(clip.text)
     if (SHOTS) {
       fs.writeFileSync(path.join(SHOTS, "clipboard.html"), clip.html)
       fs.writeFileSync(path.join(SHOTS, "clipboard-button.txt"), clip.text)
+      fs.writeFileSync(path.join(SHOTS, "clipboard-button.rtf"), put["text/rtf"])
+      fs.writeFileSync(path.join(SHOTS, "clipboard-button-raw.html"), put["text/html"])
     }
     await ctx.close()
   })
@@ -141,7 +162,7 @@ test.describe("옴니스 답 복사 · 동작 줄", () => {
     await page.keyboard.press("ControlOrMeta+c")
     const clip = await readClipboard(page)
     expect(clip.html).toContain("<strong>세 건</strong>")
-    expect(clip.html).toMatch(/<table style="[^"]+"><thead><tr><th[^>]*>사업<\/th>/)
+    expect(clip.html).toMatch(/<table border="1" [^>]*style="[^"]+"><thead><tr><th[^>]*>사업<\/th>/)
     expect(clip.html).not.toMatch(/class=|<button|>1<\/|\[\d\]/)
     expect(clip.text).toContain("사업\t담당\t단계\t마감")
     expect(clip.text).toContain("바이오 소재 실증연구\t사원1\t서류 보완\t11월 14일")
