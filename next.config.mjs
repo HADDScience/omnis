@@ -1,3 +1,4 @@
+import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { withWorkflow } from "workflow/next"
@@ -5,6 +6,9 @@ import { withWorkflow } from "workflow/next"
 import { brandRewrites, resolveBrand } from "./lib/brand-static.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// 앱 정보의 버전 표시(마이 > 앱 정보, lib/app-version.ts) — package 버전과 빌드 시각을 번들에 싣는다
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8"))
 
 /** @type {import('next').NextConfig} */
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH || undefined
@@ -25,6 +29,9 @@ const nextConfig = {
     NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     // 화면이 그려진 빌드의 커밋 — 열어 둔 탭은 옛 빌드일 수 있어 서버 값이 아니라 이것을 기록한다(lib/ui-metrics)
     NEXT_PUBLIC_BUILD_SHA: process.env.VERCEL_GIT_COMMIT_SHA ?? "",
+    NEXT_PUBLIC_APP_VERSION: pkg.version ?? "",
+    // 빌드한 시각(배포 날짜로 보인다). Vercel 은 배포마다 새로 빌드한다
+    NEXT_PUBLIC_BUILD_AT: new Date().toISOString(),
     // 큰 첨부 — 화면이 같은 값을 본다. 서버는 LARGE_UPLOAD_ENABLED 를 직접 본다(lib/large-upload/server.ts). 켜고 끄려면 재배포한다
     // R2 스위치(LARGE_UPLOAD_BACKEND=r2 + R2 값 넷)만 있어도 켠다 — 판정은 lib/r2/server.ts r2UploadEnabled 와 같다
     NEXT_PUBLIC_LARGE_UPLOAD:

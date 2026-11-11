@@ -332,6 +332,17 @@ export default function LoginPage() {
           <div className="mt-6">
             <DemoAccountsCard />
           </div>
+
+          {/* 약관 · 개인정보 처리방침(app/(legal)) — 로그인 없이 열린다 */}
+          <nav aria-label="약관" className="mt-8 flex justify-center gap-3 text-[11.5px] text-muted-foreground">
+            <Link href="/terms" className="underline-offset-4 hover:text-foreground hover:underline">
+              서비스 이용약관
+            </Link>
+            <span aria-hidden>·</span>
+            <Link href="/privacy" className="font-semibold underline-offset-4 hover:text-foreground hover:underline">
+              개인정보 처리방침
+            </Link>
+          </nav>
         </div>
       </section>
     </main>

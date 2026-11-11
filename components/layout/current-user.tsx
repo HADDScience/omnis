@@ -7,10 +7,19 @@ import { LinkPendingMark } from "@/components/ui/pending-link"
 import { cn } from "@/lib/utils"
 
 /** 로그인한 사람의 이름. 클라이언트 세션(SessionProvider)을 두지 않아 레이아웃이 서버에서 읽어 내려 준다 */
-const CurrentUserContext = createContext<{ name: string | null }>({ name: null })
+const CurrentUserContext = createContext<{ name: string | null; passwordPending: boolean }>({ name: null, passwordPending: false })
 
-export function CurrentUserProvider({ name, children }: { name: string | null; children: ReactNode }) {
-  return <CurrentUserContext.Provider value={{ name }}>{children}</CurrentUserContext.Provider>
+/** passwordPending — 관리자가 정해 준 비밀번호를 아직 쓴다(lib/password-notice.ts). 마이 아바타에 경고 점을 단다 */
+export function CurrentUserProvider({
+  name,
+  passwordPending = false,
+  children,
+}: {
+  name: string | null
+  passwordPending?: boolean
+  children: ReactNode
+}) {
+  return <CurrentUserContext.Provider value={{ name, passwordPending }}>{children}</CurrentUserContext.Provider>
 }
 
 export function useCurrentUser() {
@@ -20,9 +29,11 @@ export function useCurrentUser() {
 /**
  * 마이(계정·설정)로 가는 아바타. 설정은 가끔 쓰는 곳이라 탭 한 칸을 주지 않고 동그라미로 뺐다 —
  * Apple·Linear 탭바도 프로필을 탭에 두지 않는다. PC 는 떠 있는 nav 옆, 폰은 하단 nav 의 탭 캡슐 오른쪽(2026-10-29 제목줄에서 옮김).
+ *
+ * 임시 비밀번호를 바꾸지 않은 동안은 아바타 오른쪽 위에 경고 점을 단다 — 안내를 「나중에」 로 숨겨도 남고, 바꾸면 사라진다.
  */
 export function MeAvatarLink({ className }: { className?: string }) {
-  const { name } = useCurrentUser()
+  const { name, passwordPending } = useCurrentUser()
   const pathname = usePathname()
   const router = useRouter()
   // 누른 순간 켠다 — 주소는 마이 화면이 그려진 뒤에야 바뀌어, 그것만 보면 누른 뒤 한참 아무 변화가 없었다
@@ -45,11 +56,11 @@ export function MeAvatarLink({ className }: { className?: string }) {
         if (!pathname.startsWith("/settings")) setPressedAt(pathname)
       }}
       data-onboarding="profile"
-      aria-label="마이 — 계정·설정"
-      title="마이 — 계정·설정"
+      aria-label={passwordPending ? "마이 — 계정·설정 · 비밀번호 변경 필요" : "마이 — 계정·설정"}
+      title={passwordPending ? "마이 — 비밀번호를 바꿔 주세요" : "마이 — 계정·설정"}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        "relative flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         "transition-transform duration-150 active:scale-[0.94] has-data-[pending]:scale-[0.94] motion-reduce:transition-none",
         className
       )}
@@ -63,6 +74,13 @@ export function MeAvatarLink({ className }: { className?: string }) {
       >
         {name?.charAt(0) ?? "?"}
       </span>
+      {passwordPending && (
+        <span
+          aria-hidden
+          data-password-badge
+          className="pointer-events-none absolute top-[3px] right-[3px] size-2.5 rounded-full bg-destructive ring-2 ring-background"
+        />
+      )}
       <LinkPendingMark />
     </Link>
   )

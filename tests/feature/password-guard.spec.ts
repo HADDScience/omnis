@@ -95,12 +95,32 @@ test.describe("비밀번호 로그인 보호", () => {
     const notice = page.getByRole("status", { name: "비밀번호 변경 안내" })
     await expect(notice).toBeVisible()
 
+    // 해결 전에는 마이 아바타에 경고 점
+    const badge = page.locator("[data-password-badge]").filter({ visible: true })
+    await expect(badge).toHaveCount(1)
+
     // 「나중에」 로 닫고 다른 화면을 그대로 쓸 수 있다
+    const snoozed = page.waitForResponse((r) => r.url().includes("/api/account/password/snooze") && r.ok())
     await notice.getByRole("button", { name: "나중에" }).click()
     await expect(notice).toBeHidden()
+    await snoozed
     await page.goto("/tasks")
     await expect(page).toHaveURL(/\/tasks$/)
     await expect(notice).toBeHidden()
+    // 「나중에」 는 서버에 남는다 — 새 탭(새 세션 저장소)에서도 7일 동안 다시 뜨지 않는다. 경고 점과 마이의 경고 줄은 남는다
+    const other = await ctx.newPage()
+    await other.goto("/settings")
+    await expect(other.locator("[data-password-warning]")).toBeVisible()
+    await expect(other.locator("[data-password-badge]").filter({ visible: true })).toHaveCount(1)
+    await expect(other.getByRole("status", { name: "비밀번호 변경 안내" })).toHaveCount(0)
+    // 8일이 지난 것으로 두면 다시 뜬다
+    await prisma.activityLog.updateMany({
+      where: { entity: PASSWORD_ENTITY, entityId: userIds[1], action: "snoozed" },
+      data: { createdAt: new Date(Date.now() - 8 * 86_400_000) },
+    })
+    await other.reload()
+    await expect(other.getByRole("status", { name: "비밀번호 변경 안내" })).toBeVisible()
+    await other.close()
 
     // 변경 화면에서도 「나중에」 로 앱에 돌아갈 수 있다
     await page.goto("/account/password")
@@ -117,10 +137,14 @@ test.describe("비밀번호 로그인 보호", () => {
     await page.getByLabel("새 비밀번호 확인", { exact: true }).fill(NEXT_PASSWORD)
     await page.getByRole("button", { name: "비밀번호 바꾸기" }).click()
     await page.waitForURL("**/chat", { timeout: 15_000 })
-    // 바꾼 뒤에는 새 탭에서도 안내가 뜨지 않는다
+    // 바꾼 뒤에는 새 탭에서도 안내 · 경고 점 · 마이의 경고 줄이 모두 없다
     const fresh = await ctx.newPage()
     await fresh.goto("/chat")
     await expect(fresh.getByRole("status", { name: "비밀번호 변경 안내" })).toHaveCount(0)
+    await expect(fresh.locator("[data-password-badge]")).toHaveCount(0)
+    await fresh.goto("/settings")
+    await expect(fresh.locator("[data-profile-card]")).toBeVisible()
+    await expect(fresh.locator("[data-password-warning]")).toHaveCount(0)
     await ctx.close()
 
     // 옛 비밀번호는 더 이상 안 되고 새 비밀번호는 된다

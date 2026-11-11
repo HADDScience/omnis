@@ -12,7 +12,7 @@ import { AppNudge } from "@/components/layout/app-nudge"
 import { UiMetrics } from "@/components/layout/ui-metrics"
 import { LargeUploadStatus } from "@/components/layout/large-upload-status"
 import { CHAT_PAGE_SIZE } from "@/lib/constants"
-import { mustChangePassword } from "@/lib/password-state"
+import { passwordNoticeFor } from "@/lib/password-state"
 import { PasswordResetNotice } from "@/components/auth/password-reset-notice"
 
 export default async function MainLayout({
@@ -31,8 +31,9 @@ export default async function MainLayout({
     select: { onboardingVideoSeenAt: true, onboardingCompletedAt: true },
   })
   if (!onboarding) redirect("/login")
-  // 관리자가 정해 준 비밀번호를 쓰는 동안에는 바꾸라고 권한다. 막지는 않는다(2026-11-06 핫픽스)
-  const passwordResetPending = await mustChangePassword(session.user.id as string)
+  // 관리자가 정해 준 비밀번호를 쓰는 동안에는 바꾸라고 권한다. 막지는 않는다(2026-11-06 핫픽스).
+  // 「나중에」 7일 동안은 안내만 숨기고 마이 진입점의 경고 점은 남긴다(2026-11-11, lib/password-notice.ts)
+  const password = await passwordNoticeFor(session.user.id as string)
 
   // 최신 메시지 한 페이지를 가져와 화면 표시용 오름차순으로 정렬
   const recentMessages = await prisma.chatMessage.findMany({
@@ -57,7 +58,7 @@ export default async function MainLayout({
     <div className="flex min-h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] w-full">
       <PwaRegister />
       <PushPresence />
-      <CurrentUserProvider name={session.user.name ?? null}>
+      <CurrentUserProvider name={session.user.name ?? null} passwordPending={password.pending}>
         <RightPanelProvider>
         <OnboardingProvider key={session.user.id} initialState={{
           onboardingVideoSeenAt: onboarding.onboardingVideoSeenAt?.toISOString() ?? null,
@@ -74,7 +75,7 @@ export default async function MainLayout({
         <FloatingNav />
         {/* 앱 설치 · 기기 알림 권유 — 사용 안내가 끝난 뒤에만 뜬다 */}
         <AppNudge />
-        {passwordResetPending && <PasswordResetNotice />}
+        {password.showNotice && <PasswordResetNotice />}
         <UiMetrics userId={session.user.id as string} />
         <LargeUploadStatus />
         </OnboardingProvider>

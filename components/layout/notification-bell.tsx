@@ -298,7 +298,7 @@ export function NotificationBell() {
             className="flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-xs text-muted-foreground hover:bg-muted"
             onClick={() => {
               setOpen(false)
-              router.push("/settings")
+              router.push("/settings?tab=notify")
             }}
           >
             <HugeiconsIcon icon={SmartPhone01Icon} size={14} aria-hidden />

@@ -1,21 +1,22 @@
 import { Header } from "@/components/layout/header"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { Alert02Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { redirect } from "next/navigation"
 import { SocialBadge } from "@/components/settings/social-badge"
 import { loadMyProfile } from "@/lib/my-profile"
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SettingsTabs } from "@/components/settings/settings-tabs"
-import { legacySettingsRedirect, PROFILE_HREF, UI_METRICS_NOTICE_ANCHOR } from "@/lib/settings-tab"
+import { legacySettingsRedirect, PROFILE_HREF } from "@/lib/settings-tab"
 import { AiCostUsage } from "@/components/settings/ai-cost-usage"
 import { surveyAllowed } from "@/lib/ai-survey/access"
 import { MyShortcuts } from "@/components/settings/my-shortcuts"
 import { PushNotifications } from "@/components/settings/push-notifications"
 import { NotificationKinds } from "@/components/settings/notification-kinds"
+import { GeneralSettings } from "@/components/settings/general-settings"
 import { auth } from "@/lib/auth"
-import { UI_METRICS_NOTICE } from "@/lib/ui-metrics/notice"
+import { currentAppVersion } from "@/lib/app-version"
+import { passwordNoticeFor } from "@/lib/password-state"
 import Link from "next/link"
 
 export const dynamic = "force-dynamic"
@@ -29,6 +30,10 @@ export const dynamic = "force-dynamic"
  *
  * 2026-11-06: 탭은 알림 설정 · 사용량 · 앱 정보 셋. 연결된 계정 · 비밀번호는 프로필 카드를 누른 프로필 설정(/settings/profile)으로,
  * ⌘K 검색 줄은 걷고 그 자리에 앱 설치 줄. 옛 `?tab=` 은 redirect 한다(lib/settings-tab.ts).
+ *
+ * 2026-11-11: 「알림 설정」 앞에 「일반」(테마 · 키보드 단축키). 앱 정보는 버전과 약관 · 개인정보 처리방침 링크만 —
+ * 「시스템 설정」 카드와 「사용 기록 안내」 는 걷었다(안내는 개인정보 처리방침의 한 절로 옮김). 관리자 화면 링크는 관리자에게만 한 줄로 남긴다.
+ * 임시 비밀번호를 쓰는 동안 프로필 카드 아래에 경고 줄을 둔다(lib/password-notice.ts).
  */
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string; error?: string }> }) {
   const params = await searchParams
@@ -41,6 +46,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const user = session?.user
   const role = (user as { role?: string } | undefined)?.role ?? "MEMBER"
   const profile = user?.id ? await loadMyProfile(user.id) : null
+  const password = user?.id ? await passwordNoticeFor(user.id) : null
+  const version = currentAppVersion()
 
   return (
     <>
@@ -71,14 +78,31 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <HugeiconsIcon icon={ArrowRight01Icon} size={16} className="shrink-0 text-muted-foreground" aria-hidden />
         </Link>
 
+        {/* 임시 비밀번호 — 바꿀 때까지 남는다. 마이 아바타의 경고 점과 같은 상태다 */}
+        {password?.pending && (
+          <Link
+            href="/account/password"
+            data-password-warning
+            className="touch-target -mt-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12.5px] text-destructive transition-colors hover:bg-destructive/10"
+          >
+            <HugeiconsIcon icon={Alert02Icon} size={15} className="shrink-0" aria-hidden />
+            <span className="min-w-0 flex-1">관리자가 정해 준 임시 비밀번호를 쓰고 있습니다. 본인만 아는 비밀번호로 바꾸세요.</span>
+            <span className="shrink-0 font-medium underline underline-offset-4">바꾸기</span>
+          </Link>
+        )}
+
         <MyShortcuts />
 
         <SettingsTabs>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="general">일반</TabsTrigger>
             <TabsTrigger value="notify">알림 설정</TabsTrigger>
             <TabsTrigger value="usage">사용량</TabsTrigger>
             <TabsTrigger value="info">앱 정보</TabsTrigger>
           </TabsList>
+          <TabsContent value="general" className="mt-3">
+            <GeneralSettings />
+          </TabsContent>
           <TabsContent value="notify" className="mt-3 flex flex-col gap-4">
             <PushNotifications />
             <NotificationKinds />
@@ -105,43 +129,42 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             )}
             {user?.id ? <AiCostUsage userId={user.id} isAdmin={role === "ADMIN"} /> : null}
           </TabsContent>
-          <TabsContent value="info" className="mt-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">시스템 설정</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  사용자 관리, Gemini API 키, 시스템 설정을 관리합니다.
-                </p>
-                {role === "ADMIN" && (
-                  <span className="mt-2 flex flex-wrap gap-x-4">
-                    <Link href="/settings/feature-requests" className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
-                      기능 요청 보기
-                    </Link>
-                    <Link href="/settings/ai-budget" className="touch-target inline-flex w-fit items-center text-sm font-medium underline underline-offset-4">
-                      AI 비용 상한
-                    </Link>
-                  </span>
-                )}
-              </CardContent>
-            </Card>
-            <Card id={UI_METRICS_NOTICE_ANCHOR} className="mt-4" data-ui-metrics-notice>
-              <CardHeader>
-                <CardTitle className="text-base">{UI_METRICS_NOTICE.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-                <p>모으는 것: {UI_METRICS_NOTICE.collected}</p>
-                <p>모으지 않는 것: {UI_METRICS_NOTICE.notCollected}</p>
-                <p>{UI_METRICS_NOTICE.usage}</p>
-                <p>{UI_METRICS_NOTICE.retention}</p>
-                {role === "ADMIN" && (
-                  <Link href="/settings/ui-metrics" className="touch-target w-fit font-medium text-foreground underline underline-offset-4">
-                    배포별 측정 보기
-                  </Link>
-                )}
-              </CardContent>
-            </Card>
+          <TabsContent value="info" className="mt-3 flex flex-col gap-4">
+            <dl data-app-version className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 rounded-xl border bg-card px-4 py-3 text-sm">
+              <dt className="text-muted-foreground">앱 버전</dt>
+              <dd className="font-medium tabular-nums">{version.version}</dd>
+              <dt className="text-muted-foreground">배포</dt>
+              <dd className="tabular-nums">
+                {version.commit ? <span className="font-mono">{version.commit}</span> : "로컬 빌드"}
+                {version.builtOn && <span className="text-muted-foreground"> · {version.builtOn}</span>}
+              </dd>
+            </dl>
+            <nav aria-label="약관" className="flex flex-col divide-y rounded-xl border bg-card">
+              {[
+                { href: "/terms", label: "서비스 이용약관" },
+                { href: "/privacy", label: "개인정보 처리방침" },
+              ].map((l) => (
+                <Link key={l.href} href={l.href} className="touch-target flex items-center justify-between px-4 py-3 text-sm transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-muted/60">
+                  {l.label}
+                  <HugeiconsIcon icon={ArrowRight01Icon} size={14} className="text-muted-foreground" aria-hidden />
+                </Link>
+              ))}
+            </nav>
+            {/* 관리자 화면 — 예전 「시스템 설정」 카드에 있던 링크. 관리자에게만 */}
+            {role === "ADMIN" && (
+              <p data-admin-links className="flex flex-wrap gap-x-4 gap-y-1 px-1 text-[12.5px] text-muted-foreground">
+                <span>관리</span>
+                <Link href="/settings/feature-requests" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
+                  기능 요청 보기
+                </Link>
+                <Link href="/settings/ai-budget" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
+                  AI 비용 상한
+                </Link>
+                <Link href="/settings/ui-metrics" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
+                  배포별 측정 보기
+                </Link>
+              </p>
+            )}
           </TabsContent>
         </SettingsTabs>
       </div>
