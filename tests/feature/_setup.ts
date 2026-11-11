@@ -44,6 +44,8 @@ export async function openChatDock(page: Page) {
     // 그 단추는 채팅 화면(로그인하면 들어오는 곳)에서는 숨으므로 업무 화면으로 옮겨 간다
     if (new URL(page.url()).pathname.startsWith("/chat")) await page.goto("/tasks")
     await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
+    // 패널은 폰 채팅 탭과 같은 방 목록으로 열린다(2026-11-11) — 같은 입력창이 있는 전사방으로 들어간다
+    await page.locator('aside[aria-label="대화 패널"] a[href$="/chat/default-room"]').first().click()
   }
   await expect(input).toBeVisible()
 }

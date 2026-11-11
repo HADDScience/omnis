@@ -23,7 +23,7 @@ interface ThreadComposerProps extends Partial<ThreadRefs> {
   taskSlug?: string
   /** 메시지 게시 방 (기본 "default-room") */
   roomId?: string
-  /** 메시지 작성 후 호출. 없으면 router.refresh()만 호출 */
+  /** 메시지 작성 후 호출 — 주면 router.refresh() 대신 이것만 부른다(오른쪽 패널의 업무방은 글을 직접 다시 받는다) */
   onSent?: () => void
   /** 보내기 누른 즉시 글을 알린다(목록에 「보내는 중」 줄). 글마다 key 가 다르고, 실패하면 그 key 에 null */
   onPending?: (key: number, content: string | null) => void
@@ -150,8 +150,8 @@ export function ThreadComposer({
       }
       const saved = (await res.json().catch(() => null)) as { id?: string; _rebuild?: string | null } | null
       if (saved?.id && saved._rebuild === "queued") onQueued?.(saved.id)
-      onSent?.()
-      router.refresh()
+      if (onSent) onSent()
+      else router.refresh()
     } catch (e) {
       giveUp(key, reply, e)
       throw e

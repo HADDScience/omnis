@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { panelRoomStorageKey, parsePanelRoom, serializePanelRoom, type PanelRoomRef } from "@/lib/panel-chat-rules"
 
 export interface PanelTaskContext {
   id: string
@@ -29,7 +30,8 @@ export interface PanelTaskContext {
   }[]
 }
 
-export type PanelView = "task" | "all" | "omnis"
+/** task = 지금 보는 업무의 스레드, chat = 폰 채팅 탭과 같은 방 목록 → 방(2026-11-11, 예전 「전체」 · 「옴니스」 탭) */
+export type PanelView = "task" | "chat"
 
 interface RightPanelValue {
   open: boolean
@@ -49,13 +51,41 @@ interface RightPanelValue {
   omnisStartKey: string | null
   startOmnis: (key: string) => void
   clearOmnisStart: (key: string) => void
+  /**
+   * 패널 채팅에서 마지막으로 연 방 — 패널을 다시 열면 그 방으로, nav 「채팅」 을 누르면 본문에 그 방을 연다(lib/panel-chat-rules.ts).
+   * 기기에 사람마다 따로 저장한다
+   */
+  lastRoom: PanelRoomRef | null
+  setLastRoom: (room: PanelRoomRef | null) => void
 }
 
 const Ctx = createContext<RightPanelValue | null>(null)
 const OPEN_KEY = "omnis:right-panel-open"
 
-export function RightPanelProvider({ children }: { children: ReactNode }) {
+export function RightPanelProvider({ children, userId }: { children: ReactNode; userId: string }) {
   const [open, setOpenState] = useState(false)
+  const [lastRoom, setLastRoomState] = useState<PanelRoomRef | null>(null)
+
+  useEffect(() => {
+    try {
+      setLastRoomState(parsePanelRoom(window.localStorage.getItem(panelRoomStorageKey(userId))))
+    } catch {
+      // 저장소를 못 읽으면 목록에서 시작한다
+    }
+  }, [userId])
+
+  const setLastRoom = useCallback(
+    (room: PanelRoomRef | null) => {
+      setLastRoomState(room)
+      try {
+        if (room) window.localStorage.setItem(panelRoomStorageKey(userId), serializePanelRoom(room))
+        else window.localStorage.removeItem(panelRoomStorageKey(userId))
+      } catch {
+        // 이번 세션에만 남는다
+      }
+    },
+    [userId],
+  )
   const [task, setTask] = useState<PanelTaskContext | null>(null)
   const [requestedView, setRequestedView] = useState<PanelView | null>(null)
   const [omnisStartKey, setOmnisStartKey] = useState<string | null>(null)
@@ -88,7 +118,7 @@ export function RightPanelProvider({ children }: { children: ReactNode }) {
   const startOmnis = useCallback(
     (key: string) => {
       setOmnisStartKey(key)
-      openWith("omnis")
+      openWith("chat")
     },
     [openWith]
   )
@@ -107,8 +137,10 @@ export function RightPanelProvider({ children }: { children: ReactNode }) {
       omnisStartKey,
       startOmnis,
       clearOmnisStart,
+      lastRoom,
+      setLastRoom,
     }),
-    [open, setOpen, requestedView, openWith, task, omnisStartKey, startOmnis, clearOmnisStart]
+    [open, setOpen, requestedView, openWith, task, omnisStartKey, startOmnis, clearOmnisStart, lastRoom, setLastRoom]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

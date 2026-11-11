@@ -11,7 +11,6 @@ import { PushPresence } from "@/components/push-presence"
 import { AppNudge } from "@/components/layout/app-nudge"
 import { UiMetrics } from "@/components/layout/ui-metrics"
 import { LargeUploadStatus } from "@/components/layout/large-upload-status"
-import { CHAT_PAGE_SIZE } from "@/lib/constants"
 import { mustChangePassword } from "@/lib/password-state"
 import { PasswordResetNotice } from "@/components/auth/password-reset-notice"
 
@@ -34,40 +33,19 @@ export default async function MainLayout({
   // 관리자가 정해 준 비밀번호를 쓰는 동안에는 바꾸라고 권한다. 막지는 않는다(2026-11-06 핫픽스)
   const passwordResetPending = await mustChangePassword(session.user.id as string)
 
-  // 최신 메시지 한 페이지를 가져와 화면 표시용 오름차순으로 정렬
-  const recentMessages = await prisma.chatMessage.findMany({
-    where: { roomId: "default-room" },
-    // API 와 같은 순서 — 시각이 같으면 id(lib/chat-cursor.ts)
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: CHAT_PAGE_SIZE,
-    include: {
-      author: { select: { id: true, name: true } },
-      task: { select: { id: true, name: true, slug: true } },
-      files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
-    },
-  })
-
-  const serializedMessages = recentMessages.reverse().map((m) => ({
-    ...m,
-    createdAt: m.createdAt.toISOString(),
-  }))
-
   return (
     // 사이드바 대신 떠 있는 nav(mydocs/plans/2026-10-28-floating-nav.md). 셸은 화면 높이 그대로 한 칸이다
     <div className="flex min-h-[calc(var(--app-vh)-var(--demo-banner-height,0px))] w-full">
       <PwaRegister />
       <PushPresence />
       <CurrentUserProvider name={session.user.name ?? null}>
-        <RightPanelProvider>
+        <RightPanelProvider userId={session.user.id as string}>
         <OnboardingProvider key={session.user.id} initialState={{
           onboardingVideoSeenAt: onboarding.onboardingVideoSeenAt?.toISOString() ?? null,
           onboardingCompletedAt: onboarding.onboardingCompletedAt?.toISOString() ?? null,
         }}>
         <main className="relative flex w-full flex-1 flex-col bg-background">
-          <MainWithChat
-            currentUserId={session.user.id as string}
-            initialMessages={serializedMessages}
-          >
+          <MainWithChat currentUserId={session.user.id as string}>
             {children}
           </MainWithChat>
         </main>

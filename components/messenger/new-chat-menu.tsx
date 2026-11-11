@@ -16,11 +16,16 @@ export function NewChatMenu({
   className,
   iconSize,
   side,
+  onOmnis,
+  onPeople,
   ...trigger
 }: {
   className: string
   iconSize: number
   side: "top" | "bottom"
+  /** 오른쪽 패널 — 주소 대신 패널 안에서 연다. 없으면 /chat/new · /chat/new/people 로 간다 */
+  onOmnis?: () => void
+  onPeople?: () => void
   "data-new-chat-fab"?: boolean
   "data-new-chat-title"?: boolean
 }) {
@@ -31,7 +36,7 @@ export function NewChatMenu({
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (next) {
+        if (next && !onOmnis) {
           router.prefetch("/chat/new")
           router.prefetch("/chat/new/people")
         }
@@ -41,14 +46,14 @@ export function NewChatMenu({
         <HugeiconsIcon icon={PencilEdit02Icon} size={iconSize} aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side={side} sideOffset={8} className="w-72 rounded-2xl p-1.5">
-        <DropdownMenuItem className="touch-target gap-3 rounded-xl py-2.5" onClick={() => router.push("/chat/new")}>
+        <DropdownMenuItem className="touch-target gap-3 rounded-xl py-2.5" onClick={() => (onOmnis ? onOmnis() : router.push("/chat/new"))}>
           <HugeiconsIcon icon={BubbleChatSparkIcon} size={22} aria-hidden className="text-primary" />
           <span className="min-w-0 flex-1">
             <span className="block text-[15.5px] font-medium">옴니스와 대화</span>
             <span className="block text-[13px] text-muted-foreground">회사 일을 묻고 업무를 맡겨요</span>
           </span>
         </DropdownMenuItem>
-        <DropdownMenuItem className="touch-target gap-3 rounded-xl py-2.5" onClick={() => router.push("/chat/new/people")}>
+        <DropdownMenuItem className="touch-target gap-3 rounded-xl py-2.5" onClick={() => (onPeople ? onPeople() : router.push("/chat/new/people"))}>
           <HugeiconsIcon icon={UserGroupIcon} size={22} aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="block text-[15.5px] font-medium">사람과 대화</span>
