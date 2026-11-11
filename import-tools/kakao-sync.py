@@ -818,10 +818,11 @@ def run_import(key, csv_path, args, data_dir=None):
 
 
 def dry_copy():
-    """kakao.ts --dry 도 마스터와 세션 파일을 쓴다 — 방마다 임시 사본에서 돌려 진짜 마스터와 다른 방 건수를 건드리지 않는다."""
+    """kakao.ts --dry 도 마스터와 세션 파일을 쓴다 — 방마다 임시 사본에서 돌려 진짜 마스터와 다른 방 건수를 건드리지 않는다.
+    raw/keys-v2 표식도 함께 옮긴다 — 없으면 새 키 마스터를 옛 키로 보고 멈춘다."""
     tmp = Path(tempfile.mkdtemp(prefix="kakao-dry-"))
     (tmp / "raw").mkdir()
-    for name in ("raw/messages.json", "final.json", "sessions.json", "classified.json", "import-config.json"):
+    for name in ("raw/messages.json", "raw/keys-v2", "final.json", "sessions.json", "classified.json", "import-config.json"):
         if (DATA_ROOT / name).exists():
             shutil.copy2(DATA_ROOT / name, tmp / name)
     if (DATA_ROOT / "structure").exists():
