@@ -75,7 +75,7 @@ function FixedKeys() {
                   <dd className="flex items-center gap-1 whitespace-nowrap">
                     {r.keys.map((k, j) => (
                       <Fragment key={k}>
-                        {j > 0 && <span className="text-muted-foreground">+</span>}
+                        {j > 0 && <span className="text-muted-foreground">{r.either ? "/" : "+"}</span>}
                         <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[11.5px]">{label(k)}</kbd>
                       </Fragment>
                     ))}

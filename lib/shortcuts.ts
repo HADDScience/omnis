@@ -143,8 +143,10 @@ export function formatCombo(combo: string, mac: boolean): string {
 export interface FixedKey {
   /** 어디서 */
   where: string
-  /** 누르는 키 — Mod 는 맥 ⌘, 그 밖의 Ctrl */
+  /** 누르는 키 — Mod 는 맥 ⌘, 그 밖의 Ctrl. 함께 누르는 조합이다 */
   keys: string[]
+  /** keys 가 조합이 아니라 「둘 중 하나」 다(↑ / ↓) */
+  either?: true
   what: string
 }
 
@@ -153,7 +155,7 @@ export const FIXED_KEYS: readonly FixedKey[] = [
   { where: "채팅 입력창", keys: ["Enter"], what: "보내기" },
   { where: "채팅 입력창", keys: ["Shift", "Enter"], what: "줄바꿈" },
   // components/chat/message-input.tsx handleListKeys — @ 사람 · / 명령 · # 업무 목록
-  { where: "@ · / · # 목록", keys: ["↑", "↓"], what: "항목 고르기" },
+  { where: "@ · / · # 목록", keys: ["↑", "↓"], either: true, what: "항목 고르기" },
   { where: "@ · / · # 목록", keys: ["Enter"], what: "넣기 (Tab 도 같다)" },
   { where: "@ · / · # 목록", keys: ["Esc"], what: "목록 닫기" },
   // components/chat/message-list.tsx — 말풍선 자리에서 고치기
@@ -167,7 +169,7 @@ export const FIXED_KEYS: readonly FixedKey[] = [
   { where: "대화 목록", keys: ["Esc"], what: "검색어 지우기" },
   { where: "대화 목록", keys: ["Shift", "F10"], what: "방 메뉴 열기 (메뉴 키도 같다)" },
   // components/photo-viewer/photo-viewer.tsx
-  { where: "사진 크게 보기", keys: ["←", "→"], what: "이전 · 다음 사진" },
+  { where: "사진 크게 보기", keys: ["←", "→"], either: true, what: "이전 · 다음 사진" },
   { where: "사진 크게 보기", keys: ["Esc"], what: "닫기" },
   { where: "사진 크게 보기", keys: ["Ctrl", "휠"], what: "확대 · 축소 (트랙패드 두 손가락 벌리기)" },
   // components/ip/progress-form.tsx

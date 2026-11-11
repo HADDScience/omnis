@@ -98,6 +98,9 @@ test.describe("비밀번호 로그인 보호", () => {
     // 해결 전에는 마이 아바타에 경고 점
     const badge = page.locator("[data-password-badge]").filter({ visible: true })
     await expect(badge).toHaveCount(1)
+    // 점은 작다 — 아바타를 가리지 않는다(폰 nav 가 링크 아래 span 을 키우던 것에 걸리지 않게)
+    const dot = (await badge.boundingBox())!
+    expect(dot.width).toBeLessThanOrEqual(12)
 
     // 「나중에」 로 닫고 다른 화면을 그대로 쓸 수 있다
     const snoozed = page.waitForResponse((r) => r.url().includes("/api/account/password/snooze") && r.ok())

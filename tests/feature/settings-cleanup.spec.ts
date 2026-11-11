@@ -36,7 +36,11 @@ test.describe("일반 탭", () => {
     await expect(general.locator("[data-shortcut]")).toHaveCount(3)
     const fixed = general.locator("[data-fixed-keys]")
     await expect(fixed).toBeVisible()
-    for (const text of ["채팅 입력창", "줄바꿈", "대화 검색", "사진 크게 보기", "Shift", "F10"]) await expect(fixed).toContainText(text)
+    for (const text of ["채팅 입력창", "줄바꿈", "대화 검색", "사진 크게 보기", "F10"]) await expect(fixed).toContainText(text)
+    // Shift 는 맥에서 ⇧. 둘 중 하나 키(↑ / ↓)는 + 가 아니라 / 로 잇는다
+    await expect(fixed).toContainText(/(Shift|⇧)\+Enter/)
+    await expect(fixed).toContainText("↑/↓")
+    await expect(fixed).not.toContainText("↑+↓")
     // 테마 · 단축키는 마이 위의 바로가기 목록에서 빠졌다
     await expect(page.locator("[data-keyboard-shortcuts]")).toHaveCount(1)
     await expect(page.getByRole("button", { name: /테마/ })).toHaveCount(1)

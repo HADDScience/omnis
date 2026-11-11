@@ -74,8 +74,9 @@ export function MeAvatarLink({ className }: { className?: string }) {
       >
         {name?.charAt(0) ?? "?"}
       </span>
+      {/* span 이 아니다 — 폰 nav 는 이 링크의 바로 아래 span(아바타)을 키운다([&>span]:size-8, floating-nav.tsx) */}
       {passwordPending && (
-        <span
+        <i
           aria-hidden
           data-password-badge
           className="pointer-events-none absolute top-[3px] right-[3px] size-2.5 rounded-full bg-destructive ring-2 ring-background"
