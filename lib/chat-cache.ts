@@ -9,7 +9,10 @@
 // 지우는 때: 로그아웃(clearChatCache) · 다른 사람이 이 기기로 로그인했을 때(소유자가 바뀌면 통째로 비운다) ·
 // 참여자만 보는 방에서 빠졌을 때(서버가 403 · 404 로 답하거나 목록에서 사라질 때, lib/room-snapshot.ts).
 // 사람마다 키를 나눈다(`<userId>:<key>`) — 같은 기기에서 다른 사람 것을 읽지 않는다.
+// 입력칸 임시저장(lib/chat-draft.ts, localStorage)도 로그아웃 때 함께 지운다.
 // IndexedDB 를 못 쓰면(사생활 보호 모드 등) 조용히 아무것도 하지 않는다 — 화면은 서버만으로 그대로 돈다.
+
+import { clearAllDrafts } from "./chat-draft"
 
 const DB_NAME = "omnis-chat-cache"
 const STORE = "kv"
@@ -128,6 +131,7 @@ export async function listCacheKeys(userId: string, prefix: string): Promise<str
 export async function clearChatCache(): Promise<void> {
   try {
     window.localStorage.removeItem(OWNER_KEY)
+    clearAllDrafts()
   } catch {
     // 저장소를 못 쓰면 지울 것도 없다
   }
