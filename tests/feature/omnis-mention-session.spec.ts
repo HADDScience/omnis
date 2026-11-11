@@ -48,6 +48,11 @@ async function send(page: Page, text: string) {
   else await box.press("Enter")
 }
 
+/** 보이는 세션 대화 — 방을 바로 여는 화면과 서버 화면이 잠깐 함께 붙어 있을 수 있어 보이는 것만 본다(CI next start 에서 둘이 잡혔다) */
+function sessionLog(page: Page) {
+  return page.getByRole("log", { name: "옴니스와의 대화" }).filter({ visible: true })
+}
+
 async function shot(page: Page, name: string) {
   if (shots) await page.screenshot({ path: `${shots}/${name}.png` })
 }
@@ -121,7 +126,7 @@ test.describe("@옴니스 로 부르기 · 세션 공유 @chat", () => {
     await shot(page, "phone-list")
 
     await page.goto(`/chat/${sessionId}`)
-    const peer = page.locator("[data-peer-message]").filter({ hasText: PROMPT })
+    const peer = sessionLog(page).locator("[data-peer-message]").filter({ hasText: PROMPT })
     await expect(peer).toBeVisible()
     await expect(peer).toContainText(REQUESTER)
     await send(page, FOLLOW)
@@ -129,8 +134,8 @@ test.describe("@옴니스 로 부르기 · 세션 공유 @chat", () => {
     await shot(page, "phone-session")
     // 새로 읽어도 내 이어 묻기는 내 글(오른쪽)이고, 부른 사람의 글만 이름과 함께 왼쪽이다
     await page.reload()
-    await expect(page.locator("[data-peer-message]").filter({ hasText: PROMPT })).toBeVisible()
-    await expect(page.locator("[data-peer-message]").filter({ hasText: FOLLOW })).toHaveCount(0)
+    await expect(sessionLog(page).locator("[data-peer-message]").filter({ hasText: PROMPT })).toBeVisible()
+    await expect(sessionLog(page).locator("[data-peer-message]").filter({ hasText: FOLLOW })).toHaveCount(0)
 
     const runs = await prisma.agentRun.findMany({ where: { roomId: sessionId }, orderBy: { createdAt: "asc" }, select: { userId: true, notifyOrigin: true } })
     expect(runs.map((r) => r.userId)).toEqual([ids.get(REQUESTER), ids.get(MEMBER)])
