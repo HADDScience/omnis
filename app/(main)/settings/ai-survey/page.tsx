@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
+import { redirectToLogin } from "@/lib/login-redirect"
 
 import { Header } from "@/components/layout/header"
 import { AiSurvey } from "@/components/survey/ai-survey"
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic"
 /** AI 활용 설문 — 허용한 계정(lib/ai-survey/access.ts)만, 자기 것 하나. 답하던 곳에서 이어진다 */
 export default async function AiSurveyPage() {
   const session = await auth()
-  if (!session?.user?.id) redirect("/login")
+  if (!session?.user?.id) return redirectToLogin()
   if (!surveyAllowed(session.user.id)) notFound()
   const state = await getSurvey(session.user.id)
   return (

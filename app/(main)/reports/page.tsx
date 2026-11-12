@@ -2,13 +2,13 @@ import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { ReportList } from "./report-list"
 import { auth } from "@/lib/auth"
-import { redirect } from "next/navigation"
+import { redirectToLogin } from "@/lib/login-redirect"
 
 export const dynamic = "force-dynamic"
 
 export default async function ReportsPage() {
   const session = await auth()
-  if (!session?.user?.id) redirect("/login")
+  if (!session?.user?.id) return redirectToLogin()
 
   const reports = await prisma.weeklyReport.findMany({
     where: { ownerId: session.user.id },

@@ -1,9 +1,9 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { mustChangePassword } from "@/lib/password-state"
 import { ChangePasswordForm } from "@/components/auth/change-password-form"
+import { redirectToLogin } from "@/lib/login-redirect"
 
 export const dynamic = "force-dynamic"
 export const metadata: Metadata = { title: "비밀번호 변경 — HADD SCIENCE" }
@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "비밀번호 변경 — HADD SCIENCE
  */
 export default async function ChangePasswordPage() {
   const session = await auth()
-  if (!session?.user?.id) redirect("/login")
+  if (!session?.user?.id) return redirectToLogin()
   const required = await mustChangePassword(session.user.id)
 
   return (

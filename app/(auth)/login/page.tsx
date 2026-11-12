@@ -21,6 +21,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { DemoAccountsCard } from "@/components/layout/demo-accounts-card"
 import { SocialSignInButton, type SocialProvider } from "@/components/auth/social-buttons"
 import { apiUrl } from "@/lib/base-path"
+import { RETURN_PARAM, safeReturnPath } from "@/lib/login-return"
 
 /**
  * 로그인 뒤 돌아갈 곳. 기본은 업무 화면이다.
@@ -29,16 +30,15 @@ import { apiUrl } from "@/lib/base-path"
  * `callbackUrl` 에 실어 둔다. 그 값을 무시하면 사내 도구에서 넘어온 사람이
  * 로그인만 하고 옴니스 업무 화면에 남겨져 왕복이 끊긴다.
  *
+ * 보호된 화면(설문 공지 링크 등)도 로그아웃 상태면 프록시가 원래 주소를 여기에 실어 보낸다(2026-11-12).
+ *
  * 같은 오리진의 절대 경로만 받는다 — `//evil.com` 과 `/\evil.com` 은 브라우저가
  * 다른 오리진으로 읽으므로, 그대로 넘기면 로그인 화면이 오픈 리다이렉트가 된다.
  */
 function safeCallbackUrl(): string | null {
   if (typeof window === "undefined") return null
-  const raw = new URLSearchParams(window.location.search).get("callbackUrl")
-  if (!raw) return null
-  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null
-  if (raw.includes("\\")) return null
-  return raw
+  // 규칙은 프록시 · 서버와 한 곳(lib/login-return.ts) — 탭 · 줄바꿈 · javascript: 까지 거부한다
+  return safeReturnPath(new URLSearchParams(window.location.search).get(RETURN_PARAM))
 }
 
 /**

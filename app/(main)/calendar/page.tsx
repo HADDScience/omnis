@@ -1,8 +1,8 @@
-import { redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { auth } from "@/lib/auth"
 import { isAdminSession } from "@/lib/company-edit"
 import { CalendarView } from "./calendar-view"
+import { redirectToLogin } from "@/lib/login-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic"
 // ?day=YYYY-MM-DD 는 그 날을 고른 채 연다 — 새 일정 알림(calendar_event_added)이 이 주소로 온다
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ month?: string; day?: string }> }) {
   const session = await auth()
-  if (!session?.user?.id) redirect("/login")
+  if (!session?.user?.id) return redirectToLogin()
   const { month, day } = await searchParams
   const validDay = day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null
 

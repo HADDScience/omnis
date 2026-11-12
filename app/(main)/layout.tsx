@@ -1,6 +1,5 @@
 import { Suspense } from "react"
 import { auth } from "@/lib/auth"
-import { redirect } from "next/navigation"
 import { prisma } from "@/lib/db"
 import { FloatingNav } from "@/components/layout/floating-nav"
 import { CurrentUserProvider } from "@/components/layout/current-user"
@@ -16,6 +15,7 @@ import { RoomDownloadStatus } from "@/components/layout/room-download-status"
 import { passwordNoticeFor } from "@/lib/password-state"
 import { PasswordResetNotice } from "@/components/auth/password-reset-notice"
 import { AppSplash } from "@/components/layout/app-splash"
+import { redirectToLogin } from "@/lib/login-redirect"
 
 /**
  * 셸 바깥은 아무것도 기다리지 않는다 — 첫 HTML 조각(루트 레이아웃 + 스플래시)이 곧장 나가고, 세션 · 사용자 정보를 읽는
@@ -39,14 +39,14 @@ async function MainShell({
   const session = await auth()
 
   if (!session?.user) {
-    redirect("/login")
+    return redirectToLogin()
   }
 
   const onboarding = await prisma.user.findFirst({
     where: { id: session.user.id, isActive: true },
     select: { onboardingVideoSeenAt: true, onboardingCompletedAt: true },
   })
-  if (!onboarding) redirect("/login")
+  if (!onboarding) return redirectToLogin()
   // 관리자가 정해 준 비밀번호를 쓰는 동안에는 바꾸라고 권한다. 막지는 않는다(2026-11-06 핫픽스).
   // 「나중에」 7일 동안은 안내만 숨기고 마이 진입점의 경고 점은 남긴다(2026-11-11, lib/password-notice.ts)
   const password = await passwordNoticeFor(session.user.id as string)
