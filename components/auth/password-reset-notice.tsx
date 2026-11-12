@@ -4,13 +4,14 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useOnboarding } from "@/components/onboarding/onboarding-provider"
-
-/** 「나중에」 는 이 탭이 열려 있는 동안만 — 다음에 앱을 열면 다시 권한다 */
-const LATER_KEY = "omnis:password-reset-later"
+import { apiUrl } from "@/lib/base-path"
+import { PASSWORD_SNOOZE_DAYS } from "@/lib/password-notice"
 
 /**
  * 관리자가 정해 준 비밀번호를 아직 쓰고 있을 때 띄우는 안내. 막지 않는다 —
  * 바꾸러 가거나 「나중에」 로 닫는다. 판단은 서버((main)/layout.tsx → lib/password-state.ts).
+ * 「나중에」 는 서버에 남아(/api/account/password/snooze) 이 사람에게 7일 동안 다시 뜨지 않는다 — 기기를 바꿔도 같다.
+ * 숨긴 동안에도 마이 진입점의 경고 점(current-user.tsx)은 남는다(2026-11-11).
  *
  * 화면 아래에 뜨는 토스트다(위에 두면 폰에서 탭·제목줄을 덮었다 — 2026-11-06).
  * - 폰: 하단 nav 바로 위(`--nav-offset-bottom`, 홈 인디케이터 포함). PC: 오른쪽 아래.
@@ -19,18 +20,9 @@ const LATER_KEY = "omnis:password-reset-later"
  */
 export function PasswordResetNotice() {
   const { active: touring } = useOnboarding()
-  const [hidden, setHidden] = useState(true)
+  const [hidden, setHidden] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const [lift, setLift] = useState<number | null>(null)
-
-  useEffect(() => {
-    let later = false
-    try {
-      later = sessionStorage.getItem(LATER_KEY) === "1"
-    } catch {}
-    // 저장소를 읽은 뒤에야 보일지 정해진다 — 서버 렌더와 어긋나지 않게 효과 안에서 바꾼다
-    setHidden(later)
-  }, [])
 
   const shown = !hidden && !touring
   useEffect(() => {
@@ -77,10 +69,9 @@ export function PasswordResetNotice() {
   if (!shown) return null
 
   function later() {
-    try {
-      sessionStorage.setItem(LATER_KEY, "1")
-    } catch {}
+    // 먼저 닫는다 — 기록이 실패해도 이 화면에서는 닫힌 채로 두고, 다음에 앱을 열면 다시 뜬다
     setHidden(true)
+    void fetch(apiUrl("/api/account/password/snooze"), { method: "POST" }).catch(() => {})
   }
 
   return (
@@ -95,7 +86,7 @@ export function PasswordResetNotice() {
         관리자가 정해 준 임시 비밀번호를 쓰고 있습니다. 본인만 아는 비밀번호로 바꾸세요.
       </p>
       <div className="flex shrink-0 items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={later}>
+        <Button variant="ghost" size="sm" onClick={later} title={`${PASSWORD_SNOOZE_DAYS}일 뒤 다시 알려 드립니다`}>
           나중에
         </Button>
         <Link href="/account/password" className={buttonVariants({ size: "sm" })}>
