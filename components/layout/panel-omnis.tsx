@@ -107,6 +107,9 @@ export function PanelOmnis({
           initialStopped={state?.stopped ?? {}}
           activeRun={state?.activeRun ?? null}
           origin={state?.room.origin ?? null}
+          owner={state?.room.owner ?? null}
+          isOwner={state?.room.isOwner ?? true}
+          memberCount={state?.room.memberCount ?? 1}
           busyBy={state?.busyBy ?? null}
           embedded={{
             onRoomCreated: (id) => {

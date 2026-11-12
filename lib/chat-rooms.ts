@@ -14,6 +14,7 @@ import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { EXTERNAL_SPEAKER_SELECT, externalSpeakerLabel } from "@/lib/external-speaker"
 import { attachmentPreview, filterRooms, hiddenFromList, normalizeQuery, parseRoomKey, READ_BASELINE_KEY, roomKeyOf, type ChatFolderView } from "@/lib/chat-list"
 import { ensureReadBaseline, listFolders } from "@/lib/chat-prefs"
+import { sharedLabel } from "@/lib/omnis-session-share-rules"
 import { groupFaceNames, peopleRoomTitle } from "@/lib/chat-people-rules"
 import { kakaoMissingAttachment, missingAttachmentLabel } from "@/lib/kakao-placeholder"
 
@@ -77,7 +78,7 @@ export interface RoomListItem {
   memberCount?: number
   /** 단톡방만 — 목록 사진에 겹쳐 그릴 참여자 이름 최대 둘(나 빼고). 이 방 참여자에게만 간다 */
   faceNames?: string[]
-  /** 옴니스 세션만 — 사람 방의 @옴니스 로 연 공유 세션이면 그 방 이름(보는 사람 기준). 목록에 「공유됨 · 방 이름」 */
+  /** 옴니스 세션만 — 방에 공유된 세션이면 그 방 이름(보는 사람 기준), 사람 공유로 받았으면 「주인님」. 목록에 「공유됨 · …」 */
   sharedFrom?: string
   /** 마지막 글이 옴니스의 시스템 글(맨 앞 🤖 표식)이다 — 목록은 미리보기 앞에 옴니스 아이콘(표식은 미리보기 글에서 뗀다) */
   previewByOmnis?: boolean
@@ -271,6 +272,9 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
         id: true, kind: true, name: true, dmKey: true, createdAt: true, lastMessageAt: true,
         // 공유 세션(@옴니스)이면 연 방 — 「공유됨 · 방 이름」. 1:1 은 상대 이름이라 참여자도 읽는다
         originRoom: { select: { kind: true, name: true, dmKey: true, members: { select: { user: { select: { id: true, name: true } } } } } },
+        // 사람 공유로 받은 세션은 「공유됨 · 주인님」 — 주인은 인계로 바뀔 수 있다(lib/omnis-session-share.ts)
+        createdById: true,
+        createdBy: { select: { name: true } },
         // 1:1 이름(상대 이름) · 단톡방 겹친 사진과 인원 수. 방마다 묻지 않고 이 질의 하나로 읽는다
         members: {
           where: { room: { kind: { in: ["DM", "GROUP"] } } },
@@ -321,7 +325,7 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
       favorite: false,
       muted: false,
       ...(r.kind === "GROUP" ? { memberCount: people.length, faceNames: groupFaceNames(people, userId) } : {}),
-      ...(r.originRoom ? { sharedFrom: peopleRoomTitle(r.originRoom, r.originRoom.members.map((m) => m.user), userId) } : {}),
+      ...(r.kind === "OMNIS_DM" ? sharedFromOf(r, userId) : {}),
     }
     if (hiddenFromList(item, hidden.get(item.key) ?? null)) continue
     if (r.kind === "OMNIS_DM") omnis.push(item)
@@ -388,4 +392,22 @@ export async function listRooms(userId: string, opts: { q?: string } = {}): Prom
   }
 
   return { ...result, folders, query: query || null }
+}
+
+/** 옴니스 세션의 공유 표시 — 방 공유면 방 이름, 남이 공유해 준 세션이면 「주인님」. 내 개인 세션은 없음 */
+function sharedFromOf(
+  r: {
+    createdById: string | null
+    createdBy: { name: string } | null
+    originRoom: { kind: string; name: string; dmKey: string | null; members: { user: { id: string; name: string } }[] } | null
+  },
+  userId: string,
+): { sharedFrom?: string } {
+  const label = sharedLabel({
+    viewerId: userId,
+    ownerId: r.createdById,
+    ownerName: r.createdBy?.name ?? null,
+    originTitle: r.originRoom ? peopleRoomTitle(r.originRoom, r.originRoom.members.map((m) => m.user), userId) : null,
+  })
+  return label ? { sharedFrom: label } : {}
 }
