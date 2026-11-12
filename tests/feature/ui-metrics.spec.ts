@@ -258,10 +258,9 @@ test.describe("설문 — 꺼 둔 동안", () => {
   })
 })
 
-test("수집 안내 문구가 마이 > 앱 정보에 있다", async ({ page }) => {
+test("수집 안내 문구가 개인정보 처리방침에 있다(2026-11-11 마이 > 앱 정보에서 옮김)", async ({ page }) => {
   await login(page, "사원1")
-  await page.goto("/settings")
-  await page.getByRole("tab", { name: "앱 정보" }).click()
+  await page.goto("/privacy")
   const notice = page.locator("[data-ui-metrics-notice]")
   await expect(notice).toContainText("모으는 것")
   await expect(notice).toContainText("대화 내용, 파일 이름, 방 이름")

@@ -8,7 +8,7 @@ import { SELF_ROOM_TITLE, type PeopleRoomView } from "@/lib/chat-people-rules"
 import type { RoomListItem } from "@/lib/chat-rooms"
 import { dropSnapshot, peekSnapshot, readSnapshot, type RoomSnapshot } from "@/lib/room-snapshot"
 import { CompanyRoom } from "./company-room"
-import { useRoomListReload } from "./messenger-context"
+import { usePanelNav, useRoomListReload } from "./messenger-context"
 import { PeopleRoom } from "./people-room"
 
 type Message = ComponentProps<typeof ChatPanel>["initialMessages"][number]
@@ -17,9 +17,10 @@ type Message = ComponentProps<typeof ChatPanel>["initialMessages"][number]
  * 목록에서 누른 방을 서버 페이지 없이 그린다. 저장본이 있으면 그것으로 시작해 새 글 · 고친 글만 받는다.
  * 권한은 첫 읽기에서 서버가 판단한다 — 403 · 404 면 저장본을 지우고 목록으로 돌아간다.
  */
-export function ClientRoom({ room, userId }: { room: RoomListItem; userId: string }) {
+export function ClientRoom({ room, userId, searchRequest }: { room: RoomListItem; userId: string; searchRequest?: number }) {
   const router = useRouter()
   const reloadList = useRoomListReload()
+  const panel = usePanelNav()
   const [snapshot, setSnapshot] = useState<RoomSnapshot<Message> | null | undefined>(() => peekSnapshot<Message>(userId, room.key) ?? undefined)
 
   useEffect(() => {
@@ -40,14 +41,15 @@ export function ClientRoom({ room, userId }: { room: RoomListItem; userId: strin
     dropSnapshot(userId, room.key)
     reloadList()
     toast.error("이 방을 볼 수 없습니다")
-    router.replace("/chat")
+    if (panel) panel.back()
+    else router.replace("/chat")
   }
   const messages = snapshot?.messages ?? []
   const resume = messages.length > 0 ? { checkedAt: snapshot!.checkedAt, fromSnapshot: true } : undefined
   const live = { onRoomGone, snapshotKey: room.key }
 
   if (room.kind === "COMPANY") {
-    return <CompanyRoom roomId={room.id} roomName={room.name} currentUserId={userId} initialMessages={messages} resume={resume} muted={room.muted} live={live} />
+    return <CompanyRoom roomId={room.id} roomName={room.name} currentUserId={userId} initialMessages={messages} resume={resume} muted={room.muted} live={live} searchRequest={searchRequest} />
   }
   // 처음 여는 방은 참여자를 아직 모른다 — 목록이 아는 것으로 그리고 바로 받아 온다
   const view: PeopleRoomView = snapshot?.people ?? {

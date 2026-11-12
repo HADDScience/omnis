@@ -8,24 +8,13 @@ import { PanelDock } from "./panel-dock"
 import { NAV_DESKTOP_QUERY } from "./floating-nav"
 import { useShortcut } from "@/hooks/use-shortcuts"
 
-interface Message {
-  id: string
-  content: string
-  createdAt: string
-  isTaskInstruction: boolean
-  author: { id: string; name: string }
-  task?: { id: string; name: string; slug: string } | null
-}
-
 interface MainWithChatProps {
   currentUserId: string
-  initialMessages: Message[]
   children: ReactNode
 }
 
 export function MainWithChat({
   currentUserId,
-  initialMessages,
   children,
 }: MainWithChatProps) {
   const router = useRouter()
@@ -47,11 +36,7 @@ export function MainWithChat({
               폰의 채팅 목록 · 전사 · 사람 방은 예외다 — 내용이 nav 뒤로 지나가고, 끝 여백은 그 화면이 스스로 둔다(MessengerShell · RoomList · ChatPanel) */}
           <div data-main-scroll className="flex-1 overflow-auto pt-[var(--nav-offset-top)] pb-[calc(var(--nav-offset-bottom)+var(--notice-reserve,0px))] max-md:has-[[data-chat-at-list]]:pb-0 max-md:has-[[data-chat-room-chrome]]:pb-0">{children}</div>
         </div>
-        <RightPanel
-          currentUserId={currentUserId}
-          initialMessages={initialMessages}
-          onTaskUpdated={() => router.refresh()}
-        />
+        <RightPanel currentUserId={currentUserId} />
       </div>
       <PanelDock />
     </>

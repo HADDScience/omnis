@@ -1,7 +1,7 @@
 "use client"
 
 import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +29,7 @@ import {
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
 import { writeSnapshot } from "@/lib/room-snapshot"
+import { anchoredMessageId } from "@/lib/answer-actions"
 
 interface Message {
   id: string
@@ -61,6 +62,11 @@ interface TaskSidebarProps {
    * 다음에 열 때 바로 그리게 최근 글을 기기에 저장한다(lib/chat-cache.ts). 업무 상세 · 오른쪽 패널은 비운다
    */
   roomKey?: string
+  /**
+   * 글이 바뀐 뒤(보냄 · 고침 · 지움 · 재구성 끝) 부른다. 없으면 router.refresh() — 업무 상세 · 메신저 업무방은 서버가 다시 그린다.
+   * 오른쪽 패널의 업무방은 본문이 다른 화면이라 글을 직접 다시 받는다(components/messenger/task-room.tsx)
+   */
+  onChanged?: () => void
 }
 
 function formatTime(iso: string): string {
@@ -114,7 +120,7 @@ function useThreadRefs(): ThreadRefs {
   return refs
 }
 
-export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSidebarProps) {
+export function TaskThread({ taskId, messages, currentUserId, roomKey, onChanged }: TaskSidebarProps) {
   const refs = useThreadRefs()
   const slug = refs.tasks.find((t) => t.id === taskId)?.slug
   const systemMessages = messages.filter(
@@ -128,6 +134,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
   const threadMessages = messages
   const rows = layoutMessages(threadMessages.map((m) => ({ ...m, isEvent: eventKindOf(m) !== null })))
   const router = useRouter()
+  const refresh = useCallback(() => (onChanged ? onChanged() : router.refresh()), [onChanged, router])
 
   // 업무방은 글 목록을 서버가 다시 그려 준다(보낸 뒤 router.refresh) — 새 글이 생겼을 때만 왼쪽 목록을 맞춘다
   const nudgeRoomList = useRoomListNudge()
@@ -164,7 +171,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
       // 90초가 지나도 끝을 못 들으면 거둔다 — 결과는 새로고침으로 들어온다
       if (data?.done || Date.now() - startedAt > 90_000) {
         setRebuildWait(null)
-        router.refresh()
+        refresh()
         return
       }
       timer = setTimeout(tick, 2000)
@@ -174,7 +181,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
       alive = false
       clearTimeout(timer)
     }
-  }, [rebuildWait, taskId, router])
+  }, [rebuildWait, taskId, refresh])
 
   // 보내기 누른 글을 서버 응답(AI 재구성까지 8~13초) 전에 바로 보여 준다.
   // 목록 길이를 같이 적어 두고, 새 메시지가 붙어 길이가 바뀌면 저절로 사라진다.
@@ -209,7 +216,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
     const data = (await res.json().catch(() => null)) as { _rebuild?: string | null } | null
     setEditingId(null)
     if (data?._rebuild === "queued") setRebuildWait(id)
-    router.refresh()
+    refresh()
   }
 
   // 채팅처럼 최신 메시지가 보이게 — 열 때와 새 메시지가 붙을 때 맨 아래로 내린다
@@ -218,6 +225,23 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [threadMessages.length, showPending.length, rebuildWait])
+
+  // 주소가 스레드의 글 하나를 가리키면(#m-<id>) 그 글을 가운데 두고 잠시 강조 — 옴니스 답의 각주 · 파일 카드 「원문 글로」.
+  // 맨 아래로 내리는 위 효과 뒤에 돈다(선언 순서). 스레드에 없는 글(오래돼 안 받은 글)이면 그대로 둔다
+  const [arrivedId, setArrivedId] = useState<string | null>(null)
+  const arrivalDone = useRef(false)
+  useEffect(() => {
+    if (arrivalDone.current) return
+    const id = anchoredMessageId(window.location.hash)
+    if (!id) return
+    const target = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`)
+    if (!target) return
+    arrivalDone.current = true
+    target.scrollIntoView({ block: "center" })
+    setArrivedId(id)
+    const t = setTimeout(() => setArrivedId(null), 2400)
+    return () => clearTimeout(t)
+  }, [threadMessages.length])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -272,7 +296,9 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
                 return (
                   <div
                     key={row.key}
-                    className={`group/msg relative -mx-3 flex gap-2.5 px-3 in-data-[messenger]:gap-3 hover:bg-muted/40 ${row.groupStart ? "mt-2.5 pt-1 in-data-[messenger]:mt-4" : ""} ${row.groupEnd ? "pb-1" : ""} ${
+                    data-message-id={m.id}
+                    data-arrived={arrivedId === m.id ? "" : undefined}
+                    className={`group/msg relative -mx-3 flex gap-2.5 px-3 transition-colors duration-700 in-data-[messenger]:gap-3 hover:bg-muted/40 data-[arrived]:bg-primary/10 ${row.groupStart ? "mt-2.5 pt-1 in-data-[messenger]:mt-4" : ""} ${row.groupEnd ? "pb-1" : ""} ${
                       new Date(m.createdAt).getTime() > mountedAt ? MESSAGE_ENTER : ""
                     }`}
                   >
@@ -436,6 +462,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey }: TaskSid
             onClearReply={() => setReplyTarget(null)}
             onRestoreReply={(reply) => setReplyTarget((cur) => cur ?? reply)}
             handoffKey={roomKey}
+            onSent={onChanged}
           />
         </TabsContent>
 

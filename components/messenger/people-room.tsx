@@ -29,6 +29,7 @@ import { RoomHeader } from "./room-header"
 import { RoomMuteButton } from "./room-mute-button"
 import { PeoplePicker, type Person } from "./people-picker"
 import { useRoomListReload } from "./messenger-shell"
+import { usePanelNav } from "./messenger-context"
 
 type Messages = ComponentProps<typeof ChatPanel>["initialMessages"]
 
@@ -160,6 +161,7 @@ function MembersDialog({
 }) {
   const router = useRouter()
   const reloadList = useRoomListReload()
+  const panel = usePanelNav()
   const [view, setView] = useState<"list" | "invite">("list")
   const [picked, setPicked] = useState<Person[]>([])
   const [name, setName] = useState(room.name)
@@ -210,7 +212,8 @@ function MembersDialog({
     onOpenChange(false)
     toast.success(`「${room.title}」 에서 나왔어요`)
     reloadList()
-    router.push("/chat")
+    if (panel) panel.back()
+    else router.push("/chat")
   }
 
   return (

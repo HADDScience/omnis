@@ -16,6 +16,8 @@
 import { createHash, randomBytes } from "crypto"
 
 import { prisma } from "@/lib/db"
+import { checkImageInput } from "@/lib/ip-images"
+import { addCaseImage, ImageError, listImagesFor } from "@/lib/ip-images-server"
 import {
   IP_STATUSES,
   getIpAccess,
@@ -207,7 +209,7 @@ const GUIDE_TEMPLATE = [
   "기록_id 가 돌아왔으면 저장된 것이다.",
   "",
   `■ 확인 코드: ${GUIDE_ACK}`,
-  "쓰기 도구(add_progress · correct_ip · create_ip)의 guide 인자에 이 값을 그대로 넣는다.",
+  "쓰기 도구(add_progress · correct_ip · create_ip · add_ip_image)의 guide 인자에 이 값을 그대로 넣는다.",
 ].join("\n")
 
 /**
@@ -464,10 +466,35 @@ export const TOOLS = [
       required: ["entityKind", "name", "guide"],
     },
   },
+  {
+    name: "add_ip_image",
+    description:
+      "건에 이미지를 건다 — 상표 도안 · 로고 · 시안, 특허 대표 도면. 출원 전 · 아이디어 단계 건에도 건다. 파일은 먼저 upload_file(작은 파일) 또는 create_upload_link(셸에서 curl)로 올리고 받은 파일 ID 를 fileId 에 넣는다. PNG · JPG · WebP · GIF 만 받는다(SVG · PDF · AI 는 PNG 로 바꿔 올린다). 이미 걸린 이미지는 get_ip 의 이미지 칸에서 본다 — 같은 파일을 두 번 걸지 않는다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        entityId: { type: "string", description: "대상 ID. 예: TM-13, PT-07" },
+        entityKind: {
+          type: "string",
+          enum: ["trademark", "patent"],
+          description: "생략하면 ID 접두사(TM-/PT-)로 판단한다.",
+        },
+        fileId: { type: "string", description: "upload_file · create_upload_link 로 받은 파일 ID" },
+        memo: { type: "string", description: "한 줄 메모. 예: 「10/29 변리사 송부 시안」 「C안 평면판」. 모르면 비운다." },
+        date: { type: "string", description: "YYYY-MM-DD — 시안을 만든 날 · 보낸 날. 모르면 비운다(오늘로 채우지 않는다)." },
+        primary: {
+          type: "boolean",
+          description: "대표 이미지로 정한다(갤러리 표지). 생략하면 그 건의 첫 이미지만 대표가 된다.",
+        },
+        ...GUIDE_ARG,
+      },
+      required: ["entityId", "fileId", "guide"],
+    },
+  },
 ] as const
 
 /** 쓰기 도구 이름. 지침을 지나왔는지 여기서 한 번에 본다. */
-const WRITE_TOOLS = new Set(["add_progress", "correct_ip", "create_ip"])
+const WRITE_TOOLS = new Set(["add_progress", "correct_ip", "create_ip", "add_ip_image"])
 
 export type ToolResult = { text: string } | { error: string }
 
@@ -677,10 +704,22 @@ export async function runTool(
        WHERE entity_kind = ${kind} AND entity_id = ${id}
        ORDER BY occurred_on DESC`
 
+    // 표가 아직 없어도(마이그레이션 전) get_ip 는 답한다
+    const images = await listImagesFor(kind as EntityKind, id).catch(() => [])
+
     return {
       text: JSON.stringify(
         {
           현재: row,
+          // 상표 도안 · 시안, 특허 대표 도면. 그림을 보려면 파일_id 로 read_file
+          이미지: images.map((i) => ({
+            이미지_id: i.id,
+            파일_id: i.fileId,
+            파일이름: i.name,
+            메모: i.memo,
+            날짜: i.date,
+            대표: i.isPrimary,
+          })),
           // event 는 사건, status 는 그 기록이 명시한 상태(비어 있으면 사건·번호 규칙에 맡긴 기록).
           진행_이력: history,
           // 기록이 없으면 왜 없는지가 답의 일부다. 지어낸 일이 아니라 인수분이다.
@@ -1006,6 +1045,51 @@ export async function runTool(
         null,
         2
       ),
+    }
+  }
+
+  if (name === "add_ip_image") {
+    if (caller.role === "viewer") {
+      return { error: "읽기 전용 권한입니다. 이미지를 걸 수 없습니다." }
+    }
+    const id = String(args.entityId ?? "").trim()
+    const kind = kindOf(args, id)
+    if (kind !== "trademark" && kind !== "patent") return { error: "entityKind 는 trademark · patent 입니다." }
+    const checked = checkImageInput({
+      memo: args.memo ?? "",
+      date: args.date ?? null,
+      isPrimary: args.primary,
+    })
+    if (!checked.ok) return { error: checked.error }
+    try {
+      const image = await addCaseImage(caller.userId, {
+        kind,
+        entityId: id,
+        fileId: String(args.fileId ?? "").trim(),
+        memo: checked.value.memo ?? "",
+        date: checked.value.date ?? null,
+        isPrimary: checked.value.isPrimary,
+      })
+      return {
+        text: JSON.stringify(
+          {
+            걸었음: true,
+            건: id,
+            이미지_id: image.id,
+            파일_id: image.fileId,
+            메모: image.memo,
+            날짜: image.date,
+            대표: image.isPrimary,
+            설명: image.isPrimary
+              ? "이 건의 대표 이미지(갤러리 표지)가 되었습니다."
+              : "걸었습니다. 대표 이미지는 그대로입니다 — 바꾸려면 화면(IP → 건 상세 → 이미지)에서 「대표로」를 누릅니다.",
+          },
+          null,
+          2
+        ),
+      }
+    } catch (err) {
+      return { error: err instanceof ImageError ? err.message : (err as Error).message }
     }
   }
 

@@ -56,7 +56,7 @@ export const AGENT_WRITE_TOOLS = [
   // MCP 와 맞춤(2026-11-10) — 되돌리기 어려운 것이라 카드에 따라오는 일을 적는다
   "respond_notification", "delete_company_record", "decide_record_proposal", "upload_file",
   // 지식재산권 쓰기 — read_guide 확인 코드 규칙은 runTool(lib/ip-mcp guideGate)이 그대로 지킨다
-  "add_progress", "correct_ip", "create_ip",
+  "add_progress", "correct_ip", "create_ip", "add_ip_image",
 ] as const
 
 /**
@@ -69,7 +69,7 @@ export const AGENT_EXCLUDED: Record<string, string> = {
   create_upload_link: "셸 클라이언트용 업로드 링크",
 }
 
-const IP_WRITE_TOOLS = new Set(["add_progress", "correct_ip", "create_ip"])
+const IP_WRITE_TOOLS = new Set(["add_progress", "correct_ip", "create_ip", "add_ip_image"])
 
 export type AgentWriteTool = (typeof AGENT_WRITE_TOOLS)[number]
 export const isWriteTool = (name: string): name is AgentWriteTool => (AGENT_WRITE_TOOLS as readonly string[]).includes(name)
@@ -265,6 +265,23 @@ export async function buildPreview(name: string, args: Record<string, unknown>, 
       }
     }
     case "post_message":
+      // room 이 있으면 단톡방 · 1:1 · 나와의 대화 — MCP 와 같다(runTool post_message). 참여자인 방만 실제로 보내진다
+      if (s(args.room) && !/^(전사방|전체|회사|company|default-room)$/i.test(s(args.room).replace(/\s+/g, ""))) {
+        const self = /^(me|self|나|내방|나와의대화|나에게|메모)$/i.test(s(args.room).replace(/\s+/g, ""))
+        return {
+          title: self ? "나와의 대화에 글 올리기" : "방에 글 올리기",
+          target: self ? "나와의 대화(나만 보는 방)" : `방 「${s(args.room)}」`,
+          changes: [
+            { label: "글", before: null, after: clip(s(args.content), 1200) },
+            ...(list(args.files).length ? [{ label: "첨부 파일 ID", before: null, after: list(args.files).join(", ") }] : []),
+          ],
+          risk: self
+            ? "나만 보는 「나와의 대화」 에 남습니다."
+            : "그 방 참여자에게 내 이름으로 글과 채팅 알림이 갑니다(@이름 은 멘션 알림). 카톡에서 옮겨 온 방이어도 카카오톡으로는 가지 않습니다. 이름이 여러 방에 맞으면 보내지 않고 후보를 돌려줍니다.",
+          ...(s(args.content) ? {} : { problem: "글이 비어 있습니다" }),
+          ...(s(args.task) ? { problem: "업무(task)는 전사방 글에만 씁니다 — 방에 보낼 때는 빼세요" } : {}),
+        }
+      }
       // task 가 없으면 전사방 — MCP 와 같다(runTool post_message)
       if (!s(args.task)) {
         return {
@@ -515,6 +532,14 @@ async function buildMorePreview(name: string, args: Record<string, unknown>, ctx
         changes: argRows(args, [["name", "이름"], ["status", "시작 상태"], ["stage", "단계(옛 이름)"], ["note", "비고"]]),
         risk: "지식재산권 목록에 새 건이 생깁니다. 같은 건을 둘로 만들면 합치기 어렵습니다 — 먼저 list_ip 로 확인했는지 보세요.",
         ...(!s(args.name) || !s(args.entityKind) ? { problem: "종류(entityKind)와 이름이 필요합니다" } : {}),
+      }
+    case "add_ip_image":
+      return {
+        title: "지식재산권 이미지 걸기",
+        target: `${s(args.entityId) || "(대상 없음)"} · 파일 ${s(args.fileId) || "(없음)"}`,
+        changes: argRows(args, [["memo", "메모"], ["date", "날짜"], ["primary", "대표로"]]),
+        risk: "이 이미지가 지식재산권 화면에서 구성원 모두에게 보입니다. 참여자만 보는 방(옴니스 1:1 등)에 올린 파일은 걸리지 않습니다 — IP 화면에서 올려 주세요.",
+        ...(!s(args.entityId) || !s(args.fileId) ? { problem: "대상(entityId)과 파일(fileId)이 필요합니다" } : {}),
       }
   }
   return null

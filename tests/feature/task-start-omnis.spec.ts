@@ -74,7 +74,9 @@ test.describe("PC", () => {
 
     const panel = page.getByRole("complementary", { name: "대화 패널" })
     await expect(panel).toBeVisible()
-    await expect(panel.getByRole("button", { name: "옴니스", exact: true })).toHaveAttribute("aria-pressed", "true")
+    // 패널 채팅의 옴니스 새 대화(2026-11-11 — 예전 「옴니스」 탭)
+    await expect(panel.locator('[data-panel-messenger="room"]')).toBeVisible()
+    await expect(panel.locator("[data-room-header]").filter({ visible: true })).toContainText("새 대화")
     await expect.poll(() => asked.length, { timeout: 15_000 }).toBe(1)
     expectPrompt(asked[0])
     expect(new URL(page.url()).pathname).toBe(`/tasks/${task.id}`)

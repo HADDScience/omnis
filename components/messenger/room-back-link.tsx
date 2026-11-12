@@ -8,7 +8,7 @@ import { ArrowLeft01Icon } from "@hugeicons/core-free-icons"
 import { buttonVariants } from "@/components/ui/button"
 import { roomKeyFromPath, unreadElsewhere, unreadLabel } from "@/lib/chat-list"
 import { cn } from "@/lib/utils"
-import { useStartRoomEntry } from "./messenger-context"
+import { usePanelNav, useStartRoomEntry } from "./messenger-context"
 
 type UnreadRoom = { key: string; unread: number }
 
@@ -44,24 +44,21 @@ export function usePublishUnreadRooms(rooms: UnreadRoom[]) {
  */
 export function RoomBackLink({ capsule, roomKey }: { capsule: boolean; roomKey?: string }) {
   const startEntry = useStartRoomEntry()
+  const panel = usePanelNav()
   const pathname = usePathname()
   const rooms = useContext(UnreadRooms)
-  const count = unreadElsewhere(rooms, roomKey ?? roomKeyFromPath(pathname))
+  const count = unreadElsewhere(rooms, roomKey ?? (panel ? panel.activeKey : roomKeyFromPath(pathname)))
   const describedBy = useId()
-  return (
-    <Link
-      href="/chat"
-      // 목록(/chat)에서 방을 막 누른 입장 화면이면 주소가 그대로라 이동만으로는 화면이 안 바뀐다 — 덮개를 걷는다
-      onClick={() => startEntry(null)}
-      aria-label="채팅방 목록으로"
-      aria-describedby={count > 0 ? describedBy : undefined}
-      className={cn(
-        buttonVariants({ variant: "ghost", size: "icon-sm" }),
-        "touch-target h-11 w-auto min-w-11 shrink-0 md:hidden",
-        count > 0 && "gap-0 pr-3 pl-1",
-        capsule && "glass rounded-full",
-      )}
-    >
+  const className = cn(
+    buttonVariants({ variant: "ghost", size: "icon-sm" }),
+    // 오른쪽 패널은 PC 폭이어도 목록과 방을 하나씩 보여 준다 — 폰처럼 늘 보인다
+    "touch-target h-11 w-auto min-w-11 shrink-0",
+    !panel && "md:hidden",
+    count > 0 && "gap-0 pr-3 pl-1",
+    capsule && "glass rounded-full",
+  )
+  const body = (
+    <>
       <HugeiconsIcon icon={ArrowLeft01Icon} size={26} aria-hidden className="size-[26px]" />
       {count > 0 && (
         <>
@@ -73,6 +70,25 @@ export function RoomBackLink({ capsule, roomKey }: { capsule: boolean; roomKey?:
           </span>
         </>
       )}
+    </>
+  )
+  if (panel) {
+    return (
+      <button type="button" onClick={panel.back} aria-label="채팅방 목록으로" aria-describedby={count > 0 ? describedBy : undefined} className={className}>
+        {body}
+      </button>
+    )
+  }
+  return (
+    <Link
+      href="/chat"
+      // 목록(/chat)에서 방을 막 누른 입장 화면이면 주소가 그대로라 이동만으로는 화면이 안 바뀐다 — 덮개를 걷는다
+      onClick={() => startEntry(null)}
+      aria-label="채팅방 목록으로"
+      aria-describedby={count > 0 ? describedBy : undefined}
+      className={className}
+    >
+      {body}
     </Link>
   )
 }

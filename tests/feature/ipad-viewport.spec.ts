@@ -159,6 +159,8 @@ test.describe("iPad 대화 패널", () => {
     await page.goto("/tasks")
     await page.getByRole("button", { name: /^대화 패널 열기/ }).tap()
     const panel = page.locator('aside[aria-label="대화 패널"]')
+    // 패널은 방 목록으로 열린다(2026-11-11) — 전사방으로
+    await panel.locator('a[href$="/chat/default-room"]').first().tap()
     const box = panel.locator(`${PILL} textarea`).first()
     await box.waitFor({ timeout: 30_000 })
     await box.tap()
