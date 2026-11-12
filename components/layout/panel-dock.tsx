@@ -29,7 +29,7 @@ export function PanelDock() {
       type="button"
       aria-label={label}
       title={`${label} (C)`}
-      onClick={() => openWith(task ? "task" : "all")}
+      onClick={() => openWith(task ? "task" : "chat")}
       className={cn(
         "glass fixed! right-4 z-[var(--z-dock)] flex size-12 items-center justify-center rounded-full text-foreground transition-transform duration-150 active:scale-[0.94] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         "bottom-[calc(var(--nav-offset-bottom)+12px)]",

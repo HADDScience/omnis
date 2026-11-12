@@ -46,14 +46,26 @@ export function clipFromSelection(sel: Selection | null): Clip | null {
   return clip.text || clip.html ? clip : null
 }
 
-/** 복사 사건(Ctrl/⌘+C)에 두 형식을 싣는다 */
+/** 복사 사건(Ctrl/⌘+C)에 싣는다 — 글 · 완전한 html 문서 · (있으면) RTF */
 export function putClip(data: DataTransfer, clip: Clip) {
-  data.setData("text/html", wrapClipboardHtml(clip.html))
   data.setData("text/plain", clip.text)
+  data.setData("text/html", wrapClipboardHtml(clip.html))
+  // RTF 는 받는 브라우저(파이어폭스 · 사파리)만 맥 · 윈도의 RTF 형식으로 넘긴다. 못 받는 브라우저에서 던지면 나머지는 지킨다
+  if (clip.rtf) {
+    try {
+      data.setData("text/rtf", clip.rtf)
+    } catch {
+      // 무시
+    }
+  }
 }
 
-/** 단추로 복사 — 두 형식. ClipboardItem 이 없으면 글만 */
+/**
+ * 단추로 복사. 먼저 복사 사건(execCommand)으로 싣는다 — 비동기 클립보드(navigator.clipboard.write)는 html 을 다듬어
+ * 문서 머리 · 표식을 걷고 RTF 를 받지 않는다. 사건이 돌지 않으면(막힌 브라우저) 비동기 클립보드로 html · 글, 그것도 없으면 글만.
+ */
 export async function writeClip(clip: Clip): Promise<void> {
+  if (copyViaEvent(clip)) return
   if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
     await navigator.clipboard.write([
       new ClipboardItem({
@@ -64,4 +76,27 @@ export async function writeClip(clip: Clip): Promise<void> {
     return
   }
   await navigator.clipboard.writeText(clip.text)
+}
+
+/** 사용자 몸짓 안에서 복사 사건을 일으켜 그 자리에서 싣는다. 실렸으면 true */
+function copyViaEvent(clip: Clip): boolean {
+  if (typeof document === "undefined" || typeof document.execCommand !== "function") return false
+  let done = false
+  const onCopy = (e: ClipboardEvent) => {
+    if (!e.clipboardData) return
+    putClip(e.clipboardData, clip)
+    e.preventDefault()
+    // 답 본문 · 표의 복사 듣기(고른 글 · 칸 범위)가 덮어쓰지 않게 여기서 멈춘다
+    e.stopImmediatePropagation()
+    done = true
+  }
+  // 잡기 단계의 window — 다른 듣기보다 먼저(표의 듣기도 window 잡기 단계라 먼저 붙은 것이 먼저 돈다 — 그쪽은 포커스가 표 안일 때만 일한다)
+  window.addEventListener("copy", onCopy, true)
+  try {
+    return document.execCommand("copy") && done
+  } catch {
+    return false
+  } finally {
+    window.removeEventListener("copy", onCopy, true)
+  }
 }

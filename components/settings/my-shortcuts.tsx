@@ -1,21 +1,17 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
+import type { ReactNode } from "react"
 import { signOut } from "next-auth/react"
 import { clearChatCache } from "@/lib/chat-cache"
-import { useTheme } from "next-themes"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   AiMagicIcon,
   ArrowRight01Icon,
   BookOpen01Icon,
   Logout01Icon,
-  Moon01Icon,
-  Sun01Icon,
 } from "@hugeicons/core-free-icons"
 import { Card, CardContent } from "@/components/ui/card"
 import { ShineBorder } from "@/components/magicui/shine-border"
-import { KeyboardShortcuts } from "@/components/settings/keyboard-shortcuts"
 import { useOnboarding } from "@/components/onboarding/onboarding-provider"
 import { InstallAppRow } from "@/components/layout/install-app-card"
 import { cn } from "@/lib/utils"
@@ -62,12 +58,8 @@ function Row({
  * 마이 탭의 바로가기 — 예전 사이드바 프로필 메뉴에 있던 것들.
  * 메뉴 안에 숨어 있던 MCP 등록·튜토리얼을 한 화면에 늘어놓아, 찾으러 메뉴를 열 필요가 없게 했다.
  */
-export function MyShortcuts() {
+export function MyShortcuts({ below }: { /** 메뉴 카드(로그아웃 줄) 바로 아래에 놓을 것 — AI 활용 설문 카드 */ below?: ReactNode }) {
   const onboarding = useOnboarding()
-  const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
-  const dark = mounted && theme === "dark"
 
   return (
     <>
@@ -99,23 +91,7 @@ export function MyShortcuts() {
           />
           {/* 검색 줄이 있던 자리(2026-11-06 ⌘K 검색을 걷었다) */}
           <InstallAppRow />
-          <Row
-            icon={
-              <HugeiconsIcon
-                icon={dark ? Sun01Icon : Moon01Icon}
-                size={16}
-                className="text-muted-foreground"
-                aria-hidden
-              />
-            }
-            label="테마"
-            trailing={
-              <span className="text-[11.5px] text-muted-foreground" suppressHydrationWarning>
-                {mounted ? (dark ? "다크" : "라이트") : "—"}
-              </span>
-            }
-            onClick={() => setTheme(dark ? "light" : "dark")}
-          />
+          {/* 테마는 마이 > 일반으로 옮겼다(2026-11-11, general-settings.tsx) */}
           <Row
             className="text-destructive"
             icon={<HugeiconsIcon icon={Logout01Icon} size={16} aria-hidden />}
@@ -130,7 +106,7 @@ export function MyShortcuts() {
         </ul>
       </CardContent>
     </Card>
-    <KeyboardShortcuts />
+    {below}
     </>
   )
 }

@@ -146,7 +146,7 @@ test("회사 전체 — 제출 전(확인 대기)은 응답으로 세지 않고,
 test("요약 글 — 답한 것만 문장이 된다", () => {
   const s = summaryText(computeMetrics(HEAVY))
   assert.match(s, /주 5일 · 주당 약 15시간 씁니다\(헤비\)/)
-  assert.match(s, /개인 부담 · 월 30,000원/)
+  assert.match(s, /개인 부담 · 월 30,000원쯤/)
   assert.match(s, /코딩 · 자동화 60%/)
   assert.match(s, /옴니스에 바라는 것: 사내 자료 찾기, 반복 업무 자동화, 특허 검색/)
   // 아쉬운 점은 옴니스가 아니라 범용 AI 에 대한 것으로 적는다
@@ -174,4 +174,34 @@ test("응답 대기 표 — 모델이 만든 질문만, 첫 질문과 그 뒤를
   assert.equal(by["첫 질문 — 글자가 보이기까지(화면)"].count, 1)
   assert.deepEqual([by["다음 질문 — 전체(서버)"].count, by["다음 질문 — 전체(서버)"].p50], [2, 2000])
   assert.deepEqual(latencyTable([])[0], { label: "첫 질문 — 글자가 보이기까지(화면)", count: 0, p50: null, p90: null })
+})
+
+test("주 7일 — 일주일 내내 쓰는 사람: 7일 × 2시간 = 14시간 → 헤비", () => {
+  const m = computeMetrics({ daysPerWeek: f("a", { num: 7 }), hoursPerDay: f("b", { num: 2 }) })
+  assert.equal(m.daysPerWeek, 7)
+  assert.equal(m.hoursPerWeek, 14)
+  assert.equal(m.intensity, "heavy")
+  assert.deepEqual(m.atLeast, {})
+  assert.match(summaryText(m), /주 7일 · 주당 약 14시간 씁니다\(헤비\)/)
+  // 주 5일 × 1.5시간 = 7.5 → 보통, 주 7일 × 1.5시간 = 10.5 → 헤비 — 주말까지 쓰면 등급이 달라진다
+  assert.equal(computeMetrics({ daysPerWeek: f("a", { num: 5 }), hoursPerDay: f("b", { num: 1.5 }) }).intensity, "medium")
+  assert.equal(computeMetrics({ daysPerWeek: f("a", { num: 7 }), hoursPerDay: f("b", { num: 1.5 }) }).intensity, "heavy")
+})
+
+test("「그 이상」 끝값은 하한으로 세고 「이상」 을 붙인다 — 하루 10시간 이상 · 50번 넘게 · 40만원 넘게", () => {
+  const hours = computeMetrics({ daysPerWeek: f("a", { num: 7 }), hoursPerDay: f("b", { num: 10, over: true }), payer: f("c", { values: ["personal"] }), monthlyFeeKrw: f("d", { num: 400000, over: true }) })
+  assert.equal(hours.hoursPerWeek, 70)
+  assert.deepEqual(hours.atLeast, { amount: true, fee: true })
+  assert.equal(hours.monthlyFeeKrw, 400000)
+  assert.match(summaryText(hours), /주당 약 70시간 이상/)
+  assert.match(summaryText(hours), /월 400,000원 이상/)
+  const sessions = computeMetrics({ daysPerWeek: f("a", { num: 5 }), sessionsPerDay: f("b", { num: 50, over: true }) })
+  assert.equal(sessions.sessionsPerWeek, 250)
+  assert.equal(sessions.atLeast.amount, true)
+  // 구간으로 받은 금액은 「쯤」 — 대표값이다
+  const fee = computeMetrics({ payer: f("c", { values: ["company"] }), monthlyFeeKrw: f("d", { num: 30000 }) })
+  assert.deepEqual(fee.atLeast, {})
+  assert.match(summaryText(fee), /월 30,000원쯤/)
+  // 안 쓰는 사람 · 유료가 아닌 사람에게는 붙지 않는다
+  assert.deepEqual(computeMetrics({ daysPerWeek: f("a", { num: 0 }), hoursPerDay: f("b", { num: 10, over: true }), payer: f("c", { values: ["none"] }), monthlyFeeKrw: f("d", { num: 400000, over: true }) }).atLeast, {})
 })

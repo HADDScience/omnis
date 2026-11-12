@@ -13,7 +13,7 @@ function Source({ ids, turns }: { ids: string[] | undefined; turns: Turn[] }) {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 border-b py-2 last:border-b-0 sm:flex-row sm:gap-3">
-      <dt className="shrink-0 text-[13px] text-muted-foreground sm:w-28">{label}</dt>
+      <dt className="shrink-0 text-[13px] text-muted-foreground sm:w-36">{label}</dt>
       <dd className="min-w-0 text-[14px] break-keep [overflow-wrap:anywhere]">{children}</dd>
     </div>
   )
@@ -24,8 +24,8 @@ export function SurveyMetrics({ metrics: m, turns }: { metrics: Metrics; turns: 
   const tasks = (Object.entries(m.taskShare) as [TaskKind, number][]).sort((a, b) => b[1] - a[1])
   const perWeek = [
     m.daysPerWeek !== null ? `주 ${m.daysPerWeek}일` : null,
-    m.hoursPerWeek !== null ? `약 ${m.hoursPerWeek}시간${m.derived === "hours" ? "(어림)" : ""}` : null,
-    m.sessionsPerWeek !== null ? `약 ${m.sessionsPerWeek.toLocaleString("ko-KR")}회${m.derived === "sessions" ? "(어림)" : ""}` : null,
+    m.hoursPerWeek !== null ? `약 ${m.hoursPerWeek}시간${m.atLeast?.amount ? " 이상" : ""}${m.derived === "hours" ? "(어림)" : ""}` : null,
+    m.sessionsPerWeek !== null ? `약 ${m.sessionsPerWeek.toLocaleString("ko-KR")}회${m.atLeast?.amount ? " 이상" : ""}${m.derived === "sessions" ? "(어림)" : ""}` : null,
   ].filter(Boolean)
   const wishes = [...m.wishTags.filter((t) => t !== "other").map((t) => WISH_TAGS[t]), ...m.wishNotes]
   return (
@@ -57,7 +57,7 @@ export function SurveyMetrics({ metrics: m, turns }: { metrics: Metrics; turns: 
         <Source ids={m.evidence.monthlyTokens} turns={turns} />
       </Row>
       <Row label="유료 구독">
-        {m.payer === null ? "모름" : m.payer === "none" ? "없음" : `${PAYERS[m.payer as keyof typeof PAYERS] ?? m.payer}${m.monthlyFeeKrw ? ` · 월 ${won(m.monthlyFeeKrw)}` : " · 금액 모름"}`}
+        {m.payer === null ? "모름" : m.payer === "none" ? "없음" : `${PAYERS[m.payer as keyof typeof PAYERS] ?? m.payer}${m.monthlyFeeKrw ? ` · 월 ${won(m.monthlyFeeKrw)}${m.atLeast?.fee ? " 이상" : "쯤"}` : " · 금액 모름"}`}
         {m.tools.length > 0 && ` (${m.tools.join(", ")})`}
         <Source ids={m.evidence.subscription} turns={turns} />
       </Row>

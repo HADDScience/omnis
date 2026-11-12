@@ -18,6 +18,7 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { MeAvatarLink } from "./current-user"
 import { useRightPanel } from "./right-panel-context"
 import { NotificationBell } from "./notification-bell"
+import { chatTabHref } from "@/lib/panel-chat-rules"
 
 /**
  * 채팅 화면(홈)이 들어오기 전에는 채팅 탭이 오른쪽 채팅 패널을 열었다 — 「전체」 팀 채팅이 거기 있다.
@@ -263,7 +264,7 @@ function TabCapsule({
               data-onboarding={tab.onboarding}
               aria-pressed={active}
               title={variant === "top" ? tab.label : undefined}
-              onClick={() => (rightPanel.open ? rightPanel.setOpen(false) : rightPanel.openWith("all"))}
+              onClick={() => (rightPanel.open ? rightPanel.setOpen(false) : rightPanel.openWith("chat"))}
               className={className}
             >
               {icon}
@@ -275,7 +276,9 @@ function TabCapsule({
           <Link
             key={tab.key}
             ref={ref}
-            href={tab.href}
+            // PC 에서 오른쪽 패널을 연 채 「채팅」 을 누르면 패널에서 보던 방을 본문에 연다 — 패널은 채팅 화면에 들어가며 닫힌다(right-panel.tsx).
+            // 아래 nav(폰)에는 패널이 없다
+            href={tab.key === "chat" && variant === "top" ? chatTabHref(rightPanel.open, rightPanel.lastRoom) : tab.href}
             data-onboarding={tab.onboarding}
             aria-current={active ? "page" : undefined}
             onClick={(e) => {

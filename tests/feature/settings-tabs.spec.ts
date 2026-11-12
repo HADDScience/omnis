@@ -1,5 +1,5 @@
 /**
- * 마이 화면 탭을 주소로 — 수집 안내 알림의 「자세히」 가 앱 정보 탭의 안내를 바로 보여 주는지, 새로고침 · 뒤로 가기.
+ * 마이 화면 탭을 주소로 — 수집 안내 알림의 「자세히」 가 개인정보 처리방침의 사용 기록 안내를 바로 보여 주는지(2026-11-11 옮김), 새로고침 · 뒤로 가기.
  * 알림은 자동화 브라우저에서 뜨지 않으므로(components/layout/ui-metrics.tsx) 여기서만 webdriver 표시를 끈다.
  */
 import { expect, test, type Page } from "@playwright/test"
@@ -26,39 +26,30 @@ for (const [label, device] of [
 
     test.skip(process.env.NEXT_PUBLIC_UI_METRICS !== "1", "사용 기록이 꺼진 빌드")
 
-    test("알림의 「자세히」 → 앱 정보 탭 · 안내가 화면 안 · 새로고침 유지 · 뒤로 · 앞으로", async ({ page }) => {
+    test("알림의 「자세히」 → 개인정보 처리방침의 사용 기록 안내 · 화면 안 · 새로고침 유지 · 뒤로 · 앞으로", async ({ page }) => {
       await showNoticeToast(page)
       await login(page, "사원1")
       const start = new URL(page.url()).pathname
 
       await page.getByRole("button", { name: "자세히" }).click()
-      await page.waitForURL("**/settings?tab=info#ui-metrics-notice")
-      await expect(tab(page, "앱 정보")).toHaveAttribute("aria-selected", "true")
+      await page.waitForURL("**/privacy#ui-metrics")
       await expect(notice(page)).toBeVisible()
       await expect(notice(page)).toBeInViewport()
       await expect(notice(page)).toContainText("모으는 것")
 
       await page.reload()
-      await expect(tab(page, "앱 정보")).toHaveAttribute("aria-selected", "true")
       await expect(notice(page)).toBeInViewport()
 
       await page.goBack()
       await expect.poll(() => new URL(page.url()).pathname).toBe(start)
       await page.goForward()
-      await expect(tab(page, "앱 정보")).toHaveAttribute("aria-selected", "true")
       await expect(notice(page)).toBeInViewport()
     })
 
-    test("이미 마이 화면에 있을 때 누른 「자세히」 도 탭을 바꾼다", async ({ page }) => {
-      await showNoticeToast(page)
+    test("옛 「자세히」 주소(마이 > 앱 정보 #ui-metrics-notice)는 새 자리로 간다", async ({ page }) => {
       await login(page, "사원2")
-      await page.getByRole("button", { name: "자세히" }).waitFor()
-      await page.goto("/settings")
-      await page.evaluate(() => localStorage.removeItem("omnis:ui-metrics:notice:v1"))
-      await page.reload()
-      await expect(tab(page, "알림 설정")).toHaveAttribute("aria-selected", "true")
-      await page.getByRole("button", { name: "자세히" }).click()
-      await expect(tab(page, "앱 정보")).toHaveAttribute("aria-selected", "true")
+      await page.goto("/settings?tab=info#ui-metrics-notice")
+      await page.waitForURL("**/privacy#ui-metrics")
       await expect(notice(page)).toBeInViewport()
     })
   })
@@ -69,10 +60,12 @@ test.describe("주소와 탭", () => {
     await login(page, "사원1")
     await page.goto("/settings?tab=usage")
     await expect(tab(page, "사용량")).toHaveAttribute("aria-selected", "true")
+    await page.goto("/settings?tab=notify")
+    await expect(tab(page, "알림 설정")).toHaveAttribute("aria-selected", "true")
     await page.goto("/settings?tab=nope")
-    await expect(tab(page, "알림 설정")).toHaveAttribute("aria-selected", "true")
+    await expect(tab(page, "일반")).toHaveAttribute("aria-selected", "true")
     await page.goto("/settings")
-    await expect(tab(page, "알림 설정")).toHaveAttribute("aria-selected", "true")
+    await expect(tab(page, "일반")).toHaveAttribute("aria-selected", "true")
   })
 
   test("탭을 누르면 주소가 바뀌어 새로고침해도 남고, 뒤로 가기는 탭이 아니라 앞 화면으로 간다", async ({ page }) => {
@@ -90,10 +83,10 @@ test.describe("주소와 탭", () => {
     await expect(page).toHaveURL(/\/tasks$/)
   })
 
-  test("탭은 알림 설정 · 사용량 · 앱 정보 셋이고, 옛 탭 주소는 같은 내용의 자리로 간다", async ({ page }) => {
+  test("탭은 일반 · 알림 설정 · 사용량 · 앱 정보 넷이고, 옛 탭 주소는 같은 내용의 자리로 간다", async ({ page }) => {
     await login(page, "사원1")
     await page.goto("/settings")
-    await expect(page.getByRole("tab")).toHaveText(["알림 설정", "사용량", "앱 정보"])
+    await expect(page.getByRole("tab")).toHaveText(["일반", "알림 설정", "사용량", "앱 정보"])
     for (const [old, now, name] of [["push", "notify", "알림 설정"], ["ai", "usage", "사용량"], ["system", "info", "앱 정보"]] as const) {
       await page.goto(`/settings?tab=${old}`)
       await expect(page).toHaveURL(new RegExp(`/settings\\?tab=${now}$`))
