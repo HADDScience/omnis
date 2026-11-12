@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowDown01Icon, BubbleChatSparkIcon, Refresh01Icon } from "@hugeicons/core-free-icons"
+import { ArrowDown01Icon, BubbleChatSparkIcon, Refresh01Icon, UserAdd01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
@@ -32,6 +32,7 @@ import { EMPTY_LIVE, foldChunk, liveText, readAgentStream, TOOL_LABEL, type Live
 import { AgentCard } from "./agent-card"
 import { ToolTrail } from "./tool-trail"
 import { RoomHeader } from "./room-header"
+import { SessionShareDialog } from "./session-share-dialog"
 import { RoomMuteButton } from "./room-mute-button"
 import { useChatUserId, useRoomListReload } from "./messenger-shell"
 import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
@@ -69,6 +70,9 @@ export function OmnisRoom({
   onAutoStarted,
   origin = null,
   busyBy = null,
+  owner = null,
+  isOwner = true,
+  memberCount = 1,
 }: {
   roomId: string | null
   roomName?: string
@@ -98,6 +102,12 @@ export function OmnisRoom({
   origin?: { id: string; title: string } | null
   /** 남이 연 실행이 돌고 있으면 그 사람 이름 — 그 답은 끝나면 방에 남는다(남의 스트림에는 붙지 않는다) */
   busyBy?: string | null
+  /** 세션 주인 — 남이 공유해 준 세션이면 머리줄에 「○○님의 대화」 */
+  owner?: { id: string; name: string } | null
+  /** 내가 주인인가 — 주인만 공유 · 해제 · 인계(lib/omnis-session-share.ts) */
+  isOwner?: boolean
+  /** 볼 수 있는 사람 수(주인 포함) */
+  memberCount?: number
 }) {
   const reloadList = useRoomListReload()
   const nudgeRoomList = useRoomListNudge()
@@ -119,6 +129,9 @@ export function OmnisRoom({
   const [running, setRunning] = useState<string | null>(activeRun?.status === "RUNNING" ? activeRun.id : null)
   /** 공유 세션에서 남이 연 실행이 돌고 있다 — 그 사람 이름. 끝날 때까지 방을 몇 초마다 다시 읽는다(남의 스트림에는 붙지 않는다) */
   const [busyName, setBusyName] = useState<string | null>(busyBy)
+  /** 공유 창 — 머리줄 「공유」 · 답 공유 창의 「이 대화를 공유하기」 가 연다 */
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareInfo, setShareInfo] = useState({ owner, isOwner, memberCount })
   const [deciding, setDeciding] = useState<{ id: string; decision: "approve" | "reject" } | null>(null)
   const [stopped, setStopped] = useState(initialStopped)
   /**
@@ -265,6 +278,7 @@ export function OmnisRoom({
     })
     setRunning(state.activeRun?.status === "RUNNING" ? state.activeRun.id : null)
     setBusyName(state.busyBy ?? null)
+    setShareInfo({ owner: state.room.owner ?? null, isOwner: state.room.isOwner ?? true, memberCount: state.room.memberCount ?? 1 })
     return state
   }, [])
 
@@ -640,12 +654,49 @@ export function OmnisRoom({
               ? "옴니스와 1:1 · 첫 글을 보내면 대화방이 생깁니다"
               : origin
                 ? `공유됨 · ${origin.title} · 참여자 누구나 보고 이어서 물을 수 있어요`
-                : "옴니스와 1:1 · 앞의 대화를 이어서 답합니다"
+                : !shareInfo.isOwner && shareInfo.owner
+                  ? `공유됨 · ${shareInfo.owner.name}님의 대화 · 보고 이어서 물을 수 있어요`
+                  : shareInfo.memberCount > 1
+                    ? `옴니스와 1:1 · ${shareInfo.memberCount - 1}명과 공유 중`
+                    : "옴니스와 1:1 · 앞의 대화를 이어서 답합니다"
           }
-          actions={roomId ? <RoomMuteButton key={roomId} roomKey={`room:${roomId}`} initialMuted={muted} /> : undefined}
+          actions={
+            roomId ? (
+              <>
+                {shareInfo.isOwner && (
+                  // 머리줄의 다른 단추(알림 끄기)와 같은 크기 · 같은 누르는 자리(폰 44px)
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="touch-target"
+                    data-session-share-open
+                    aria-label="이 대화 공유"
+                    title="공유"
+                    onClick={() => setShareOpen(true)}
+                  >
+                    <HugeiconsIcon icon={UserAdd01Icon} size={15} aria-hidden />
+                  </Button>
+                )}
+                <RoomMuteButton key={roomId} roomKey={`room:${roomId}`} initialMuted={muted} />
+              </>
+            ) : undefined
+          }
         />
       )}
 
+      {roomId && shareInfo.isOwner && (
+        <SessionShareDialog
+          roomId={roomId}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+          onChanged={({ handedOver }) => {
+            // 인계했으면 이제 공유받은 사람이다 — 단추가 사라지고 머리줄이 「○○님의 대화」 가 된다
+            void refresh(roomId)
+            reloadList()
+            if (handedOver) setShareInfo((s) => ({ ...s, isOwner: false }))
+          }}
+        />
+      )}
       <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={listRef}
@@ -717,6 +768,8 @@ export function OmnisRoom({
                     roomId,
                     roomName: shownTitle,
                     anchor: !embedded,
+                    // 답 공유 창의 「이 대화를 공유하기」 — 주인에게만
+                    onShareSession: roomId && shareInfo.isOwner ? () => setShareOpen(true) : undefined,
                     // 같은 질문을 대화 끝에 다시 묻는다 — 앞 답은 그대로 남는다. 답을 받는 중에는 묻지 않는다
                     onRegenerate: (() => {
                       const q = lastQuestion
@@ -944,7 +997,7 @@ export function OmnisMessage({
   stopped?: boolean
   /** 답 아래 동작 줄(복사 · 공유 …). 없으면 그리지 않는다 — 온보딩 시연 */
   /** anchor: 공유 링크(#m-<id>)가 가리킬 자리 — 방 화면만. 오른쪽 패널에 같은 방이 함께 떠 있으면 id 가 둘이 된다 */
-  actions?: { roomId: string | null; roomName?: string; onRegenerate?: () => void; anchor?: boolean }
+  actions?: { roomId: string | null; roomName?: string; onRegenerate?: () => void; anchor?: boolean; onShareSession?: () => void }
 }) {
   const body = useRef<HTMLDivElement>(null)
   return (
@@ -972,6 +1025,7 @@ export function OmnisMessage({
             answerRef={body}
             preview={<OmnisAnswerBody answer={message.content} sources={message.sources} />}
             onRegenerate={actions.onRegenerate}
+            onShareSession={actions.onShareSession}
           />
         )}
       </div>

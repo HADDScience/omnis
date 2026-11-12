@@ -53,7 +53,16 @@ export interface SessionOrigin {
 }
 
 export interface AgentRoomState {
-  room: { id: string; name: string; origin: SessionOrigin | null }
+  room: {
+    id: string
+    name: string
+    origin: SessionOrigin | null
+    /** 세션 주인(연 사람 · 인계받은 사람). 공유 · 해제 · 인계는 주인만(lib/omnis-session-share.ts) */
+    owner?: { id: string; name: string } | null
+    isOwner?: boolean
+    /** 볼 수 있는 사람 수(주인 포함). 2 이상이면 공유 중 */
+    memberCount?: number
+  }
   messages: OmnisRoomMessage[]
   cards: AgentCard[]
   /** 돌고 있는 실행 — 새로고침 뒤 스트림을 다시 붙는다 */
@@ -77,7 +86,10 @@ const RUNNING_STALE_MS = 5 * 60 * 1000
  */
 async function ownRoom(roomId: string, userId: string) {
   const [room, pref] = await Promise.all([
-    prisma.chatRoom.findFirst({ where: { id: roomId, kind: "OMNIS_DM", members: { some: { userId } } }, select: { id: true, name: true, originRoomId: true } }),
+    prisma.chatRoom.findFirst({
+      where: { id: roomId, kind: "OMNIS_DM", members: { some: { userId } } },
+      select: { id: true, name: true, originRoomId: true, createdById: true, createdBy: { select: { id: true, name: true } }, _count: { select: { members: true } } },
+    }),
     prisma.chatRoomPref.findUnique({ where: { userId_roomKey: { userId, roomKey: `room:${roomId}` } }, select: { hiddenAt: true } }),
   ])
   return pref?.hiddenAt ? null : room
@@ -187,7 +199,7 @@ export async function loadAgentRoom(roomId: string, userId: string): Promise<Age
     ? new Map((await prisma.user.findMany({ where: { id: { in: requesterIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
     : new Map<string, string>()
   return {
-    room: { id: room.id, name: room.name, origin },
+    room: { id: room.id, name: room.name, origin, owner: room.createdBy, isOwner: room.createdById === userId, memberCount: room._count.members },
     messages: page.messages,
     cards: steps.map(({ run, ...s }) => shapeCard(s, { id: run.userId, name: names.get(run.userId) ?? "" }, userId)),
     activeRun: live ? { id: live.id, status: live.status } : null,
@@ -403,7 +415,8 @@ export async function startAgentRoom(userId: string, content: string, fileIds: s
     data: {
       name: origin?.name ?? roomNameFrom(content), kind: "OMNIS_DM", createdById: userId, originRoomId: origin?.roomId ?? null,
       // 요청자만 읽은 것으로 — 다른 참여자에게는 새 세션이 안 읽은 대화로 보인다
-      members: { create: memberIds.map((id) => ({ userId: id, lastReadAt: id === userId ? now : null })) },
+      // 방에서 연 세션의 다른 참여자는 방 공유(ROOM)로 들어온다 — 방을 나가면 함께 빠진다(lib/omnis-mention-notice.ts)
+      members: { create: memberIds.map((id) => ({ userId: id, lastReadAt: id === userId ? now : null, shareKind: id === userId ? null : ("ROOM" as const) })) },
     },
     select: { id: true },
   })

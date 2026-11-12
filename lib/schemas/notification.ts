@@ -68,6 +68,8 @@ export function notificationHref(type: string, entityId: string | null): string 
   // 발행 요청은 그 견적이 잡힌 채 세금계산서 등록을 연다 — 무엇을 올릴지 다시 찾지 않게
   // 사람끼리 방에서 나를 부른 글 — 그 방을 연다(참여자가 아니면 방이 404 다)
   if (type === "chat_mention") return `/chat/${entityId}`
+  // 옴니스 대화를 공유 · 인계받았다 — 그 세션을 연다(공유가 풀렸으면 404 다, lib/omnis-session-share.ts)
+  if (type === "chat_omnis_shared") return `/chat/${entityId}`
   if (type === "crm_invoice_request") return `/crm/invoices/new?quote=${entityId}`
   // 앱 AI 기능 요청 — 관리 화면(lib/feature-requests.ts FEATURE_ADMIN_PATH)
   if (type === "feature_request") return "/settings/feature-requests"
