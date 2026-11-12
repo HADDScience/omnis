@@ -4,14 +4,8 @@ import { Slider } from "@/components/ui/slider"
 import { fieldMode, type Field, type FieldAnswer } from "@/lib/ai-survey/rules"
 import { cn } from "@/lib/utils"
 
-/** 이 칸은 폼으로 답이 찼나 — 「보내기」 를 켤지 */
-export function isAnswered(f: Field, a: FieldAnswer | undefined): boolean {
-  if (!a) return false
-  if ("unknown" in a) return true
-  if ("choice" in a) return f.kind === "multi" ? a.choice.length >= 1 : a.choice.length === 1
-  if ("num" in a) return Number.isFinite(a.num)
-  return false
-}
+/** 이 칸은 폼으로 답이 찼나 — 「보내기」 를 켤지(규칙은 lib/ai-survey/steps.ts) */
+export { isAnswered } from "@/lib/ai-survey/steps"
 
 /** 보기 칩 — 누르는 자리 44px(.touch-target), 긴 글은 줄을 바꾼다 */
 function Chip({ on, check, dashed, onClick, children, ...rest }: { on: boolean; check?: boolean; dashed?: boolean; onClick: () => void; children: React.ReactNode } & Record<`data-${string}`, string | undefined>) {
@@ -64,13 +58,11 @@ const isUnknown = (a: FieldAnswer | undefined) => !!a && "unknown" in a
  *   말   — 추천 답 칩. 하나 고르는 칸은 누르면 바로 답이 되고, 여러 개 고르는 칸은 골라서 보낸다. 직접 말하는 입력창은 이 칸 밖(대화 화면)에 있다.
  * 어느 칸이든 「잘 모르겠음」 을 고를 수 있다. onChange 의 둘째 값은 「하나를 골랐다」 — 바로 보내도 되는 누름이다.
  */
-export function SurveyField({ field: f, value, onChange, onCommit, hideLabel }: {
+export function SurveyField({ field: f, value, onChange, hideLabel }: {
   field: Field
   value: FieldAnswer | undefined
   onChange: (a: FieldAnswer | undefined, picked: boolean) => void
-  /** 슬라이더에서 손을 뗐다 — 묶음 질문이면 다음 칸으로 넘어간다 */
-  onCommit?: () => void
-  /** 칸 이름을 부르는 쪽이 따로 그린다(묶음 질문의 한 줄 요약) */
+  /** 칸 이름을 부르는 쪽이 따로 그린다(묶음 질문의 칸 머리) */
   hideLabel?: boolean
 }) {
   const unknown = isUnknown(value)
@@ -132,7 +124,6 @@ export function SurveyField({ field: f, value, onChange, onCommit, hideLabel }: 
               step={f.step ?? 1}
               value={[n ?? min]}
               onValueChange={(v) => onChange({ num: Array.isArray(v) ? v[0] : v }, false)}
-              onValueCommitted={() => onCommit?.()}
             />
           </div>
           <div className="flex justify-between px-1 text-[11px] text-muted-foreground tabular-nums">
