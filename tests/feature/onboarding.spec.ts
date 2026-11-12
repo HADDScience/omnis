@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test"
 import { hashSync } from "bcryptjs"
 import { randomUUID } from "node:crypto"
 import { prisma } from "../../lib/db"
+import { ONBOARDING_VERSION } from "../../lib/onboarding-version"
 
 // 온보딩은 스포트라이트 하나다(2026-10-29) — 간편 로그인 → 옴니스 시연 둘 → 업무 · 캘린더 · 아카이브 탭.
 // mydocs/plans/2026-10-29-onboarding-tab-tour.md
@@ -13,6 +14,9 @@ const STOPS = [
   "tasks",
   "calendar",
   "archive",
+  // 2판(2026-11-12) — 최근 바뀐 대화 화면 · 설문(설문이 열린 계정에만 — 시험은 전원에게 연다)
+  "chat-updates",
+  "survey",
 ] as const
 const ROUTES: Partial<Record<(typeof STOPS)[number], string>> = {
   "create-task": "/chat/new",
@@ -190,13 +194,19 @@ test.describe("onboarding", { tag: ["@onboarding", "@nav"] }, () => {
     await expect(page.locator(".spotlight-card")).toContainText(
       "지식 카드 · 시놀로지 · 지식재산권 · 고객·견적"
     )
-    await expect(page.locator(".spotlight-card")).toContainText(
-      "안내는 마이에서 다시 볼 수 있어요"
-    )
     await page.screenshot({
       animations: "disabled",
       path: "/tmp/omnis-onboarding-archive.png",
     })
+    await next(page).click()
+    await atStop(page, "chat-updates")
+    await expect(page.locator(".spotlight-card")).toContainText("오른쪽 아래 둥근 단추로 대화 패널")
+    await expect(page.locator(".spotlight-card")).toContainText("인용을 누르면 원래 메시지로 이동")
+    await next(page).click()
+    await atStop(page, "survey")
+    await expect(page.locator(".spotlight-card")).toContainText(
+      "안내는 마이에서 다시 볼 수 있어요"
+    )
     await page.getByRole("button", { name: "안내 마치기", exact: true }).click()
     await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
     await page.waitForURL("**/chat")
@@ -562,5 +572,41 @@ test.describe("onboarding", { tag: ["@onboarding", "@nav"] }, () => {
     await expect(tour(page)).toHaveCount(0)
     await page.waitForURL("**/chat")
     await expect.poll(completed).toBe(true)
+  })
+  // 지키는 것: 판을 올리면 옛 판을 마친 사람에게 접속할 때 한 번 더 뜨고, 건너뛰면 지금 판을 적는다 — 처음 마친 시각은 그대로
+  test("옛 판을 마친 사람 — 다시 뜨고, 건너뛰면 지금 판이 적히고 다시 뜨지 않는다", async ({ page }) => {
+    const first = new Date("2026-10-30T01:00:00.000Z")
+    await prisma.user.update({ where: { id }, data: { onboardingVideoSeenAt: first, onboardingCompletedAt: first, onboardingVersion: null } })
+    await login(page)
+    await atStop(page, "social")
+    await page.getByRole("button", { name: "안내 건너뛰기" }).click()
+    await expect(page.locator(".omnis-tour-surface")).toHaveCount(0)
+    await expect
+      .poll(async () => (await prisma.user.findUniqueOrThrow({ where: { id } })).onboardingVersion)
+      .toBe(ONBOARDING_VERSION)
+    const saved = await prisma.user.findUniqueOrThrow({ where: { id } })
+    expect(saved.onboardingCompletedAt?.toISOString()).toBe(first.toISOString())
+    await page.reload()
+    await page.locator("[data-messenger]").first().waitFor()
+    await page.waitForTimeout(1500)
+    await expect(tour(page)).toHaveCount(0)
+  })
+
+  // 지키는 것: 폰에서는 PC 에만 있는 대화 패널을 말하지 않는다
+  test("폰 — 대화에서 새로 생긴 것 장면은 폰 문구로 보인다", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await prisma.user.update({ where: { id }, data: { onboardingCompletedAt: new Date(), onboardingVersion: 1 } })
+    await login(page)
+    await atStop(page, "social")
+    for (const stop of STOPS.slice(1, STOPS.indexOf("chat-updates") + 1)) {
+      await next(page).click()
+      await atStop(page, stop)
+    }
+    const card = page.locator(".spotlight-card")
+    await expect(card).toContainText("글을 오른쪽으로 밀면 답장")
+    await expect(card).not.toContainText("대화 패널")
+    const box = (await card.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(390)
   })
 })

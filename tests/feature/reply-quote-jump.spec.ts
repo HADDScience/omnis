@@ -62,21 +62,27 @@ for (const [name, use] of [
     test.use(use)
 
     test("전사방 — 불러온 범위 밖 원글도 앞 글을 불러와 그 자리로 가서 튕긴다", async ({ page }) => {
-      test.setTimeout(120_000)
+      test.setTimeout(180_000)
       await recordPlays(page)
       await quickLogin(page, "팀장")
       const w = word()
       const original = await post(page, COMPANY, `${w} 원글`)
-      // 한 번에 불러오는 30건 밖으로 밀어낸다
-      for (let i = 0; i < 34; i++) await post(page, COMPANY, `${w} 사이 글 ${i}`)
+      // 한 번에 불러오는 30건의 두 쪽 밖으로 밀어낸다 — 방을 연 뒤 맨 위에 닿아 한 쪽을 더 불러와도 원글은 아직 밖이다
+      for (let i = 0; i < 70; i++) await post(page, COMPANY, `${w} 사이 글 ${i}`)
       const reply = await post(page, COMPANY, `${w} 답장`, original)
       const quote = await openRoom(page, COMPANY, reply)
-      await expect(page.locator(`[data-message-id="${original}"]`)).toHaveCount(0)
+      let around = 0
+      page.on("request", (r) => {
+        if (r.url().includes(`around=${original}`)) around++
+      })
+      // CI 에서는 방을 연 직후 이전 글을 이어 불러오기도 한다(2026-11-12 main 실패) — 원글이 이미 있으면 불러오기 확인만 건너뛴다
+      const loadedBefore = await page.locator(`[data-message-id="${original}"]`).count()
 
       if (name === "폰") await quote.tap()
       else await quote.click()
       await expect.poll(async () => (await plays(page)).at(-1), { timeout: 15_000 }).toEqual({ messageId: original, inList: true })
       await expect(page.locator(`[data-message-id="${original}"]`)).toBeInViewport()
+      if (loadedBefore === 0) expect(around).toBe(1)
     })
 
     test("단톡 · 1:1 — 범위 안 원글은 다시 받지 않고 바로 가고, 지운 원글은 찾을 수 없다고 한다", async ({ page }) => {

@@ -7,6 +7,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test"
 import { PrismaClient } from "../../generated/prisma/client"
 import { LOGIN_ENTITY, LOGIN_LIMITS, accountKey, ipKey } from "../../lib/login-guard"
 import { PASSWORD_ENTITY } from "../../lib/password-state"
+import { ONBOARDING_VERSION } from "../../lib/onboarding-version"
 import { DEMO_PASSWORD } from "./_setup"
 
 const stamp = Date.now()
@@ -36,7 +37,7 @@ test.describe("비밀번호 로그인 보호", () => {
 
   test.beforeAll(async () => {
     for (const name of [LOCK_USER, RESET_USER, RESET_USER_2]) {
-      const u = await prisma.user.create({ data: { name, passwordHash: hashSync(PASSWORD, 10), role: "MEMBER", onboardingCompletedAt: new Date() } })
+      const u = await prisma.user.create({ data: { name, passwordHash: hashSync(PASSWORD, 10), role: "MEMBER", onboardingCompletedAt: new Date(), onboardingVersion: ONBOARDING_VERSION } })
       userIds.push(u.id)
     }
     for (const id of [userIds[1], userIds[2]]) {

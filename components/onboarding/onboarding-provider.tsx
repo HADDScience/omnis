@@ -14,6 +14,7 @@ import { toast } from "sonner"
 import { apiUrl } from "@/lib/base-path"
 import type { OnboardingState } from "@/lib/schemas/onboarding"
 import { peekTourResume } from "./tour-stops"
+import { needsOnboarding } from "@/lib/onboarding-version"
 
 const loadingTour = () => (
   <div
@@ -50,19 +51,22 @@ const Context = createContext<OnboardingContextValue | null>(null)
 export function OnboardingProvider({
   children,
   initialState,
+  survey = false,
 }: {
   children: ReactNode
   initialState: OnboardingState
+  /** 설문이 열린 계정 — 설문 장면을 함께 보인다 */
+  survey?: boolean
 }) {
+  // 지금 판(lib/onboarding-version.ts)을 마치거나 건너뛰지 않았으면 접속할 때 띄운다.
   // 영상만 보고 안내를 마치지 않은 사람(onboardingVideoSeenAt 만 있는 사람)도 새 안내를 처음부터 본다
-  const [phase, setPhase] = useState<Phase>(
-    initialState.onboardingCompletedAt ? "app" : "spotlight"
-  )
+  const due = needsOnboarding(initialState)
+  const [phase, setPhase] = useState<Phase>(due ? "spotlight" : "app")
   // 안내를 마친 사람이 「다시 보기」 중에 소셜 연결로 나갔다 돌아왔다 — 하던 안내를 잇는다.
   // sessionStorage 는 서버에서 못 읽어 첫 그리기 뒤에 본다
   useEffect(() => {
-    if (initialState.onboardingCompletedAt && peekTourResume()) setPhase("spotlight")
-  }, [initialState.onboardingCompletedAt])
+    if (!due && peekTourResume()) setPhase("spotlight")
+  }, [due])
   const [spotlightTarget, setSpotlightTarget] = useState<string | null>(null)
   const [mcpOpen, setMcpOpen] = useState<McpOpenOptions | null>(null)
   // Serialize writes so an earlier, slow request cannot race the final completion.
@@ -113,7 +117,7 @@ export function OnboardingProvider({
       }}
     >
       {children}
-      {phase === "spotlight" && <SpotlightTour onFinish={finishTour} />}
+      {phase === "spotlight" && <SpotlightTour onFinish={finishTour} survey={survey} />}
       {mcpOpen && (
         <McpDialog
           closeLabel={mcpOpen.closeLabel}

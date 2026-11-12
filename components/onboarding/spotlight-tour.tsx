@@ -6,10 +6,11 @@ import { useOnboarding } from "./onboarding-provider"
 import { TourSurface } from "./tour-surface"
 import { useTourClock } from "./use-tour-clock"
 import {
-  TOUR_STOPS as stops,
   clearTourResume,
   peekTourResume,
   saveTourResume,
+  tourStopsFor,
+  type TourStop,
 } from "./tour-stops"
 import { TourSocial } from "./tour-social"
 import { DEMO_END, DEMO_LENGTH, TourDemo } from "./tour-demo"
@@ -77,12 +78,14 @@ function clippedRect(node: HTMLElement) {
 }
 
 function Stop({
+  stops,
   index,
   from,
   onAdvance,
   onFinish,
   onPrevious,
 }: {
+  stops: readonly TourStop[]
   index: number
   /** 안내를 시작한 화면 — 소셜 연결로 나갔다 돌아온 뒤에도 끝나면 이리로 */
   from: string
@@ -101,12 +104,15 @@ function Stop({
   const [late, setLate] = useState(false)
   const lateRef = useRef(false)
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const phone = useMediaQuery("(max-width: 767px)")
+  const copy = phone && stop.phoneCopy ? stop.phoneCopy : stop.copy
   // 간편 로그인은 고르는 장면이라 저절로 넘기지 않는다(시계 0 = 멈춤). 시연은 대본 길이만큼
   const duration = stop.social
     ? 0
     : stop.demo
       ? DEMO_LENGTH[stop.demo]
-      : READ_MS
+      : // 긴 설명(새로 생긴 것을 모은 장면)은 읽을 시간을 더 준다
+        Math.max(READ_MS, copy.length * 55)
   // 시계는 그 화면에 도착한 뒤부터 — 옮겨 가는 동안(첫 접속은 화면을 받는 데 몇 초 걸린다) 읽을 시간이 깎이지 않게.
   // 시연은 자리를 잰 뒤부터 — 대본이 앞서 흘러가지 않게
   const arrived = !stop.route || pathname === stop.route || late
@@ -357,7 +363,7 @@ function Stop({
           OMNIS GUIDE · {index + 1} / {stops.length}
         </span>
         <h2>{stop.title}</h2>
-        <p>{stop.copy}</p>
+        <p>{copy}</p>
         {stop.social && (
           <TourSocial
             onLeave={() => saveTourResume({ stop: index + 1, from })}
@@ -409,13 +415,14 @@ function Stop({
   )
 }
 
-export default function SpotlightTour({ onFinish }: { onFinish: () => void }) {
+export default function SpotlightTour({ onFinish, survey = false }: { onFinish: () => void; survey?: boolean }) {
+  const [stops] = useState(() => tourStopsFor({ survey }))
   const router = useRouter()
   const pathname = usePathname()
   // 소셜 연결에서 돌아왔으면 적어 둔 장면부터(이 컴포넌트는 브라우저에서만 그린다 — ssr: false)
   const [resume] = useState(peekTourResume)
   useEffect(() => clearTourResume(), [])
-  const [index, setIndex] = useState(resume?.stop ?? 0)
+  const [index, setIndex] = useState(Math.min(resume?.stop ?? 0, stops.length - 1))
   const { setSpotlightTarget } = useOnboarding()
   // 안내는 장면마다 화면을 옮겨 다닌다. 끝나면 안내를 시작한 화면으로 돌려보낸다
   const [from] = useState(resume?.from ?? pathname)
@@ -436,6 +443,7 @@ export default function SpotlightTour({ onFinish }: { onFinish: () => void }) {
     >
       <Stop
         key={index}
+        stops={stops}
         index={index}
         from={from}
         onAdvance={() =>
