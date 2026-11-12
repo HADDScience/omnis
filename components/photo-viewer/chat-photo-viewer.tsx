@@ -8,6 +8,18 @@ import { isViewerImage, PHOTO_PARAM, withPhotoParam, type ViewerPhoto } from "@/
 import { PhotoViewer } from "@/components/photo-viewer/photo-viewer"
 import { PhotoViewerContext } from "@/components/photo-viewer/context"
 import { RoomPhotoGrid, type RoomPhoto } from "@/components/photo-viewer/room-photo-grid"
+import { RoomDrawer } from "@/components/messenger/room-drawer"
+import { RoomDownloadContext } from "@/components/messenger/room-download-context"
+import type { DrawerTab } from "@/lib/room-drawer"
+
+/** 방 서랍 — 전사 · 사람 방만 준다. 없으면(업무 스레드) 뷰어의 모아보기가 예전 격자로 연다 */
+export interface DrawerControl {
+  roomName: string
+  open: boolean
+  tab: DrawerTab
+  onOpen: (tab: DrawerTab) => void
+  onClose: () => void
+}
 
 interface ViewerMessage {
   id: string
@@ -29,6 +41,7 @@ export function ChatPhotoViewer({
   onGoToMessage,
   onDelete,
   onNeedMessage,
+  drawer,
   children,
 }: {
   roomId: string
@@ -39,6 +52,7 @@ export function ChatPhotoViewer({
   onDelete: (messageId: string) => Promise<void>
   /** 주소로 연 사진의 글이 아직 목록에 없으면 그 자리를 불러온다 */
   onNeedMessage: (messageId: string) => void
+  drawer?: DrawerControl
   children: ReactNode
 }) {
   const [view, setView] = useState<{ photos: ViewerPhoto[]; index: number } | null>(null)
@@ -173,10 +187,12 @@ export function ChatPhotoViewer({
   )
 
   const context = useMemo(() => ({ open }), [open])
+  const drawerRoomName = drawer?.roomName ?? null
+  const download = useMemo(() => (drawerRoomName !== null ? { roomId, roomName: drawerRoomName } : null), [roomId, drawerRoomName])
 
   return (
     <PhotoViewerContext.Provider value={context}>
-      {children}
+      <RoomDownloadContext.Provider value={download}>{children}</RoomDownloadContext.Provider>
       <PhotoViewer
         photos={view?.photos ?? []}
         index={view?.index ?? null}
@@ -187,14 +203,35 @@ export function ChatPhotoViewer({
         }}
         onClose={close}
         onGoToMessage={goToMessage}
-        onOpenGallery={() => setGallery(true)}
+        onOpenGallery={() => {
+          // 서랍은 뷰어 아래 층이다 — 뷰어를 닫고 서랍의 사진 탭을 연다. 사진을 고르면 뷰어가 다시 뜬다
+          if (!drawer) return setGallery(true)
+          close()
+          drawer.onOpen("photos")
+        }}
         onDelete={async (p) => {
           await onDelete(p.messageId!)
           close()
         }}
         shareUrl={(p) => withPhotoParam(new URL(apiUrl(`/chat/${roomId}`), window.location.origin).toString(), p.fileId)}
       />
-      {view && gallery && <RoomPhotoGrid roomId={roomId} onClose={() => setGallery(false)} onPick={pick} />}
+      {view && gallery && !drawer && <RoomPhotoGrid roomId={roomId} onClose={() => setGallery(false)} onPick={pick} />}
+      {drawer && (
+        <RoomDrawer
+          roomId={roomId}
+          roomName={drawer.roomName}
+          open={drawer.open}
+          tab={drawer.tab}
+          onTab={drawer.onOpen}
+          onClose={drawer.onClose}
+          // 사진 뷰어는 서랍 위에 뜬다 — 닫으면 서랍으로 돌아온다
+          onPickPhoto={pick}
+          onGoToMessage={(id) => {
+            drawer.onClose()
+            onGoToMessage(id)
+          }}
+        />
+      )}
     </PhotoViewerContext.Provider>
   )
 }

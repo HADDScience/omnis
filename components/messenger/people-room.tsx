@@ -27,6 +27,7 @@ import type { PeopleRoomView } from "@/lib/chat-people"
 import { writeSnapshotPeople } from "@/lib/room-snapshot"
 import { RoomHeader } from "./room-header"
 import { RoomMuteButton } from "./room-mute-button"
+import { RoomDrawerButton, useRoomDrawer } from "./room-drawer-button"
 import { PeoplePicker, type Person } from "./people-picker"
 import { useRoomListReload } from "./messenger-shell"
 import { usePanelNav } from "./messenger-context"
@@ -58,6 +59,7 @@ export function PeopleRoom({
 }) {
   const [room, setRoom] = useState(initialRoom)
   const [searchOpen, setSearchOpen] = useState(false)
+  const drawer = useRoomDrawer(room.title)
   const [membersOpen, setMembersOpen] = useState(false)
   const group = room.kind === "GROUP"
 
@@ -117,11 +119,13 @@ export function PeopleRoom({
                 <span className="tabular-nums">{room.members.length}</span>
               </Button>
             )}
+            <RoomDrawerButton drawer={drawer} />
           </>
         }
       />
       <div className="flex min-h-0 flex-1 flex-col">
         <ChatPanel
+          drawer={drawer}
           roomId={room.id}
           live={live}
           initialMessages={initialMessages}

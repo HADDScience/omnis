@@ -11,6 +11,7 @@ import { PushPresence } from "@/components/push-presence"
 import { AppNudge } from "@/components/layout/app-nudge"
 import { UiMetrics } from "@/components/layout/ui-metrics"
 import { LargeUploadStatus } from "@/components/layout/large-upload-status"
+import { RoomDownloadStatus } from "@/components/layout/room-download-status"
 import { passwordNoticeFor } from "@/lib/password-state"
 import { PasswordResetNotice } from "@/components/auth/password-reset-notice"
 
@@ -56,6 +57,7 @@ export default async function MainLayout({
         {password.showNotice && <PasswordResetNotice />}
         <UiMetrics userId={session.user.id as string} />
         <LargeUploadStatus />
+        <RoomDownloadStatus />
         </OnboardingProvider>
         </RightPanelProvider>
       </CurrentUserProvider>
