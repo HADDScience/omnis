@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next"
 
 import { BASE_PATH } from "@/lib/base-path"
 import { brand } from "@/lib/brand"
+import { SPLASH_BACKGROUND } from "@/lib/pwa-splash"
 
 /**
  * PWA manifest — `/manifest.webmanifest` 로 나간다.
@@ -18,10 +19,16 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Omnis — HADD Science",
     short_name: "Omnis",
     description: "HADD Science 채팅 기반 업무 관리 시스템",
-    start_url: base,
+    /*
+     * 앱 아이콘은 곧장 /chat 으로 연다. 「/」 는 세션을 읽고 /chat 으로 한 번 더 보내는 자리라, 켤 때마다 왕복이 하나 늘었다
+     * (그동안 아무것도 그려지지 않는다). id 는 예전 start_url 그대로 둔다 — 바꾸면 이미 설치한 앱과 다른 앱으로 친다.
+     */
+    id: base,
+    start_url: `${BASE_PATH}/chat`,
     scope: base,
     display: "standalone",
-    background_color: "#ffffff",
+    // 안드로이드 시작 화면(이 색 + 아이콘)이 첫 화면의 스플래시(components/layout/app-splash.tsx)와 같은 바탕이어야 이어 보인다
+    background_color: SPLASH_BACKGROUND.light,
     theme_color: brand.themeColor,
     lang: "ko",
     // 이 앱 자신 — 브라우저 탭에서 getInstalledRelatedApps 로 「이미 설치했는가」 를 묻게 한다(lib/pwa.ts detectInstalled).
