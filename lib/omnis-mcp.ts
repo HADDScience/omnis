@@ -30,7 +30,12 @@ import { listWeeklyReports, updateWeeklyReport, upsertThisWeekReport } from "@/l
 import { createOmnisCard, updateOmnisCard } from "@/lib/omnis-cards"
 import { listReadableRooms, readableRooms, readRoomFeed, readChatFeed, ROOM_KIND_LABEL, searchRoomMessages, type FeedView } from "@/lib/chat-feed"
 import { formatRoomHit, mergeResults, roomLimit } from "@/lib/chat-room-search"
-import { pickByMembers, pickByRef, type PickableRoom } from "@/lib/chat-room-pick"
+import { pickByMembers, pickByRef, pickPostTarget, type PickableRoom, type PostTarget } from "@/lib/chat-room-pick"
+import { loadPeopleRoom, openSelfRoom, postPeopleMessage } from "@/lib/chat-people"
+import { PEOPLE_MESSAGE_MAX, SELF_ROOM_TITLE } from "@/lib/chat-people-rules"
+import { runAfterResponse } from "@/lib/after-response"
+import { largeUploadGuide } from "@/lib/mcp-large-upload"
+import { ATTACH_MAX_MB } from "@/lib/large-upload/rules"
 import type { Prisma } from "@/generated/prisma/client"
 import { createNotification } from "@/lib/notifications"
 import { getIpAccess, type IpMembership } from "@/lib/ip-data"
@@ -187,17 +192,22 @@ export const OMNIS_TOOLS = [
   {
     name: "post_message",
     description: [
-      "회사 채팅에 글을 남긴다. task 를 주면 그 업무 스레드에 붙고, 화면에서 #슬러그 로 쓴 것과 똑같이 처리된다 —",
+      "채팅방에 글을 남긴다. 글은 사용자 본인 이름으로 올라간다. 사용자가 말한 내용을 옮길 뿐 지어내지 않는다.",
+      "room 을 비우면 전사방(회사 전체 채팅). task 를 주면 그 업무 스레드에 붙고, 화면에서 #슬러그 로 쓴 것과 똑같이 처리된다 —",
       "AI 가 대화 전체를 읽어 업무 카드(배경·체크리스트·상태)를 재구성하고, 완료로 보이면 담당자에게 확인을 묻고, 관련자에게 알림이 간다.",
-      "그러니 지시·보고·피드백은 task 와 함께 보낸다. 잡담이나 공지는 task 없이.",
-      "글은 사용자 본인 이름으로 올라간다. 사용자가 말한 내용을 옮길 뿐 지어내지 않는다.",
+      "그러니 지시·보고·피드백은 task 와 함께 보낸다(전사방에서만). 잡담이나 공지는 task 없이.",
+      "room 을 주면 단톡방 · 1:1 · 「나와의 대화」 에 보낸다 — 화면에서 그 방에 쓴 것과 같다(참여자에게 채팅 알림, @이름 은 멘션 알림, @옴니스 는 옴니스 호출, 방 목록 · 안 읽은 수에 바로 반영).",
+      "room 은 list_rooms 와 같은 규칙(방 ID 또는 이름 일부)이고 **내가 참여자인 방만** 된다. 이름이 여러 방에 맞으면 보내지 않고 후보를 돌려준다 — 그때는 방 ID 로 다시 보낸다.",
+      "「나와의 대화」 는 room=\"me\"(또는 \"나와의 대화\"). **카톡에서 옮겨 온 방에 보내도 카카오톡으로는 가지 않는다** — 옴니스 안의 그 방에만 남는다.",
+      "옴니스 1:1 방에는 보내지 않는다(옴니스에게 묻는 것은 ask_omnis).",
     ].join(" "),
     inputSchema: {
       type: "object",
       properties: {
-        content: { type: "string", description: "올릴 글. #슬러그 를 직접 적어도 된다." },
-        task: { type: "string", description: "업무 슬러그·ID·이름 일부. 생략하면 스레드 없이 전체 채팅에." },
-        files: { type: "array", items: { type: "string" }, description: "첨부할 파일 ID. upload_file·create_upload_link 로 받은 것" },
+        content: { type: "string", description: "올릴 글. #슬러그 를 직접 적어도 된다(전사방). 단톡방 · 1:1 은 4000자까지." },
+        room: { type: "string", description: "보낼 방 — 방 ID 또는 이름 일부(list_rooms), 「나와의 대화」 는 \"me\". 생략하면 전사방." },
+        task: { type: "string", description: "업무 슬러그·ID·이름 일부. 전사방에서만 — room 과 함께 쓰지 않는다. 생략하면 스레드 없이 전체 채팅에." },
+        files: { type: "array", items: { type: "string" }, description: "첨부할 파일 ID. upload_file·create_upload_link 로 받은 것. 단톡방 · 1:1 · 나와의 대화에 붙일 파일은 올릴 때 같은 room 을 줘야 한다" },
       },
       required: ["content"],
     },
@@ -208,7 +218,8 @@ export const OMNIS_TOOLS = [
       "파일을 Omnis 첨부로 올린다(회사 NAS 에 저장). 돌려받은 파일 ID 를 post_message 의 files 에 넣어야 채팅·업무 스레드에 첨부로 보인다.",
       "텍스트(md·csv·txt·json …)는 content 에 그대로, 작은 바이너리는 content_base64 로. 둘 중 하나만.",
       "PDF·이미지·오피스 파일처럼 큰 것을 셸이 있는 환경에서 올릴 때는 create_upload_link 가 낫다 — 본문을 인자로 옮기지 않는다.",
-      `task 를 주면 그 업무의 첨부 목록에도 바로 보인다. 최대 ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.`,
+      `task 를 주면 그 업무의 첨부 목록에도 바로 보인다. 최대 ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB — 더 큰 파일은 create_upload_link.`,
+      "단톡방 · 1:1 · 나와의 대화에 붙일 파일이면 room 을 준다 — 그 파일은 붙기 전에는 나만, 붙은 뒤에는 그 방 참여자만 본다.",
     ].join(" "),
     inputSchema: {
       type: "object",
@@ -218,6 +229,7 @@ export const OMNIS_TOOLS = [
         content_base64: { type: "string", description: "바이너리 파일 본문 (base64)" },
         mime_type: { type: "string", description: "생략하면 확장자로 정한다" },
         task: { type: "string", description: "업무 슬러그·ID·이름 일부" },
+        room: { type: "string", description: "이 파일을 붙일 방(post_message 의 room 과 같은 값). 생략하면 전사방 · 업무용" },
       },
       required: ["name"],
     },
@@ -226,11 +238,15 @@ export const OMNIS_TOOLS = [
     name: "create_upload_link",
     description: [
       "셸(curl)로 파일을 직접 올리는 10분짜리 링크를 만든다. `curl -F file=@경로 '<링크>'` 가 파일 ID 를 JSON 으로 돌려주고, 그 ID 를 post_message 의 files 에 넣는다.",
-      `여러 번 쓸 수 있다. 최대 ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB. 링크가 곧 사용자 권한이므로 대화 밖으로 옮기지 않는다.`,
+      `여러 번 쓸 수 있다. ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 이하는 curl 한 줄, 그보다 큰 파일(최대 ${ATTACH_MAX_MB}MB)은 응답에 나오는 큰 파일 절차(python3 스크립트 — 조각으로 나눠 저장소에 바로 올린다)를 쓴다.`,
+      "링크가 곧 사용자 권한이므로 대화 밖으로 옮기지 않는다. 단톡방 · 1:1 · 나와의 대화에 붙일 파일이면 room 을 준다.",
     ].join(" "),
     inputSchema: {
       type: "object",
-      properties: { task: { type: "string", description: "업무 슬러그·ID·이름 일부. 주면 올린 파일이 그 업무 첨부로 들어간다." } },
+      properties: {
+        task: { type: "string", description: "업무 슬러그·ID·이름 일부. 주면 올린 파일이 그 업무 첨부로 들어간다." },
+        room: { type: "string", description: "올린 파일을 붙일 방(post_message 의 room 과 같은 값). 생략하면 전사방 · 업무용" },
+      },
     },
   },
   {
@@ -695,6 +711,8 @@ function mimeFor(name: string, given: string): string {
 
 export async function saveUpload(input: {
   name: string; body: Buffer; mimeType: string; taskId: string | null
+  /** 단톡방 · 1:1 · 나와의 대화에 붙일 파일 — 올린 사람 id. 붙기 전에는 그 사람만 본다(lib/file-access.ts) */
+  privateToUserId?: string | null
 }): Promise<{ id: string; name: string; size: number } | { error: string }> {
   const name = input.name.trim().replace(/[/\\]/g, "_")
   if (!name) return { error: "name 이 비어 있습니다." }
@@ -706,7 +724,11 @@ export async function saveUpload(input: {
   const mimeType = mimeFor(name, input.mimeType)
   await putObject(objectKeyFor(id, name), input.body, mimeType)
   return prisma.file.create({
-    data: { id, name, path: `/api/files/${id}/raw`, size: input.body.length, mimeType, taskId: input.taskId },
+    // 참여자만 보는 방의 파일은 업무에 걸지 않는다(업무 첨부는 공개 자리다)
+    data: {
+      id, name, path: `/api/files/${id}/raw`, size: input.body.length, mimeType,
+      taskId: input.privateToUserId ? null : input.taskId, privateToUserId: input.privateToUserId ?? null,
+    },
     select: { id: true, name: true, size: true },
   })
 }
@@ -749,11 +771,14 @@ async function verifyLink(purpose: LinkPurpose, token: string): Promise<Record<s
   return p
 }
 
-export const signUploadLink = (userId: string, taskId: string | null) => signLink("upload", { u: userId, t: taskId })
+/** isPrivate — 단톡방 · 1:1 · 나와의 대화에 붙일 파일(올린 사람만 보다가 붙은 뒤 그 방 참여자만) */
+export const signUploadLink = (userId: string, taskId: string | null, isPrivate = false) =>
+  signLink("upload", { u: userId, t: isPrivate ? null : taskId, p: isPrivate ? "1" : null })
 
-export async function verifyUploadLink(token: string): Promise<{ taskId: string | null } | null> {
+export async function verifyUploadLink(token: string): Promise<{ userId: string; taskId: string | null; isPrivate: boolean } | null> {
   const p = await verifyLink("upload", token)
-  return p ? { taskId: typeof p.t === "string" ? p.t : null } : null
+  if (!p) return null
+  return { userId: String(p.u), taskId: typeof p.t === "string" ? p.t : null, isPrivate: p.p === "1" }
 }
 
 export const signDownloadLink = (userId: string, fileId: string) => signLink("download", { u: userId, f: fileId })
@@ -861,6 +886,59 @@ async function listRoomChat(args: Record<string, unknown>, caller: Caller): Prom
       ),
     ].join("\n"),
   }
+}
+
+/** 여러 방에 맞았을 때 · 없을 때의 답 — 고르지 않고 후보를 보인다 */
+function roomPickError(ref: string, target: PostTarget): ToolResult | null {
+  if (target.kind === "none") return { error: `「${ref}」 에 맞는 방이 없거나 내가 참여자가 아닌 방입니다. list_rooms 로 내가 든 방을 확인하세요.` }
+  if (target.kind === "many") {
+    return { error: [`「${ref}」 에 맞는 방이 ${target.rooms.length}개라 보내지 않았습니다. room 에 방 ID 를 주세요.`, ...target.rooms.slice(0, 10).map(roomLine)].join("\n") }
+  }
+  if (target.kind === "omnis") return { error: `「${target.room.title}」 은 옴니스 1:1 방입니다. 글 보내기 대신 ask_omnis 로 물으세요.` }
+  return null
+}
+
+/** upload_file · create_upload_link 의 room — 전사방이면 공개 파일, 그 밖의 방이면 나만 보는 파일 */
+async function fileScopeFor(ref: string, caller: Caller): Promise<{ isPrivate: boolean; label: string } | ToolResult> {
+  if (!ref) return { isPrivate: false, label: "" }
+  const target = pickPostTarget(await readableRooms(caller.userId), ref, caller.userId)
+  const bad = roomPickError(ref, target)
+  if (bad) return bad
+  if (target.kind === "company") return { isPrivate: false, label: "" }
+  const title = target.kind === "self" ? SELF_ROOM_TITLE : target.kind === "room" ? target.room.title : ""
+  return { isPrivate: true, label: title }
+}
+
+/**
+ * 단톡방 · 1:1 · 나와의 대화에 글 — 화면 라우트(app/api/chat/messages POST 의 DM · GROUP 갈래)와 같은 함수를 지난다:
+ * 참여자 확인(loadPeopleRoom) → 첨부 확인 · 저장 · 방 목록 시각(postPeopleMessage) → 채팅 푸시 · 멘션 알림 → @옴니스 호출.
+ */
+async function postToPeopleRoom(roomId: string, content: string, fileIds: string[], caller: Caller): Promise<ToolResult> {
+  // 참여자가 아니면 없는 방과 같은 답 — 방이 있다는 것도 새지 않게
+  const room = await loadPeopleRoom(roomId, caller.userId)
+  if (!room) return { error: "방을 찾을 수 없거나 내가 참여자가 아닌 방입니다. list_rooms 로 확인하세요." }
+  if (content.length > PEOPLE_MESSAGE_MAX) return { error: `단톡방 · 1:1 글은 ${PEOPLE_MESSAGE_MAX}자까지입니다 (지금 ${content.length}자).` }
+  const posted = await postPeopleMessage({ id: caller.userId, name: caller.name }, room, { content, fileIds: fileIds.length ? fileIds : undefined })
+  if (!posted.ok) {
+    if (posted.status === 404 && fileIds.length) {
+      return { error: `${posted.error} — 단톡방 · 1:1 · 나와의 대화에 붙일 파일은 upload_file · create_upload_link 에 같은 room 을 주고 올려야 합니다.` }
+    }
+    return { error: posted.error }
+  }
+  const message = posted.message
+  // @옴니스 — 에이전트 모듈을 끌어오므로 그때 읽는다(lib/agent/tools 가 이 파일을 부르는 고리를 만들지 않게)
+  runAfterResponse("mcp-room-omnis", async () => {
+    const { callOmnisFromRoom } = await import("@/lib/omnis-mention")
+    await callOmnisFromRoom({
+      room: { id: room.id, memberIds: room.members.map((m) => m.id) },
+      message: { content: message.content, sourceId: message.sourceId },
+      requester: { id: caller.userId, name: caller.name },
+    })
+  })
+  const where = room.kind === "DM" && room.members.length === 1 ? SELF_ROOM_TITLE : room.title
+  const out = [`「${where}」 에 올렸습니다 (${kst(message.createdAt, true)} · ${caller.name}) · 방 ID ${room.id} · 글 ID ${message.id}.`]
+  if (message.files.length) out.push(`첨부 ${message.files.length}: ${message.files.map((f) => f.name).join(", ")}`)
+  return { text: out.join("\n") }
 }
 
 export async function runTool(
@@ -998,6 +1076,18 @@ export async function runTool(
     case "post_message": {
       const content = str(args.content)
       if (!content) return { error: "content 가 비어 있습니다." }
+      const roomRef = str(args.room)
+      if (roomRef) {
+        const target = pickPostTarget(await readableRooms(caller.userId), roomRef, caller.userId)
+        const bad = roomPickError(roomRef, target)
+        if (bad) return bad
+        if (target.kind !== "company") {
+          if (str(args.task)) return { error: "task(업무 스레드)는 전사방 글에만 씁니다. 단톡방 · 1:1 · 나와의 대화에 보낼 때는 task 를 빼세요." }
+          const ids = Array.isArray(args.files) ? [...new Set(args.files.map(String).map((x) => x.trim()).filter(Boolean))] : []
+          const roomId = target.kind === "self" ? (target.room?.id ?? (await openSelfRoom({ id: caller.userId })).roomId) : target.kind === "room" ? target.room.id : ""
+          return postToPeopleRoom(roomId, content, ids, caller)
+        }
+      }
       let taskId: string | undefined
       let slug: string | undefined
       if (str(args.task)) {
@@ -1046,18 +1136,23 @@ export async function runTool(
         const t = await prisma.task.findUnique({ where: { id: found.id }, select: { id: true, slug: true } })
         taskId = t?.id ?? null; slug = t?.slug ?? ""
       }
+      const scope = await fileScopeFor(str(args.room), caller)
+      if ("error" in scope || "text" in scope) return scope
+      if (scope.isPrivate && taskId) return { error: "단톡방 · 1:1 · 나와의 대화에 붙일 파일은 업무(task)에 걸지 않습니다. task 를 빼세요." }
       const saved = await saveUpload({
         name: fileName,
         body: hasText ? Buffer.from(args.content as string, "utf8") : Buffer.from(b64, "base64"),
         mimeType: str(args.mime_type),
         taskId,
+        privateToUserId: scope.isPrivate ? caller.userId : null,
       })
       if ("error" in saved) return saved
       return {
         text: [
           `올렸습니다: ${saved.name} (${(saved.size / 1024).toFixed(1)}KB) · 파일 ID ${saved.id}`,
           ...(slug ? [`업무 #${slug} 첨부 목록에 들어갔습니다.`] : []),
-          `채팅에 붙이려면 post_message 의 files 에 "${saved.id}" 를 넣으세요.`,
+          ...(scope.isPrivate ? [`「${scope.label}」 에 붙일 파일입니다 — 붙기 전에는 나만 봅니다.`] : []),
+          `채팅에 붙이려면 post_message 의 files 에 "${saved.id}" 를 넣으세요${scope.isPrivate ? ` (room 도 같은 방으로)` : ""}.`,
         ].join("\n"),
       }
     }
@@ -1072,15 +1167,23 @@ export async function runTool(
         const t = await prisma.task.findUnique({ where: { id: found.id }, select: { id: true, slug: true } })
         taskId = t?.id ?? null; slug = t?.slug ?? ""
       }
-      const url = `${ctx.base}/upload?t=${signUploadLink(caller.userId, taskId)}`
+      const scope = await fileScopeFor(str(args.room), caller)
+      if ("error" in scope || "text" in scope) return scope
+      if (scope.isPrivate && taskId) return { error: "단톡방 · 1:1 · 나와의 대화에 붙일 파일은 업무(task)에 걸지 않습니다. task 를 빼세요." }
+      const token = signUploadLink(caller.userId, taskId, scope.isPrivate)
+      const url = `${ctx.base}/upload?t=${token}`
+      const where = scope.isPrivate ? ` · 「${scope.label}」 에 붙일 파일` : slug ? ` · 업무 #${slug} 첨부` : ""
       return {
         text: [
-          `업로드 링크 (10분, ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 이하${slug ? ` · 업무 #${slug} 첨부` : ""}):`,
+          `업로드 링크 (10분${where}):`,
           url,
           "",
+          `■ ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 이하 — curl 한 줄:`,
           `curl -sS -F 'file=@<파일 경로>' '${url}'`,
           "",
-          "응답 JSON 의 id 를 post_message 의 files 에 넣으세요. 여러 파일이면 같은 링크로 한 번씩 올립니다.",
+          ...largeUploadGuide(ctx.base, token),
+          "",
+          `응답 JSON 의 id 를 post_message 의 files 에 넣으세요${scope.isPrivate ? " (room 도 같은 방으로)" : ""}. 여러 파일이면 같은 링크로 한 번씩 올립니다.`,
         ].join("\n"),
       }
     }

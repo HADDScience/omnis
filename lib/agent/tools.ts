@@ -265,6 +265,23 @@ export async function buildPreview(name: string, args: Record<string, unknown>, 
       }
     }
     case "post_message":
+      // room 이 있으면 단톡방 · 1:1 · 나와의 대화 — MCP 와 같다(runTool post_message). 참여자인 방만 실제로 보내진다
+      if (s(args.room) && !/^(전사방|전체|회사|company|default-room)$/i.test(s(args.room).replace(/\s+/g, ""))) {
+        const self = /^(me|self|나|내방|나와의대화|나에게|메모)$/i.test(s(args.room).replace(/\s+/g, ""))
+        return {
+          title: self ? "나와의 대화에 글 올리기" : "방에 글 올리기",
+          target: self ? "나와의 대화(나만 보는 방)" : `방 「${s(args.room)}」`,
+          changes: [
+            { label: "글", before: null, after: clip(s(args.content), 1200) },
+            ...(list(args.files).length ? [{ label: "첨부 파일 ID", before: null, after: list(args.files).join(", ") }] : []),
+          ],
+          risk: self
+            ? "나만 보는 「나와의 대화」 에 남습니다."
+            : "그 방 참여자에게 내 이름으로 글과 채팅 알림이 갑니다(@이름 은 멘션 알림). 카톡에서 옮겨 온 방이어도 카카오톡으로는 가지 않습니다. 이름이 여러 방에 맞으면 보내지 않고 후보를 돌려줍니다.",
+          ...(s(args.content) ? {} : { problem: "글이 비어 있습니다" }),
+          ...(s(args.task) ? { problem: "업무(task)는 전사방 글에만 씁니다 — 방에 보낼 때는 빼세요" } : {}),
+        }
+      }
       // task 가 없으면 전사방 — MCP 와 같다(runTool post_message)
       if (!s(args.task)) {
         return {
