@@ -103,8 +103,8 @@ test.describe("PC", () => {
     expect(box.width).toBeLessThan(520)
     expect(box.x + box.width).toBeGreaterThan(1400)
 
-    // 사진 — 같은 글의 두 장
-    await expect(drawer(page).locator("[data-drawer-photo]")).toHaveCount(2)
+    // 사진 — 같은 글의 두 장. 로컬 dev 는 서랍 API 를 처음 부를 때 컴파일하느라 늦다
+    await expect(drawer(page).locator("[data-drawer-photo]")).toHaveCount(2, { timeout: 30_000 })
     // 누르면 뷰어가 서랍 위에 뜬다
     await drawer(page).locator("[data-drawer-photo]").first().click()
     await expect(page.getByRole("dialog", { name: "사진 보기" })).toBeVisible()
