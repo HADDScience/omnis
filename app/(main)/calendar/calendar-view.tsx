@@ -73,6 +73,13 @@ function writePrefs(p: CalendarPrefs) {
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
 
+/**
+ * 마지막으로 받은 달력 — 달마다 하나. 뒤로 가기 · 다시 들어오기는 화면을 새로 만들어 예전에는 빈 칸(스켈레톤)으로 시작해
+ * /api/calendar 응답을 기다렸다(2026-11-12 측정: 폰에서 화면이 바뀌기까지 0.2초 이상, 운영 왕복이면 더). 받아 둔 것을 먼저 그리고
+ * 새로 받은 것으로 바꾼다. 모듈 변수라 새로고침하면 비고, 다른 사람 계정으로 들어오면 그 사이에 새로고침이 있다.
+ */
+const lastByMonth = new Map<string, CalendarResponse>()
+
 /** 웍스 동기화 간격. 서버도 60초 안의 재시도는 요청 없이 돌려보낸다 */
 const SYNC_MS = 60_000
 
@@ -101,7 +108,7 @@ export function CalendarView({
     writePrefs(next)
   }, [])
 
-  const [data, setData] = useState<CalendarResponse | null>(null)
+  const [data, setData] = useState<CalendarResponse | null>(() => lastByMonth.get(monthKey(ym.year, ym.month)) ?? null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
@@ -114,6 +121,9 @@ export function CalendarView({
   const load = useCallback(async () => {
     const mine = ++seq.current
     setLoading(true)
+    // 이 달을 받아 둔 적이 있으면 그것부터 — 달을 오가거나 돌아올 때 빈 칸을 거치지 않는다
+    const cached = lastByMonth.get(monthKey(ym.year, ym.month))
+    if (cached) setData(cached)
     try {
       const qs = new URLSearchParams({
         from: range.from.toISOString(),
@@ -125,6 +135,7 @@ export function CalendarView({
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`)
       const json = (await res.json()) as CalendarResponse
       if (mine !== seq.current) return
+      lastByMonth.set(monthKey(ym.year, ym.month), json)
       setData(json)
       setError(null)
     } catch (err) {
@@ -135,7 +146,7 @@ export function CalendarView({
     } finally {
       if (mine === seq.current) setLoading(false)
     }
-  }, [range, prefs.groups, prefs.taskScope])
+  }, [range, ym, prefs.groups, prefs.taskScope])
 
   useEffect(() => {
     if (prefsReady) load()

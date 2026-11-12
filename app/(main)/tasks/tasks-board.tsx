@@ -25,6 +25,11 @@ import { apiUrl } from "@/lib/base-path"
 import { QuickAssignChip } from "@/components/tasks/list-quick-assign"
 import { AssigneeStack } from "@/components/tasks/assignee-stack"
 import { StartWithOmnisIcon } from "@/components/tasks/start-with-omnis"
+import { useProgressiveCount } from "@/hooks/use-progressive-count"
+
+/** 열마다 처음 그리는 카드 수 · 내릴 때 더 그리는 수 — 폰 한 화면이 카드 8~9장이다 */
+const COLUMN_FIRST = 30
+const COLUMN_STEP = 40
 
 type Status = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE"
 
@@ -222,6 +227,8 @@ function KanbanColumn({
   active: boolean
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: status, data: { status } })
+  // 숨은 열(폰은 탭 하나만 보인다)까지 전부 그리면 뒤로 가기마다 수백 장을 새로 만든다 — 앞부분만 그리고 내릴 때 잇는다
+  const { count: shown, more, rest, observe, showAll } = useProgressiveCount(tasks.length, COLUMN_FIRST, COLUMN_STEP)
   return (
     <div
       ref={setNodeRef}
@@ -239,9 +246,19 @@ function KanbanColumn({
         </span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto">
-        {tasks.map((t) => (
+        {tasks.slice(0, shown).map((t) => (
           <TaskCard key={t.id} task={t} members={members} onAssign={onAssign} />
         ))}
+        {more && (
+          <button
+            ref={observe}
+            type="button"
+            onClick={showAll}
+            className="shrink-0 rounded-md border border-dashed p-2.5 text-center text-[10.5px] text-muted-foreground hover:bg-muted/50"
+          >
+            {rest}건 더 보기
+          </button>
+        )}
         {tasks.length === 0 && (
           <div className="rounded-md border border-dashed p-3 text-center text-[10.5px] text-muted-foreground">
             비어있음

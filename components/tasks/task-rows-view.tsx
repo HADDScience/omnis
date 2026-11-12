@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useProgressiveCount } from "@/hooks/use-progressive-count"
 import { Input } from "@/components/ui/input"
 import { TaskCard, type TaskCardData } from "./task-card"
 import { QuickAssignChip } from "./list-quick-assign"
@@ -57,6 +58,8 @@ export function TaskRowsView({ tasks, members, onAssign, keepOrder = false }: Ta
       return da - db
     })
   }, [tasks, query, keepOrder])
+  // 한 번에 다 그리면 업무 수백 건에서 뒤로 가기가 1초 넘게 멈췄다(2026-11-12) — 앞부분만 그리고 내릴 때 잇는다
+  const { count: shown, more, rest, observe, showAll } = useProgressiveCount(filtered.length, 40, 60)
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -83,7 +86,7 @@ export function TaskRowsView({ tasks, members, onAssign, keepOrder = false }: Ta
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {filtered.map((t) => {
+          {filtered.slice(0, shown).map((t) => {
             const canAssign = !!(members && onAssign)
             return (
               <TaskCard
@@ -103,6 +106,16 @@ export function TaskRowsView({ tasks, members, onAssign, keepOrder = false }: Ta
               />
             )
           })}
+          {more && (
+            <button
+              ref={observe}
+              type="button"
+              onClick={showAll}
+              className="rounded-md border border-dashed p-3 text-center text-[12px] text-muted-foreground hover:bg-muted/50"
+            >
+              {rest}건 더 보기
+            </button>
+          )}
         </div>
       )}
     </div>
