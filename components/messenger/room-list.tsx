@@ -93,7 +93,8 @@ import { FolderManager } from "./folder-manager"
 import { NewChatMenu } from "./new-chat-menu"
 import { SwipeRow, type SwipeSide } from "./swipe-row"
 import { AuthorAvatar } from "@/components/chat/message-parts"
-import { useOpenClientRoom, useStartRoomEntry } from "./messenger-context"
+import { useOpenClientRoom, usePanelNav, useStartRoomEntry } from "./messenger-context"
+import { roomHref } from "@/lib/panel-chat-rules"
 import { isFastRoom, syncSnapshots } from "@/lib/room-snapshot"
 import { noteRoomTap } from "@/lib/ui-metrics/client"
 
@@ -101,10 +102,6 @@ import { noteRoomTap } from "@/lib/ui-metrics/client"
 const POLL_MS = 30_000
 /** 검색어를 치는 동안 서버에 묻지 않고 기다리는 시간 */
 const SEARCH_DEBOUNCE_MS = 250
-
-function roomHref(r: RoomListItem): string {
-  return r.kind === "TASK" ? `/chat/task/${r.id}` : `/chat/${r.id}`
-}
 
 /** 오늘이면 「오후 2:08」, 올해면 「10월 3일」, 그 전이면 「2025. 10. 3.」 */
 function listTime(iso: string): string {
@@ -148,7 +145,9 @@ const taskGroupsStorageKey = (userId: string) => `omnis.chat.task-groups-open.${
  */
 export function RoomList({ version, userId }: { version: number; userId: string }) {
   const pathname = usePathname()
-  const activeKey = roomKeyFromPath(pathname)
+  // 오른쪽 패널 안이면 지금 연 방은 주소가 아니라 패널이 안다
+  const panel = usePanelNav()
+  const activeKey = panel ? panel.activeKey : roomKeyFromPath(pathname)
   const [data, setData] = useState<RoomListData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [chip, setChip] = useState<ChipId>("all")
@@ -345,13 +344,13 @@ export function RoomList({ version, userId }: { version: number; userId: string 
       setSearch((s) => (s?.data ? { ...s, data: patchRoom(s.data, room.key, { muted: next }) } : s))
       try {
         await chatPrefs.setMuted(room.key, next)
-        if (room.key === activeKey) router.refresh()
+        if (room.key === activeKey && !panel) router.refresh()
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "알림 설정을 바꾸지 못했습니다")
       }
       void load()
     },
-    [load, activeKey, router],
+    [load, activeKey, router, panel],
   )
   /** 열린 줄(밀어 둔 줄) — 한 번에 하나 */
   const [swiped, setSwiped] = useState<{ key: string; side: SwipeSide } | null>(null)
@@ -378,10 +377,13 @@ export function RoomList({ version, userId }: { version: number; userId: string 
       setSwiped(null)
       setConfirm(null)
       setRemoving(false)
-      if (room.key === activeKey) router.push("/chat")
+      if (room.key === activeKey) {
+        if (panel) panel.back()
+        else router.push("/chat")
+      }
       void load()
     },
-    [activeKey, load, router],
+    [activeKey, load, router, panel],
   )
 
   // ─── 그릴 것 ───
@@ -854,6 +856,7 @@ function RoomRow({
   const manual = actions.folders.filter((f) => !f.rule)
   const startEntry = useStartRoomEntry()
   const openClientRoom = useOpenClientRoom()
+  const panel = usePanelNav()
   const fast = isFastRoom(room)
   return (
     <ContextMenu>
@@ -941,13 +944,19 @@ function RoomRow({
             <Link
               href={roomHref(room)}
               // 전사 · 사람 방은 서버 페이지를 부르지 않는다 — 미리 받을 까닭이 없다
-              prefetch={fast ? false : undefined}
+              prefetch={fast || panel ? false : undefined}
               aria-current={active ? "page" : undefined}
               draggable={false}
               aria-keyshortcuts="Shift+F10"
               onClick={(e) => {
                 // 새 탭 · 새 창으로 여는 누르기는 이 화면을 바꾸지 않는다
                 if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                // 오른쪽 패널 — 본문 주소는 그대로 두고 패널 안에서 방으로 들어간다
+                if (panel) {
+                  e.preventDefault()
+                  if (!active) panel.open(room)
+                  return
+                }
                 if (fast) {
                   e.preventDefault()
                   if (!active) {

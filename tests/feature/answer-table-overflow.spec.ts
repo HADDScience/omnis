@@ -121,7 +121,8 @@ test("PC 오른쪽 패널 — 잘리지 않고 밀리며, 머리글부터 끌어
   const { ctx, page } = await open(browser, { viewport: { width: 1440, height: 900 } })
   await page.goto("/tasks")
   await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
-  await page.getByRole("group", { name: "패널 보기" }).getByRole("button", { name: /옴니스/ }).click()
+  // 패널은 폰 채팅 탭과 같은 방 목록이다(2026-11-11, #200) — 옴니스 대화도 목록의 방 하나
+  await page.locator(`aside[aria-label="대화 패널"] a[href$="/chat/${ROOM}"]`).click()
   const sheet = page.locator("[data-copyable-sheet]").filter({ visible: true }).first()
   await expect(sheet).toContainText("시험성적서", { timeout: 15_000 })
   const box = (await sheet.boundingBox())!

@@ -318,11 +318,12 @@ test("오른쪽 패널에서도 같은 입력창으로 보낸다", async ({ page
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/tasks")
   await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
+  // 패널은 폰 채팅 탭 그대로다(2026-11-11) — 방 목록에서 전사방으로 들어가고, 입력창도 메신저 크기다
+  await page.locator('aside[aria-label="대화 패널"] a[href$="/chat/default-room"]').first().click()
   const input = page.getByPlaceholder("메시지 입력...  / 명령 · @ 사람 · # 업무")
   await expect(input).toBeVisible()
   const panelGeometry = await geometry(page)
-  // 패널은 메신저 밖 — 작은 크기
-  expect(panelGeometry.sendSize).toBeLessThan(40)
+  expect(panelGeometry.sendSize).toBeGreaterThanOrEqual(40)
   if (process.env.COMPOSER_SHOTS) {
     await page.waitForTimeout(800) // 패널이 다 열린 뒤
     await page.screenshot({ path: path.join(process.env.COMPOSER_SHOTS, "1440-패널.png") })
