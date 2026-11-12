@@ -200,10 +200,33 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
   }
 
   // 새 말이 나타나면 대화를 맨 아래로 — 입력 폼의 높이가 바뀔 때도
-  useEffect(() => {
+  /**
+   * 맨 아래를 따라가는 중인가. 새 말이 오면 따라가기 시작하고, 사용자가 위로 올려 읽으면 멈춘다(맨 아래 80px 안으로 돌아오면 다시).
+   * 시트 높이가 바뀌어도(새 질문의 칩이 그려짐 · 연필로 입력창을 엶 · 키보드) 따라가는 중이면 다시 맨 아래로 —
+   * 새 질문이 온 순간에만 내리면, 그 뒤 시트가 커진 만큼 마지막 질문이 시트 뒤에 남았다(2026-11-12 폰 스크린샷)
+   */
+  const following = useRef(true)
+  /** 우리가 내리는 중 — 부드러운 스크롤의 중간 위치를 「사용자가 올렸다」 로 읽지 않는다 */
+  const pinnedUntil = useRef(0)
+  const toBottom = useCallback((behavior: ScrollBehavior) => {
     const el = thread.current
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
-  }, [state.turns.length, state.status, busy, incoming, sent, note, pending?.id])
+    if (!el) return
+    pinnedUntil.current = Date.now() + 800
+    el.scrollTo({ top: el.scrollHeight, behavior })
+  }, [])
+  useEffect(() => {
+    following.current = true
+    toBottom("smooth")
+  }, [toBottom, state.turns.length, state.status, busy, incoming, sent, note, pending?.id])
+  // 시트 높이가 바뀌면 대화 끝 여백(= 시트 높이)도 바뀐다 — 따라가는 중이면 곧바로 새 맨 아래로
+  useEffect(() => {
+    if (following.current) toBottom("auto")
+  }, [toBottom, dockH])
+  const onThreadScroll = () => {
+    const el = thread.current
+    if (!el || Date.now() < pinnedUntil.current) return
+    following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
 
   const request = useCallback(async (body: object, said?: string) => {
     if (lock.current) return
@@ -540,7 +563,7 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
     <section data-ai-survey={state.status === "NONE" ? "intro" : done ? "submitted" : state.status === "CONFIRM" ? "confirm" : "asking"} data-messenger className="relative flex min-h-0 flex-1 flex-col">
       <CoverageBars coverage={state.coverage} menu={menu} />
 
-      <div ref={thread} role="log" aria-label="설문 대화" data-survey-thread className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div ref={thread} onScroll={onThreadScroll} role="log" aria-label="설문 대화" data-survey-thread className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {/* 끝 여백 = 떠 있는 시트 높이 — 마지막 말이 시트 위에 멈추고, 그 위로는 대화가 시트 뒤로 비쳐 지나간다 */}
         <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 sm:px-6" style={{ paddingBottom: dockH + 20 }}>
           <OmnisSays data-survey-intro="">

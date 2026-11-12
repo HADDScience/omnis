@@ -274,6 +274,21 @@ test.describe("AI 활용 설문 @settings", () => {
     await expect.poll(async () => (await navTop()) - (await dock.boundingBox())!.y - (await dock.boundingBox())!.height).toBeLessThan(32)
     expect((await navTop()) - ((await dock.boundingBox())!.y + (await dock.boundingBox())!.height)).toBeGreaterThanOrEqual(0)
 
+    // 마지막 질문은 시트 위에 다 보인다 — 칩이 여러 줄인 질문(말로 답하는 질문)까지 넘어가며 매번 본다
+    const lastQuestionClear = async () => {
+      const q = (await page.locator("[data-survey-question]").last().boundingBox())!
+      return Math.round((await dock.boundingBox())!.y - (q.y + q.height))
+    }
+    await expect.poll(lastQuestionClear).toBeGreaterThanOrEqual(0)
+    for (let i = 0; i < 4; i++) {
+      await answerTurn(page)
+      await expect.poll(lastQuestionClear, { timeout: 10_000 }).toBeGreaterThanOrEqual(0)
+      if ((await page.locator("[data-survey-turn] [data-kind='multi']").count()) > 0) break
+    }
+    // 칩이 여러 줄인 질문에서 확인했다
+    expect(await page.locator("[data-survey-turn] [data-kind='multi'] [data-survey-option]").count()).toBeGreaterThan(3)
+    expect(await lastQuestionClear()).toBeGreaterThanOrEqual(0)
+
     // 범위 질문이면 연필로 입력창을 연다(말로 답하는 질문은 늘 열려 있다)
     const input = page.locator("[data-survey-input]")
     if (!(await input.isVisible())) await page.locator("[data-survey-fix]").click()
