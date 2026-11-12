@@ -13,6 +13,7 @@ const stamp = Date.now()
 const LOCK_USER = `잠금시험${stamp}`
 const RESET_USER = `초기화시험${stamp}`
 const RESET_USER_2 = `초기화위치${stamp}`
+const GHOST_USER = `없는사람${stamp}`
 const PASSWORD = `first pass ${stamp}`
 const NEXT_PASSWORD = `second pass ${stamp}`
 const ipFor = (n: number) => `203.0.113.${(stamp + n) % 250}`
@@ -48,7 +49,7 @@ test.describe("비밀번호 로그인 보호", () => {
       where: {
         OR: [
           { userId: { in: userIds } },
-          { entity: LOGIN_ENTITY, entityId: { in: [accountKey(LOCK_USER), accountKey(RESET_USER), accountKey(RESET_USER_2), accountKey("사원3"), ...ips.map(ipKey)] } },
+          { entity: LOGIN_ENTITY, entityId: { in: [accountKey(LOCK_USER), accountKey(RESET_USER), accountKey(RESET_USER_2), accountKey("사원3"), accountKey(GHOST_USER), ...ips.map(ipKey)] } },
         ],
       },
     })
@@ -59,13 +60,33 @@ test.describe("비밀번호 로그인 보호", () => {
   test("같은 계정을 계속 틀리면 맞는 비밀번호도 잠시 막힌다", async ({ browser }) => {
     const ctx = await contextFrom(browser, ips[0])
     const page = await ctx.newPage()
-    for (let i = 0; i < LOGIN_LIMITS.account.max; i++) {
+    const alert = page.getByRole("alert").filter({ hasText: /올바르지 않습니다|너무 많아/ })
+    for (let i = 1; i < LOGIN_LIMITS.account.max; i++) {
       await submitLogin(page, LOCK_USER, `wrong ${i}`)
-      await expect(page.getByText("이름 또는 비밀번호가 올바르지 않습니다.")).toBeVisible()
+      // 남은 횟수와 잠길 시각(서울 HH:mm)을 함께 보여 준다
+      await expect(alert).toHaveText(new RegExp(`^이름 또는 비밀번호가 올바르지 않습니다\\. 실패 ${i}회 · ${LOGIN_LIMITS.account.max - i}번 더 틀리면 \\d{2}:\\d{2}까지 잠깁니다$`))
     }
+    await submitLogin(page, LOCK_USER, "wrong last")
+    await expect(alert).toHaveText(/^로그인 시도가 너무 많아 \d{2}:\d{2}까지 잠겼습니다\.$/)
     await submitLogin(page, LOCK_USER, PASSWORD)
-    await expect(page.getByText(/로그인 시도가 너무 많아/)).toBeVisible()
+    await expect(alert).toHaveText(/^로그인 시도가 너무 많아 \d{2}:\d{2}까지 잠겼습니다\.$/)
     await expect(page).toHaveURL(/\/login$/)
+    await ctx.close()
+  })
+
+  test("없는 이름도 같은 모양으로 센다 — 계정이 있는지 드러나지 않는다", async ({ browser }) => {
+    const ctx = await contextFrom(browser, ips[2])
+    const page = await ctx.newPage()
+    await submitLogin(page, GHOST_USER, "whatever")
+    await expect(page.getByRole("alert").filter({ hasText: "올바르지 않습니다" })).toHaveText(/^이름 또는 비밀번호가 올바르지 않습니다\. 실패 1회 · 4번 더 틀리면 \d{2}:\d{2}까지 잠깁니다$/)
+    await ctx.close()
+  })
+
+  test("이름 앞뒤 공백은 지우고 찾는다", async ({ browser }) => {
+    const ctx = await contextFrom(browser, ips[2])
+    const page = await ctx.newPage()
+    await submitLogin(page, `  사원3 `, DEMO_PASSWORD)
+    await page.waitForURL("**/chat", { timeout: 15_000 })
     await ctx.close()
   })
 

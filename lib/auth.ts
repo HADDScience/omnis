@@ -7,11 +7,18 @@ import { compareSync } from "bcryptjs"
 import { prisma } from "./db"
 import { resolveIdentity, linkIdentity, rememberIdentityEmail } from "./auth-identity"
 import { BASE_PATH } from "./base-path"
-import { clientIp, loginLockState, recordLoginFailure, recordLoginSuccess } from "./login-guard"
+import { clientIp, loginAttemptInfo, recordLoginFailure, recordLoginSuccess } from "./login-guard"
+import { encodeAttemptCode, normalizeLoginName } from "./login-attempts"
 
-/** 로그인 화면이 `code === "locked"` 로 잠금 안내를 띄운다 */
-class LoginLocked extends CredentialsSignin {
-  code = "locked"
+/**
+ * 로그인 실패 — `code` 에 남은 횟수 · 잠금 시각을 싣는다(lib/login-attempts.ts, 로그인 화면이 읽는다).
+ * 없는 이름 · 틀린 비밀번호 · 쉬는 계정이 모두 같은 모양이라 계정이 있는지 드러나지 않는다.
+ */
+class LoginFailed extends CredentialsSignin {
+  constructor(code: string) {
+    super()
+    this.code = code
+  }
 }
 
 // 소셜은 자격증명이 실제로 설정된 것만 켠다.
@@ -24,17 +31,20 @@ const providers: Provider[] = [
     },
     async authorize(credentials, request) {
       if (!credentials?.name || !credentials?.password) return null
-      const name = credentials.name as string
+      // 잠금 키와 조회가 같은 이름을 보게 — 앞뒤 공백 · 자모 분리(NFD)를 정리한다
+      const name = normalizeLoginName(credentials.name as string)
+      if (!name) return null
       const ip = clientIp(request?.headers)
 
       // 잠긴 동안에는 대조하지 않는다(lib/login-guard.ts)
-      if ((await loginLockState(name, ip)).locked) throw new LoginLocked()
+      const before = await loginAttemptInfo(name, ip)
+      if (before.locked) throw new LoginFailed(encodeAttemptCode(before))
 
       const user = await prisma.user.findUnique({ where: { name } })
 
       if (!user || !user.isActive || !compareSync(credentials.password as string, user.passwordHash)) {
         await recordLoginFailure(name, ip)
-        return null
+        throw new LoginFailed(encodeAttemptCode(await loginAttemptInfo(name, ip)))
       }
       await recordLoginSuccess(user.id, name)
 
