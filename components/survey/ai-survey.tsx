@@ -589,8 +589,11 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
       </div>
 
       {/* 떠 있는 하단 시트 — 채팅 입력창 · 하단 nav 와 같은 유리(.glass). 높이는 내용만큼, 화면의 40% 를 넘으면 시트 안에서 스크롤 */}
-      <div className="room-edge-bottom pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-6">
-        <div ref={dockRef} data-survey-dock className="glass pointer-events-auto mx-auto w-full max-w-[720px] rounded-[28px]">
+      {/* data-keyboard-dock — 이 안의 입력창에 포커스가 가면 채팅 입력창처럼 키보드 바로 위에 붙는다(hooks/use-keyboard-open.ts):
+          셸이 보이는 높이로 줄고 하단 nav 와 홈 인디케이터 여백이 걷힌다. 표식이 없으면 셸이 그대로라 iOS 가 화면을 밀어 올리고,
+          시트와 키보드 사이가 뜨며 하단 nav 가 키보드 위로 반쯤 남았다(2026-11-12 폰 스크린샷) */}
+      <div data-survey-dock-wrap className="room-edge-bottom pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-6">
+        <div ref={dockRef} data-survey-dock data-keyboard-dock className="glass pointer-events-auto mx-auto w-full max-w-[720px] rounded-[28px]">
           <div className="max-h-[calc(var(--app-vh)*0.4)] overflow-y-auto overscroll-contain p-3">{dock}</div>
         </div>
       </div>

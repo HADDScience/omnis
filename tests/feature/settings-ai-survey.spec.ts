@@ -239,6 +239,60 @@ test.describe("AI 활용 설문 @settings", () => {
     expect(((await (await page.request.get("/api/ai-survey")).json()) as { status: string }).status).toBe("SUBMITTED")
   })
 
+  // 지키는 것: 폰에서 「고칠 답 말하기」 를 누르면 시트가 키보드 바로 위에 붙고 하단 nav 는 숨는다. 키보드가 닫히면 돌아오고, 시트 아래에 빈 자리가 없다
+  test("폰 — 키보드가 열리면 시트가 키보드 바로 위에 붙는다 @mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    // 시험 브라우저에는 화면 키보드가 없다 — visualViewport 를 모의한다(tests/feature/mobile-keyboard.spec.ts 와 같은 방법)
+    await page.addInitScript(() => {
+      const fake = new EventTarget() as EventTarget & Record<string, unknown>
+      let height: number | null = null
+      Object.defineProperties(fake, {
+        height: { get: () => height ?? window.innerHeight },
+        width: { get: () => window.innerWidth },
+        scale: { value: 1 },
+        offsetTop: { value: 0 },
+        offsetLeft: { value: 0 },
+      })
+      Object.defineProperty(window, "visualViewport", { value: fake, configurable: true })
+      ;(window as unknown as { __keyboard: (h: number | null) => void }).__keyboard = (h) => {
+        height = h
+        fake.dispatchEvent(new Event("resize"))
+      }
+    })
+    const keyboard = (top: number | null) => page.evaluate((h) => (window as unknown as { __keyboard: (h: number | null) => void }).__keyboard(h), top)
+    const dock = page.locator("[data-survey-dock]")
+    const nav = page.locator('nav[aria-label="주 메뉴"]').last()
+    const navTop = () => nav.evaluate((el) => (getComputedStyle(el).display === "none" ? Infinity : el.getBoundingClientRect().top))
+
+    await quickLogin(page, "사원2")
+    await page.request.delete("/api/ai-survey")
+    await page.goto("/settings/ai-survey")
+    await page.getByRole("button", { name: "시작하기" }).click()
+    await expect(page.locator("[data-survey-turn]")).toBeVisible({ timeout: 30_000 })
+
+    // 키보드 없음 — 시트는 하단 nav 바로 위에 있고 그 사이가 크게 비지 않는다
+    await expect.poll(async () => (await navTop()) - (await dock.boundingBox())!.y - (await dock.boundingBox())!.height).toBeLessThan(32)
+    expect((await navTop()) - ((await dock.boundingBox())!.y + (await dock.boundingBox())!.height)).toBeGreaterThanOrEqual(0)
+
+    // 범위 질문이면 연필로 입력창을 연다(말로 답하는 질문은 늘 열려 있다)
+    const input = page.locator("[data-survey-input]")
+    if (!(await input.isVisible())) await page.locator("[data-survey-fix]").click()
+    await input.focus()
+    await keyboard(450)
+    await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute("data-keyboard-docked"))).toBe(true)
+    // 시트 아래 = 키보드 위(6px 여백만), 하단 nav 는 화면 밖
+    await expect.poll(async () => { const b = (await dock.boundingBox())!; return Math.round(450 - (b.y + b.height)) }).toBeLessThanOrEqual(12)
+    expect(Math.round(450 - ((await dock.boundingBox())!.y + (await dock.boundingBox())!.height))).toBeGreaterThanOrEqual(0)
+    await expect.poll(async () => (await navTop()) >= 450).toBe(true)
+
+    // 키보드를 닫으면 원래대로
+    await input.blur()
+    await keyboard(null)
+    await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute("data-keyboard-docked"))).toBe(false)
+    await expect.poll(async () => (await navTop()) < 844).toBe(true)
+    await page.request.delete("/api/ai-survey")
+  })
+
   // 지키는 것: 폼에 맞지 않는 응답 · 지금 질문이 아닌 응답 · 제출 뒤의 응답은 받지 않는다
   test("거부 — 폼에 없는 보기 · 지난 질문에 대한 응답 · 제출 뒤 응답", async ({ page }) => {
     await quickLogin(page, "사원2")
