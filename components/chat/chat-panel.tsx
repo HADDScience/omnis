@@ -15,7 +15,7 @@ import { startLargeUpload, type UploadedFile } from "@/lib/large-upload/client"
 import { isLargeUpload, largeUploadClientEnabled } from "@/lib/large-upload/rules"
 import { noteRoomFirstMessage, noteAttachAttempt, noteUiSend, trackUi } from "@/lib/ui-metrics/client"
 import { ChatSearch } from "@/components/chat/chat-search"
-import { ChatPhotoViewer } from "@/components/photo-viewer/chat-photo-viewer"
+import { ChatPhotoViewer, type DrawerControl } from "@/components/photo-viewer/chat-photo-viewer"
 import { serverTimeOf, writeSnapshot } from "@/lib/room-snapshot"
 import { applyChanges, encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
 import { anchoredMessageId } from "@/lib/answer-actions"
@@ -75,6 +75,8 @@ interface ChatPanelProps {
   resume?: { checkedAt: string; fromSnapshot?: boolean }
   /** 서버 페이지 없이 그린 방 — 권한이 빠졌으면 onRoomGone. 세션이 끝났으면 로그인으로 보낸다 */
   live?: { onRoomGone: () => void; snapshotKey: string }
+  /** 방 서랍(사진 · 파일 · 링크 · 참여자) — 전사 · 사람 방이 머리의 ≡ 로 연다. 서랍은 사진 뷰어 곁에 그린다 */
+  drawer?: DrawerControl
 }
 
 // 사람끼리 방은 업무 · 파일 후보가 없다. MessageInput 의 기본값([])은 그릴 때마다 새 배열이라
@@ -131,6 +133,7 @@ export function ChatPanel({
   handoffKey,
   resume,
   live,
+  drawer,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
@@ -827,6 +830,7 @@ export function ChatPanel({
         onGoToMessage={(id) => void jumpTo(id)}
         onDelete={handleDelete}
         onNeedMessage={(id) => void jumpTo(id)}
+        drawer={drawer}
       >
       <MessageList
         messages={visibleMessages}

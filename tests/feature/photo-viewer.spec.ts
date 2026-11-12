@@ -146,18 +146,20 @@ for (const [name, use] of [
       await expect(page).not.toHaveURL(/photo=/)
     })
 
-    test("모아보기 — 이 방 사진을 최신순 격자로 보고, 누르면 그 사진을 연다", async ({ page }) => {
+    // 2026-11-12 모아보기는 방 서랍의 사진 탭으로 옮겼다 — 뷰어를 닫고 서랍을 연다. 사진을 고르면 뷰어가 서랍 위에 뜬다
+    test("모아보기 — 방 서랍의 사진 탭(최신순 격자)을 열고, 누르면 그 사진을 연다", async ({ page }) => {
       const older = await photoMessage(other, ["옛.png"], new Date(Date.now() - 700))
       const newer = await photoMessage(other, ["새.png"], new Date(Date.now() - 600))
       await open(page)
       await photoIn(page, older.messageId).click()
       await viewer(page).getByRole("button", { name: "이 방 사진 모아보기" }).click()
-      const grid = page.getByRole("dialog", { name: "이 방 사진" })
+      await expect(viewer(page)).toHaveCount(0)
+      const grid = page.getByRole("dialog", { name: /서랍$/ })
+      await expect(grid.getByRole("tab", { name: "사진" })).toHaveAttribute("aria-selected", "true")
       const items = grid.getByRole("button", { name: /^사원1의 사진 / })
       await expect(items.first()).toHaveAccessibleName("사원1의 사진 새.png")
       await expect(items.nth(1)).toHaveAccessibleName("사원1의 사진 옛.png")
       await items.first().click()
-      await expect(grid).toHaveCount(0)
       await expect(page).toHaveURL(new RegExp(`[?&]photo=${newer.fileIds[0]}`))
       await expect(viewer(page).locator("img[data-viewer-src]")).toHaveAttribute("alt", "새.png")
     })

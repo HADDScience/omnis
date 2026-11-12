@@ -11,6 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowTurnBackwardIcon,
   Delete02Icon,
+  Download04Icon,
   Doc01Icon,
   File01Icon,
   Pdf01Icon,
@@ -32,6 +33,8 @@ import { stripRobotMark } from "@/lib/robot-mark"
 import { apiUrl } from "@/lib/base-path"
 import { thumbSrcSet, thumbUrl } from "@/lib/thumb"
 import { usePhotoViewer } from "@/components/photo-viewer/context"
+import { useRoomDownload } from "@/components/messenger/room-download-context"
+import { startRoomDownload } from "@/lib/room-download/client"
 import { safeInlineType } from "@/lib/file-serving"
 import { isLargeUpload } from "@/lib/large-upload/rules"
 import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arrival"
@@ -830,6 +833,9 @@ const imageGridCols = (n: number) => (n === 2 || n === 4 ? "max-md:in-data-[chat
 /** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
 export function MessageFiles({ files, onPrimary = false, messageId }: { files: FileInfo[]; onPrimary?: boolean; messageId?: string }) {
   const viewer = usePhotoViewer()
+  const download = useRoomDownload()
+  // 한 글에 여러 사진 · 파일 — 「모두 저장」(서랍이 있는 방만). 폰의 사진은 공유 시트, 나머지는 zip(lib/room-download/client.ts)
+  const saveAll = download && files.length >= 2 && !files.some((f) => f._uploading)
   const openOf = (f: FileInfo) => (viewer && messageId ? () => viewer.open(messageId, f.id) : undefined)
   // 그 자리에서 열리는 형식만 미리보기를 그린다 — 나머지(SVG 등)는 내려받기로 나가 이미지가 깨진다
   // 큰 첨부 사진은 카드로 — 말풍선이 원본 수백 MB 를 부르지 않게
@@ -883,6 +889,20 @@ export function MessageFiles({ files, onPrimary = false, messageId }: { files: F
           </a>
         )
       })}
+      {saveAll && (
+        <button
+          type="button"
+          data-save-all
+          onClick={(e) => {
+            e.stopPropagation()
+            void startRoomDownload({ roomId: download.roomId, roomName: download.roomName, fileIds: files.map((f) => f.id) })
+          }}
+          className="touch-target glass inline-flex h-8 w-fit items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium text-foreground"
+        >
+          <HugeiconsIcon icon={Download04Icon} size={14} aria-hidden />
+          모두 저장 · {files.length}개
+        </button>
+      )}
     </div>
   )
 }

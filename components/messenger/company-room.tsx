@@ -9,6 +9,7 @@ import { ChatPanel } from "@/components/chat/chat-panel"
 import { TaskCmdModal } from "@/components/chat/task-cmd-modal"
 import { RoomHeader } from "./room-header"
 import { RoomMuteButton } from "./room-mute-button"
+import { RoomDrawerButton, useRoomDrawer } from "./room-drawer-button"
 
 type Messages = ComponentProps<typeof ChatPanel>["initialMessages"]
 
@@ -41,6 +42,7 @@ export function CompanyRoom({
 }) {
   const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
+  const drawer = useRoomDrawer(roomName)
   const [searchFocus, setSearchFocus] = useState(0)
   useEffect(() => {
     if (!searchRequest) return
@@ -69,11 +71,13 @@ export function CompanyRoom({
             >
               <HugeiconsIcon icon={Search01Icon} size={15} aria-hidden />
             </Button>
+            <RoomDrawerButton drawer={drawer} />
           </>
         }
       />
       <div className="flex min-h-0 flex-1 flex-col">
         <ChatPanel
+          drawer={drawer}
           roomId={roomId}
           live={live}
           // 방을 여는 동안 쓴 글을 이어받는다 — 사람 방 · 업무 방과 같다(lib/chat-entry.ts)
