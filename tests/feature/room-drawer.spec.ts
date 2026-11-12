@@ -210,8 +210,9 @@ test.describe("폰", () => {
     })
     await open(page)
     await openDrawer(page)
+    // 화면 배율(1.1)을 거친 폭이라 소수점 아래가 남는다(CI 389.99998)
     const box = (await drawer(page).boundingBox())!
-    expect(box.width).toBe(390)
+    expect(box.width).toBeCloseTo(390, 0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0)
     await drawer(page).getByRole("button", { name: "선택", exact: true }).click()
     await drawer(page).locator("[data-drawer-photo]").first().click()
