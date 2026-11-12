@@ -1,0 +1,58 @@
+# 다음 버전의 릴리스 노트 초안 — main 에 머지될 때마다 .github/workflows/release-drafter.yml 이 고쳐 쓴다.
+# 초안은 공개하지 않는다(사람이 GitHub 릴리스 화면에서 고쳐 publish).
+# 분류는 PR 라벨로, 라벨은 PR 제목 접두사(feat · fix · perf · test …)로 자동으로 붙는다(autolabeler).
+# 버전: feature → minor, fix · perf → patch(기본), breaking → major.
+name-template: "v$RESOLVED_VERSION — 초안"
+tag-template: "v$RESOLVED_VERSION"
+
+categories:
+  - title: "새 기능"
+    labels: [feature]
+  - title: "고친 것"
+    labels: [fix]
+  - title: "성능"
+    labels: [perf]
+  - title: "시험"
+    labels: [test]
+  - title: "문서"
+    labels: [docs]
+  - title: "빌드 · CI · 잡일"
+    labels: [chore, ci]
+
+change-template: "- $TITLE (#$NUMBER)"
+change-title-escapes: '\<*_&'
+no-changes-template: "- 바뀐 것 없음"
+
+version-resolver:
+  major:
+    labels: [breaking]
+  minor:
+    labels: [feature]
+  patch:
+    labels: [fix, perf]
+  default: patch
+
+autolabeler:
+  - label: feature
+    title: ['/^feat(\(.+\))?!?:/i']
+  - label: fix
+    title: ['/^(fix|hotfix)(\(.+\))?!?:/i']
+  - label: perf
+    title: ['/^perf(\(.+\))?!?:/i']
+  - label: test
+    title: ['/^test(\(.+\))?!?:/i']
+  - label: docs
+    title: ['/^docs(\(.+\))?!?:/i']
+  - label: chore
+    title: ['/^(chore|build|refactor|style)(\(.+\))?!?:/i']
+  - label: ci
+    title: ['/^ci(\(.+\))?!?:/i']
+  - label: breaking
+    title: ['/^\w+(\(.+\))?!:/']
+
+template: |
+  ## 바뀐 것
+
+  $CHANGES
+
+  전체 비교: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
