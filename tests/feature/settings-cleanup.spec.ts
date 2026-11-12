@@ -135,7 +135,10 @@ test.describe("앱 정보", () => {
     await quickLogin(page, "팀장")
     await page.goto("/settings?tab=info")
     const admin = page.locator("[data-admin-links]")
-    await expect(admin.getByRole("link")).toHaveText(["기능 요청 보기", "AI 비용 상한", "배포별 측정 보기"])
+    // 넷째 「AI 활용 설문 결과」 는 설문이 열린 관리자만(main #204, AI_SURVEY_ALLOW_USER_IDS) — 시험 환경에 따라 있거나 없다
+    const links = await admin.getByRole("link").allTextContents()
+    expect(links.slice(0, 3)).toEqual(["기능 요청 보기", "AI 비용 상한", "배포별 측정 보기"])
+    expect(links.slice(3).every((t) => t === "AI 활용 설문 결과")).toBe(true)
   })
 })
 
