@@ -6,7 +6,7 @@
 // 범위 · 구간 · 값 목록 · 끝낼 때는 코드가 정한다(rules.ts). 모델이 낸 값은 코드가 다시 검증한다.
 // 앞부분(SYSTEM)은 매 턴 같은 글이라 벤더의 입력 캐시를 탄다 — 바뀌는 것(대화 기록 · 남은 칸)은 뒤에 붙인다.
 import { z } from "zod"
-import { LIMIT_HITS, PAYERS, SLOTS, SLOT_NAMES, TASK_KINDS, TASK_SIZES, WISH_TAGS, answerText, fieldMode, missingSlots, type Facts, type Slot, type Turn } from "./rules"
+import { LIMIT_HITS, PAYERS, RECENT_TASKS, SLOTS, SLOT_NAMES, TASK_KINDS, TASK_SIZES, WISH_TAGS, answerText, fieldMode, lastWeekLabel, missingSlots, type Facts, type Slot, type Turn } from "./rules"
 
 /** OpenAI 구조화 출력은 모든 칸이 required 여야 한다 — 없는 값은 null */
 export const AskOutputSchema = z.object({
@@ -30,9 +30,12 @@ export const AskOutputSchema = z.object({
 const values = (v: Record<string, string>) => Object.entries(v).map(([k, label]) => `${k}(${label})`).join(" · ")
 
 const SLOT_GUIDE: Record<Slot, string> = {
-  daysPerWeek: "범위(슬라이더 0~7일 — 주말 포함). 범위는 화면이 정한다",
-  hoursPerDay: "범위(슬라이더 0~10시간, 끝은 「10시간 이상」). 범위는 화면이 정한다",
-  sessionsPerDay: "범위(구간 칩 1~2번 … 50번 넘게). 구간은 화면이 정한다. hoursPerDay 와 둘 중 하나만 묻는다",
+  daysPerWeek: "범위(슬라이더 0~7일 — 주말 포함). 범위는 화면이 정한다. 지난주 기준",
+  hoursPerDay: "범위(슬라이더 0~10시간, 끝은 「10시간 이상」). 범위는 화면이 정한다. 지난주 기준",
+  sessionsPerDay: "범위(구간 칩 1~2번 … 50번 넘게). 구간은 화면이 정한다. hoursPerDay 와 둘 중 하나만 묻는다. 지난주 기준",
+  recentTask: `말. 「보통 하는 일」 이 아니라 「가장 최근에 맡긴 일 하나」 를 묻는다. value 는 ${values(RECENT_TASKS)} — 보기 이름은 바꾸지 않는다`,
+  recentWhen: "범위(구간 칩 이번 주 · 지난주 · 그보다 전). 구간은 화면이 정한다. recentTask 를 답한 뒤에 열린다",
+  recentTime: "범위(구간 칩 5분 이내 · 5~30분 · 30분~1시간 · 1시간 넘게). 구간은 화면이 정한다. 그 일 하나에 AI 와 주고받은 시간. recentWhen 과 묶어 물어도 된다",
   tools: "말. options 에 도구 이름 4~6개(value 는 null)",
   payer: `말. options 의 value 는 ${values(PAYERS)}`,
   monthlyFeeKrw: "범위(구간 칩 3만원 미만 … 40만원 넘게). 구간은 화면이 정한다. payer 가 유료일 때만 열린다",
@@ -65,6 +68,9 @@ export const SURVEY_SYSTEM = `당신은 HADD Science 사내 도구 「옴니스�
 규칙
 - 한 번에 질문 하나. 범위 칸끼리만 2~3개로 묶을 수 있다(예: 쓰는 날 수 + 하루 시간). 말로 답하는 칸은 한 번에 하나만 묻고 범위 칸과 섞지 않는다.
 - 일주일은 7일이다. 주말에도 쓰는 사람이 있으니 「주 5일 중」 이라고 묻지 않는다.
+- 쓰는 날 수 · 하루 시간 · 하루 횟수(daysPerWeek · hoursPerDay · sessionsPerDay)는 「평소」 · 「보통」 이 아니라 「지난주(월~일)」 를 묻는다. 질문 글에 「지난주(날짜)」 를 그대로 넣는다 — 날짜는 아래 문답 위에 주어진다(예: 「지난주(11월 2일(월)~8일(일)) 회사 일로 AI 를 쓴 날은 며칠이에요?」). 「평소」 「보통」 「대략」 이라는 말을 쓰지 않는다.
+- 작업은 「보통 어떤 일」 보다 「가장 최근에 맡긴 일 하나」(recentTask)를 먼저 묻는다 — 기억에 덜 기대는 질문이다.
+- 답을 이끌지 않는다. 「많이 쓰시죠?」 처럼 기대하는 답을 드러내는 말, 칭찬 · 평가하는 말을 쓰지 않는다.
 - 「잘 모르겠음」 은 화면이 늘 붙인다. 「기타」 는 응답자가 말로 쓴다. 둘 다 보기에 넣지 않는다.
 - 이미 답한 칸은 다시 묻지 않는다. 남은 칸에 없는 slot 은 쓰지 않는다.
 - 질문은 짧은 존댓말 한 문장. 인사 · 감사 · 설명을 붙이지 않는다.
@@ -84,9 +90,11 @@ export function transcript(turns: Turn[]): string {
   return done.map((t, i) => `${i + 1}. 질문: ${t.ask.question}\n   답: ${liveAnswer(t)}`).join("\n")
 }
 
-export function surveyPrompt(turns: Turn[], facts: Facts, freeLeft: number): string {
+export function surveyPrompt(turns: Turn[], facts: Facts, freeLeft: number, now: Date = new Date()): string {
   const open = missingSlots(facts)
-  return `지금까지의 문답
+  return `지난주: ${lastWeekLabel(now)}
+
+지금까지의 문답
 ${transcript(turns)}
 
 남은 칸: ${open.join(", ")}${freeLeft > 0 ? ` (free 는 ${freeLeft}번 더 쓸 수 있다)` : " (free 는 더 쓸 수 없다)"}
@@ -112,8 +120,8 @@ export const SAY_SYSTEM = `당신은 HADD Science 사내 도구 「옴니스」 
 - 설문과 상관없는 말 · 어느 칸인지 알 수 없는 말이면 target 은 none.
 
 옮기는 법
-- 범위 칸(daysPerWeek · hoursPerDay · sessionsPerDay · monthlyFeeKrw, 그리고 범위로 묻는 free): num 에 숫자만. 「매일」 은 7일, 「3만원」 은 30000, 「반나절」 은 4시간처럼 숫자로 바꾼다. 범위에 맞추는 일은 화면이 한다.
-- 값 목록이 있는 칸(payer · limitHit · taskSize · mainTask · taskKinds · wishes): values 에 목록의 값만 넣는다. 목록에 없는 것은 지어내지 말고 labels 에 응답자의 말을 짧은 구로 넣는다(taskKinds · wishes 만).
+- 범위 칸(daysPerWeek · hoursPerDay · sessionsPerDay · monthlyFeeKrw · recentWhen · recentTime, 그리고 범위로 묻는 free): num 에 숫자만(recentWhen 은 몇 주 전 — 이번 주 0 · 지난주 1, recentTime 은 분). 「매일」 은 7일, 「3만원」 은 30000, 「반나절」 은 4시간처럼 숫자로 바꾼다. 범위에 맞추는 일은 화면이 한다.
+- 값 목록이 있는 칸(payer · limitHit · taskSize · mainTask · recentTask · taskKinds · wishes): values 에 목록의 값만 넣는다. 목록에 없는 것은 지어내지 말고 labels 에 응답자의 말을 짧은 구로 넣는다(taskKinds · wishes · recentTask 만).
 - 이름 그대로 남기는 칸(tools · pain): labels 에 짧은 구로. 도구 이름은 흔한 표기로 쓴다(「챗지피티」 → ChatGPT).
 - 「아쉬운 점」(pain)은 범용 AI 에 대한 것, 「바라는 것」(wishes)은 옴니스에 대한 것이다.
 - 응답자가 말하지 않은 것을 채우지 않는다.
@@ -126,6 +134,7 @@ ${SLOT_NAMES.map((s) => `- ${s}: ${SLOTS[s].about}`).join("\n")}
 - limitHit: ${values(LIMIT_HITS)}
 - taskSize: ${values(TASK_SIZES)}
 - taskKinds · mainTask: ${values(TASK_KINDS)}
+- recentTask: ${values(RECENT_TASKS)}
 - wishes: ${values(WISH_TAGS)}`
 
 /** 글을 읽을 때 모델에게 주는 것 — 지금 묻는 질문(과 그 추천 칩), 이미 답한 것. only 가 있으면 그 질문을 고치는 중이다 */

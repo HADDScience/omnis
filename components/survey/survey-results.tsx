@@ -1,13 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ASSUMPTIONS, INTENSITY_LABEL, tokensLabel, type CompanyEstimate, type Intensity, type LatencyRow } from "@/lib/ai-survey/metrics"
-import type { PersonResult, SurveyResults } from "@/lib/ai-survey/results"
-import { TASK_KINDS, WISH_TAGS, answerText } from "@/lib/ai-survey/rules"
-import { SurveyMetrics } from "./survey-metrics"
+import { ASSUMPTIONS, FLAG_LABEL, INTENSITY_LABEL, MIN_RESPONSES, tokensLabel, type CompanySummary, type Intensity, type LatencyRow } from "@/lib/ai-survey/metrics"
+import type { SurveyResults } from "@/lib/ai-survey/results"
+import { TASK_KINDS, WISH_TAGS } from "@/lib/ai-survey/rules"
 
 const won = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`
-const STATUS_LABEL: Record<string, string> = { IN_PROGRESS: "답하는 중", CONFIRM: "확인 대기", SUBMITTED: "제출" }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -34,19 +32,22 @@ function Bar({ label, value, pct }: { label: string; value: string; pct: number 
 
 const GRADES: Intensity[] = ["heavy", "medium", "light", "none", "unknown"]
 
-/** 회사 전체 추정 — 응답자 합산과, 그 평균을 전원에게 늘린 값 */
-function CompanyTab({ e }: { e: CompanyEstimate }) {
-  if (e.respondents === 0) {
+/** 회사 전체 — 합계만. 이름 · 사람별 원문은 없다. 응답이 MIN_RESPONSES 명 미만이면 합계도 숨긴다 */
+function CompanyTab({ s }: { s: CompanySummary }) {
+  const counts = `구성원 ${s.headcount}명 · 제출 ${s.respondents}명 · 답하는 중 ${s.inProgress}명 · 시작 전 ${s.notStarted}명`
+  const t = s.totals
+  if (!t) {
     return (
-      <Empty className="rounded-xl border border-dashed" data-survey-empty>
+      <Empty className="rounded-xl border border-dashed" data-survey-hidden>
         <EmptyHeader>
-          <EmptyTitle>아직 제출한 사람이 없습니다</EmptyTitle>
-          <EmptyDescription>구성원 {e.headcount}명 가운데 답하는 중 {e.inProgress.length}명 · 시작 전 {e.notStarted.length}명.</EmptyDescription>
+          <EmptyTitle>응답 {MIN_RESPONSES}명부터 보입니다</EmptyTitle>
+          <EmptyDescription>{counts}. 응답이 적으면 합계만으로도 누가 어떻게 답했는지 짐작할 수 있어 숨깁니다.</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
   }
-  const maxWish = Math.max(...e.wishRanking.map((w) => w.count), 1)
+  const maxWish = Math.max(...t.wishRanking.map((w) => w.count), 1)
+  const maxPain = Math.max(...t.painRanking.map((w) => w.count), 1)
   return (
     <div className="flex flex-col gap-4" data-survey-company>
       <Card>
@@ -54,115 +55,72 @@ function CompanyTab({ e }: { e: CompanyEstimate }) {
           <CardTitle className="text-base">회사 전체 AI 사용량 추정</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <p className="text-[12px] text-muted-foreground break-keep" data-survey-counts>{counts}</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Stat label="응답" value={`${e.respondents} / ${e.headcount}명`} sub={e.unknownGrade ? `사용량을 몰라 합산에서 빠진 사람 ${e.unknownGrade}명` : undefined} />
-            <Stat label="월 토큰(응답자 합)" value={`약 ${tokensLabel(e.monthlyTokens)}`} sub={e.projected ? `전원(${e.headcount}명)으로 늘리면 약 ${tokensLabel(e.projected.monthlyTokens)}` : undefined} />
+            <Stat label="응답" value={`${s.respondents} / ${s.headcount}명`} sub={t.needsCheck ? `확인 필요 ${t.needsCheck}명은 추정에서 뺐습니다` : undefined} />
+            <Stat label="지난주 평균 사용 일수" value={t.avgDays === null ? "–" : `${t.avgDays}일`} />
             <Stat
-              label="옴니스 API 환산(월, 응답자 합)"
-              value={`${won(e.apiKrw.cache89)} ~ ${won(e.apiKrw.cache66)}`}
-              sub={e.projected ? `전원이면 ${won(e.projected.apiKrw.cache89)} ~ ${won(e.projected.apiKrw.cache66)}` : undefined}
+              label="회사 월 토큰 추정(전원)"
+              value={t.tokens ? `약 ${tokensLabel(t.tokens.projected)}` : "산정하지 못함"}
+              sub={t.tokens ? `95% 범위 ${tokensLabel(t.tokens.low)} ~ ${tokensLabel(t.tokens.high)} · 응답 ${t.counted}명 기준${t.unknownGrade ? ` · 사용량 모름 ${t.unknownGrade}명 제외` : ""}` : undefined}
             />
-            <Stat label="지금 내는 구독료(월)" value={won(e.subscriptionKrw.total)} sub={`회사 ${won(e.subscriptionKrw.company)} · 개인 ${won(e.subscriptionKrw.personal)} · 둘 다 ${won(e.subscriptionKrw.both)}`} />
+            <Stat label="옴니스 API 환산(월, 전원)" value={t.apiKrw ? `${won(t.apiKrw.low)} ~ ${won(t.apiKrw.high)}` : "–"} sub="범위 아래 끝 × 캐시 89% ~ 위 끝 × 캐시 66.6%" />
+            <Stat label="유료로 쓰는 사람" value={`${t.paid}명`} sub={`그중 개인이 내는 사람 ${t.personalPay}명 · 구독료 합 월 ${won(t.subscriptionKrw)}`} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <h3 className="text-[13px] font-medium">강도 등급</h3>
-            {GRADES.filter((g) => e.grades[g] > 0).map((g) => <Bar key={g} label={INTENSITY_LABEL[g]} value={`${e.grades[g]}명`} pct={(e.grades[g] / e.respondents) * 100} />)}
+            <h3 className="text-[13px] font-medium">강도 분포</h3>
+            {GRADES.filter((g) => t.grades[g] > 0).map((g) => <Bar key={g} label={INTENSITY_LABEL[g]} value={`${t.grades[g]}명`} pct={(t.grades[g] / s.respondents) * 100} />)}
           </div>
-          <p className="text-[12px] text-muted-foreground break-keep">
-            미응답 — 답하는 중: {e.inProgress.length ? e.inProgress.join(", ") : "없음"} · 시작 전: {e.notStarted.length ? e.notStarted.join(", ") : "없음"}
-          </p>
+          {t.needsCheck > 0 && (
+            <div className="flex flex-col gap-1" data-survey-needs-check>
+              <h3 className="text-[13px] font-medium">확인 필요 — 앞뒤가 안 맞는 응답 {t.needsCheck}명</h3>
+              <ul className="flex list-disc flex-col gap-0.5 pl-5 text-[13px] break-keep text-muted-foreground">
+                {t.flagCounts.map((f) => <li key={f.code}>{FLAG_LABEL[f.code]} — {f.count}명</li>)}
+              </ul>
+            </div>
+          )}
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">작업 종류 · 바라는 기능</CardTitle>
+          <CardTitle className="text-base">작업 · 바라는 것 · 아쉬운 점</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <h3 className="text-[13px] font-medium">작업 종류 분포(응답자 평균)</h3>
-            {e.taskShare.length === 0 ? <p className="text-[13px] text-muted-foreground">작업을 답한 사람이 없습니다.</p> : e.taskShare.map((t) => <Bar key={t.kind} label={TASK_KINDS[t.kind]} value={`${t.pct}%`} pct={t.pct} />)}
+            {t.taskShare.length === 0 ? <p className="text-[13px] text-muted-foreground">작업을 답한 사람이 없습니다.</p> : t.taskShare.map((x) => <Bar key={x.kind} label={TASK_KINDS[x.kind]} value={`${x.pct}%`} pct={x.pct} />)}
           </div>
+          {t.recentTasks.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <h3 className="text-[13px] font-medium">가장 최근에 맡긴 일</h3>
+              {t.recentTasks.map((x) => <Bar key={x.label} label={x.label} value={`${x.count}명`} pct={(x.count / s.respondents) * 100} />)}
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
-            <h3 className="text-[13px] font-medium">바라는 기능 순위</h3>
-            {e.wishRanking.length === 0 ? <p className="text-[13px] text-muted-foreground">아직 없습니다.</p> : e.wishRanking.map((w) => <Bar key={w.tag} label={WISH_TAGS[w.tag]} value={`${w.count}명`} pct={(w.count / maxWish) * 100} />)}
-            {e.wishNotes.length > 0 && <p className="text-[13px] break-keep text-muted-foreground">기타로 적은 것: {e.wishNotes.join(" · ")}</p>}
+            <h3 className="text-[13px] font-medium">옴니스에 바라는 것</h3>
+            {t.wishRanking.length === 0 ? <p className="text-[13px] text-muted-foreground">아직 없습니다.</p> : t.wishRanking.map((w) => <Bar key={w.tag} label={WISH_TAGS[w.tag]} value={`${w.count}명`} pct={(w.count / maxWish) * 100} />)}
+            {(t.wishNotes.length > 0 || t.wishOthers > 0) && (
+              <p className="text-[13px] break-keep text-muted-foreground">
+                기타로 적은 것: {[...t.wishNotes.map((n) => `${n.label} ${n.count}명`), ...(t.wishOthers ? [`한 명만 적은 것 ${t.wishOthers}가지`] : [])].join(" · ")}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5" data-survey-pains>
+            <h3 className="text-[13px] font-medium">범용 AI 의 아쉬운 점</h3>
+            {t.painRanking.length === 0 && t.painOthers === 0 ? <p className="text-[13px] text-muted-foreground">아직 없습니다.</p> : t.painRanking.map((w) => <Bar key={w.label} label={w.label} value={`${w.count}명`} pct={(w.count / maxPain) * 100} />)}
+            {t.painOthers > 0 && <p className="text-[13px] text-muted-foreground">한 명만 고른 것 {t.painOthers}가지 — 글은 보이지 않습니다.</p>}
           </div>
           <details className="text-[12px] text-muted-foreground">
             <summary className="touch-target flex cursor-pointer list-none items-center underline underline-offset-4">이 숫자의 가정 보기</summary>
             <ul className="flex list-disc flex-col gap-1 pl-5 break-keep">
               {ASSUMPTIONS.map((a) => <li key={a}>{a}</li>)}
               <li>토큰 대표값은 다른 모델 기준의 외부 통계라 규모를 가늠하는 값입니다.</li>
+              <li>이름과 사람별 응답은 이 화면에 없습니다. 본인 응답은 본인만 「설문 확인하기」 에서 봅니다.</li>
             </ul>
           </details>
         </CardContent>
       </Card>
     </div>
-  )
-}
-
-function PersonRow({ p }: { p: PersonResult }) {
-  const m = p.metrics
-  const answered = p.turns.filter((t) => t.answer)
-  return (
-    <details className="border-b py-2 last:border-b-0" data-survey-person={p.userId}>
-      <summary className="touch-target flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[14px]">
-        <span className="font-medium">{p.name}</span>
-        <span className="tabular-nums text-muted-foreground">
-          {p.status ? STATUS_LABEL[p.status] ?? p.status : "시작 전"}
-          {p.redoing && " · 다시 하는 중"}
-          {p.records > 1 && ` · 기록 ${p.records}건`}
-          {m && ` · ${INTENSITY_LABEL[m.intensity]}`}
-          {m?.monthlyTokens != null && ` · 월 약 ${tokensLabel(m.monthlyTokens)}`}
-        </span>
-      </summary>
-      {p.status === null ? (
-        <p className="py-2 text-[13px] text-muted-foreground">아직 시작하지 않았습니다.</p>
-      ) : (
-        <div className="flex flex-col gap-3 py-2">
-          {(p.redoing || p.records > 1) && (
-            <p className="text-[12px] text-muted-foreground break-keep">
-              가장 최근에 제출한 응답입니다 — 집계에는 이 1건만 씁니다.{p.redoing && " 지금 다시 답하는 중이고, 제출하면 그 응답으로 바뀝니다."}
-            </p>
-          )}
-          {p.summary && <p className="rounded-lg bg-muted/60 p-3 text-[13px] leading-relaxed break-keep">{p.summary}</p>}
-          {m && <SurveyMetrics metrics={m} turns={p.turns} />}
-          <div>
-            <h3 className="mb-1 text-[13px] font-medium">원문 — 질문 · 제시한 보기 · 응답</h3>
-            <ol className="flex flex-col gap-2">
-              {answered.map((t, i) => (
-                <li key={t.id} className="text-[13px] break-keep">
-                  <span>{i + 1}. {t.ask.question}</span>
-                  {t.ask.fields.map((f) => (
-                    <span key={f.id} className="block pl-4">
-                      <span className="text-muted-foreground">
-                        {f.label ? `${f.label} · ` : ""}
-                        {f.options ? `보기: ${f.options.map((o) => o.label).join(" / ")}` : f.kind === "text" ? "한 줄 글" : `${f.min}~${f.max}${f.unit ?? ""}`}
-                      </span>
-                      <br />
-                      <span className="font-medium">→ {answerText(f, t.answer?.[f.id])}</span>
-                    </span>
-                  ))}
-                </li>
-              ))}
-            </ol>
-          </div>
-        </div>
-      )}
-    </details>
-  )
-}
-
-/** 사람별 지표와 원문 — 눌러서 편다 */
-function PeopleTab({ people }: { people: PersonResult[] }) {
-  return (
-    <Card data-survey-people>
-      <CardHeader>
-        <CardTitle className="text-base">사람별 — 눌러서 지표 · 원문 보기</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {people.length === 0 ? <p className="text-[13px] text-muted-foreground">구성원이 없습니다.</p> : people.map((p) => <PersonRow key={p.userId} p={p} />)}
-      </CardContent>
-    </Card>
   )
 }
 
@@ -206,17 +164,15 @@ function LatencyTab({ latency, cost, sources }: { latency: LatencyRow[]; cost: S
   )
 }
 
-/** 관리자 결과 화면 — 회사 전체 추정 · 사람별 원문 · 응답 대기 */
+/** 관리자 결과 화면 — 회사 전체 합계 · 응답 대기. 사람별 화면은 없다 */
 export function SurveyResultsView({ results }: { results: SurveyResults }) {
   return (
     <Tabs defaultValue="company" data-survey-results>
-      <TabsList className="grid w-full grid-cols-3">
+      <TabsList className="grid w-full grid-cols-2">
         <TabsTrigger value="company">회사 전체</TabsTrigger>
-        <TabsTrigger value="people">사람별</TabsTrigger>
         <TabsTrigger value="latency">대기 · 비용</TabsTrigger>
       </TabsList>
-      <TabsContent value="company" className="mt-3"><CompanyTab e={results.estimate} /></TabsContent>
-      <TabsContent value="people" className="mt-3"><PeopleTab people={results.people} /></TabsContent>
+      <TabsContent value="company" className="mt-3"><CompanyTab s={results.summary} /></TabsContent>
       <TabsContent value="latency" className="mt-3"><LatencyTab latency={results.latency} cost={results.cost} sources={results.sources} /></TabsContent>
     </Tabs>
   )

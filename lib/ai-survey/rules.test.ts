@@ -2,12 +2,14 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
   MAX_FREE_TURNS, SLOTS, SLOT_NAMES, answerText, applyAnswer, coverage, editTurn, factsOf, fallbackAsk, fieldMode, freeTurns, guessSay, isComplete, missingSlots,
-  normalizeAsk, notApplicable, pendingNeeded, pruneFacts, resolveSay, snapNum, turnDead, understoodText, validateAnswer,
+  lastWeekLabel, lastWeekRange, normalizeAsk, notApplicable, pendingNeeded, pruneFacts, resolveSay, snapNum, turnDead, understoodText, validateAnswer, withLastWeek,
   type AnswerValues, type Ask, type Facts, type Field, type Purpose, type Turn,
 } from "./rules"
 import { AskOutputSchema, SAY_SYSTEM, SURVEY_SYSTEM, SayOutputSchema, sayPrompt, surveyPrompt, transcript } from "./prompt"
 
 const t = (turnId = "t") => ({ turnId })
+/** 2026-11-12(목) 10:00 KST — 지난주는 11월 2일(월)~8일(일) */
+const NOW = new Date("2026-11-12T01:00:00Z")
 const turn = (id: string, ask: Ask, answer?: AnswerValues, rest: Partial<Turn> = {}): Turn => ({ id, ask, ...(answer ? { answer, answeredAt: "x" } : {}), askedAt: "", source: "fallback", ms: { first: 1, total: 1 }, ...rest })
 
 /** 준비된 질문으로 끝까지 답한 설문 — 칸마다 질문 하나 */
@@ -52,7 +54,7 @@ test("두 갈래 — 범위 칸은 슬라이더 · 구간 칩 · 척도, 나머�
   const kinds = Object.fromEntries(fullSurvey().map((x) => [x.ask.fields[0].slot, `${x.ask.fields[0].kind}:${fieldMode(x.ask.fields[0])}`]))
   assert.deepEqual(kinds, {
     daysPerWeek: "slider:range", hoursPerDay: "slider:range", tools: "multi:chat", payer: "single:chat", monthlyFeeKrw: "bucket:range", limitHit: "single:chat",
-    taskKinds: "multi:chat", mainTask: "single:chat", taskSize: "single:chat", wishes: "multi:chat", pain: "multi:chat",
+    taskKinds: "multi:chat", mainTask: "single:chat", recentTask: "single:chat", recentWhen: "bucket:range", recentTime: "bucket:range", wishes: "multi:chat", pain: "multi:chat",
   })
   assert.equal(fieldMode({ kind: "scale" }), "range")
   assert.equal(fieldMode({ kind: "text" }), "chat")
@@ -68,11 +70,13 @@ test("처음에는 충족도 0, 물을 수 있는 칸에 앞 칸을 기다리는
   assert.equal(isComplete({}), false)
 })
 
-test("AI 를 안 쓴다(0일) → 사용량 · 작업은 더 묻지 않고 바라는 것만 남는다", () => {
+test("지난주 0일 → 사용량 · 작업은 더 묻지 않고 가장 최근 일(과 그 때) · 바라는 것만 남는다", () => {
   const facts: Facts = { daysPerWeek: { ...t(), num: 0 } }
-  assert.deepEqual(missingSlots(facts), ["wishes", "pain"])
-  assert.deepEqual(coverage(facts), { usage: 100, tasks: 100, wishes: 0 })
-  assert.equal(isComplete({ ...facts, wishes: { ...t(), unknown: true }, pain: { ...t(), unknown: true } }), true)
+  assert.deepEqual(missingSlots(facts), ["recentTask", "wishes", "pain"])
+  assert.deepEqual(coverage(facts), { usage: 100, tasks: 85, wishes: 0 })
+  // 가장 최근 일을 답하면 그 일이 언제였는지는 묻고, 주고받은 시간 · 보통 크기는 묻지 않는다
+  assert.deepEqual(missingSlots({ ...facts, recentTask: { ...t(), values: ["write"] } }), ["recentWhen", "wishes", "pain"])
+  assert.equal(isComplete({ ...facts, recentTask: { ...t(), unknown: true }, wishes: { ...t(), unknown: true }, pain: { ...t(), unknown: true } }), true)
 })
 
 test("「잘 모르겠음」 도 채운 것으로 센다 — 같은 질문을 되풀이하지 않는다", () => {
@@ -93,7 +97,8 @@ test("시간 · 횟수는 둘 중 하나만, 구독료는 유료일 때만, 가�
 
 test("준비된 질문 — 남은 칸을 차례로 묻고 끝까지 가면 모두 100", () => {
   const turns = fullSurvey()
-  assert.deepEqual(turns.map((x) => x.ask.fields[0].slot), ["daysPerWeek", "hoursPerDay", "tools", "payer", "monthlyFeeKrw", "limitHit", "taskKinds", "mainTask", "taskSize", "wishes", "pain"])
+  // 가장 최근 일의 주고받은 시간을 답했으니 「보통 크기」 는 묻지 않는다
+  assert.deepEqual(turns.map((x) => x.ask.fields[0].slot), ["daysPerWeek", "hoursPerDay", "tools", "payer", "monthlyFeeKrw", "limitHit", "taskKinds", "mainTask", "recentTask", "recentWhen", "recentTime", "wishes", "pain"])
   for (const x of turns) assert.equal(validateAnswer(x.ask, x.answer), null, `${x.ask.fields[0].slot} 응답이 폼에 맞아야 한다`)
   const facts = factsOf(turns)
   assert.deepEqual(coverage(facts), { usage: 100, tasks: 100, wishes: 100 })
@@ -108,8 +113,9 @@ test("모델 질문 → 폼: 범위 · 구간은 코드가 정한다 — 모델�
       { slot: "daysPerWeek", kind: "single", label: "쓰는 날", min: 0, max: 5, step: 3, unit: "개월", options: [{ label: "주 5일", value: null }] },
       { slot: "hoursPerDay", kind: "text", label: "하루" },
     ],
-  }, {})
-  assert.equal(ask?.question, "회사 일에 AI 를 얼마나 쓰세요?")
+  }, {}, 0, NOW)
+  // 사용량 칸은 지난주로 묻는다 — 모델이 날짜를 빠뜨리면 코드가 붙인다
+  assert.equal(ask?.question, "회사 일에 AI 를 얼마나 쓰세요? (지난주 11월 2일(월)~8일(일) 기준)")
   assert.deepEqual(ask?.fields.map((f) => [f.id, f.slot, f.kind, f.min, f.max, f.step, f.unit, f.options]), [
     ["f1", "daysPerWeek", "slider", 0, 7, 1, "일", undefined],
     ["f2", "hoursPerDay", "slider", 0, 10, 0.5, "시간", undefined],
@@ -357,7 +363,8 @@ test("고친 결과로 필요 없어진 칸은 코드가 지운다 — 유료 �
 test("고친 결과로 필요 없어진 칸 — 0일이면 사용량 · 작업 전부, 작업이 하나면 가장 많이 하는 작업", () => {
   const turns = fullSurvey()
   const zero = factsOf(editTurn(turns, turns[0].id, { f1: { num: 0 } }, "x")!)
-  assert.deepEqual(Object.keys(zero).sort(), ["daysPerWeek", "pain", "wishes"])
+  // 가장 최근 일 · 그 때는 0일이어도 남는다(앞뒤 판정에 쓴다)
+  assert.deepEqual(Object.keys(zero).sort(), ["daysPerWeek", "pain", "recentTask", "recentWhen", "wishes"])
   assert.equal(isComplete(zero), true)
   assert.deepEqual(coverage(zero), { usage: 100, tasks: 100, wishes: 100 })
 
@@ -417,7 +424,7 @@ test("묻던 질문이 고친 답 때문에 필요 없어지면 걷는다", () =
 // ─── 모델 지시 ─────────────────────────────────────────────
 
 test("아쉬운 점은 범용 AI, 바라는 것은 옴니스 — 준비된 질문과 모델 지시가 둘을 가른다", () => {
-  const done: Facts = { daysPerWeek: { turnId: "t", num: 0 } }
+  const done: Facts = { daysPerWeek: { turnId: "t", num: 0 }, recentTask: { turnId: "t", unknown: true } }
   const wish = fallbackAsk(done)!
   assert.match(wish.question, /옴니스/)
   assert.ok(!wish.question.includes("범용 AI"))
@@ -447,7 +454,7 @@ test("모델 지시 — 칸 전부 · 두 갈래 · 일주일 7일이 들어 있
   assert.match(text, /1\. 질문: 며칠 쓰세요\?\n {3}답: 3일/)
   assert.ok(!text.includes("4일") && !text.includes("2. 질문"), "고치기 전 답 · 아직 답하지 않은 질문은 싣지 않는다")
   const p = surveyPrompt(turns, factsOf(turns), 0)
-  assert.match(p, /남은 칸: hoursPerDay, sessionsPerDay, tools, payer, limitHit, taskKinds, taskSize, wishes, pain/)
+  assert.match(p, /남은 칸: hoursPerDay, sessionsPerDay, tools, payer, limitHit, taskKinds, recentTask, wishes, pain/)
   assert.match(p, /free 는 더 쓸 수 없다/)
 })
 
@@ -476,4 +483,72 @@ test("모델 출력 스키마 — 모양이 맞으면 통과, 칸 이름이 틀�
   assert.equal(SayOutputSchema.safeParse({ ...say, target: "none" }).success, true)
   assert.equal(SayOutputSchema.safeParse({ ...say, target: "salary" }).success, false)
   assert.equal(SayOutputSchema.safeParse({ target: "tools" }).success, false)
+})
+
+// ─── 지난주 · 가장 최근 일(작업지시자 2026-11-12) ─────────────────────────────────────────────
+
+test("지난주 — 묻는 날(서울 기준)의 앞 주 월~일, 달이 바뀌면 두 달을 다 쓴다", () => {
+  assert.equal(lastWeekLabel(NOW), "11월 2일(월)~8일(일)")
+  // 월요일 0시(서울)는 이미 새 주다 — 일요일 23시(UTC 로는 일요일 14시)와 갈린다
+  assert.equal(lastWeekLabel(new Date("2026-11-08T14:59:00Z")), "10월 26일(월)~11월 1일(일)")
+  assert.equal(lastWeekLabel(new Date("2026-11-08T15:00:00Z")), "11월 2일(월)~8일(일)")
+  const { start, end } = lastWeekRange(NOW)
+  assert.deepEqual([start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)], ["2026-11-02", "2026-11-08"])
+  // 해가 바뀌는 주
+  assert.equal(lastWeekLabel(new Date("2027-01-05T03:00:00Z")), "12월 28일(월)~1월 3일(일)")
+})
+
+test("사용 일수 · 시간 · 횟수는 「평소」 가 아니라 지난주 — 준비된 질문은 날짜를 괄호에, 모델 질문은 없으면 붙인다", () => {
+  const days = fallbackAsk({}, NOW)!
+  assert.equal(days.question, "지난주(11월 2일(월)~8일(일))에 회사 일로 AI 를 쓴 날은 며칠이에요? 주말도 넣어서요.")
+  const hours = fallbackAsk({ daysPerWeek: { ...t(), num: 3 } }, NOW)!
+  assert.match(hours.question, /^지난주\(11월 2일\(월\)~8일\(일\)\)/)
+  for (const q of [days.question, hours.question]) assert.ok(!/평소|보통/.test(q))
+  assert.equal(withLastWeek("지난주에 며칠 쓰셨어요?", "11월 2일(월)~8일(일)"), "지난주(11월 2일(월)~8일(일))에 며칠 쓰셨어요?")
+  assert.equal(withLastWeek("지난주(11월 2일(월)~8일(일)) 며칠?", "11월 2일(월)~8일(일)"), "지난주(11월 2일(월)~8일(일)) 며칠?")
+  // 사용량 칸이 없는 질문은 그대로
+  assert.equal(normalizeAsk({ question: "어떤 도구를 쓰세요?", fields: [{ slot: "tools", kind: "multi" }] }, {}, 0, NOW)?.question, "어떤 도구를 쓰세요?")
+  // 모델 지시 · 프롬프트에도 지난주
+  assert.match(SURVEY_SYSTEM, /「평소」 · 「보통」 이 아니라 「지난주\(월~일\)」 를 묻는다/)
+  assert.match(surveyPrompt([], {}, 3, NOW), /^지난주: 11월 2일\(월\)~8일\(일\)/)
+})
+
+test("가장 최근 일 — 칩은 메일 초안 · 문서 요약 · 표 정리 · 번역 · 코드 · 기억 안 남 · 기타, 뒤에 언제 · 주고받은 시간", () => {
+  const facts: Facts = { daysPerWeek: { ...t(), num: 3 }, hoursPerDay: { ...t(), num: 1 }, tools: { ...t(), labels: ["x"] }, payer: { ...t(), values: ["none"] }, limitHit: { ...t(), values: ["never"] }, taskKinds: { ...t(), values: ["write"] } }
+  const ask = fallbackAsk(facts, NOW)!
+  assert.equal(ask.fields[0].slot, "recentTask")
+  assert.deepEqual(ask.fields[0].options!.map((o) => o.label), ["메일 초안", "문서 요약", "표 정리", "번역", "코드", "기억 안 남", "기타"])
+  assert.equal(fieldMode(ask.fields[0]), "chat")
+  const when = fallbackAsk({ ...facts, recentTask: { ...t(), values: ["write"] } }, NOW)!
+  assert.equal(when.fields[0].slot, "recentWhen")
+  // 「지난주」 칩에는 날짜가 붙는다
+  assert.deepEqual(when.fields[0].options!.map((o) => o.label), ["이번 주", "지난주(11월 2일(월)~8일(일))", "그보다 전"])
+  const time = fallbackAsk({ ...facts, recentTask: { ...t(), values: ["write"] }, recentWhen: { ...t(), num: 0 } }, NOW)!
+  assert.equal(time.fields[0].slot, "recentTime")
+  assert.deepEqual(time.fields[0].options!.map((o) => o.label), ["5분 이내", "5~30분", "30분~1시간", "1시간 넘게"])
+  // 기억이 안 나면 언제 · 주고받은 시간은 묻지 않고 「보통 크기」 로 간다
+  const none = { ...facts, recentTask: { ...t(), values: ["none"] } }
+  assert.equal(notApplicable("recentWhen", none), true)
+  assert.equal(notApplicable("recentTime", none), true)
+  assert.equal(fallbackAsk(none, NOW)!.fields[0].slot, "taskSize")
+  // 주고받은 시간을 답했으면 「보통 크기」 는 묻지 않는다 · 모르면 묻는다
+  assert.equal(notApplicable("taskSize", { recentTime: { ...t(), num: 15 } }), true)
+  assert.equal(notApplicable("taskSize", { recentTime: { ...t(), unknown: true } }), false)
+  // 가장 최근 일을 고치면 지워진다
+  const pruned = pruneFacts({ ...none, recentWhen: { ...t(), num: 1 }, recentTime: { ...t(), num: 5 } })
+  assert.equal(pruned.recentWhen, undefined)
+  assert.equal(pruned.recentTime, undefined)
+})
+
+test("가장 최근 일을 말로 — 보기에 없는 일은 글 그대로 「기타」", () => {
+  const ask = fallbackAsk({ daysPerWeek: { ...t(), num: 3 }, hoursPerDay: { ...t(), num: 1 }, tools: { ...t(), labels: ["x"] }, payer: { ...t(), values: ["none"] }, limitHit: { ...t(), values: ["never"] }, taskKinds: { ...t(), values: ["write"] } }, NOW)!
+  const turns = [turn("r", ask)]
+  const said = resolveSay(guessSay("회의록 정리", turns), "회의록 정리", turns)
+  assert.equal(said.kind, "set")
+  const facts = factsOf([turn("r", ask, (said as { answer: AnswerValues }).answer)])
+  assert.deepEqual(facts.recentTask?.values, ["other"])
+  assert.deepEqual(facts.recentTask?.others, ["회의록 정리"])
+  // 보기 이름을 말하면 그 값
+  const mail = resolveSay(guessSay("문서 요약이요", turns), "문서 요약이요", turns)
+  assert.deepEqual(factsOf([turn("r", ask, (mail as { answer: AnswerValues }).answer)]).recentTask?.values, ["summarize"])
 })

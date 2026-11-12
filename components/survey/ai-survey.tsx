@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Spinner } from "@/components/ui/spinner"
 import { SURVEY_CHANGED_EVENT } from "@/lib/ai-survey/entry"
+import { FLAG_TEXT } from "@/lib/ai-survey/metrics"
 import { PURPOSES, PURPOSE_LABEL, SAY_MAX, answerText, fieldMode, understoodText, type AnswerValues, type Field, type FieldAnswer, type Purpose } from "@/lib/ai-survey/rules"
 import type { SurveyEvent, SurveyState, TurnView } from "@/lib/ai-survey/service"
 import { startStep, stepNav } from "@/lib/ai-survey/steps"
@@ -155,6 +156,9 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
   /** 옴니스의 짧은 말(못 알아들었을 때) — 저장되지 않는다 */
   const [note, setNote] = useState<string | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
+  /** 요약 확인 화면의 「이 부분 고칠까요?」 를 「이대로 둘게요」 로 닫았다 — 한 번만 묻는다 */
+  const [checkDismissed, setCheckDismissed] = useState(false)
+  const checkFlags = state.metrics?.flags ?? []
   /** 제출한 뒤 「다시 하기」 를 골랐다 — 시작하면 새 응답이 생기고 앞 응답은 기록으로 남는다 */
   const restart = useRef(false)
   /** 이번에 새로 나타난 말 — 그것만 떠오른다 */
@@ -584,7 +588,8 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
             안녕하세요. AI 를 어떻게 쓰고 계신지 몇 가지 여쭤볼게요.
             <div className="mt-1.5 text-[15px] text-muted-foreground">
               얼마나 쓰는지 · 어떤 일에 쓰는지 · 옴니스가 해 주면 좋겠는 일, 세 가지예요. 숫자는 밀거나 눌러서 고르고, 나머지는 편하게 말해 주세요(추천 답을 눌러도 돼요). 2~3분이면 끝나고 중간에 나가도 이어서 할 수 있어요.
-              답은 회사 AI 예산과 옴니스 기능을 정하는 데 쓰고, 원문은 본인과 관리자만 봅니다.
+              {/* 「예산」 을 말하면 답을 부풀리거나 줄이기 쉽다 — 쓰임과 공개 범위만 말한다(작업지시자 2026-11-12) */}
+              <span data-survey-purpose className="mt-1.5 block">옴니스가 어떤 일을 도와야 할지 정하는 데 씁니다. 개인 평가와 상관없고, 회사에는 전체 합계만 보입니다. 정확히 모르면 『잘 모르겠음』을 골라도 됩니다.</span>
             </div>
           </OmnisSays>
 
@@ -606,6 +611,34 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
             <OmnisSays fresh={freshId !== null} data-survey-closing="">
               {done ? "제출했습니다. 고맙습니다." : "이렇게 이해했어요. 맞나요?"}
               {state.summary && <div data-survey-summary className="mt-3 rounded-2xl bg-muted/60 px-4 py-3 text-[15px] leading-relaxed">{state.summary}</div>}
+              {!done && !checkDismissed && checkFlags.length > 0 && (
+                // 앞뒤가 안 맞아 보이는 답 — 한 번만 묻는다. 고치지 않아도 제출할 수 있다
+                <div data-survey-check className="mt-3 flex flex-col gap-2 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 text-[15px] leading-relaxed">
+                  <span className="font-medium">이 부분 고칠까요?</span>
+                  <ul className="flex flex-col gap-1.5">
+                    {checkFlags.map((f) => (
+                      <li key={f.code} data-survey-flag={f.code} className="flex flex-col gap-1.5">
+                        <span className="break-keep">{FLAG_TEXT[f.code]}</span>
+                        <span className="flex flex-wrap gap-1.5">
+                          {f.turnIds.map((id) => {
+                            const i = state.turns.findIndex((t) => t.id === id)
+                            const t = state.turns[i]
+                            if (!t?.answer || t.dead) return null
+                            return (
+                              <Button key={id} type="button" variant="outline" size="sm" className="touch-target h-9 rounded-full bg-background/70 px-3 text-[13.5px]" disabled={busy} onClick={() => startEdit(t)}>
+                                {i + 1}번 답 고치기
+                              </Button>
+                            )
+                          })}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <button type="button" data-survey-check-keep onClick={() => setCheckDismissed(true)} className="touch-hit self-start text-[13.5px] text-muted-foreground underline underline-offset-4">
+                    이대로 둘게요
+                  </button>
+                </div>
+              )}
               {state.metrics && (
                 <div className="mt-3">
                   <SurveyMetrics metrics={state.metrics} turns={state.turns} />

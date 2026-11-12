@@ -5,18 +5,18 @@ import { Header } from "@/components/layout/header"
 import { SurveyResultsView } from "@/components/survey/survey-results"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { surveyAllowed } from "@/lib/ai-survey/access"
-import { loadSurveyResults } from "@/lib/ai-survey/results"
+import { canSeeSurveyResults, loadSurveyResults } from "@/lib/ai-survey/results"
 import { auth } from "@/lib/auth"
 
 export const metadata: Metadata = { title: "AI 활용 설문 결과" }
 export const dynamic = "force-dynamic"
 
-/** 설문 결과 — 회사 전체 AI 사용량 추정 · 사람별 원문. 관리자만(원문은 본인과 관리자만 본다) */
+/** 설문 결과 — 회사 전체 합계만. 관리자만. 이름 · 사람별 원문은 관리자에게도 보이지 않는다(본인 응답은 본인만) */
 export default async function AiSurveyResultsPage() {
   const session = await auth()
   // 설문이 열리지 않은 계정에는 결과 화면도 없는 화면이다
   if (!surveyAllowed(session?.user?.id)) notFound()
-  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN"
+  const isAdmin = canSeeSurveyResults((session?.user as { role?: string } | undefined)?.role)
 
   if (!session?.user?.id || !isAdmin) {
     return (

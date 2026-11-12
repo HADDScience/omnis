@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto"
 import path from "node:path"
 import { expect, test, type Page } from "@playwright/test"
 import { PrismaClient } from "../../generated/prisma/client"
-import { normalizeAsk, type RawField } from "../../lib/ai-survey/rules"
+import { lastWeekLabel, normalizeAsk, type Facts, type RawField } from "../../lib/ai-survey/rules"
 import { quickLogin } from "./_setup"
 
 /**
@@ -128,6 +128,11 @@ test.describe("AI 활용 설문 @settings", () => {
     await page.reload()
     await expect(page.locator('[data-ai-survey="intro"]')).toBeVisible({ timeout: 30_000 })
     await expect(banner).toHaveCount(0)
+    // 목적 문구 — 「예산」 을 말하지 않고, 개인 평가와 상관없고 합계만 보인다고 말한다(답을 부풀리거나 줄이지 않게)
+    const intro = page.locator("[data-survey-intro]")
+    await expect(intro.locator("[data-survey-purpose]")).toHaveText("옴니스가 어떤 일을 도와야 할지 정하는 데 씁니다. 개인 평가와 상관없고, 회사에는 전체 합계만 보입니다. 정확히 모르면 『잘 모르겠음』을 골라도 됩니다.")
+    await expect(intro).not.toContainText("예산")
+    if (shots) await page.screenshot({ path: path.join(shots, "01-intro-light.png") })
     await page.getByRole("button", { name: "시작하기" }).click()
 
     const turn = page.locator("[data-survey-turn]")
@@ -137,7 +142,10 @@ test.describe("AI 활용 설문 @settings", () => {
     // 어느 칸이든 「잘 모르겠음」 이 있고, 답하기 전에는 보낼 수 없다
     await expect(turn.locator("[data-survey-unknown]").first()).toBeVisible()
     await expect(turn.getByRole("button", { name: "보내기", exact: true })).toBeDisabled()
-    // 첫 질문은 주 사용 일수 — 일주일(0~7일)에서 고른다. 숫자를 글로 치는 칸이 없다
+    // 첫 질문은 지난주 사용 일수 — 「평소」 가 아니라 지난주(월~일), 날짜가 괄호에. 일주일(0~7일)에서 고른다. 숫자를 글로 치는 칸이 없다
+    await expect(page.locator("[data-survey-question]")).toContainText(lastWeekLabel())
+    await expect(page.locator("[data-survey-question]")).toContainText("지난주(")
+    await expect(page.locator("[data-survey-question]")).not.toContainText("평소")
     const days0 = turn.locator('[data-slot-name="daysPerWeek"]')
     await expect(days0).toContainText("0일")
     await expect(days0).toContainText("7일")
@@ -203,7 +211,15 @@ test.describe("AI 활용 설문 @settings", () => {
     await expect(answers).toHaveCount(3)
     await expect(editing).toHaveCount(0)
 
-    for (let i = 0; i < 16 && (await page.locator('[data-ai-survey="confirm"]').count()) === 0; i++) await answerTurn(page)
+    for (let i = 0; i < 20 && (await page.locator('[data-ai-survey="confirm"]').count()) === 0; i++) {
+      // 가장 최근에 맡긴 일 — 기억 안 남 · 기타까지 칩으로 있다
+      const recent = page.locator('[data-survey-turn] [data-slot-name="recentTask"]')
+      if ((await recent.count()) > 0) {
+        await expect(recent.locator("[data-survey-option]")).toHaveText(["메일 초안", "문서 요약", "표 정리", "번역", "코드", "기억 안 남", "기타"])
+        if (shots) await page.screenshot({ path: path.join(shots, "02-recent-task-light.png") })
+      }
+      await answerTurn(page)
+    }
     const confirm = page.locator('[data-ai-survey="confirm"]')
     await expect(confirm).toBeVisible({ timeout: 30_000 })
     for (const p of ["usage", "tasks", "wishes"]) await expect(confirm.locator(`[data-purpose="${p}"]`)).toHaveAttribute("aria-valuenow", "100")
@@ -458,7 +474,7 @@ test.describe("AI 활용 설문 @settings", () => {
 
     // 「잘 모르겠음」 만으로도 끝까지 갈 수 있다 — 같은 질문을 되풀이하지 않는다
     let state = (await events({ answer: { turnId: first.id, values: { [f]: { unknown: true } } } })).at(-1)!.state as { status: string; turns: { id: string; answer?: object; ask: { fields: { id: string }[] } }[] }
-    for (let i = 0; i < 16 && state.status === "IN_PROGRESS"; i++) {
+    for (let i = 0; i < 20 && state.status === "IN_PROGRESS"; i++) {
       const last = state.turns.at(-1)!
       state = (await events({ answer: { turnId: last.id, values: Object.fromEntries(last.ask.fields.map((x) => [x.id, { unknown: true }])) } })).at(-1)!.state as typeof state
     }
@@ -470,37 +486,127 @@ test.describe("AI 활용 설문 @settings", () => {
     await page.request.delete("/api/ai-survey")
   })
 
-  // 지키는 것: 회사 전체 추정과 개인 원문은 관리자만 보고, 구성원은 남의 설문을 볼 길이 없다
-  test("관리자만 결과를 본다 — 회사 전체 추정 · 사람별 원문 · 대기 시간", async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 })
+  // 지키는 것: 앞뒤가 안 맞는 답(지난주 0일인데 가장 최근 일이 지난주)은 요약 확인에서 「이 부분 고칠까요?」 로 한 번 묻는다.
+  //   고칠 답으로 바로 가고, 「이대로 둘게요」 로 닫아도 제출할 수 있다(강제 아님). 라이트 · 다크
+  for (const theme of ["light", "dark"] as const) {
+    test(`앞뒤가 안 맞는 답 — 제출 전 요약에서 한 번 묻는다 (${theme})`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 })
+      if (theme === "dark") await page.addInitScript(() => localStorage.setItem("theme", "dark"))
+      await quickLogin(page, "사원3")
+      await page.request.delete("/api/ai-survey")
+      type St = { status: string; turns: { id: string; answer?: object; ask: { fields: { id: string; slot: string; options?: { id: string; label: string }[] }[] } }[] }
+      const step = async (data: object) => (await (await page.request.post("/api/ai-survey/turn", { data })).text()).trim().split("\n").map((l) => JSON.parse(l) as { t: string; state?: St }).at(-1)!.state!
+      // 지난주 0일 → 가장 최근 일(메일 초안) → 언제: 지난주 → 나머지는 잘 모르겠음
+      let st = await step({})
+      for (let i = 0; i < 12 && st.status === "IN_PROGRESS"; i++) {
+        const last = st.turns.at(-1)!
+        const values = Object.fromEntries(last.ask.fields.map((x) => {
+          if (x.slot === "daysPerWeek") return [x.id, { num: 0 }]
+          if (x.slot === "recentTask") return [x.id, { choice: [x.options!.find((o) => o.label === "메일 초안")!.id] }]
+          if (x.slot === "recentWhen") return [x.id, { choice: [x.options!.find((o) => o.label.startsWith("지난주"))!.id] }]
+          return [x.id, { unknown: true }]
+        }))
+        st = await step({ answer: { turnId: last.id, values } })
+      }
+      expect(st.status).toBe("CONFIRM")
+
+      await page.goto("/settings/ai-survey")
+      const confirm = page.locator('[data-ai-survey="confirm"]')
+      const check = confirm.locator("[data-survey-check]")
+      await expect(check).toBeVisible({ timeout: 30_000 })
+      await expect(check).toContainText("이 부분 고칠까요?")
+      await expect(check.locator('[data-survey-flag="zero-days-recent"]')).toContainText("지난주에 쓴 날이 0일인데, 가장 최근 일은 지난주였다고 하셨어요.")
+      // 고칠 답으로 바로 간다 — 1번(쓴 날 수) · 3번(언제)
+      await expect(check.getByRole("button", { name: "1번 답 고치기" })).toBeVisible()
+      await expect(check.getByRole("button", { name: "3번 답 고치기" })).toBeVisible()
+      await check.scrollIntoViewIfNeeded()
+      if (shots) await page.screenshot({ path: path.join(shots, `03-check-${theme}.png`) })
+      await check.getByRole("button", { name: "3번 답 고치기" }).click()
+      await expect(page.locator("[data-survey-editing]")).toContainText("그 일은 언제였나요?")
+      await page.locator("[data-survey-editing]").getByRole("button", { name: "취소" }).click()
+      // 강제가 아니다 — 닫으면 다시 묻지 않고, 그대로 제출할 수 있다
+      await check.getByRole("button", { name: "이대로 둘게요" }).click()
+      await expect(check).toHaveCount(0)
+      await expect(confirm.getByRole("button", { name: "맞아요, 제출" })).toBeEnabled()
+      await page.request.delete("/api/ai-survey")
+    })
+  }
+
+  // 지키는 것: 관리자에게도 합계만 — 이름 · 사람별 원문 · 사람별 지표는 화면에도 API 에도 없다. 응답 3명 미만이면 합계도 숨긴다.
+  //   앞뒤가 안 맞는 응답은 「확인 필요」 로 따로 센다. 구성원은 결과 화면 · API 를 볼 수 없다
+  test("관리자 결과 — 합계만, 3명 미만이면 숨김, 확인 필요는 따로, API 도 원문 없음", async ({ page }) => {
+    test.skip(process.env.E2E_ISOLATED !== "true", "시험 DB 에 응답을 직접 넣는다 — 격리된 DB 에서만")
+    await page.setViewportSize({ width: 390, height: 844 })
     await quickLogin(page, "사원2")
     await page.goto("/settings/ai-survey/results")
     await expect(page.getByText("관리자만 볼 수 있습니다")).toBeVisible({ timeout: 30_000 })
     await expect(page.locator("[data-survey-results]")).toHaveCount(0)
+    expect((await page.request.get("/api/ai-survey/results")).status()).toBe(403)
     await page.goto("/settings?tab=info")
     await expect(page.locator("[data-ai-survey-entry]")).toBeVisible({ timeout: 30_000 })
     await expect(page.locator("[data-ai-survey-results-link]")).toHaveCount(0)
-
     await page.context().clearCookies()
+    expect((await page.request.get("/api/ai-survey/results")).status()).toBe(401)
+
+    // 응답을 정해 둔다 — 앞 시험들이 남긴 제출을 지우고 두 명만 둔다
+    const names = ["사원1", "사원2", "사원3", "팀장", "부팀장"]
+    await clearSurveys(names)
+    const prisma = new PrismaClient()
+    const users = Object.fromEntries((await prisma.user.findMany({ where: { name: { in: names } }, select: { id: true, name: true } })).map((u) => [u.name, u.id]))
+    const put = (name: string, facts: Facts) => prisma.aiSurvey.create({ data: { userId: users[name], status: "SUBMITTED", submittedAt: new Date(), facts: JSON.parse(JSON.stringify(facts)) } })
+    const f = (rest: object) => ({ turnId: "t", ...rest })
+    await put("사원1", { daysPerWeek: f({ num: 5 }), hoursPerDay: f({ num: 3 }), payer: f({ values: ["personal"] }), monthlyFeeKrw: f({ num: 30000 }), pain: f({ labels: ["회사 자료를 모른다", "사원1만 쓴 아쉬움"] }), wishes: f({ values: ["search"] }) })
+    await put("사원2", { daysPerWeek: f({ num: 2 }), hoursPerDay: f({ num: 1 }), payer: f({ values: ["none"] }), recentTask: f({ values: ["write"] }), pain: f({ labels: ["회사 자료를 모른다"] }) })
+
     await quickLogin(page, "팀장")
     await page.goto("/settings?tab=info")
     await page.locator("[data-ai-survey-results-link]").click()
     const results = page.locator("[data-survey-results]")
     await expect(results).toBeVisible({ timeout: 30_000 })
-    // 앞 시험에서 사원1 이 제출했다
-    await expect(results.locator("[data-survey-company]")).toContainText("월 토큰(응답자 합)")
-    await expect(results.locator("[data-survey-company]")).toContainText("옴니스 API 환산")
-    await expect(results.locator("[data-survey-company]")).toContainText("시작 전")
-    if (shots) await page.screenshot({ path: path.join(shots, "ai-survey-results-pc.png"), fullPage: true })
+    // 두 명 — 합계도 숨긴다
+    await expect(results.locator("[data-survey-hidden]")).toContainText("응답 3명부터 보입니다")
+    await expect(results.locator("[data-survey-company]")).toHaveCount(0)
+    const two = (await (await page.request.get("/api/ai-survey/results")).json()) as { summary: { respondents: number; totals: unknown } }
+    expect(two.summary).toMatchObject({ respondents: 2, totals: null })
+    if (shots) await page.screenshot({ path: path.join(shots, "04-admin-hidden-light.png") })
 
-    await results.getByRole("tab", { name: "사람별" }).click()
-    const person = results.locator("[data-survey-person]").filter({ hasText: "사원1" })
-    await expect(person).toContainText("제출")
-    await person.locator("summary").click()
-    await expect(person).toContainText("원문 — 질문 · 제시한 보기 · 응답")
-    await expect(person.locator("[data-survey-metrics]")).toContainText("근거")
+    // 세 번째 — 앞뒤가 안 맞는 응답(지난주 0일 · 가장 최근 일이 지난주)
+    await put("사원3", { daysPerWeek: f({ num: 0 }), recentTask: f({ values: ["write"] }), recentWhen: f({ num: 1 }) })
+    await prisma.$disconnect()
+    await page.reload()
+    const company = results.locator("[data-survey-company]")
+    await expect(company).toBeVisible({ timeout: 30_000 })
+    await expect(company).toContainText("3 / ")
+    await expect(company).toContainText("지난주 평균 사용 일수")
+    await expect(company).toContainText("2.3일")
+    await expect(company).toContainText("강도 분포")
+    await expect(company).toContainText("유료로 쓰는 사람")
+    await expect(company).toContainText("그중 개인이 내는 사람 1명")
+    await expect(company).toContainText("95% 범위")
+    await expect(company.locator("[data-survey-needs-check]")).toContainText("확인 필요 — 앞뒤가 안 맞는 응답 1명")
+    await expect(company.locator("[data-survey-pains]")).toContainText("회사 자료를 모른다")
+    // 한 명만 쓴 글 · 이름 · 사람별 탭이 없다
+    await expect(company.locator("[data-survey-pains]")).not.toContainText("사원1만 쓴 아쉬움")
+    for (const n of ["사원1", "사원2", "사원3"]) await expect(results).not.toContainText(n)
+    await expect(results.getByRole("tab", { name: "사람별" })).toHaveCount(0)
+    await expect(results.locator("[data-survey-person], [data-survey-metrics]")).toHaveCount(0)
+    await page.screenshot({ path: shots ? path.join(shots, "05-admin-totals-light.png") : test.info().outputPath("admin.png"), fullPage: true })
+
+    // API 도 합계만 — 이름 · 사람 id · 원문 · 사람별 지표가 없다
+    const res = await page.request.get("/api/ai-survey/results")
+    expect(res.status()).toBe(200)
+    const body = await res.text()
+    for (const leak of ["사원1", "사원2", "사원3", users["사원1"], users["사원2"], users["사원3"], "사원1만 쓴 아쉬움", "\"turns\"", "\"people\"", "\"evidence\""]) expect(body, `${leak} 가 새면 안 된다`).not.toContain(leak)
+    expect(JSON.parse(body).summary.totals).toMatchObject({ needsCheck: 1, paid: 1, personalPay: 1, counted: 2 })
+
+    // 다크
+    await page.evaluate(() => localStorage.setItem("theme", "dark"))
+    await page.reload()
+    await expect(company).toBeVisible({ timeout: 30_000 })
+    if (shots) await page.screenshot({ path: path.join(shots, "05-admin-totals-dark.png"), fullPage: true })
 
     await results.getByRole("tab", { name: "대기 · 비용" }).click()
     await expect(results.locator("[data-survey-latency]")).toContainText("첫 질문")
+    await clearSurveys(names)
   })
 })

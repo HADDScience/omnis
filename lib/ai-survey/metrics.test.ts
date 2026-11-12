@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { companyEstimate, computeMetrics, intensityOf, latencyTable, summaryText, taskShares, tokensLabel, type Metrics } from "./metrics"
+import { MIN_RESPONSES, companySummary, computeMetrics, intensityOf, latencyTable, projectTotal, sizeOfMinutes, summaryText, taskShares, tokensLabel } from "./metrics"
 import type { Facts } from "./rules"
 
 const f = (turnId: string, rest: object) => ({ turnId, ...rest })
@@ -95,52 +95,132 @@ test("작업 비중 — 합은 늘 100, 가장 많이 하는 작업이 3배, 모
   assert.deepEqual(taskShares([], "write"), {})
 })
 
-const person = (over: Partial<Metrics>): Metrics => ({ ...computeMetrics(HEAVY), ...over })
+// ─── 회사 전체 — 합계만 ─────────────────────────────────────────────
 
-test("회사 전체 — 응답자 합산 · 전원 환산 · 구독료 · 미응답자 · 순위", () => {
-  const light = computeMetrics({ daysPerWeek: f("a", { num: 1 }), hoursPerDay: f("b", { num: 1 }), payer: f("c", { values: ["company"] }), monthlyFeeKrw: f("d", { num: 44000 }), taskKinds: f("e", { values: ["write"] }), wishes: f("g", { values: ["search"] }) })
-  const e = companyEstimate({
-    members: [{ id: "u1", name: "가" }, { id: "u2", name: "나" }, { id: "u3", name: "다" }, { id: "u4", name: "라" }],
-    surveys: [
-      { userId: "u1", status: "SUBMITTED", metrics: person({}) },
-      { userId: "u2", status: "SUBMITTED", metrics: light },
-      { userId: "u3", status: "IN_PROGRESS", metrics: null },
-      // 퇴사자의 설문은 세지 않는다
-      { userId: "gone", status: "SUBMITTED", metrics: person({}) },
-    ],
-  })
-  assert.equal(e.headcount, 4)
-  assert.equal(e.respondents, 2)
-  assert.deepEqual(e.inProgress, ["다"])
-  assert.deepEqual(e.notStarted, ["라"])
-  assert.equal(e.monthlyTokens, 180_000_000 + 22_000_000)
-  assert.deepEqual(e.apiKrw, { cache66: 252_500, cache89: 125_240 })
-  assert.equal(e.projected?.monthlyTokens, 404_000_000)
-  assert.deepEqual(e.subscriptionKrw, { company: 44000, personal: 30000, both: 0, total: 74000 })
-  assert.deepEqual(e.grades, { none: 0, light: 1, medium: 0, heavy: 1, unknown: 0 })
-  assert.deepEqual(e.taskShare, [{ kind: "write", pct: 60 }, { kind: "code", pct: 30 }, { kind: "summarize", pct: 10 }])
-  assert.deepEqual(e.wishRanking, [{ tag: "search", count: 2 }, { tag: "automate", count: 1 }, { tag: "other", count: 1 }])
-  assert.deepEqual(e.wishNotes, ["특허 검색"])
+const row = (userId: string, facts: Facts, status = "SUBMITTED", at = 1) => ({ userId, status, createdAt: new Date(at * 1000), facts })
+const LIGHT: Facts = { daysPerWeek: f("a", { num: 1 }), hoursPerDay: f("b", { num: 1 }), payer: f("c", { values: ["company"] }), monthlyFeeKrw: f("d", { num: 44000 }), taskKinds: f("e", { values: ["write"] }), wishes: f("g", { values: ["search"] }), pain: f("h", { labels: ["회사 자료를 모른다", "혼자 쓴 말"] }) }
+const MEDIUM: Facts = { daysPerWeek: f("a", { num: 4 }), hoursPerDay: f("b", { num: 1 }), payer: f("c", { values: ["none"] }), recentTask: f("r", { values: ["write"] }), pain: f("h", { labels: ["회사 자료를 모른다"] }) }
+
+test("회사 전체 — 응답 3명 미만이면 합계도 숨긴다(수만 보인다)", () => {
+  const s = companySummary(["u1", "u2", "u3", "u4"], [row("u1", HEAVY), row("u2", LIGHT), row("u3", {}, "IN_PROGRESS")])
+  assert.deepEqual(s, { headcount: 4, respondents: 2, inProgress: 1, notStarted: 1, totals: null })
+  assert.equal(MIN_RESPONSES, 3)
 })
 
-test("회사 전체 — 제출 전(확인 대기)은 응답으로 세지 않고, 사용량을 모르는 응답은 합산 · 평균에서 뺀다", () => {
-  const e = companyEstimate({
-    members: [{ id: "u1", name: "가" }, { id: "u2", name: "나" }, { id: "u3", name: "다" }],
-    surveys: [
-      { userId: "u1", status: "CONFIRM", metrics: person({}) },
-      { userId: "u2", status: "SUBMITTED", metrics: person({ intensity: "unknown", monthlyTokens: null, apiKrw: null }) },
-      { userId: "u3", status: "SUBMITTED", metrics: person({}) },
-    ],
-  })
-  assert.equal(e.respondents, 2)
-  assert.deepEqual(e.inProgress, ["가"])
-  assert.equal(e.unknownGrade, 1)
-  assert.equal(e.monthlyTokens, 180_000_000)
-  assert.equal(e.projected?.monthlyTokens, 540_000_000)
-  const none = companyEstimate({ members: [{ id: "u1", name: "가" }], surveys: [] })
-  assert.equal(none.projected, null)
-  assert.equal(none.monthlyTokens, 0)
-  assert.deepEqual(none.notStarted, ["가"])
+test("회사 전체 — 합계 · 평균 일수 · 강도 분포 · 유료 · 개인결제 · 토큰 범위 · 빈도, 이름 · 원문 · 사람별 값은 없다", () => {
+  const s = companySummary(["u1", "u2", "u3", "u4", "u5"], [
+    row("u1", HEAVY), row("u2", LIGHT), row("u3", MEDIUM),
+    row("u4", {}, "CONFIRM"),
+    // 퇴사자의 설문은 세지 않는다
+    row("gone", HEAVY),
+  ])
+  assert.equal(s.respondents, 3)
+  assert.equal(s.inProgress, 1)
+  assert.equal(s.notStarted, 1)
+  const t = s.totals!
+  assert.equal(t.avgDays, 3.3)
+  assert.deepEqual(t.grades, { none: 0, light: 1, medium: 1, heavy: 1, unknown: 0 })
+  assert.equal(t.paid, 2)
+  assert.equal(t.personalPay, 1)
+  assert.equal(t.subscriptionKrw, 74000)
+  assert.equal(t.needsCheck, 0)
+  assert.equal(t.counted, 3)
+  // 1.8억 · 2,200만 · 6,000만(가장 최근 일만 있고 시간은 모름 → 보정 없음) — 평균 × 5명, 범위는 표본 오차
+  assert.equal(t.tokens!.respondents, 262_000_000)
+  assert.equal(t.tokens!.projected, 436_666_667)
+  assert.ok(t.tokens!.low < t.tokens!.projected && t.tokens!.high > t.tokens!.projected)
+  assert.deepEqual(t.wishRanking, [{ tag: "search", count: 2 }, { tag: "automate", count: 1 }, { tag: "other", count: 1 }])
+  // 두 명 이상 같은 말만 이름이 보이고, 한 명만 쓴 말은 수만 센다
+  assert.deepEqual(t.painRanking, [{ label: "회사 자료를 모른다", count: 3 }])
+  assert.equal(t.painOthers, 1)
+  assert.deepEqual(t.wishNotes, [])
+  assert.equal(t.wishOthers, 1)
+  assert.deepEqual(t.recentTasks, [{ label: "메일 초안", count: 1 }])
+  // 이름 · 사람 id · 한 명만 쓴 글이 어디에도 없다
+  const json = JSON.stringify(s)
+  for (const leak of ["u1", "u2", "gone", "혼자 쓴 말", "특허 검색", "turnId", "evidence"]) assert.ok(!json.includes(leak), `${leak} 가 새면 안 된다`)
+})
+
+test("회사 전체 — 다시 한 사람은 가장 최근에 제출한 1건, 앞뒤가 안 맞는 응답은 확인 필요로 따로 세고 추정에서 뺀다", () => {
+  const odd: Facts = { daysPerWeek: f("a", { num: 0 }), recentTask: f("r", { values: ["write"] }), recentWhen: f("w", { num: 1 }) }
+  const s = companySummary(["u1", "u2", "u3", "u4"], [
+    row("u1", LIGHT, "SUBMITTED", 1), row("u1", HEAVY, "SUBMITTED", 2), row("u1", MEDIUM, "IN_PROGRESS", 3),
+    row("u2", LIGHT), row("u3", odd), row("u4", { daysPerWeek: f("a", { unknown: true }) }),
+  ])
+  const t = s.totals!
+  assert.equal(s.respondents, 4)
+  assert.equal(t.needsCheck, 1)
+  assert.deepEqual(t.flagCounts, [{ code: "zero-days-recent", count: 1 }])
+  assert.equal(t.unknownGrade, 1)
+  assert.equal(t.counted, 2)
+  // u1 은 헤비(1.8억) — 다시 하는 중인 응답이 아니라 마지막 제출
+  assert.equal(t.tokens!.respondents, 180_000_000 + 22_000_000)
+})
+
+test("전원 환산 범위 — 다 답했으면 범위가 없고, 한 명이면 평균만", () => {
+  assert.deepEqual(projectTotal([10, 20], 2), { respondents: 30, projected: 30, low: 30, high: 30 })
+  assert.deepEqual(projectTotal([10], 5), { respondents: 10, projected: 50, low: 50, high: 50 })
+  assert.equal(projectTotal([], 5), null)
+  const r = projectTotal([10, 20, 30], 10)!
+  assert.equal(r.projected, 200)
+  // 1.96 × 10 × (10/√3) × √(7/9) ≈ 99.8
+  assert.deepEqual([r.low, r.high], [100, 300])
+})
+
+// ─── 앞뒤가 안 맞는 답(작업지시자 2026-11-12) ─────────────────────────────────────────────
+
+test("앞뒤 판정 — 무료 · 하루 8시간 이상 · 한도 경험 없음", () => {
+  const base: Facts = { daysPerWeek: f("d", { num: 5 }), hoursPerDay: f("h", { num: 8 }), payer: f("p", { values: ["none"] }), limitHit: f("l", { values: ["never"] }) }
+  assert.deepEqual(computeMetrics(base).flags, [{ code: "free-heavy-no-limit", turnIds: ["p", "h", "l"] }])
+  assert.deepEqual(computeMetrics({ ...base, hoursPerDay: f("h", { num: 7.5 }) }).flags, [])
+  assert.deepEqual(computeMetrics({ ...base, limitHit: f("l", { values: ["sometimes"] }) }).flags, [])
+  assert.deepEqual(computeMetrics({ ...base, payer: f("p", { values: ["company"] }) }).flags, [])
+  // 횟수만 답했으면 어림한 하루 시간(50번 × 10분 ≈ 8.3시간)으로 본다
+  const noHours: Facts = { ...base }
+  delete noHours.hoursPerDay
+  assert.equal(computeMetrics({ ...noHours, sessionsPerDay: f("s", { num: 50, over: true }) }).flags![0].code, "free-heavy-no-limit")
+})
+
+test("앞뒤 판정 — 주 1일 · 월 구독료 20만 이상", () => {
+  const base: Facts = { daysPerWeek: f("d", { num: 1 }), payer: f("p", { values: ["personal"] }), monthlyFeeKrw: f("m", { num: 300000 }) }
+  assert.deepEqual(computeMetrics(base).flags, [{ code: "one-day-big-fee", turnIds: ["d", "m"] }])
+  assert.deepEqual(computeMetrics({ ...base, monthlyFeeKrw: f("m", { num: 150000 }) }).flags, [])
+  assert.deepEqual(computeMetrics({ ...base, daysPerWeek: f("d", { num: 2 }) }).flags, [])
+})
+
+test("앞뒤 판정 — 작업은 짧은 질문뿐인데 헤비", () => {
+  const base: Facts = { daysPerWeek: f("d", { num: 5 }), hoursPerDay: f("h", { num: 3 }), taskKinds: f("k", { values: ["short_qa"] }) }
+  assert.equal(computeMetrics(base).intensity, "heavy")
+  assert.deepEqual(computeMetrics(base).flags, [{ code: "short-only-heavy", turnIds: ["k", "d", "h"] }])
+  assert.deepEqual(computeMetrics({ ...base, taskKinds: f("k", { values: ["short_qa", "code"] }) }).flags, [])
+  assert.deepEqual(computeMetrics({ ...base, hoursPerDay: f("h", { num: 1 }) }).flags, [])
+})
+
+test("앞뒤 판정 — 지난주 0일인데 가장 최근 일이 지난주", () => {
+  const base: Facts = { daysPerWeek: f("d", { num: 0 }), recentTask: f("r", { values: ["write"] }), recentWhen: f("w", { num: 1 }) }
+  assert.deepEqual(computeMetrics(base).flags, [{ code: "zero-days-recent", turnIds: ["d", "w"] }])
+  // 이번 주 · 그보다 전이면 맞다
+  assert.deepEqual(computeMetrics({ ...base, recentWhen: f("w", { num: 0 }) }).flags, [])
+  assert.deepEqual(computeMetrics({ ...base, recentWhen: f("w", { num: 2, over: true }) }).flags, [])
+  // 모르면 판정하지 않는다
+  assert.deepEqual(computeMetrics({ ...base, daysPerWeek: f("d", { unknown: true }) }).flags, [])
+  assert.deepEqual(computeMetrics(HEAVY).flags, [])
+})
+
+test("작업 크기 — 가장 최근 일에 주고받은 시간이 「보통 크기」 보다 먼저, 근거도 그 답", () => {
+  const withRecent = computeMetrics({ ...HEAVY, recentTask: f("r", { values: ["write"] }), recentTime: f("rt", { num: 5 }) })
+  // 헤비 1.2억 × 짧음 0.5 — 보통 크기 답(긴 작업)은 쓰지 않는다
+  assert.equal(withRecent.monthlyTokens, 60_000_000)
+  assert.equal(withRecent.size, "short")
+  assert.equal(withRecent.sizeFrom, "recent")
+  assert.deepEqual(withRecent.evidence.monthlyTokens, ["t1", "rt"])
+  assert.deepEqual(withRecent.evidence.recent, ["r", "rt"])
+  assert.deepEqual([sizeOfMinutes(5), sizeOfMinutes(15), sizeOfMinutes(45), sizeOfMinutes(90)], ["short", "medium", "long", "long"])
+  // 주고받은 시간을 모르면 보통 크기
+  const unknown = computeMetrics({ ...HEAVY, recentTime: f("rt", { unknown: true }) })
+  assert.equal(unknown.sizeFrom, "taskSize")
+  assert.equal(unknown.monthlyTokens, 180_000_000)
+  assert.deepEqual(unknown.evidence.monthlyTokens, ["t1", "t8"])
 })
 
 test("요약 글 — 답한 것만 문장이 된다", () => {

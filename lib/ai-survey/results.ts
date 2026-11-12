@@ -1,29 +1,13 @@
-// AI 활용 설문 — 관리자 결과 화면이 읽는 것. 원문(turns)이 들어 있으므로 관리자 확인을 거친 뒤에만 부른다.
+// AI 활용 설문 — 관리자 결과 화면 · API 가 읽는 것. 합계만 낸다(이름 · 사람별 원문 · 사람별 지표 없음, 작업지시자 2026-11-12).
+// 원문(turns)은 대기 시간 · 질문 출처를 세는 데만 쓰고 밖으로 내보내지 않는다. 본인 응답은 본인만 GET /api/ai-survey 로 본다.
 import { prisma } from "@/lib/db"
 import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
-import { recordsByUser } from "./entry"
-import { companyEstimate, latencyTable, type CompanyEstimate, type LatencyRow, type Metrics } from "./metrics"
+import { companySummary, latencyTable, type CompanySummary, type LatencyRow } from "./metrics"
 import type { Turn } from "./rules"
 
-export interface PersonResult {
-  userId: string
-  name: string
-  /** 시작하지 않았으면 null */
-  status: string | null
-  turns: Turn[]
-  summary: string | null
-  metrics: Metrics | null
-  submittedAt: Date | null
-  /** 제출한 응답 수 — 둘 이상이면 다시 한 사람이다 */
-  records: number
-  /** 다시 하는 중 — 위 지표 · 원문은 앞서 제출한 응답이다 */
-  redoing: boolean
-}
-
 export interface SurveyResults {
-  estimate: CompanyEstimate
-  people: PersonResult[]
+  summary: CompanySummary
   latency: LatencyRow[]
   /** 설문 질문을 만드는 데 쓴 모델 비용(AiUsage feature "survey") */
   cost: { calls: number; krw: number; inputTokens: number; cachedInputTokens: number; outputTokens: number }
@@ -31,34 +15,20 @@ export interface SurveyResults {
   sources: { model: number; fallback: number }
 }
 
+/** 결과는 관리자만 — 화면과 API 가 같은 규칙을 쓴다 */
+export const canSeeSurveyResults = (role: string | null | undefined) => role === "ADMIN"
+
 export async function loadSurveyResults(): Promise<SurveyResults> {
   const [members, rows, usage] = await Promise.all([
-    prisma.user.findMany({ where: { id: { not: SYSTEM_USER_ID }, ...ACTIVE_MEMBER_WHERE }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.aiSurvey.findMany(),
+    prisma.user.findMany({ where: { id: { not: SYSTEM_USER_ID }, ...ACTIVE_MEMBER_WHERE }, select: { id: true } }),
+    prisma.aiSurvey.findMany({ select: { userId: true, status: true, createdAt: true, facts: true, turns: true } }),
     prisma.aiUsage.aggregate({ where: { feature: "survey" }, _count: true, _sum: { costKrw: true, inputTokens: true, cachedInputTokens: true, outputTokens: true } }),
   ])
-  // 사람마다 가장 최근에 제출한 1건을 센다. 제출한 적이 없으면 지금 응답(답하는 중)을 보인다
-  const byUser = recordsByUser(rows)
-  const shown = rows.filter((r) => { const u = byUser.get(r.userId)!; return r === (u.counted ?? u.current) })
-  const people: PersonResult[] = members.map((m) => {
-    const u = byUser.get(m.id)
-    const r = u ? u.counted ?? u.current : undefined
-    return {
-      userId: m.id, name: m.name,
-      records: u?.submitted ?? 0,
-      redoing: !!u && u.counted !== null && u.current !== u.counted,
-      status: r?.status ?? null,
-      turns: (r?.turns as unknown as Turn[] | undefined) ?? [],
-      summary: r?.summary ?? null,
-      metrics: (r?.metrics as unknown as Metrics | null | undefined) ?? null,
-      submittedAt: r?.submittedAt ?? null,
-    }
-  })
   const allTurns = rows.map((r) => r.turns as unknown as Turn[])
   const flat = allTurns.flat()
   return {
-    estimate: companyEstimate({ members, surveys: shown.map((r) => ({ userId: r.userId, status: r.status, metrics: r.metrics as unknown as Metrics | null })) }),
-    people,
+    summary: companySummary(members.map((m) => m.id), rows),
+    // 대기 시간 · 질문 출처는 응답 내용이 아니라 설문 도구의 성능이다 — 응답 수와 상관없이 보인다
     latency: latencyTable(allTurns),
     cost: {
       calls: usage._count,
