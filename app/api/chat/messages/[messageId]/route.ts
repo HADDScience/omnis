@@ -128,6 +128,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
             id: edited.replyTo.id,
             authorName: edited.replyTo.author.name,
             content: edited.replyTo.deletedAt ? CHAT_DELETED_TEXT : edited.replyTo.content.slice(0, 80),
+            deleted: !!edited.replyTo.deletedAt,
           }
         : null,
       _rebuild: null,
@@ -164,6 +165,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
           id: updated.replyTo.id,
           authorName: updated.replyTo.author.name,
           content: updated.replyTo.deletedAt ? CHAT_DELETED_TEXT : updated.replyTo.content.slice(0, 80),
+          deleted: !!updated.replyTo.deletedAt,
         }
       : null,
     _rebuild: nextTaskId || movedFrom ? "queued" : null,

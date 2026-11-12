@@ -26,6 +26,7 @@ function shapeReply<T extends { replyTo: { id: string; content: string; deletedA
           id: m.replyTo.id,
           authorName: m.replyTo.author.name,
           content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
+          deleted: !!m.replyTo.deletedAt,
         }
       : null,
   }

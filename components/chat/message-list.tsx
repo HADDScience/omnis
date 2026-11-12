@@ -78,7 +78,7 @@ interface Message {
   editedAt?: string | null
   /** 지운 글은 자리만 남는다 — 본문은 서버가 내려보내지 않는다 */
   deletedAt?: string | null
-  replyTo?: { id: string; authorName: string; content: string } | null
+  replyTo?: { id: string; authorName: string; content: string; deleted?: boolean } | null
   /** 사람 방의 @옴니스 안내(시작 · 끝 줄)가 가리키는 옴니스 세션 — 알약에 「열기」 를 붙인다 */
   sessionRoomId?: string | null
 }
@@ -126,6 +126,8 @@ interface MessageListProps {
   loadingOlder?: boolean
   /** 답장 — 입력창이 대상 글을 물고 있게 한다 */
   onReply?: (message: { id: string; authorName: string; content: string }) => void
+  /** 답장 인용을 눌렀다 — 원글로 간다(불러오기 · 강조 · 못 찾음 안내는 부모가 한다) */
+  onGoToReply?: (replyTo: { id: string; deleted?: boolean }) => void
   /** 내 글 고치기. 저장이 끝나면 목록을 다시 읽는 것은 부모가 한다 */
   onEdit?: (id: string, content: string) => Promise<void>
   onDelete?: (id: string) => Promise<void>
@@ -156,6 +158,7 @@ export function MessageList({
   hasMoreOlder = false,
   loadingOlder = false,
   onReply,
+  onGoToReply,
   onEdit,
   onDelete,
   onResend,
@@ -470,6 +473,15 @@ export function MessageList({
             const pending = msg.id.startsWith("temp-")
             const fresh = !msg._settled && new Date(msg.createdAt).getTime() > mountedAt
             const reply = () => onReply?.({ id: msg.id, authorName: msg.author.name, content: msg.content.slice(0, 80) })
+            // 인용 탭 → 원글로. 고르는 중이면 줄 고르기가 먼저다. 민 뒤의 클릭은 SwipeReply 가 먹어 여기 오지 않는다
+            const quote = msg.replyTo
+            const goToReply =
+              quote && onGoToReply && !selectionMode
+                ? (e: React.MouseEvent) => {
+                    e.stopPropagation()
+                    onGoToReply({ id: quote.id, deleted: quote.deleted })
+                  }
+                : undefined
             return (
               // 폰 — 오른쪽으로 밀면 답장(components/chat/swipe-reply.tsx). 고르기 · 보내는 중 · 고치는 중에는 끈다
               <SwipeReply key={msg.id} enabled={!!onReply && !selectionMode && !pending && editingId !== msg.id} onReply={reply}>
@@ -499,14 +511,19 @@ export function MessageList({
                   )}
                   {/* 답장 인용 — 어떤 글에 답하는지 한 줄로만 보인다 */}
                   {msg.replyTo && (
-                    <div
-                      className={`max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground max-md:in-data-[messenger]:hidden in-data-[messenger]:px-3 in-data-[messenger]:py-1.5 in-data-[messenger]:text-[13.5px] ${
-                        mine ? "text-right" : ""
+                    <button
+                      type="button"
+                      data-reply-quote
+                      onClick={goToReply}
+                      disabled={!goToReply}
+                      aria-label={`${msg.replyTo.authorName}의 원래 메시지로 이동: ${msg.replyTo.content}`}
+                      className={`block max-w-full truncate rounded-md border-l-2 border-primary/40 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground transition-colors enabled:cursor-pointer enabled:hover:bg-muted max-md:in-data-[messenger]:hidden in-data-[messenger]:px-3 in-data-[messenger]:py-1.5 in-data-[messenger]:text-[13.5px] ${
+                        mine ? "text-right" : "text-left"
                       }`}
                       title={msg.replyTo.content}
                     >
                       <span className="font-medium">{msg.replyTo.authorName}</span> · {msg.replyTo.content}
-                    </div>
+                    </button>
                   )}
                   <div className={`relative flex items-end gap-1 max-md:in-data-[messenger]:gap-[4px] ${mine ? "flex-row-reverse" : ""}`}>
                     <div
@@ -552,10 +569,17 @@ export function MessageList({
                             className={`whitespace-pre-wrap break-keep [overflow-wrap:anywhere] max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:empty:hidden ${msg.deletedAt ? "max-md:in-data-[messenger]:bg-muted/50" : mine ? "max-md:in-data-[messenger]:bg-(--bubble-mine)" : "max-md:in-data-[messenger]:bg-muted"}`}
                           >
                             {msg.replyTo && (
-                              <span data-reply-in-bubble className="hidden max-md:in-data-[messenger]:mb-[6px] max-md:in-data-[messenger]:block max-md:in-data-[messenger]:border-b max-md:in-data-[messenger]:border-foreground/10 max-md:in-data-[messenger]:pb-[6px] max-md:in-data-[messenger]:text-[13px] max-md:in-data-[messenger]:leading-[18px] max-md:in-data-[messenger]:whitespace-normal">
+                              <button
+                                type="button"
+                                data-reply-in-bubble
+                                onClick={goToReply}
+                                disabled={!goToReply}
+                                aria-label={`${msg.replyTo.authorName}의 원래 메시지로 이동: ${msg.replyTo.content}`}
+                                className="hidden w-full min-w-0 text-left max-md:in-data-[messenger]:mb-[6px] max-md:in-data-[messenger]:block max-md:in-data-[messenger]:border-b max-md:in-data-[messenger]:border-foreground/10 max-md:in-data-[messenger]:pb-[6px] max-md:in-data-[messenger]:text-[13px] max-md:in-data-[messenger]:leading-[18px] max-md:in-data-[messenger]:whitespace-normal enabled:cursor-pointer enabled:active:opacity-60"
+                              >
                                 <span className="block truncate font-semibold">{msg.replyTo.authorName}에게 답장</span>
                                 <span className="block truncate text-muted-foreground">{msg.replyTo.content}</span>
-                              </span>
+                              </button>
                             )}
                             {msg.deletedAt ? (
                               msg.content
