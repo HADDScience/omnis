@@ -12,6 +12,7 @@ export async function login(
   name: DemoUser,
   password = DEMO_PASSWORD
 ) {
+  await hideSurveyBanner(page)
   await page.goto("/login")
   await page.getByRole("textbox", { name: "이름" }).fill(name)
   await page.getByRole("textbox", { name: "비밀번호" }).fill(password)
@@ -19,7 +20,16 @@ export async function login(
   await page.waitForURL("**/chat", { timeout: 15_000 })
 }
 
+/**
+ * AI 활용 설문 안내 띠(components/layout/survey-banner.tsx)는 시험에서 닫아 둔다 — CI 는 설문을 전원에게 열고 돌아
+ * 띠가 모든 화면 맨 위에 떠서, 화면 높이 · 자리를 재는 다른 시험이 흔들린다. 띠를 보는 시험만 이 쿠키를 지운다.
+ */
+export async function hideSurveyBanner(page: Page) {
+  await page.context().addCookies([{ name: "omnis_survey_banner_dismissed", value: "1", url: process.env.BASE_URL ?? "http://localhost:3000" }])
+}
+
 export async function quickLogin(page: Page, name: DemoUser) {
+  await hideSurveyBanner(page)
   await page.goto("/login")
   await page.getByRole("button", { name, exact: true }).click()
   await page.waitForURL("**/chat", { timeout: 15_000 })
@@ -44,6 +54,8 @@ export async function openChatDock(page: Page) {
     // 그 단추는 채팅 화면(로그인하면 들어오는 곳)에서는 숨으므로 업무 화면으로 옮겨 간다
     if (new URL(page.url()).pathname.startsWith("/chat")) await page.goto("/tasks")
     await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
+    // 패널은 폰 채팅 탭과 같은 방 목록으로 열린다(2026-11-11) — 같은 입력창이 있는 전사방으로 들어간다
+    await page.locator('aside[aria-label="대화 패널"] a[href$="/chat/default-room"]').first().click()
   }
   await expect(input).toBeVisible()
 }

@@ -41,6 +41,7 @@ import { apiUrl } from "@/lib/base-path"
 import { ThumbImage } from "@/components/chat/thumb-image"
 import { albumPhotos } from "@/lib/photo-album"
 import { PhotoAlbum } from "@/components/omnis/photo-album"
+import { SourceFactsProvider, SourceFiles, useSourceFact, useSourceFacts } from "@/components/omnis/source-files"
 /**
  * 서버가 쓰는 것과 **같은** 타입을 가져온다. 여기서 따로 선언해 두면 서버 쪽에
  * 값이 늘어났을 때 조용히 어긋나고, sourceHref 가 undefined 를 돌려주고,
@@ -87,7 +88,9 @@ function sourceHref(s: Source): string | null {
     case "WEEKLY_REPORT":
       return `/reports/${s.sourceId}`
     case "CHAT_MESSAGE":
-      return "/chat/default-room"
+      // 글이 어느 방 · 업무에 있는지는 서버가 권한을 보고 알려 준다(useSourceHref · components/omnis/source-files.tsx).
+      // 예전에는 늘 전사방으로 갔다 — 업무 스레드 · 단톡방 글이면 엉뚱한 곳이었다(2026-11-12 기능 요청)
+      return null
     case "IP_CASE":
       return "/ip/register"
     case "PHOTO":
@@ -148,10 +151,18 @@ function parseHastTable(node: HNode): { headers: string[]; rows: string[][] } {
   return { headers, rows }
 }
 
+/** 출처를 열 주소 — 채팅 글은 서버가 알려 준 원문 자리(방 · 업무방 + 그 글), 나머지는 sourceHref */
+function useSourceHref(source?: Source): string | null {
+  const fact = useSourceFact(source?.source === "CHAT_MESSAGE" ? source.sourceId : undefined)
+  if (!source) return null
+  return source.source === "CHAT_MESSAGE" ? (fact?.href ?? null) : sourceHref(source)
+}
+
 /** 각주 배지 — 출처가 있으면 호버 미리보기 + 클릭 이동, 없으면 단순 배지 */
 function Citation({ num, source }: { num: string; source?: Source }) {
   const router = useRouter()
-  const href = source ? sourceHref(source) : null
+  const href = useSourceHref(source)
+  const fact = useSourceFact(source?.source === "CHAT_MESSAGE" ? source.sourceId : undefined)
   if (!source) {
     return <span className="omnis-citation">{num}</span>
   }
@@ -170,7 +181,7 @@ function Citation({ num, source }: { num: string; source?: Source }) {
         {num}
       </TooltipTrigger>
       <TooltipContent>
-        {source.sourceLabel} · {source.title}
+        {fact ? `${fact.place} · ${fact.author} — 원문 글로` : `${source.sourceLabel} · ${source.title}`}
       </TooltipContent>
     </Tooltip>
   )
@@ -531,8 +542,10 @@ export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: 
     [answer, sources]
   )
   const qa = { answer, sources }
+  // 채팅 출처의 원문 자리 · 첨부 — 각주 바로가기와 답 아래 파일 카드가 같이 쓴다
+  const facts = useSourceFacts(sources)
   return (
-    <>
+    <SourceFactsProvider value={facts}>
       <TooltipProvider delay={150}>
         {/* 화면 글을 끌어 고른 복사 — 표는 표로, 각주 배지는 빼고(./answer-copy.ts). 고른 것이 없으면(표 칸 범위) 표가 맡는다 */}
         <div
@@ -554,6 +567,7 @@ export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: 
       </TooltipProvider>
 
       <PhotoAlbum photos={album} />
+      <SourceFiles answer={answer} sources={sources} facts={facts} />
 
       {/* 참고 자료 — 하단에 접힌 상태로 제공 */}
       {qa.sources.length > 0 && (
@@ -573,13 +587,13 @@ export function OmnisAnswerBody({ answer, sources }: { answer: string; sources: 
           </div>
         </details>
       )}
-    </>
+    </SourceFactsProvider>
   )
 }
 
 /** 출처 한 줄. 열 곳이 없으면 링크가 아니라 그냥 줄로 그린다. */
 function SourceRow({ index, source }: { index: number; source: Source }) {
-  const href = sourceHref(source)
+  const href = useSourceHref(source)
   const photo = source.source === "PHOTO"
   // 사진은 화면이 아니라 파일이라 새 탭으로 연다
   const external = (href?.startsWith("http") ?? false) || photo

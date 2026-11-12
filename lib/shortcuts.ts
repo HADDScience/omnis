@@ -135,3 +135,43 @@ export function formatCombo(combo: string, mac: boolean): string {
   if (mac) return `${has("Mod") ? "⌘" : ""}${has("Alt") ? "⌥" : ""}${has("Shift") ? "⇧" : ""}${key}`
   return [has("Mod") && "Ctrl", has("Alt") && "Alt", has("Shift") && "Shift", key].filter(Boolean).join("+")
 }
+
+/**
+ * 바꿀 수 없는 키 — 화면마다 정해져 있다. 마이 > 일반의 안내 표가 이 목록을 그대로 보인다(키보드가 있는 기기만).
+ * 키를 바꾸거나 새로 만들면 여기도 고친다. 출처는 각 줄의 파일이다.
+ */
+export interface FixedKey {
+  /** 어디서 */
+  where: string
+  /** 누르는 키 — Mod 는 맥 ⌘, 그 밖의 Ctrl. 함께 누르는 조합이다 */
+  keys: string[]
+  /** keys 가 조합이 아니라 「둘 중 하나」 다(↑ / ↓) */
+  either?: true
+  what: string
+}
+
+export const FIXED_KEYS: readonly FixedKey[] = [
+  // components/chat/room-composer.tsx · lib/enter-to-send.ts — 폰은 Enter 가 줄바꿈
+  { where: "채팅 입력창", keys: ["Enter"], what: "보내기" },
+  { where: "채팅 입력창", keys: ["Shift", "Enter"], what: "줄바꿈" },
+  // components/chat/message-input.tsx handleListKeys — @ 사람 · / 명령 · # 업무 목록
+  { where: "@ · / · # 목록", keys: ["↑", "↓"], either: true, what: "항목 고르기" },
+  { where: "@ · / · # 목록", keys: ["Enter"], what: "넣기 (Tab 도 같다)" },
+  { where: "@ · / · # 목록", keys: ["Esc"], what: "목록 닫기" },
+  // components/chat/message-list.tsx — 말풍선 자리에서 고치기
+  { where: "내 글 고치기", keys: ["Enter"], what: "저장" },
+  { where: "내 글 고치기", keys: ["Esc"], what: "취소" },
+  // components/chat/chat-search.tsx
+  { where: "대화 검색", keys: ["Enter"], what: "이전 결과" },
+  { where: "대화 검색", keys: ["Shift", "Enter"], what: "다음 결과" },
+  { where: "대화 검색", keys: ["Esc"], what: "검색 닫기" },
+  // components/messenger/room-list.tsx
+  { where: "대화 목록", keys: ["Esc"], what: "검색어 지우기" },
+  { where: "대화 목록", keys: ["Shift", "F10"], what: "방 메뉴 열기 (메뉴 키도 같다)" },
+  // components/photo-viewer/photo-viewer.tsx
+  { where: "사진 크게 보기", keys: ["←", "→"], either: true, what: "이전 · 다음 사진" },
+  { where: "사진 크게 보기", keys: ["Esc"], what: "닫기" },
+  { where: "사진 크게 보기", keys: ["Ctrl", "휠"], what: "확대 · 축소 (트랙패드 두 손가락 벌리기)" },
+  // components/ip/progress-form.tsx
+  { where: "지식재산권 진행 기록", keys: ["Mod", "Enter"], what: "저장" },
+]

@@ -21,6 +21,7 @@ import type {
   StatusOption,
   Trademark,
 } from "@/lib/ip/types"
+import type { CaseImage } from "@/lib/ip-images"
 
 interface DataValue {
   meta: OrgMeta
@@ -34,6 +35,8 @@ interface DataValue {
   statusOptions: StatusOption[]
   /** 파이프라인 단계 정의. 양식의 조건부 입력칸이 여기서 온다. */
   stages: Stage[]
+  /** 건별 이미지(상표 도안 · 특허 대표 도면) — 갤러리 표지 · 상세 */
+  images: CaseImage[]
   /** 상태 목록에서 "진행 중"으로 분류된 값 (정체 일수 계산 대상) */
   openStatuses: (kind: "trademark" | "patent") => Set<string>
   refresh: () => Promise<void>

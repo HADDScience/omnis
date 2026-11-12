@@ -73,11 +73,16 @@ export async function closePanel(page: Page) {
   }
 }
 
-/** 패널의 「전체」 채팅 탭. */
+/** 패널의 전사방 — 패널은 폰 채팅 탭과 같은 방 목록이다(2026-11-11). 업무 화면이면 「채팅」 탭부터 */
 export async function openAllChat(page: Page) {
   await openPanel(page)
-  // 「전체」 는 대시보드 필터·최근 스레드 필터에도 있다. 패널(aside) 안 첫 번째가 탭이다.
-  await page.locator("aside").getByRole("button", { name: "전체", exact: true }).first().click()
+  const aside = page.locator('aside[aria-label="대화 패널"]')
+  const chatTab = aside.getByRole("button", { name: "채팅", exact: true })
+  if (await chatTab.isVisible().catch(() => false)) await chatTab.click()
+  if (await chatBox(page).isVisible().catch(() => false)) return
+  const back = aside.getByRole("button", { name: "채팅방 목록으로" })
+  if (await back.isVisible().catch(() => false)) await back.click()
+  await aside.locator('a[href$="/chat/default-room"]').first().click()
   await chatBox(page).waitFor({ state: "visible", timeout: 8_000 })
 }
 

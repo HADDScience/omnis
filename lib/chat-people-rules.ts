@@ -12,6 +12,9 @@ export function dmKeyOf(a: string, b: string): string {
 
 /** 「나와의 대화」 — 나 혼자인 1:1. 열쇠가 나:나 라 사람마다 하나뿐이고, 상대가 없으니 참여자도 나뿐이다 */
 export const SELF_ROOM_TITLE = "나와의 대화"
+
+/** 사람끼리 방(1:1 · 단톡) 글 한 개의 글자 수 — 화면 라우트 · MCP post_message 가 같은 값을 쓴다 */
+export const PEOPLE_MESSAGE_MAX = 4000
 export const selfDmKeyOf = (me: string) => dmKeyOf(me, me)
 /** 참여자 수로 가르지 않는다 — 계정을 지운 상대의 1:1 도 참여자가 한 명 남는다 */
 export function isSelfDmKey(dmKey: string | null | undefined): boolean {

@@ -46,6 +46,8 @@ export async function openChatPanel(page: Page) {
     }
     if (new URL(page.url()).pathname.startsWith("/chat")) await page.goto("/tasks")
     await page.getByRole("button", { name: /^대화 패널 열기/ }).click()
+    // 패널은 폰 채팅 탭과 같은 방 목록으로 열린다(2026-11-11) — 같은 입력창이 있는 전사방으로 들어간다
+    await page.locator('aside[aria-label="대화 패널"] a[href$="/chat/default-room"]').first().click()
   }
   await expect(input).toBeVisible()
   return input

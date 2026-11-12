@@ -39,6 +39,8 @@ const env = {
   OMNIS_AGENT_FAKE: "1",
   // 승인 서명 — 없으면 에이전트 라우트가 503 이다. 로컬 .env 에 없으면 시험 자리값(CI 와 같은 길이 조건)
   OMNIS_AGENT_APPROVAL_SECRET: local.OMNIS_AGENT_APPROVAL_SECRET ?? "e2e-only-agent-approval-secret-not-real",
+  // AI 활용 설문은 허용한 계정에만 열린다 — 시험은 전원에게 열고 돈다(CI 와 같다)
+  AI_SURVEY_ALLOW_USER_IDS: "*",
   BASE_URL: `http://localhost:${port}`,
 }
 let server

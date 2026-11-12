@@ -14,7 +14,7 @@ test("MCP 도구는 모두 에이전트 읽기 · 쓰기에 있거나, 까닭을
 })
 
 test("되돌리기 어려운 쓰기는 확인 카드(쓰기)로 열린다", () => {
-  for (const name of ["delete_company_record", "respond_notification", "decide_record_proposal", "add_progress", "correct_ip", "create_ip", "update_task", "post_message", "upload_file"]) {
+  for (const name of ["delete_company_record", "respond_notification", "decide_record_proposal", "add_progress", "correct_ip", "create_ip", "add_ip_image", "update_task", "post_message", "upload_file"]) {
     assert.equal(isWriteTool(name), true, name)
     assert.equal((AGENT_READ_TOOLS as readonly string[]).includes(name), false, name)
   }
@@ -27,7 +27,7 @@ test("읽기 · 쓰기 목록이 겹치지 않는다", () => {
 test("지식재산권 쓰기는 guide 확인 코드를 받고, 나머지는 guide 칸이 없다", async () => {
   const specs = await agentToolSpecs()
   const props = (name: string) => (specs.find((s) => s.name === name)!.schema as { properties: Record<string, unknown>; required?: string[] })
-  for (const name of ["add_progress", "correct_ip", "create_ip"]) {
+  for (const name of ["add_progress", "correct_ip", "create_ip", "add_ip_image"]) {
     assert.ok("guide" in props(name).properties, name)
     assert.ok(props(name).required?.includes("guide"), name)
     assert.equal(specs.find((s) => s.name === name)!.risk, "write")

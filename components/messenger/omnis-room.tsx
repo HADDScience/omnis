@@ -975,7 +975,8 @@ export function MyMessage({ content, iso, sending = false, fresh = false, files 
   )
 }
 
-function OmnisAvatar() {
+/** 옴니스의 얼굴 — 옴니스가 말하는 다른 화면(AI 활용 설문)도 같은 것을 쓴다 */
+export function OmnisAvatar() {
   return (
     <span aria-hidden className="ai-rainbow-border mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary in-data-[messenger]:size-[38px] in-data-[messenger]:[&_svg]:size-[21px]">
       <HugeiconsIcon icon={BubbleChatSparkIcon} size={15} />

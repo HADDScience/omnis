@@ -22,6 +22,7 @@ import { openFileObject } from "@/lib/file-object"
 import { findVisibleFile } from "@/lib/file-access-server"
 import { Readable } from "node:stream"
 import { fileResponseHeaders } from "@/lib/file-serving"
+import { completeLargeViaLink, openLargeViaLink } from "@/lib/mcp-large-upload"
 
 /**
  * hadd-omnis — 원격 MCP 서버 (Streamable HTTP) + OAuth 2.1 인가 서버.
@@ -360,14 +361,32 @@ async function uploadViaLink(req: NextRequest) {
     return json({ error: "file 필드가 없습니다. 예: curl -F file=@경로 '<링크>'" }, 400)
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    return json({ error: `파일이 너무 큽니다. ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 이하만 올릴 수 있습니다.` }, 413)
+    return json({
+      error: `${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 가 넘는 파일은 이 한 줄로 올리지 못합니다. create_upload_link 응답의 「큰 파일」 절차(python3 스크립트)로 올리세요.`,
+    }, 413)
   }
 
   const saved = await saveUpload({
     name: file.name, body: Buffer.from(await file.arrayBuffer()), mimeType: file.type, taskId: grant.taskId,
+    privateToUserId: grant.isPrivate ? grant.userId : null,
   })
   if ("error" in saved) return json(saved, 400)
   return json({ ...saved, next: `post_message 의 files 에 "${saved.id}" 를 넣으면 첨부로 붙습니다.` }, 201)
+}
+
+/** 큰 파일 — 세션 열기 + 조각 서명(lib/mcp-large-upload.ts). 링크가 자격이다 */
+async function openLargeUpload(req: NextRequest) {
+  const grant = await verifyUploadLink(new URL(req.url).searchParams.get("t") ?? "")
+  if (!grant) return json({ error: "링크가 만료되었거나 올바르지 않습니다. create_upload_link 로 다시 만드세요." }, 401)
+  const r = await openLargeViaLink(grant, await req.json().catch(() => null))
+  return json(r.body, r.status)
+}
+
+/** 큰 파일 — 조각을 다 올린 뒤. 세션 토큰이 자격이고, 링크가 아직 살아 있으면 업무 첨부까지 */
+async function completeLargeUpload(req: NextRequest) {
+  const grant = await verifyUploadLink(new URL(req.url).searchParams.get("t") ?? "")
+  const r = await completeLargeViaLink(await req.json().catch(() => null), grant)
+  return json(r.body, r.status)
 }
 
 /**
@@ -437,6 +456,8 @@ export async function POST(req: NextRequest) {
   if (tail === "/token") return issueToken(req)
   if (tail === "/approve") return approve(req)
   if (tail === "/upload") return uploadViaLink(req)
+  if (tail === "/upload/large") return openLargeUpload(req)
+  if (tail === "/upload/large/complete") return completeLargeUpload(req)
 
   let message: { id?: unknown; method?: string; params?: Record<string, unknown> }
   try {

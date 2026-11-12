@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 
 import { fetchSnapshot, loadPrefs } from "@/lib/ip-data"
 import { authorize, isDenied, ok, preflight } from "@/lib/ip-api"
+import { listCaseImages } from "@/lib/ip-images-server"
 
 /**
  * 화면 한 판에 필요한 것 전부 + 내 설정 + 내 역할.
@@ -19,14 +20,17 @@ export async function GET(req: NextRequest) {
   const auth = await authorize(req, { write: false })
   if (isDenied(auth)) return auth.response
 
-  const [snapshot, prefs] = await Promise.all([
+  const [snapshot, prefs, images] = await Promise.all([
     fetchSnapshot(),
     loadPrefs(auth.caller.userId),
+    listCaseImages(),
   ])
 
   return ok(
     {
       ...snapshot,
+      // 건별 이미지(상표 도안 · 특허 대표 도면). 갤러리 표지 · 상세가 쓴다
+      images,
       prefs,
       me: {
         userId: auth.caller.membership.userId,

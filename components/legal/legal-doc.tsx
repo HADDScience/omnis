@@ -1,0 +1,97 @@
+import Link from "next/link"
+import type { ReactNode } from "react"
+import { LEGAL_EFFECTIVE_DATE, legalContact } from "@/lib/legal/placeholders"
+
+/**
+ * 약관 · 개인정보 처리방침 화면의 틀(app/(legal)). 로그인 없이 열린다 — 로그인 화면 아래 링크에서도 온다.
+ * 본문은 서버에서 그린 글이다. 표는 좁은 화면에서 가로로 밀린다.
+ */
+export function LegalDoc({
+  title,
+  current,
+  dated = true,
+  children,
+}: {
+  title: string
+  current: "terms" | "privacy" | "licenses"
+  /** 시행일을 보이는가 — 라이선스 목록은 시행일이 없다 */
+  dated?: boolean
+  children: ReactNode
+}) {
+  return (
+    <main className="min-h-dvh bg-background">
+      <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">
+        <nav aria-label="약관" className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
+          <Link href="/settings?tab=info" className="hover:text-foreground">
+            ← 앱 정보
+          </Link>
+          <span aria-hidden>·</span>
+          <Link href="/terms" aria-current={current === "terms" ? "page" : undefined} className="hover:text-foreground aria-[current=page]:font-semibold aria-[current=page]:text-foreground">
+            서비스 이용약관
+          </Link>
+          <Link href="/privacy" aria-current={current === "privacy" ? "page" : undefined} className="hover:text-foreground aria-[current=page]:font-semibold aria-[current=page]:text-foreground">
+            개인정보 처리방침
+          </Link>
+          <Link href="/licenses" aria-current={current === "licenses" ? "page" : undefined} className="hover:text-foreground aria-[current=page]:font-semibold aria-[current=page]:text-foreground">
+            오픈소스 라이선스
+          </Link>
+        </nav>
+        <article data-legal-doc={current} className="legal-doc text-[14px] leading-7 text-foreground">
+          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+          {dated && <p className="mt-1 text-[12.5px] text-muted-foreground">시행일 {LEGAL_EFFECTIVE_DATE}</p>}
+          <div className="mt-6 flex flex-col gap-8">{children}</div>
+        </article>
+      </div>
+    </main>
+  )
+}
+
+export function Section({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
+  return (
+    <section id={id} className="scroll-mt-6">
+      <h2 className="mb-2 text-[15px] font-semibold">{title}</h2>
+      <div className="flex flex-col gap-2 text-[13.5px] leading-7 [&_li]:ml-5 [&_li]:list-disc [&_ol>li]:list-decimal">{children}</div>
+    </section>
+  )
+}
+
+/** 머리 줄 + 본문 줄. 좁으면 가로로 밀린다 */
+export function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full min-w-[34rem] border-collapse text-left text-[12.5px] leading-6">
+        <thead className="bg-muted/60">
+          <tr>
+            {head.map((h) => (
+              <th key={h} className="border-b px-3 py-2 font-medium whitespace-nowrap">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} className="align-top [&:not(:last-child)>td]:border-b">
+              {r.map((c, j) => (
+                <td key={j} className="px-3 py-2">
+                  {c}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** 문의처 — 설정값(LEGAL_CONTACT)이 있으면 링크, 없으면 {{문의처}} */
+export function ContactValue() {
+  const c = legalContact(process.env.LEGAL_CONTACT)
+  if (c.kind === "placeholder") return <span data-legal-contact>{c.value}</span>
+  return (
+    <a data-legal-contact href={c.href} className="underline underline-offset-4" {...(c.kind === "url" ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+      {c.value}
+    </a>
+  )
+}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ComponentProps } from "react"
+import { useEffect, useState, type ComponentProps } from "react"
 import { useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Search01Icon } from "@hugeicons/core-free-icons"
@@ -24,6 +24,7 @@ export function CompanyRoom({
   resume,
   muted,
   live,
+  searchRequest,
 }: {
   roomId: string
   roomName: string
@@ -35,9 +36,17 @@ export function CompanyRoom({
   muted: boolean
   /** 서버 페이지 없이 그린 방(client-room.tsx) */
   live?: ComponentProps<typeof ChatPanel>["live"]
+  /** 오른쪽 패널의 ⌘⇧F — 오를 때마다 검색 줄을 열고 검색칸을 고른다 */
+  searchRequest?: number
 }) {
   const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [searchFocus, setSearchFocus] = useState(0)
+  useEffect(() => {
+    if (!searchRequest) return
+    setSearchOpen(true)
+    setSearchFocus((n) => n + 1)
+  }, [searchRequest])
   const [taskModalRaw, setTaskModalRaw] = useState<string | null>(null)
 
   return (
@@ -75,6 +84,7 @@ export function CompanyRoom({
           onTaskUpdated={() => router.refresh()}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
+          searchFocus={searchFocus}
           onSlashTaskCommand={(raw) => setTaskModalRaw(raw)}
         />
       </div>

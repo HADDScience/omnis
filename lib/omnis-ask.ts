@@ -12,7 +12,7 @@ import { writeActivity } from "@/lib/api"
 import { listCases, listOpenTurns } from "@/lib/ip-data"
 import type { OmnisTurn } from "@/lib/omnis-history"
 import { seoulDayLabel } from "@/lib/calendar/time"
-import { CALENDAR_WRITE_RULE } from "@/lib/agent/prompt"
+import { CALENDAR_WRITE_RULE, SOURCE_FILE_RULE } from "@/lib/agent/prompt"
 
 export const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   OMNIS_CARD: "옴니스 카드",
@@ -337,6 +337,7 @@ ${CALENDAR_WRITE_RULE}
 답변 규칙:
 - 도구 결과에 있는 내용만으로 답하세요. 결과에 없으면 추측하지 말고 "관련 내용을 찾지 못했습니다" 라고 답하세요.
 - search_knowledge 결과를 근거로 쓰면 그 결과의 번호를 [1] 또는 [1, 3] 처럼 표기하세요. 다른 도구 결과는 번호 없이 씁니다.
+${SOURCE_FILE_RULE}
 - 번호는 문단이나 항목 끝에 한 번만 붙이세요. 같은 번호를 줄마다 되풀이하지 마세요. 표 칸 안에는 넣지 말고 표 바로 아래에 "근거 [1, 3]" 으로 모으세요.
 - 건수·금액·재고는 도구 결과의 값을 그대로 쓰세요. "전부" 를 물으면 하나도 빠뜨리지 말고 나열하세요.
 - 매출은 확정(결산서)·잠정(세금계산서 합)·계획 중 어느 것인지 밝히고, 단계가 다른 숫자를 더하지 마세요.

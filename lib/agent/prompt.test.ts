@@ -6,7 +6,7 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { CALENDAR_WRITE_RULE, WORKS_CALENDAR_URL, agentInstructions } from "./prompt"
+import { CALENDAR_WRITE_RULE, SOURCE_FILE_RULE, WORKS_CALENDAR_URL, agentInstructions } from "./prompt"
 import { routeSystemPrompt } from "@/lib/omnis-ask"
 
 const agent = agentInstructions({ today: "2026-10-30(금)", userName: "예시 사용자", maxTurns: 12 })
@@ -36,4 +36,12 @@ test("일정 쓰기 규칙 — 다른 쓰기 도구로 대신 만들지 않는�
 test("에이전트 · 질문 경로 프롬프트 둘 다 같은 규칙을 담는다", () => {
   assert.ok(agent.includes(CALENDAR_WRITE_RULE), "에이전트")
   assert.ok(route.includes(CALENDAR_WRITE_RULE), "질문 경로")
+})
+
+test("자료 · 파일 규칙 — 두 경로 모두 · 첨부 없는 자리표시는 처음부터 없다고 · 요청할 곳 · 다른 판 안내", () => {
+  for (const p of [agent, route]) assert.ok(p.includes(SOURCE_FILE_RULE))
+  assert.match(SOURCE_FILE_RULE, /「File: 이름」 이어도 \[첨부: …\] 가 없으면 그 파일은 옴니스에 없습니다/)
+  assert.match(SOURCE_FILE_RULE, /처음부터 「원본 파일이 옴니스에 없음 — 카톡 원본이나 보낸 사람에게 요청」/)
+  assert.match(SOURCE_FILE_RULE, /다른 판/)
+  assert.match(SOURCE_FILE_RULE, /↳ 원문/)
 })
