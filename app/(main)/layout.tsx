@@ -7,6 +7,7 @@ import { MainWithChat } from "@/components/layout/main-with-chat"
 import { RightPanelProvider } from "@/components/layout/right-panel-context"
 import { OnboardingProvider } from "@/components/onboarding/onboarding-provider"
 import { surveyAllowed } from "@/lib/ai-survey/access"
+import { currentOnboardingVersion } from "@/lib/onboarding-version-store"
 import { PwaRegister } from "@/components/pwa-register"
 import { PushPresence } from "@/components/push-presence"
 import { AppNudge } from "@/components/layout/app-nudge"
@@ -44,10 +45,13 @@ async function MainShell({
     return redirectToLogin()
   }
 
-  const onboarding = await prisma.user.findFirst({
-    where: { id: session.user.id, isActive: true },
-    select: { onboardingVideoSeenAt: true, onboardingCompletedAt: true, onboardingVersion: true },
-  })
+  const [onboarding, onboardingCurrent] = await Promise.all([
+    prisma.user.findFirst({
+      where: { id: session.user.id, isActive: true },
+      select: { onboardingVideoSeenAt: true, onboardingCompletedAt: true, onboardingVersion: true },
+    }),
+    currentOnboardingVersion(),
+  ])
   if (!onboarding) return redirectToLogin()
   // 관리자가 정해 준 비밀번호를 쓰는 동안에는 바꾸라고 권한다. 막지는 않는다(2026-11-06 핫픽스).
   // 「나중에」 7일 동안은 안내만 숨기고 마이 진입점의 경고 점은 남긴다(2026-11-11, lib/password-notice.ts)
@@ -62,7 +66,7 @@ async function MainShell({
       <PushPresence />
       <CurrentUserProvider name={session.user.name ?? null} passwordPending={password.pending}>
         <RightPanelProvider userId={session.user.id as string}>
-        <OnboardingProvider key={session.user.id} survey={surveyAllowed(session.user.id)} initialState={{
+        <OnboardingProvider key={session.user.id} survey={surveyAllowed(session.user.id)} currentVersion={onboardingCurrent} initialState={{
           onboardingVideoSeenAt: onboarding.onboardingVideoSeenAt?.toISOString() ?? null,
           onboardingCompletedAt: onboarding.onboardingCompletedAt?.toISOString() ?? null,
           onboardingVersion: onboarding.onboardingVersion,

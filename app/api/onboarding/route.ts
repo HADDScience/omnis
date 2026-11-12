@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { onboardingActionSchema } from "@/lib/schemas/onboarding"
 import { publicUrl } from "@/lib/base-path"
-import { ONBOARDING_VERSION } from "@/lib/onboarding-version"
+import { currentOnboardingVersion } from "@/lib/onboarding-version-store"
 
 const selection = {
   onboardingVideoSeenAt: true,
@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     )
   const now = new Date()
+  // 지금 판 — 관리자가 「다시 띄우기」 로 올렸으면 그 판(lib/onboarding-version-store.ts)
+  const version = await currentOnboardingVersion()
   await prisma.$transaction(async (tx) => {
     await tx.user.updateMany({
       where: { id: user.id, isActive: true, onboardingVideoSeenAt: null },
@@ -75,9 +77,9 @@ export async function POST(request: NextRequest) {
         where: {
           id: user.id,
           isActive: true,
-          OR: [{ onboardingVersion: null }, { onboardingVersion: { lt: ONBOARDING_VERSION } }],
+          OR: [{ onboardingVersion: null }, { onboardingVersion: { lt: version } }],
         },
-        data: { onboardingVersion: ONBOARDING_VERSION },
+        data: { onboardingVersion: version },
       })
     }
   })

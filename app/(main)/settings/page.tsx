@@ -172,6 +172,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <Link href="/settings/ui-metrics" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
                   배포별 측정 보기
                 </Link>
+                <Link href="/settings/onboarding" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
+                  온보딩 다시 띄우기
+                </Link>
                 {/* 설문 결과(회사 전체 추정 · 원문) — 설문이 열린 관리자만(main #204) */}
                 {survey && (
                   <Link href="/settings/ai-survey/results" data-ai-survey-results-link className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">

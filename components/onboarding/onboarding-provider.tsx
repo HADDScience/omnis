@@ -52,15 +52,18 @@ export function OnboardingProvider({
   children,
   initialState,
   survey = false,
+  currentVersion,
 }: {
   children: ReactNode
   initialState: OnboardingState
   /** 설문이 열린 계정 — 설문 장면을 함께 보인다 */
   survey?: boolean
+  /** 지금 판 — 코드 상수와 관리자가 올린 값 중 큰 것(서버가 매 요청 읽는다) */
+  currentVersion?: number
 }) {
   // 지금 판(lib/onboarding-version.ts)을 마치거나 건너뛰지 않았으면 접속할 때 띄운다.
   // 영상만 보고 안내를 마치지 않은 사람(onboardingVideoSeenAt 만 있는 사람)도 새 안내를 처음부터 본다
-  const due = needsOnboarding(initialState)
+  const due = needsOnboarding(initialState, currentVersion)
   const [phase, setPhase] = useState<Phase>(due ? "spotlight" : "app")
   // 안내를 마친 사람이 「다시 보기」 중에 소셜 연결로 나갔다 돌아왔다 — 하던 안내를 잇는다.
   // sessionStorage 는 서버에서 못 읽어 첫 그리기 뒤에 본다

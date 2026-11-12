@@ -3,7 +3,7 @@ import { test, expect, type Page } from "@playwright/test"
 import { hashSync } from "bcryptjs"
 import { randomUUID } from "node:crypto"
 import { prisma } from "../../lib/db"
-import { ONBOARDING_VERSION } from "../../lib/onboarding-version"
+import { ONBOARDING_VERSION, ONBOARDING_VERSION_SETTING } from "../../lib/onboarding-version"
 
 // 온보딩은 스포트라이트 하나다(2026-10-29) — 간편 로그인 → 옴니스 시연 둘 → 업무 · 캘린더 · 아카이브 탭.
 // mydocs/plans/2026-10-29-onboarding-tab-tour.md
@@ -608,5 +608,61 @@ test.describe("onboarding", { tag: ["@onboarding", "@nav"] }, () => {
     const box = (await card.boundingBox())!
     expect(box.x).toBeGreaterThanOrEqual(0)
     expect(box.x + box.width).toBeLessThanOrEqual(390)
+  })
+  // 지키는 것: 관리자가 코드 · 배포 없이 판을 올리면 지금 판을 본 사람에게도 다음 접속에 다시 뜬다. 관리자만 · 누가 눌렀는지 남는다
+  test("관리자 「모두에게 온보딩 다시 띄우기」 — 인원 확인 뒤 판이 오르고, 본 사람에게 다시 뜬다", async ({ page, browser }) => {
+    const adminName = `onboarding-admin-${randomUUID().slice(0, 8)}`
+    const adminPassword = randomUUID()
+    const admin = await prisma.user.create({
+      data: { name: adminName, role: "ADMIN", passwordHash: hashSync(adminPassword, 4), onboardingCompletedAt: new Date(), onboardingVersion: ONBOARDING_VERSION },
+    })
+    // 이 사람은 지금 판을 이미 봤다 — 단추 전에는 뜨지 않는다
+    await prisma.user.update({ where: { id }, data: { onboardingCompletedAt: new Date(), onboardingVersion: ONBOARDING_VERSION } })
+    try {
+      // 관리자가 아니면 못 센다 · 못 올린다
+      await login(page)
+      await page.waitForTimeout(1000)
+      await expect(tour(page)).toHaveCount(0)
+      expect((await page.request.get("/api/onboarding/replay")).status()).toBe(403)
+      expect((await page.request.post("/api/onboarding/replay", { data: { from: ONBOARDING_VERSION } })).status()).toBe(403)
+
+      const ctx = await browser.newContext()
+      const a = await ctx.newPage()
+      await a.goto("/login")
+      await a.getByRole("textbox", { name: "이름", exact: true }).fill(adminName)
+      await a.getByRole("textbox", { name: "비밀번호", exact: true }).fill(adminPassword)
+      await a.getByRole("button", { name: "로그인", exact: true }).click()
+      await a.waitForURL("**/chat")
+      await a.goto("/settings/onboarding")
+      await expect(a.locator("[data-onboarding-version]")).toHaveText(`${ONBOARDING_VERSION}판`)
+      await a.locator("[data-onboarding-replay]").click()
+      const due = await prisma.user.count({
+        where: { isActive: true, id: { not: "system" }, NOT: { staffProfile: { is: { employment: "FORMER" } } } },
+      })
+      await expect(a.locator("[data-onboarding-replay-due]")).toHaveText(`활성 사용자 ${due}명에게 다음 접속 때 안내가 뜹니다.`)
+      await a.getByRole("button", { name: "다시 띄우기", exact: true }).click()
+      await expect(a.getByText(`${due}명에게 다음 접속 때 안내가 다시 뜹니다`)).toBeVisible()
+      await expect(a.locator("[data-onboarding-version]")).toHaveText(`${ONBOARDING_VERSION + 1}판`)
+      // 감사 기록 — 누가 · 언제
+      const log = await prisma.activityLog.findFirstOrThrow({ where: { action: "onboarding.replayed", userId: admin.id } })
+      expect(log.metadata).toMatchObject({ from: ONBOARDING_VERSION, to: ONBOARDING_VERSION + 1, due })
+      await expect(a.locator("[data-onboarding-replay-history]")).toContainText(adminName)
+      // 화면이 보던 판이 지난 판이면(두 번 누름) 올리지 않는다
+      expect((await a.request.post("/api/onboarding/replay", { data: { from: ONBOARDING_VERSION } })).status()).toBe(409)
+      await ctx.close()
+
+      // 캐시 없이 바로 — 지금 판을 봤던 사람도 다음 화면에서 다시 본다. 건너뛰면 새 판이 적힌다
+      await page.reload()
+      await atStop(page, "social")
+      await page.getByRole("button", { name: "안내 건너뛰기" }).click()
+      await expect
+        .poll(async () => (await prisma.user.findUniqueOrThrow({ where: { id } })).onboardingVersion)
+        .toBe(ONBOARDING_VERSION + 1)
+    } finally {
+      // 시험 DB 를 다음 시험 앞의 판으로 — 시험 계정은 코드 상수 판까지 본 것으로 두었다
+      await prisma.appSetting.deleteMany({ where: { key: ONBOARDING_VERSION_SETTING } })
+      await prisma.activityLog.deleteMany({ where: { userId: admin.id } })
+      await prisma.user.delete({ where: { id: admin.id } })
+    }
   })
 })
