@@ -1,7 +1,7 @@
 "use client"
 
 // 방 첨부 한 번에 받기 — 브라우저에서 파일을 하나씩 받아 그 자리에서 zip 으로 묶는다(서버는 주소만 준다, /api/chat/drawer/download).
-// 진행 상황은 모듈 상태라 화면을 옮겨도 남는다 — components/layout/room-download-status.tsx 가 하단에 작게 그린다.
+// 진행 상황은 모듈 상태라 화면을 옮겨도 남는다 — components/layout/room-download-status.tsx 가 하단에 작게 그린다(채팅 방 안에서는 입력창 위).
 //
 //   PC     : 저장 위치를 먼저 묻고(showSaveFilePicker, 크롬 · 엣지) 디스크로 바로 흘려 쓴다. 없으면(사파리 · 파폭) 모아서 한 번에 내려받기
 //   폰     : 사진 · 동영상만이면 공유 시트(navigator.share files) → 「사진에 저장」. 문서가 섞이면 zip

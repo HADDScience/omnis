@@ -1,6 +1,6 @@
 "use client"
 
-// 방 첨부 받기 진행 — 화면을 옮겨도 하단에 작게 남는다(lib/room-download/client.ts). 유리 알약 · 라이트/다크 모두 glass 토큰을 쓴다.
+// 방 첨부 받기 진행 — 화면을 옮겨도 하단에 작게 남는다. 채팅 방 안에서는 입력창 위로 올린다(겹치면 입력창 글과 섞여 보인다)(lib/room-download/client.ts). 유리 알약 · 라이트/다크 모두 glass 토큰을 쓴다.
 import { useSyncExternalStore } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon, Download04Icon, CheckmarkCircle02Icon, Alert02Icon } from "@hugeicons/core-free-icons"
@@ -60,7 +60,7 @@ export function RoomDownloadStatus() {
       role="status"
       aria-live="polite"
       data-room-download-status
-      className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--nav-offset-bottom,0px)+12px)] z-[var(--z-banner)] mx-auto flex max-w-sm flex-col gap-1.5 md:bottom-5"
+      className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--nav-offset-bottom,0px)+12px)] z-[var(--z-banner)] mx-auto flex max-w-sm flex-col gap-1.5 md:bottom-5 [body:has([data-chat-room-chrome])_&]:bottom-[calc(var(--nav-offset-bottom,0px)+6.5rem)]"
     >
       {jobs.map((j) => (
         <Row key={j.id} job={j} />
