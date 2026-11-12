@@ -10,6 +10,18 @@
  */
 export const ONBOARDING_VERSION = 2
 
+/**
+ * 관리자가 「모두에게 온보딩 다시 띄우기」 로 올린 판(AppSetting) — 코드 · 배포 없이 다시 띄운다(2026-11-12).
+ * 지금 판은 코드 상수와 이 값 중 큰 것이다. 코드 상수를 올려 배포하면 그쪽이 앞서고, 단추를 누르면 그다음 판이 된다
+ */
+export const ONBOARDING_VERSION_SETTING = "onboarding_version"
+
+/** 지금 판 — 코드 상수와 저장된 값(정수가 아니면 무시) 중 큰 것 */
+export function effectiveOnboardingVersion(stored: unknown, code = ONBOARDING_VERSION): number {
+  const n = typeof stored === "number" ? stored : typeof stored === "object" && stored !== null ? (stored as { version?: unknown }).version : null
+  return typeof n === "number" && Number.isSafeInteger(n) && n > code ? n : code
+}
+
 export interface OnboardingSeen {
   onboardingCompletedAt: Date | string | null
   onboardingVersion: number | null
