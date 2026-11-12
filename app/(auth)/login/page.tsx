@@ -22,6 +22,7 @@ import { DemoAccountsCard } from "@/components/layout/demo-accounts-card"
 import { SocialSignInButton, type SocialProvider } from "@/components/auth/social-buttons"
 import { apiUrl } from "@/lib/base-path"
 import { RETURN_PARAM, safeReturnPath } from "@/lib/login-return"
+import { loginFailMessage } from "@/lib/login-attempts"
 
 /**
  * 로그인 뒤 돌아갈 곳. 기본은 업무 화면이다.
@@ -102,11 +103,8 @@ export default function LoginPage() {
     })
 
     if (result?.error) {
-      setError(
-        result.code === "locked"
-          ? "로그인 시도가 너무 많아 잠시 막혔습니다. 15분 뒤 다시 시도하거나 관리자에게 문의하세요."
-          : "이름 또는 비밀번호가 올바르지 않습니다."
-      )
+      // 남은 횟수 · 잠금 시각은 서버가 code 에 싣는다(lib/login-attempts.ts)
+      setError(loginFailMessage(result.code))
       setLoading(false)
       return
     }

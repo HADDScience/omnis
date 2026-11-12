@@ -21,6 +21,7 @@
  */
 import { createHash } from "node:crypto"
 import { prisma } from "./db"
+import { attemptInfo, normalizeLoginName, type LoginAttemptInfo } from "./login-attempts"
 
 export const LOGIN_LIMITS = {
   account: { max: 5, windowMs: 15 * 60 * 1000 },
@@ -32,7 +33,7 @@ export const LOGIN_ENTITY = "auth.login"
 export const PRIVATE_ACTIVITY_ENTITIES = [LOGIN_ENTITY, "auth.password"]
 
 const digest = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 32)
-export const accountKey = (name: string) => `acct:${digest(name.trim().toLowerCase())}`
+export const accountKey = (name: string) => `acct:${digest(normalizeLoginName(name).toLowerCase())}`
 export const ipKey = (ip: string) => `ip:${digest(ip)}`
 
 /**
@@ -47,7 +48,11 @@ export function clientIp(headers: Headers | undefined | null): string | null {
 
 export type LockState = { locked: false } | { locked: true; reason: "account" | "ip" }
 
-export async function loginLockState(name: string, ip: string | null, now = Date.now()): Promise<LockState> {
+/**
+ * 계정 · IP 의 창 안 실패 시각을 읽어 남은 횟수와 잠금 시각까지 낸다(lib/login-attempts.ts).
+ * 계정 쪽 창은 마지막 성공 뒤부터다. 이름 키로 세므로 없는 이름도 똑같이 센다.
+ */
+export async function loginAttemptInfo(name: string, ip: string | null, now = Date.now()): Promise<LoginAttemptInfo> {
   const acct = accountKey(name)
   const lastOk = await prisma.activityLog.findFirst({
     where: { entity: LOGIN_ENTITY, entityId: acct, action: "ok" },
@@ -56,23 +61,27 @@ export async function loginLockState(name: string, ip: string | null, now = Date
   })
   const windowStart = now - LOGIN_LIMITS.account.windowMs
   const since = new Date(Math.max(windowStart, lastOk?.createdAt.getTime() ?? 0))
-  const accountFails = await prisma.activityLog.count({
+  const accountFails = await prisma.activityLog.findMany({
     where: { entity: LOGIN_ENTITY, entityId: acct, action: "fail", createdAt: { gt: since } },
+    select: { createdAt: true },
   })
-  if (accountFails >= LOGIN_LIMITS.account.max) return { locked: true, reason: "account" }
+  const ipFails = ip
+    ? await prisma.activityLog.findMany({
+        where: { entity: LOGIN_ENTITY, entityId: ipKey(ip), action: "fail", createdAt: { gt: new Date(now - LOGIN_LIMITS.ip.windowMs) } },
+        select: { createdAt: true },
+      })
+    : []
+  return attemptInfo({
+    accountFails: accountFails.map((f) => f.createdAt.getTime()),
+    ipFails: ipFails.map((f) => f.createdAt.getTime()),
+    now,
+    limits: LOGIN_LIMITS,
+  })
+}
 
-  if (ip) {
-    const ipFails = await prisma.activityLog.count({
-      where: {
-        entity: LOGIN_ENTITY,
-        entityId: ipKey(ip),
-        action: "fail",
-        createdAt: { gt: new Date(now - LOGIN_LIMITS.ip.windowMs) },
-      },
-    })
-    if (ipFails >= LOGIN_LIMITS.ip.max) return { locked: true, reason: "ip" }
-  }
-  return { locked: false }
+export async function loginLockState(name: string, ip: string | null, now = Date.now()): Promise<LockState> {
+  const info = await loginAttemptInfo(name, ip, now)
+  return info.locked ? { locked: true, reason: info.reason } : { locked: false }
 }
 
 export async function recordLoginFailure(name: string, ip: string | null) {
