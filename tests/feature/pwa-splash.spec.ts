@@ -52,6 +52,7 @@ test.describe("PWA 시작 화면", { tag: "@pwa" }, () => {
   // 지키는 것: 셸을 흘려보내도 로그인하지 않은 사람은 로그인 화면으로 간다
   test("로그인하지 않으면 /chat 이 로그인 화면으로 보낸다", async ({ page }) => {
     await page.goto("/chat")
-    await expect(page).toHaveURL(/\/login$/)
+    // 로그인 뒤 돌아올 곳을 싣는다(lib/login-return.ts)
+    await expect(page).toHaveURL(/\/login\?callbackUrl=%2Fchat$/)
   })
 })

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { ReportDetail } from "./report-detail"
 import { auth } from "@/lib/auth"
-import { redirect } from "next/navigation"
+import { redirectToLogin } from "@/lib/login-redirect"
 
 interface Props {
   params: Promise<{ reportId: string }>
@@ -12,7 +12,7 @@ interface Props {
 export default async function ReportDetailPage({ params }: Props) {
   const { reportId } = await params
   const session = await auth()
-  if (!session?.user?.id) redirect("/login")
+  if (!session?.user?.id) return redirectToLogin()
 
   const report = await prisma.weeklyReport.findFirst({
     where: { id: reportId, ownerId: session.user.id },

@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { redirect } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { redirectToLogin } from "@/lib/login-redirect"
 
 import { Header } from "@/components/layout/header"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -28,9 +28,9 @@ const LINK_ERROR: Record<string, string> = {
  */
 export default async function ProfileSettingsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const session = await auth()
-  if (!session?.user?.id) redirect("/login")
+  if (!session?.user?.id) return redirectToLogin()
   const profile = await loadMyProfile(session.user.id)
-  if (!profile) redirect("/login")
+  if (!profile) return redirectToLogin()
   const { error } = await searchParams
   const linkError = error ? (LINK_ERROR[error] ?? "소셜 계정을 연결하지 못했습니다.") : null
 
