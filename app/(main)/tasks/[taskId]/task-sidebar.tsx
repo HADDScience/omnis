@@ -29,6 +29,7 @@ import {
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { apiUrl } from "@/lib/base-path"
 import { writeSnapshot } from "@/lib/room-snapshot"
+import { anchoredMessageId } from "@/lib/answer-actions"
 
 interface Message {
   id: string
@@ -225,6 +226,23 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey, onChanged
     if (el) el.scrollTop = el.scrollHeight
   }, [threadMessages.length, showPending.length, rebuildWait])
 
+  // 주소가 스레드의 글 하나를 가리키면(#m-<id>) 그 글을 가운데 두고 잠시 강조 — 옴니스 답의 각주 · 파일 카드 「원문 글로」.
+  // 맨 아래로 내리는 위 효과 뒤에 돈다(선언 순서). 스레드에 없는 글(오래돼 안 받은 글)이면 그대로 둔다
+  const [arrivedId, setArrivedId] = useState<string | null>(null)
+  const arrivalDone = useRef(false)
+  useEffect(() => {
+    if (arrivalDone.current) return
+    const id = anchoredMessageId(window.location.hash)
+    if (!id) return
+    const target = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`)
+    if (!target) return
+    arrivalDone.current = true
+    target.scrollIntoView({ block: "center" })
+    setArrivedId(id)
+    const t = setTimeout(() => setArrivedId(null), 2400)
+    return () => clearTimeout(t)
+  }, [threadMessages.length])
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Tabs defaultValue="thread" className="flex h-full flex-col">
@@ -278,7 +296,9 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey, onChanged
                 return (
                   <div
                     key={row.key}
-                    className={`group/msg relative -mx-3 flex gap-2.5 px-3 in-data-[messenger]:gap-3 hover:bg-muted/40 ${row.groupStart ? "mt-2.5 pt-1 in-data-[messenger]:mt-4" : ""} ${row.groupEnd ? "pb-1" : ""} ${
+                    data-message-id={m.id}
+                    data-arrived={arrivedId === m.id ? "" : undefined}
+                    className={`group/msg relative -mx-3 flex gap-2.5 px-3 transition-colors duration-700 in-data-[messenger]:gap-3 hover:bg-muted/40 data-[arrived]:bg-primary/10 ${row.groupStart ? "mt-2.5 pt-1 in-data-[messenger]:mt-4" : ""} ${row.groupEnd ? "pb-1" : ""} ${
                       new Date(m.createdAt).getTime() > mountedAt ? MESSAGE_ENTER : ""
                     }`}
                   >

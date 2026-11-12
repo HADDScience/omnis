@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { kakaoMissingAttachment, missingAttachmentLabel, missingAttachmentRest } from "./kakao-placeholder"
+import { kakaoMissingAttachment, missingAttachmentLabel, missingAttachmentRest, missingAttachmentToolNote } from "./kakao-placeholder"
 
 const kakao = (content: string, files: unknown[] = []) => ({ sourceId: "kakao:abc123", content, files })
 
@@ -59,4 +59,10 @@ test("칸 이름과 남길 본문", () => {
   assert.equal(missingAttachmentLabel({ kind: "file", name: "a.pdf", deleted: false }), "a.pdf")
   assert.equal(missingAttachmentRest({ kind: "photo", count: 1, deleted: false }), "")
   assert.equal(missingAttachmentRest({ kind: "video", deleted: true }), "The message has been deleted.")
+})
+
+test("도구 결과의 자리표시 표시 — 파일은 이름째, 열 수 없다 · 누구에게 요청할지", () => {
+  const note = missingAttachmentToolNote({ kind: "file", name: "P1_발표.pdf", deleted: false })
+  assert.match(note, /^\[첨부 없음 — 「P1_발표\.pdf」 파일은 .*옴니스에 원본이 없다\. 열기 · 내려받기 불가\. 카톡 원본이나 보낸 사람에게 요청해야 한다\]$/)
+  assert.match(missingAttachmentToolNote({ kind: "photo", count: 3, deleted: false }), /^\[첨부 없음 — 사진 3장은 /)
 })
