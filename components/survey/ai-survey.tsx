@@ -16,6 +16,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { SURVEY_CHANGED_EVENT } from "@/lib/ai-survey/entry"
 import { PURPOSES, PURPOSE_LABEL, SAY_MAX, answerText, fieldMode, understoodText, type AnswerValues, type Field, type FieldAnswer, type Purpose } from "@/lib/ai-survey/rules"
 import type { SurveyEvent, SurveyState, TurnView } from "@/lib/ai-survey/service"
+import { startStep, stepNav } from "@/lib/ai-survey/steps"
 import { enterSends, isTouchTyping } from "@/lib/enter-to-send"
 import { cn } from "@/lib/utils"
 import { SurveyField, isAnswered } from "./survey-field"
@@ -173,11 +174,13 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  /** 묶음 범위 질문에서 펼친 칸 */
+  /** 묶음 범위 질문에서 펼친 칸 — 「이전」 · 「다음」 으로만 바뀐다 */
   const [focusIdx, setFocusIdx] = useState(0)
+  /** 말에서 읽은 값으로 맞춘 칸 — 그 질문을 펼칠 때 이 칸부터 보인다 */
+  const focusField = useRef<string | null>(null)
   /** 연필 단추로 연 「고칠 답 말하기」 입력창 */
   const [fixOpen, setFixOpen] = useState(false)
-  /** 슬라이더에서 손을 뗀 순간의 값 — 상태는 다음 그리기에야 바뀐다 */
+  /** 한 번의 누름에 두 번 불리는 값(슬라이더) — 상태는 다음 그리기에야 바뀐다 */
   const draftRef = useRef<AnswerValues>({})
 
   const current = state.turns.at(-1)
@@ -190,12 +193,13 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
   const mode = active ? fieldMode(active.ask.fields[0]) : null
   const lastAnswered = state.turns.findLast((t) => t.answer && !t.dead)
   draftRef.current = draft
-  // 다른 질문으로 넘어가면 첫 칸부터 펼치고 연필 입력창은 접는다
+  // 다른 질문으로 넘어가면 첫 칸(말로 맞춘 칸이 있으면 그 칸)부터 펼치고 연필 입력창은 접는다
   const activeKey = `${active?.id ?? ""}:${editingId ?? ""}:${state.status}`
   const [seenKey, setSeenKey] = useState(activeKey)
   if (seenKey !== activeKey) {
     setSeenKey(activeKey)
-    setFocusIdx(0)
+    setFocusIdx(startStep(active?.ask.fields ?? [], focusField.current))
+    focusField.current = null
     setFixOpen(false)
   }
 
@@ -277,8 +281,12 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
               const field = turn?.ask.fields.find((f) => f.id === range!.fieldId)
               const preset = field ? presetOf(field, range.num) : undefined
               setEditingId(turn?.answer ? turn.id : null)
-              // 묶음 질문이면 다른 칸은 지금 답 그대로 두고 그 칸만 맞춘다
+              // 묶음 질문이면 다른 칸은 지금 답 그대로 두고 그 칸만 맞춘다 — 그 칸을 펼쳐 보인다
               setDraft({ ...(turn?.answer ? currentForm(turn) : {}), ...(preset && field ? { [field.id]: preset } : {}) })
+              if (turn && field) {
+                focusField.current = field.id
+                setFocusIdx(startStep(turn.ask.fields, field.id))
+              }
               // 글은 읽었다 — 남겨 두면 「보내기」 가 범위 입력 대신 그 글을 다시 보낸다
               setText("")
               setNote(turn?.answer ? "이 값으로 고칠까요? 아래에서 맞춰서 보내 주세요." : "아래에서 골라서 보내 주세요.")
@@ -406,15 +414,15 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
   const typingOpen = mode === "chat" || fixOpen
   const placeholder = editing ? "다시 말하기" : mode === "chat" ? "직접 말하기" : "고칠 답 말하기"
 
-  /** 묶음 범위 질문 — 한 번에 한 칸만 펼치고 나머지는 한 줄 요약. 슬라이더에서 손을 떼면 다음 칸으로 */
+  /**
+   * 묶음 범위 질문 — 한 번에 한 칸만 보이고, 시트 아래 「이전」 · 「다음」 으로 오간다(마지막 칸은 「보내기」).
+   * 슬라이더 · 칩을 만져도 저절로 넘어가지 않는다 — 손을 떼자마자 넘어가 값을 다시 볼 틈이 없었다(작업지시자 2026-11-12).
+   * 고른 값은 질문 단위 draft 에 남아 「이전」 으로 돌아가면 그대로 보인다
+   */
   const fields = active?.ask.fields ?? []
   const grouped = mode === "range" && fields.length > 1
-  const openIdx = Math.min(focusIdx, Math.max(fields.length - 1, 0))
-  const nextOpen = () => {
-    const after = fields.findIndex((f, i) => i > openIdx && !isAnswered(f, draftRef.current[f.id]))
-    if (after >= 0) setFocusIdx(after)
-  }
-  const fieldValue = (f: Field) => answerText(f, draft[f.id]) || "아직 안 골랐어요"
+  const nav = grouped ? stepNav(fields, draft, focusIdx) : null
+  const openIdx = nav?.index ?? 0
 
   const sendButton = (
     <Button type="submit" size="icon" aria-label="보내기" className="touch-target size-[44px] shrink-0 rounded-full" disabled={!text.trim() && !formReady}>
@@ -503,27 +511,15 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
           </div>
         )}
         {fields.map((f, i) =>
-          grouped && i !== openIdx ? (
-            // 접힌 칸 — 한 줄 요약. 누르면 이 칸을 펼친다
-            <button
-              key={`${active!.id}:${f.id}`}
-              type="button"
-              data-survey-field-summary={f.id}
-              onClick={() => setFocusIdx(i)}
-              className="touch-hit flex w-full items-center justify-between gap-3 rounded-full px-3 py-1.5 text-left text-[13.5px] transition-colors hover:bg-muted/60"
-            >
-              <span className="min-w-0 truncate text-muted-foreground">{f.label ?? `칸 ${i + 1}`}</span>
-              <span className={cn("shrink-0 font-semibold tabular-nums", !isAnswered(f, draft[f.id]) && "font-normal text-muted-foreground")}>{fieldValue(f)}</span>
-            </button>
-          ) : (
-            <div key={`${active!.id}:${f.id}`} className="flex flex-col gap-1">
+          grouped && i !== openIdx ? null : (
+            <div key={`${active!.id}:${f.id}`} data-survey-step={grouped ? i + 1 : undefined} className="flex flex-col gap-1">
               {grouped && (
                 <div className="flex items-center justify-between gap-2 px-1 text-[13px]">
                   <span className="min-w-0 truncate font-medium">{f.label}</span>
-                  <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">{i + 1} / {fields.length}</span>
+                  <span data-survey-step-count className="shrink-0 text-[12px] text-muted-foreground tabular-nums">{i + 1} / {fields.length}</span>
                 </div>
               )}
-              <SurveyField field={f} value={draft[f.id]} hideLabel={grouped} onCommit={grouped ? nextOpen : undefined} onChange={(a, picked) => setField(active!, f.id, a, instant && picked)} />
+              <SurveyField field={f} value={draft[f.id]} hideLabel={grouped} onChange={(a, picked) => setField(active!, f.id, a, instant && picked)} />
             </div>
           ),
         )}
@@ -533,6 +529,24 @@ export function AiSurvey({ initial }: { initial: SurveyState }) {
           {talking && !(editing && mode === "range") && typingOpen ? input : <span className="flex-1" />}
           {closing && !editing && !fixOpen ? (
             <Button type="button" className={primary} disabled={busy} onClick={() => void submit()}>맞아요, 제출</Button>
+          ) : nav && !fixOpen ? (
+            // 묶음 질문 — 「이전」 · 「다음」, 마지막 칸은 「보내기」. 다음 · 보내기는 같은 단추라 누른 뒤에도 포커스가 남는다
+            <>
+              {nav.prev && (
+                <Button type="button" variant="outline" className={cn(primary, "bg-background/70")} data-survey-step-prev onClick={() => setFocusIdx(nav.index - 1)}>
+                  이전
+                </Button>
+              )}
+              <Button
+                type={nav.action === "send" ? "submit" : "button"}
+                className={primary}
+                disabled={!nav.enabled}
+                data-survey-step-next={nav.action === "next" ? "" : undefined}
+                onClick={nav.action === "next" ? (e) => { e.preventDefault(); setFocusIdx(nav.index + 1) } : undefined}
+              >
+                {nav.action === "next" ? "다음" : "보내기"}
+              </Button>
+            </>
           ) : (
             sendButton
           )}
