@@ -30,7 +30,7 @@ export const LOGIN_LIMITS = {
 
 export const LOGIN_ENTITY = "auth.login"
 /** 활동 기록 화면·API 에 내보내지 않는 entity. 인증 흔적은 남이 볼 것이 아니다 */
-export const PRIVATE_ACTIVITY_ENTITIES = [LOGIN_ENTITY, "auth.password"]
+export const PRIVATE_ACTIVITY_ENTITIES = [LOGIN_ENTITY, "auth.password", "auth.code"]
 
 const digest = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 32)
 export const accountKey = (name: string) => `acct:${digest(normalizeLoginName(name).toLowerCase())}`

@@ -15,7 +15,7 @@ export const PASSWORD_ENTITY = "auth.password"
 export async function passwordNoticeFor(userId: string, now = new Date()): Promise<PasswordNotice> {
   // 사람 한 명의 비밀번호 기록은 몇 줄뿐이다 — 최근 것부터 넉넉히 읽는다
   const logs = await prisma.activityLog.findMany({
-    where: { entity: PASSWORD_ENTITY, entityId: userId, action: { in: ["reset", "changed", "snoozed"] } },
+    where: { entity: PASSWORD_ENTITY, entityId: userId, action: { in: ["reset", "changed", "snoozed", "code_login"] } },
     orderBy: { createdAt: "desc" },
     take: 50,
     select: { action: true, createdAt: true },

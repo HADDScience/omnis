@@ -22,16 +22,20 @@ export interface PasswordNotice {
   showNotice: boolean
   /** 「나중에」 로 숨긴 안내가 다시 뜨는 시각. 숨기고 있지 않으면 null */
   snoozedUntil: Date | null
+  /** 로그인 코드로 들어와 새 비밀번호를 아직 안 만들었다 — 건너뛸 수 없다(앱 화면을 막는다) */
+  mustSet: boolean
 }
 
 export function passwordNotice(logs: readonly PasswordLog[], now: Date): PasswordNotice {
   // 가장 최근의 reset · changed 가 해결 여부를 정한다
   const sorted = [...logs].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-  const decisive = sorted.find((l) => l.action === "reset" || l.action === "changed")
-  if (decisive?.action !== "reset") return { pending: false, showNotice: false, snoozedUntil: null }
+  const decisive = sorted.find((l) => l.action === "reset" || l.action === "changed" || l.action === "code_login")
+  // 로그인 코드로 들어왔으면 새 비밀번호를 만들 때까지 막는다(2026-11-12)
+  if (decisive?.action === "code_login") return { pending: true, showNotice: false, snoozedUntil: null, mustSet: true }
+  if (decisive?.action !== "reset") return { pending: false, showNotice: false, snoozedUntil: null, mustSet: false }
   // 그 reset 뒤의 「나중에」 만 센다 — 새로 초기화되면 안내가 다시 뜬다
   const snooze = sorted.find((l) => l.action === "snoozed" && l.createdAt.getTime() >= decisive.createdAt.getTime())
   const until = snooze ? new Date(snooze.createdAt.getTime() + PASSWORD_SNOOZE_DAYS * DAY_MS) : null
   const snoozed = until !== null && until.getTime() > now.getTime()
-  return { pending: true, showNotice: !snoozed, snoozedUntil: snoozed ? until : null }
+  return { pending: true, showNotice: !snoozed, snoozedUntil: snoozed ? until : null, mustSet: false }
 }

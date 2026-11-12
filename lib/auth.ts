@@ -9,6 +9,9 @@ import { resolveIdentity, linkIdentity, rememberIdentityEmail } from "./auth-ide
 import { BASE_PATH } from "./base-path"
 import { clientIp, loginAttemptInfo, recordLoginFailure, recordLoginSuccess } from "./login-guard"
 import { encodeAttemptCode, normalizeLoginName } from "./login-attempts"
+import { verifyLoginCode } from "./login-code-server"
+import { isCodeShape } from "./login-code"
+import { PASSWORD_ENTITY } from "./password-state"
 
 /**
  * 로그인 실패 — `code` 에 남은 횟수 · 잠금 시각을 싣는다(lib/login-attempts.ts, 로그인 화면이 읽는다).
@@ -56,6 +59,33 @@ const providers: Provider[] = [
       }
     },
   }),
+  // 로그인 코드(웍스 메일로 받은 6자리) — 처음 로그인 · 비밀번호를 잊었을 때. 들어오면 새 비밀번호를 만들 때까지 앱을 막는다
+  // (ActivityLog auth.password 의 code_login — lib/password-notice.ts). 규칙: lib/login-code.ts
+  Credentials({
+    id: "login-code",
+    credentials: {
+      identifier: { label: "이름 또는 웍스 메일", type: "text" },
+      code: { label: "로그인 코드", type: "text" },
+    },
+    async authorize(credentials, request) {
+      const identifier = normalizeLoginName(String(credentials?.identifier ?? ""))
+      const code = String(credentials?.code ?? "").trim()
+      if (!identifier || !isCodeShape(code)) return null
+      const ip = clientIp(request?.headers)
+      const before = await loginAttemptInfo(identifier, ip)
+      if (before.locked) throw new LoginFailed(encodeAttemptCode(before))
+      const user = await verifyLoginCode(identifier, code)
+      if (!user) {
+        await recordLoginFailure(identifier, ip)
+        throw new LoginFailed(encodeAttemptCode(await loginAttemptInfo(identifier, ip)))
+      }
+      await recordLoginSuccess(user.id, identifier)
+      await prisma.activityLog.create({
+        data: { userId: user.id, entity: PASSWORD_ENTITY, entityId: user.id, action: "code_login", title: "로그인 코드로 로그인" },
+      })
+      return { id: user.id, name: user.name, email: user.email, role: user.role }
+    },
+  }),
 ]
 
 if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) providers.push(Google)
@@ -81,7 +111,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
      * 구글 계정 가진 아무나 사내 업무 데이터에 들어온다.
      */
     async signIn({ user, account }) {
-      if (!account || account.provider === "credentials") return true
+      if (!account || account.provider === "credentials" || account.provider === "login-code") return true
 
       // 이메일은 account 가 아니라 제공자 프로필에서 온 user 에 실린다.
       const social = {
@@ -105,7 +135,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
     async jwt({ token, user, account }) {
       if (user && account) {
-        if (account.provider === "credentials") {
+        if (account.provider === "credentials" || account.provider === "login-code") {
           token.id = user.id
           token.role = (user as { role?: string }).role
         } else {

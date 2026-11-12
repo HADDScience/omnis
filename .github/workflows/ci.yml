@@ -91,6 +91,8 @@ jobs:
       OMNIS_AGENT_APPROVAL_SECRET: ci-only-agent-approval-secret-not-real
       # AI 활용 설문은 허용한 계정에만 열린다(lib/ai-survey/access.ts). 시험은 전원에게 열고 돈다 — 운영 값은 Vercel 환경변수에만
       AI_SURVEY_ALLOW_USER_IDS: "*"
+      # 로그인 코드 메일을 보내지 않고 파일로 떨군다(lib/mailer.ts, tests/feature/login-code.spec.ts). 운영 배포에서는 켜지지 않는다
+      MAIL_OUTBOX_DIR: /tmp/omnis-mail-outbox
 
     steps:
       - uses: actions/checkout@v4

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db"
 import { apiError, parseJson } from "@/lib/api"
 import { clientIp, loginLockState, recordLoginFailure } from "@/lib/login-guard"
 import { passwordProblem } from "@/lib/password-policy"
-import { PASSWORD_ENTITY } from "@/lib/password-state"
+import { PASSWORD_ENTITY, passwordNoticeFor } from "@/lib/password-state"
 
 /**
  * 본인 비밀번호 변경. 대상은 언제나 세션의 계정이다 — 본문으로 사람을 고를 수 없다.
@@ -20,7 +20,9 @@ export async function POST(req: NextRequest) {
   const body = await parseJson<{ current?: unknown; next?: unknown }>(req)
   const current = typeof body?.current === "string" ? body.current : ""
   const next = typeof body?.next === "string" ? body.next : ""
-  if (!current || !next) return apiError(400, "지금 비밀번호와 새 비밀번호를 모두 입력하세요.")
+  // 로그인 코드로 막 들어온 사람은 지금 비밀번호를 모른다 — 메일로 본인임을 보였으니 새 비밀번호만 받는다
+  const mustSet = (await passwordNoticeFor(session.user.id)).mustSet
+  if (!next || (!mustSet && !current)) return apiError(400, "지금 비밀번호와 새 비밀번호를 모두 입력하세요.")
 
   const user = await prisma.user.findFirst({
     where: { id: session.user.id, isActive: true },
@@ -32,12 +34,12 @@ export async function POST(req: NextRequest) {
   if ((await loginLockState(user.name, ip)).locked) {
     return apiError(429, "시도가 너무 많아 잠시 막혔습니다. 15분 뒤 다시 시도하세요.")
   }
-  if (!(await compare(current, user.passwordHash))) {
+  if (!mustSet && !(await compare(current, user.passwordHash))) {
     await recordLoginFailure(user.name, ip)
     return apiError(400, "지금 비밀번호가 올바르지 않습니다.")
   }
 
-  const problem = passwordProblem(next, current)
+  const problem = passwordProblem(next, mustSet ? undefined : current)
   if (problem) return apiError(400, problem)
 
   const passwordHash = await hash(next, 10)
