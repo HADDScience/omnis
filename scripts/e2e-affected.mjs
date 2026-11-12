@@ -32,7 +32,7 @@ const EVERYWHERE = [
 /** 영역 하나에 닿는다. 순서대로 처음 맞는 것을 쓴다 */
 const AREAS = [
   [/^app\/\(main\)\/(tasks|dashboard)\/|^components\/tasks\/|^components\/chat\/task-|^app\/api\/(tasks|projects|products|workspace-layout|gemini-usage)\//, ["@tasks", "@mobile"]],
-  [/^app\/\(main\)\/(omnis|crm|nas)\/|^components\/(omnis|crm|company)\/|^app\/api\/(omnis|crm|nas|company|context|categories|bookmarks|ip|files)\//, ["@archive"]],
+  [/^app\/\(main\)\/(omnis|crm|nas|ip)\/|^components\/(omnis|crm|company|ip)\/|^app\/api\/(omnis|crm|nas|company|context|categories|bookmarks|ip|files)\//, ["@archive"]],
   [/^app\/\(main\)\/reports\/|^app\/api\/reports\//, ["@reports"]],
   [/^app\/\(main\)\/settings\/|^components\/(settings|survey)\/|^app\/api\/(ai-budget|ai-survey|ui-metrics|notification-prefs)\//, ["@settings", "@onboarding", "@mobile"]],
   [/^app\/\(main\)\/(chat|calendar)\/|^components\/(chat|messenger)\/|^app\/api\/(chat|ai|calendar|rooms)\//, ["@chat"]],

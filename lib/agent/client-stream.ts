@@ -131,5 +131,6 @@ export const TOOL_LABEL: Record<string, string> = {
   add_progress: "지식재산권 기록 제안",
   correct_ip: "지식재산권 정정 제안",
   create_ip: "지식재산권 새 건 제안",
+  add_ip_image: "지식재산권 이미지 걸기 제안",
   request_feature: "기능 요청 전달 제안",
 }
