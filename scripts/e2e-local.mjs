@@ -88,6 +88,8 @@ try {
     data: {
       onboardingVideoSeenAt: new Date(),
       onboardingCompletedAt: new Date(),
+      // 지금 안내 판까지 본 것으로 — 판을 올려도 시험 계정에 안내가 덮이지 않게(lib/onboarding-version.ts)
+      onboardingVersion: Number(/ONBOARDING_VERSION = (\d+)/.exec(fs.readFileSync(path.join(root, "lib/onboarding-version.ts"), "utf8"))[1]),
     },
   })
   const log = fs.openSync(path.join(workspace, "server.log"), "a")

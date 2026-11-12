@@ -24,6 +24,7 @@
 import "dotenv/config"
 import { PrismaClient } from "../generated/prisma/client"
 import { hashSync } from "bcryptjs"
+import { ONBOARDING_VERSION } from "../lib/onboarding-version"
 
 const prisma = new PrismaClient()
 
@@ -78,6 +79,7 @@ async function main() {
         isActive: true,
         onboardingVideoSeenAt: onboarded,
         onboardingCompletedAt: onboarded,
+        onboardingVersion: ONBOARDING_VERSION,
       },
       create: {
         name: a.name,
@@ -86,6 +88,7 @@ async function main() {
         isActive: true,
         onboardingVideoSeenAt: onboarded,
         onboardingCompletedAt: onboarded,
+        onboardingVersion: ONBOARDING_VERSION,
       },
     })
   }

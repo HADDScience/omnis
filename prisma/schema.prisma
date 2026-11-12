@@ -23,6 +23,8 @@ model User {
   isActive        Boolean  @default(true)
   onboardingVideoSeenAt DateTime?
   onboardingCompletedAt DateTime?
+  /// 마지막으로 마치거나 건너뛴 안내 판(lib/onboarding-version.ts). 비어 있으면 마친 시각이 있을 때 1판으로 본다
+  onboardingVersion     Int?
   workspaceLayout Json?
   createdAt       DateTime @default(now())
 

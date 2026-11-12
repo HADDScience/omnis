@@ -3,10 +3,12 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { onboardingActionSchema } from "@/lib/schemas/onboarding"
 import { publicUrl } from "@/lib/base-path"
+import { ONBOARDING_VERSION } from "@/lib/onboarding-version"
 
 const selection = {
   onboardingVideoSeenAt: true,
   onboardingCompletedAt: true,
+  onboardingVersion: true,
 } as const
 
 async function activeUser() {
@@ -26,6 +28,7 @@ export async function GET(request: NextRequest) {
     {
       onboardingVideoSeenAt: user.onboardingVideoSeenAt,
       onboardingCompletedAt: user.onboardingCompletedAt,
+      onboardingVersion: user.onboardingVersion,
       mcpUrl: publicUrl("/api/ip-mcp", request.url),
     },
     { headers: { "Cache-Control": "no-store" } }
@@ -66,6 +69,15 @@ export async function POST(request: NextRequest) {
       await tx.user.updateMany({
         where: { id: user.id, isActive: true, onboardingCompletedAt: null },
         data: { onboardingCompletedAt: now },
+      })
+      // 마치거나 건너뛴 판을 적는다 — 처음 마친 시각(위)은 그대로 두고, 더 높은 판을 본 기록은 낮추지 않는다
+      await tx.user.updateMany({
+        where: {
+          id: user.id,
+          isActive: true,
+          OR: [{ onboardingVersion: null }, { onboardingVersion: { lt: ONBOARDING_VERSION } }],
+        },
+        data: { onboardingVersion: ONBOARDING_VERSION },
       })
     }
   })

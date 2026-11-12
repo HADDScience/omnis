@@ -9,5 +9,6 @@ export const onboardingActionSchema = z
 export const onboardingStateSchema = z.object({
   onboardingVideoSeenAt: z.string().datetime().nullable(),
   onboardingCompletedAt: z.string().datetime().nullable(),
+  onboardingVersion: z.number().int().nullable(),
 })
 export type OnboardingState = z.infer<typeof onboardingStateSchema>

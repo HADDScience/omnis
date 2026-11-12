@@ -18,8 +18,12 @@ export interface TourStop {
   social?: true
   /** 옴니스 방(/chat/new) 대화 칸 자리에서 재생할 대본(components/onboarding/tour-demo.tsx) */
   demo?: DemoScript
+  /** 설문이 열린 계정(lib/ai-survey/access.ts)에만 보이는 장면 */
+  surveyOnly?: true
   title: string
   copy: string
+  /** 폰(md 미만)에서 바꿔 보일 문구 — PC 에만 있는 화면을 말하는 장면 */
+  phoneCopy?: string
 }
 
 export const TOUR_STOPS: readonly TourStop[] = [
@@ -70,9 +74,27 @@ export const TOUR_STOPS: readonly TourStop[] = [
     target: "resources",
     body: true,
     title: "회사의 자료는 아카이브에",
-    copy: "지식 카드 · 시놀로지 · 지식재산권 · 고객·견적이 아카이브 탭 한 곳에 모여 있어요. 안내는 마이에서 다시 볼 수 있어요.",
+    copy: "지식 카드 · 시놀로지 · 지식재산권 · 고객·견적이 아카이브 탭 한 곳에 모여 있어요.",
+  },
+  // 2판(2026-11-12, lib/onboarding-version.ts) — 최근 바뀐 화면을 못 본 사람이 있어 짧게 더했다
+  {
+    id: "chat-updates",
+    title: "대화에서 새로 생긴 것",
+    copy: "업무 · 캘린더 같은 화면에서는 오른쪽 아래 둥근 단추로 대화 패널을 열어 보던 화면 옆에서 채팅을 이어 가요. 방 머리의 ≡ 서랍에는 그 방의 사진 · 파일 · 링크가 모여 있고, 여러 개를 골라 한 번에 받을 수 있어요. 답장 위의 인용을 누르면 원래 메시지로 이동해요.",
+    phoneCopy: "방 머리의 ≡ 서랍에는 그 방의 사진 · 파일 · 링크가 모여 있고, 여러 개를 골라 한 번에 받을 수 있어요. 글을 오른쪽으로 밀면 답장, 답장 위의 인용을 누르면 원래 메시지로 이동해요.",
+  },
+  {
+    id: "survey",
+    surveyOnly: true,
+    title: "AI 활용 설문에 참여해 주세요",
+    copy: "AI 를 어떻게 쓰고 계신지 2~3분이면 알려 주실 수 있어요. 맨 위 안내 띠나 마이의 「설문 참여하기」 에서 열 수 있어요. 안내는 마이에서 다시 볼 수 있어요.",
   },
 ]
+
+/** 이 사람에게 보일 장면 — 설문 장면은 설문이 열린 계정에만. 이어 보기(saveTourResume)의 번호는 이 목록 기준이다 */
+export function tourStopsFor({ survey }: { survey: boolean }): readonly TourStop[] {
+  return survey ? TOUR_STOPS : TOUR_STOPS.filter((s) => !s.surveyOnly)
+}
 
 /**
  * 소셜 연결은 구글 · 카카오 화면으로 나갔다 온다. 나가기 전에 다음 장면을 적어 두고, 돌아오면 그 장면부터 잇는다.
@@ -106,6 +128,7 @@ export function peekTourResume(): TourResume | null {
     const value = JSON.parse(raw) as Partial<TourResume> & { at?: number }
     if (typeof value.stop !== "number" || typeof value.from !== "string") return null
     if (!value.at || Date.now() - value.at > RESUME_TTL_MS) return null
+    // 설문 장면을 뺀 목록이면 마지막 번호가 하나 작다 — 넘치면 화면 쪽(SpotlightTour)이 마지막 장면으로 줄인다
     if (value.stop < 0 || value.stop >= TOUR_STOPS.length) return null
     return { stop: value.stop, from: value.from }
   } catch {
