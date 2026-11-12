@@ -58,7 +58,7 @@ function Row({
  * 마이 탭의 바로가기 — 예전 사이드바 프로필 메뉴에 있던 것들.
  * 메뉴 안에 숨어 있던 MCP 등록·튜토리얼을 한 화면에 늘어놓아, 찾으러 메뉴를 열 필요가 없게 했다.
  */
-export function MyShortcuts() {
+export function MyShortcuts({ below }: { /** 메뉴 카드(로그아웃 줄) 바로 아래에 놓을 것 — AI 활용 설문 카드 */ below?: ReactNode }) {
   const onboarding = useOnboarding()
 
   return (
@@ -106,6 +106,7 @@ export function MyShortcuts() {
         </ul>
       </CardContent>
     </Card>
+    {below}
     </>
   )
 }

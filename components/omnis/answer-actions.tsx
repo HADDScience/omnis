@@ -67,9 +67,11 @@ export function AnswerActions({
 
   async function copy() {
     const body = answerRef.current?.querySelector("[data-omnis-answer]") ?? answerRef.current
-    const html = body ? clipFromElement(body).html : ""
+    // 화면에 그린 답에서 세 형식 — 표는 html · RTF 로는 표, 글(text/plain)로는 탭 · 줄바꿈(엑셀 · 구글 시트가 칸으로 나눈다).
+    // 2026-11-11 까지 글은 마크다운 원문(| 칸 | 칸 |)이었다 — 표를 붙이면 칸이 나뉘지 않았다. 화면을 못 찾으면 원문에서 각주만 뺀다
+    const clip = body ? clipFromElement(body) : null
     try {
-      await writeClip({ html, text: stripCitations(content).trim() })
+      await writeClip(clip?.text ? clip : { html: clip?.html ?? "", text: stripCitations(content).trim() })
       setCopied(true)
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => setCopied(false), 1600)

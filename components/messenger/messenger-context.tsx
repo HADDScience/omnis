@@ -21,6 +21,20 @@ export const useStartRoomEntry = () => useContext(StartRoomEntry)
 export const OpenClientRoom = createContext<(room: RoomListItem) => void>(() => {})
 export const useOpenClientRoom = () => useContext(OpenClientRoom)
 
+/**
+ * PC 오른쪽 패널의 채팅(components/layout/panel-messenger.tsx) — 주소를 바꾸지 않고 패널 안에서 방을 옮긴다.
+ * 메신저 화면(/chat)에서는 null 이다. 목록 · 뒤로 단추 · 방을 볼 수 없을 때 · 나가기가 이 값이 있으면 주소 대신 이것을 쓴다
+ */
+export interface PanelNavValue {
+  /** 패널에서 지금 연 방의 키. 목록에 있으면 null */
+  activeKey: string | null
+  open: (room: RoomListItem) => void
+  /** 방에서 목록으로 */
+  back: () => void
+}
+export const PanelNav = createContext<PanelNavValue | null>(null)
+export const usePanelNav = () => useContext(PanelNav)
+
 /** 방 화면(또는 그 loading 화면)이 그려졌다 — 셸이 덮어 둔 입장 화면을 걷는다. 메신저 밖에서는 아무 일도 없다 */
 export const RoomSurfaceReady = createContext<(key: string) => void>(() => {})
 export const useRoomSurfaceReady = () => useContext(RoomSurfaceReady)
