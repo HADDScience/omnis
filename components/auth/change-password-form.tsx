@@ -15,7 +15,7 @@ import { PASSWORD_MIN, passwordProblem } from "@/lib/password-policy"
  * 본인 비밀번호 변경 폼. `required` 면 관리자가 정해 준 임시 비밀번호를 쓰는 중이라
  * 바꾼 뒤 앱으로 돌려보낸다. 막지는 않는다(2026-11-06 핫픽스).
  */
-export function ChangePasswordForm({ required }: { required: boolean }) {
+export function ChangePasswordForm({ required, mustSet = false }: { required: boolean; mustSet?: boolean }) {
   const router = useRouter()
   const [current, setCurrent] = useState("")
   const [next, setNext] = useState("")
@@ -27,7 +27,7 @@ export function ChangePasswordForm({ required }: { required: boolean }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
-    const problem = passwordProblem(next, current)
+    const problem = passwordProblem(next, mustSet ? undefined : current)
     if (problem) return setError(problem)
     if (next !== confirm) return setError("새 비밀번호 두 칸이 서로 다릅니다.")
 
@@ -35,7 +35,7 @@ export function ChangePasswordForm({ required }: { required: boolean }) {
     const res = await fetch(apiUrl("/api/account/password"), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ current, next }),
+      body: JSON.stringify(mustSet ? { next } : { current, next }),
     }).catch(() => null)
     setLoading(false)
     if (!res?.ok) {
@@ -54,7 +54,7 @@ export function ChangePasswordForm({ required }: { required: boolean }) {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
-      <PasswordField id="current-password" label="지금 비밀번호" autoComplete="current-password" value={current} onChange={setCurrent} />
+      {!mustSet && <PasswordField id="current-password" label="지금 비밀번호" autoComplete="current-password" value={current} onChange={setCurrent} />}
       <PasswordField id="new-password" label="새 비밀번호" autoComplete="new-password" value={next} onChange={setNext} minLength={PASSWORD_MIN}
         hint={`${PASSWORD_MIN}자 이상. 다른 곳에서 쓰지 않는 문장형을 권합니다.`} />
       <PasswordField id="confirm-password" label="새 비밀번호 확인" autoComplete="new-password" value={confirm} onChange={setConfirm} />

@@ -13,6 +13,7 @@ import { UiMetrics } from "@/components/layout/ui-metrics"
 import { LargeUploadStatus } from "@/components/layout/large-upload-status"
 import { RoomDownloadStatus } from "@/components/layout/room-download-status"
 import { passwordNoticeFor } from "@/lib/password-state"
+import { redirect } from "next/navigation"
 import { PasswordResetNotice } from "@/components/auth/password-reset-notice"
 import { AppSplash } from "@/components/layout/app-splash"
 import { redirectToLogin } from "@/lib/login-redirect"
@@ -50,6 +51,8 @@ async function MainShell({
   // 관리자가 정해 준 비밀번호를 쓰는 동안에는 바꾸라고 권한다. 막지는 않는다(2026-11-06 핫픽스).
   // 「나중에」 7일 동안은 안내만 숨기고 마이 진입점의 경고 점은 남긴다(2026-11-11, lib/password-notice.ts)
   const password = await passwordNoticeFor(session.user.id as string)
+  // 로그인 코드로 들어왔으면 새 비밀번호부터 — 건너뛰기 없음(lib/login-code.ts)
+  if (password.mustSet) redirect("/account/password")
 
   return (
     // 사이드바 대신 떠 있는 nav(mydocs/plans/2026-10-28-floating-nav.md). 셸은 화면 높이 그대로 한 칸이다

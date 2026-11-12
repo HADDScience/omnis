@@ -64,6 +64,43 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [socials, setSocials] = useState<SocialProvider[]>([])
   const [social, setSocial] = useState<SocialProvider | null>(null)
+  // 로그인 코드(처음 로그인 · 비밀번호를 잊었을 때) — 웍스 메일로 받은 6자리로 들어와 새 비밀번호를 만든다(lib/login-code.ts)
+  const [codeOpen, setCodeOpen] = useState(false)
+  const [codeId, setCodeId] = useState("")
+  const [codeSent, setCodeSent] = useState("")
+  const [code, setCode] = useState("")
+  const [codeError, setCodeError] = useState("")
+  const [codeLoading, setCodeLoading] = useState(false)
+
+  async function requestCode() {
+    setCodeError("")
+    if (!codeId.trim()) return setCodeError("이름 또는 웍스 메일을 입력하세요.")
+    setCodeLoading(true)
+    const res = await fetch(apiUrl("/api/account/login-code"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identifier: codeId }),
+    }).catch(() => null)
+    setCodeLoading(false)
+    const body = (await res?.json().catch(() => null)) as { message?: string; error?: string } | null
+    if (!res?.ok) return setCodeError(body?.error ?? "코드를 보내지 못했습니다. 잠시 뒤 다시 시도하세요.")
+    setCodeSent(body?.message ?? "등록된 계정이면 웍스 메일로 코드를 보냈습니다")
+  }
+
+  async function loginWithCode(e: React.FormEvent) {
+    e.preventDefault()
+    setCodeError("")
+    setCodeLoading(true)
+    const result = await signIn("login-code", { identifier: codeId, code, redirect: false })
+    if (result?.error) {
+      setCodeLoading(false)
+      return setCodeError(
+        result.code?.startsWith("locked") ? loginFailMessage(result.code) : "코드가 올바르지 않거나 만료됐습니다. 새 코드를 받아 다시 시도하세요."
+      )
+    }
+    // 새 비밀번호부터 만든다 — 건너뛸 수 없다
+    window.location.assign(apiUrl("/account/password"))
+  }
 
   // 어떤 소셜이 켜져 있는지는 서버 설정이 정한다. 화면에 고정해 두면
   // 키를 넣지 않은 제공자 버튼이 떠서 누르면 깨진다.
@@ -230,12 +267,7 @@ export default function LoginPage() {
                 <Label htmlFor="password" className="text-[12.5px] font-semibold text-foreground">
                   비밀번호
                 </Label>
-                <Link
-                  href="/login"
-                  className="text-[12px] font-medium text-primary underline-offset-4 hover:underline"
-                >
-                  Forgot password?
-                </Link>
+
               </div>
               <div className="relative">
                 <HugeiconsIcon
@@ -289,6 +321,65 @@ export default function LoginPage() {
               {!loading ? <HugeiconsIcon icon={ArrowRight02Icon} size={16} /> : null}
             </Button>
           </form>
+
+          <div className="mt-4">
+            <button
+              type="button"
+              aria-expanded={codeOpen}
+              onClick={() => {
+                setCodeOpen((v) => !v)
+                if (!codeId) setCodeId(name)
+              }}
+              className="touch-target text-[12.5px] font-medium text-primary underline-offset-4 hover:underline"
+            >
+              처음 로그인하시나요? · 비밀번호를 잊으셨나요?
+            </button>
+            {codeOpen && (
+              <form onSubmit={loginWithCode} aria-label="로그인 코드" className="mt-3 flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
+                <p className="text-[12.5px] leading-5 text-muted-foreground">
+                  웍스 메일로 6자리 로그인 코드를 보내 드립니다. 코드로 들어오면 바로 새 비밀번호를 만듭니다.
+                </p>
+                <Label htmlFor="code-identifier" className="text-[12.5px] font-semibold text-foreground">이름 또는 웍스 메일</Label>
+                <Input
+                  id="code-identifier"
+                  type="text"
+                  autoComplete="username"
+                  value={codeId}
+                  onChange={(e) => setCodeId(e.target.value)}
+                  className="h-11 rounded-lg bg-white text-[14px] dark:bg-input/30"
+                />
+                <Button type="button" variant="outline" disabled={codeLoading} onClick={requestCode} className="h-11 rounded-lg">
+                  {codeLoading && !codeSent ? <Spinner className="h-4 w-4" /> : null}
+                  {codeSent ? "코드 다시 받기" : "로그인 코드 받기"}
+                </Button>
+                {codeSent && (
+                  <>
+                    <p role="status" className="text-[12.5px] text-foreground">{codeSent}. 10분 동안 쓸 수 있습니다.</p>
+                    <Label htmlFor="login-code" className="text-[12.5px] font-semibold text-foreground">로그인 코드</Label>
+                    <Input
+                      id="login-code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      placeholder="6자리"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      className="h-11 rounded-lg bg-white text-center font-mono text-[18px] tracking-[0.4em] dark:bg-input/30"
+                    />
+                    <Button type="submit" disabled={codeLoading || code.length !== 6} className="h-11 rounded-lg">
+                      {codeLoading ? <Spinner className="h-4 w-4" /> : null}
+                      코드로 로그인
+                    </Button>
+                  </>
+                )}
+                {codeError && (
+                  <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-[12.5px] text-destructive">
+                    {codeError}
+                  </p>
+                )}
+              </form>
+            )}
+          </div>
 
           <div className="my-7 flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
