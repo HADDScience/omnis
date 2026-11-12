@@ -6,6 +6,7 @@ import { TopBanners } from "@/components/layout/top-banners"
 import { Toaster } from "@/components/ui/sonner"
 import { apiUrl } from "@/lib/base-path"
 import { BRAND, brand } from "@/lib/brand"
+import { splashImages } from "@/lib/pwa-splash"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
@@ -16,7 +17,13 @@ export const metadata: Metadata = {
    * 대신 "Omnis" 가 뜬다. 주소 표시줄 없이 뜨는 것은 manifest 의 display: standalone 이 맡는다
    * (iOS 는 16.4 부터 manifest 를 본다 — 푸시가 되는 버전과 같다).
    */
-  appleWebApp: { capable: true, title: "Omnis", statusBarStyle: "default" },
+  appleWebApp: {
+    capable: true,
+    title: "Omnis",
+    statusBarStyle: "default",
+    // iOS 는 manifest 로 시작 화면을 그리지 않는다 — 기기 크기 · 라이트/다크가 맞는 그림이 없으면 첫 HTML 까지 빈 화면이다(lib/pwa-splash.ts)
+    startupImage: splashImages().map((i) => ({ url: apiUrl(`/splash/${i.file}`), media: i.media })),
+  },
   /*
    * 탭 아이콘 · 홈 화면 아이콘은 lib/brand.ts 가 고른다(NEXT_PUBLIC_BRAND). 앱 라우터 파일 규칙
    * (app/icon.png · app/apple-icon.png)은 env 를 못 읽어 public/brand/v1/ 로 옮기고 여기서 낸다.

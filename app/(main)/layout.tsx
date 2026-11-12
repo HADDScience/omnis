@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/db"
@@ -13,8 +14,23 @@ import { UiMetrics } from "@/components/layout/ui-metrics"
 import { LargeUploadStatus } from "@/components/layout/large-upload-status"
 import { passwordNoticeFor } from "@/lib/password-state"
 import { PasswordResetNotice } from "@/components/auth/password-reset-notice"
+import { AppSplash } from "@/components/layout/app-splash"
 
-export default async function MainLayout({
+/**
+ * 셸 바깥은 아무것도 기다리지 않는다 — 첫 HTML 조각(루트 레이아웃 + 스플래시)이 곧장 나가고, 세션 · 사용자 정보를 읽는
+ * 셸(MainShell)은 뒤따라 흘려보낸다. 예전에는 이 읽기가 끝나야 응답의 첫 바이트가 나갔다 — 콜드 스타트 · DB 깨우기와 겹치면
+ * 운영 첫 응답이 3초를 넘었다(2026-11-12 실측), 그동안 홈 화면 앱은 빈 화면이었다. 로그인하지 않았으면 셸이 /login 으로 보낸다
+ * (첫 조각이 이미 나간 뒤라 Next 가 클라이언트에서 옮긴다).
+ */
+export default function MainLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<AppSplash />}>
+      <MainShell>{children}</MainShell>
+    </Suspense>
+  )
+}
+
+async function MainShell({
   children,
 }: {
   children: React.ReactNode
