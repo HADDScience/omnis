@@ -38,6 +38,7 @@ export function shapeMessage({ externalSpeaker, ...m }: MessageRow) {
           id: m.replyTo.id,
           authorName: displayAuthor({ id: "", name: m.replyTo.author.name }, m.replyTo.externalSpeaker).name,
           content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
+          deleted: !!m.replyTo.deletedAt,
         }
       : null,
   }

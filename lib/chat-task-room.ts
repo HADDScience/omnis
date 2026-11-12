@@ -39,6 +39,7 @@ export async function loadTaskRoom(taskId: string, userId: string) {
           id: m.replyTo.id,
           authorName: m.replyTo.author.name,
           content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
+          deleted: !!m.replyTo.deletedAt,
         }
       : null,
   }))

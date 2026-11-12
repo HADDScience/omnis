@@ -19,6 +19,7 @@ import { ChatPhotoViewer, type DrawerControl } from "@/components/photo-viewer/c
 import { serverTimeOf, writeSnapshot } from "@/lib/room-snapshot"
 import { applyChanges, encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
 import { anchoredMessageId } from "@/lib/answer-actions"
+import { REPLY_TARGET_MISSING, aroundFailureMessage, replyJump } from "@/lib/reply-jump"
 
 interface Message {
   id: string
@@ -32,7 +33,7 @@ interface Message {
   /** 화면에 보이는 것이 바뀐 시각 — 폴링이 같은 변경을 두 번 끼우지 않게 비교한다(2026-10-30) */
   changedAt?: string | null
   deletedAt?: string | null
-  replyTo?: { id: string; authorName: string; content: string } | null
+  replyTo?: { id: string; authorName: string; content: string; deleted?: boolean } | null
   files?: { id: string; name: string; path: string; size: number; mimeType: string }[]
   _settled?: boolean
   /** 서버가 돌려준 화면 id — 응답이 끊긴 말풍선과 폴링으로 들어온 진짜 글을 잇는다 */
@@ -378,12 +379,16 @@ export function ChatPanel({
 
   /** 주변 불러오기(around=id 또는 at=시각)로 목록을 갈아 끼우고 대상을 강조한다 */
   const loadAround = useCallback(
-    async (query: { around: string } | { at: string }, typing = false) => {
+    async (
+      query: { around: string } | { at: string },
+      typing = false,
+      failMessage: (status: number | null) => string = () => "그 메시지를 불러오지 못했습니다",
+    ) => {
       const params = new URLSearchParams({ roomId, ...query })
       if (filterTaskId) params.set("taskId", filterTaskId)
       const res = await fetch(apiUrl(`/api/chat/messages?${params.toString()}`)).catch(() => null)
       if (!res?.ok) {
-        toast.error("그 메시지를 불러오지 못했습니다")
+        toast.error(failMessage(res?.status ?? null))
         return
       }
       const data: { targetId: string; messages: Message[]; hasMoreOlder: boolean; hasMoreNewer: boolean } =
@@ -407,6 +412,17 @@ export function ChatPanel({
         return
       }
       await loadAround({ around: messageId }, typing)
+    },
+    [loadAround],
+  )
+
+  // 답장 인용을 누르면 원글로 — 범위 밖이면 그 앞뒤를 불러온다(jumpTo 와 같은 길). 지웠거나 못 보는 글이면 안내만
+  const goToReply = useCallback(
+    (replyTo: { id: string; deleted?: boolean }) => {
+      const where = replyJump(replyTo, messagesRef.current)
+      if (where === "missing") return void toast(REPLY_TARGET_MISSING)
+      if (where === "here") return void setHighlight((prev) => ({ id: replyTo.id, n: (prev?.n ?? 0) + 1 }))
+      void loadAround({ around: replyTo.id }, false, aroundFailureMessage)
     },
     [loadAround],
   )
@@ -841,6 +857,7 @@ export function ChatPanel({
         hasMoreOlder={hasMoreOlder}
         loadingOlder={loadingOlder}
         onReply={replyAndFocus}
+        onGoToReply={goToReply}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onResend={resend}
