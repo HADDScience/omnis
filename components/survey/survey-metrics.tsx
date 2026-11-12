@@ -1,7 +1,9 @@
 import { INTENSITY_LABEL, tokensLabel, type Metrics } from "@/lib/ai-survey/metrics"
-import { LIMIT_HITS, PAYERS, TASK_KINDS, TASK_SIZES, WISH_TAGS, type TaskKind, type Turn } from "@/lib/ai-survey/rules"
+import { LIMIT_HITS, PAYERS, RECENT_TASKS, TASK_KINDS, TASK_SIZES, WISH_TAGS, type TaskKind, type Turn } from "@/lib/ai-survey/rules"
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`
+/** 구간 대표값(분) → 고른 구간 이름(rules.ts recentTime) */
+const RECENT_MINUTES: Record<number, string> = { 5: "5분 이내", 15: "5~30분", 45: "30분~1시간", 90: "1시간 넘게" }
 
 /** 「근거: 2 · 5번 답」 — 지표가 어느 응답에서 나왔는지 */
 function Source({ ids, turns }: { ids: string[] | undefined; turns: Turn[] }) {
@@ -43,8 +45,21 @@ export function SurveyMetrics({ metrics: m, turns }: { metrics: Metrics; turns: 
       {tasks.length > 0 && (
         <Row label="작업 비중">
           {tasks.map(([k, p]) => `${TASK_KINDS[k]} ${p}%`).join(" · ")}
-          {m.taskSize && ` (보통 크기: ${TASK_SIZES[m.taskSize as keyof typeof TASK_SIZES] ?? m.taskSize})`}
           <Source ids={m.evidence.taskShare} turns={turns} />
+        </Row>
+      )}
+      {m.recentTask && (
+        <Row label="가장 최근에 맡긴 일">
+          {RECENT_TASKS[m.recentTask as keyof typeof RECENT_TASKS] ?? m.recentTask}
+          {m.recentWeeksAgo != null && ` · ${["이번 주", "지난주", "그보다 전"][Math.min(m.recentWeeksAgo, 2)]}`}
+          {m.recentMinutes != null && ` · 주고받은 시간 ${RECENT_MINUTES[m.recentMinutes] ?? `${m.recentMinutes}분`}`}
+          <Source ids={m.evidence.recent} turns={turns} />
+        </Row>
+      )}
+      {(m.size ?? m.taskSize) && (
+        <Row label="작업 크기">
+          {TASK_SIZES[(m.size ?? m.taskSize) as keyof typeof TASK_SIZES] ?? m.size ?? m.taskSize}
+          <span className="text-muted-foreground">{m.sizeFrom === "recent" ? " (가장 최근 일의 주고받은 시간으로)" : " (보통 크기 답으로)"}</span>
         </Row>
       )}
       <Row label="월 토큰 추정">

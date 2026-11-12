@@ -41,6 +41,44 @@ export type WishTag = keyof typeof WISH_TAGS
 export const PAYERS = { none: "유료로 쓰지 않음", company: "회사가 냄", personal: "내가 냄", both: "회사 · 개인 둘 다" } as const
 export const LIMIT_HITS = { never: "없음", sometimes: "가끔", often: "자주" } as const
 export const TASK_SIZES = { short: "한두 문장 주고받기", medium: "문서 한 건 정도", long: "여러 파일 · 긴 작업" } as const
+/**
+ * 가장 최근에 AI 에 맡긴 회사 일 하나(작업지시자 2026-11-12) — 「보통 어떤 일」 보다 기억에 덜 기대는 질문이다.
+ * none(기억 안 남)은 「잘 모르겠음」 과 같이 뒤 질문(언제 · 주고받은 시간)을 걷는다. 「기타」 는 말로 쓴 글을 남긴다
+ */
+export const RECENT_TASKS = { write: "메일 초안", summarize: "문서 요약", data: "표 정리", translate: "번역", code: "코드", none: "기억 안 남", other: "기타" } as const
+
+// ─── 지난주 ─────────────────────────────────────────────
+// 사용 일수 · 사용량은 「평소」 가 아니라 「지난주(월~일)」 로 묻는다 — 평소를 물으면 좋은 주를 떠올려 부풀리기 쉽다.
+// 날짜는 묻는 날(서울 기준)에서 계산해 질문 글 괄호에 넣는다. 질문이 저장될 때 글이 같이 저장되므로 나중에 봐도 그 주다.
+
+const KST_MS = 9 * 3600_000
+const DOW = ["일", "월", "화", "수", "목", "금", "토"]
+
+/** 묻는 날 기준 지난주 월요일 · 일요일(서울 날짜, UTC 자정 Date 로) */
+export function lastWeekRange(now: Date = new Date()): { start: Date; end: Date } {
+  const kst = new Date(now.getTime() + KST_MS)
+  const today = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate())
+  const sinceMonday = (kst.getUTCDay() + 6) % 7
+  const thisMonday = today - sinceMonday * 86_400_000
+  return { start: new Date(thisMonday - 7 * 86_400_000), end: new Date(thisMonday - 86_400_000) }
+}
+
+/** 「11월 2일(월)~8일(일)」 — 달이 바뀌면 「10월 27일(월)~11월 2일(일)」 */
+export function lastWeekLabel(now: Date = new Date()): string {
+  const { start, end } = lastWeekRange(now)
+  const day = (d: Date, withMonth: boolean) => `${withMonth ? `${d.getUTCMonth() + 1}월 ` : ""}${d.getUTCDate()}일(${DOW[d.getUTCDay()]})`
+  return `${day(start, true)}~${day(end, start.getUTCMonth() !== end.getUTCMonth())}`
+}
+
+/** 지난주로 묻는 칸 */
+export const LAST_WEEK_SLOTS: readonly string[] = ["daysPerWeek", "hoursPerDay", "sessionsPerDay"]
+
+/** 질문 글에 지난주 날짜가 없으면 넣는다 — 모델이 빠뜨려도 응답자는 어느 주인지 안다 */
+export function withLastWeek(question: string, week: string): string {
+  if (question.includes(week)) return question
+  if (question.includes("지난주")) return question.replace("지난주", `지난주(${week})`)
+  return `${question} (지난주 ${week} 기준)`
+}
 
 export type FieldKind = "single" | "multi" | "slider" | "bucket" | "scale" | "text"
 export type FieldMode = "range" | "chat"
@@ -80,10 +118,10 @@ interface SlotDef {
 // 범위의 근거는 omnis-reports/ai-usage-survey-261111/chat-style/v2-ranges.md 표에 있다. 고치면 그 표도 같이 고친다.
 export const SLOTS = {
   // 주말에도 쓰는 사람이 있다 — 근무일(5)이 아니라 일주일(7)이 상한이다(작업지시자 2026-11-11)
-  daysPerWeek: { purpose: "usage", weight: 30, about: "회사 일에 AI 를 쓰는 날 수(일주일 7일 중, 주말 포함)", shape: { type: "number", input: { kind: "slider", min: 0, max: 7, step: 1, unit: "일" } } },
-  hoursPerDay: { purpose: "usage", weight: 25, about: "쓰는 날 하루에 AI 와 보내는 시간", shape: { type: "number", input: { kind: "slider", min: 0, max: 10, step: 0.5, unit: "시간", overLabel: "10시간 이상" } } },
+  daysPerWeek: { purpose: "usage", weight: 30, about: "지난주(월~일) 회사 일에 AI 를 쓴 날 수(7일 중, 주말 포함)", shape: { type: "number", input: { kind: "slider", min: 0, max: 7, step: 1, unit: "일" } } },
+  hoursPerDay: { purpose: "usage", weight: 25, about: "지난주 AI 를 쓴 날 하루에 AI 와 보낸 시간", shape: { type: "number", input: { kind: "slider", min: 0, max: 10, step: 0.5, unit: "시간", overLabel: "10시간 이상" } } },
   sessionsPerDay: {
-    purpose: "usage", weight: 25, about: "쓰는 날 하루에 AI 에게 묻는 횟수(hoursPerDay 대신 물어도 된다)",
+    purpose: "usage", weight: 25, about: "지난주 AI 를 쓴 날 하루에 AI 에게 물은 횟수(hoursPerDay 대신 물어도 된다)",
     shape: {
       type: "number",
       input: {
@@ -111,9 +149,20 @@ export const SLOTS = {
     },
   },
   limitHit: { purpose: "usage", weight: 10, about: "사용 한도에 걸려 본 경험", shape: { type: "enum", values: LIMIT_HITS } },
-  taskKinds: { purpose: "tasks", weight: 50, about: "AI 로 하는 작업 종류(여러 개)", shape: { type: "tags", values: TASK_KINDS } },
-  mainTask: { purpose: "tasks", weight: 25, about: "그중 가장 많이 하는 작업 하나", shape: { type: "enum", values: TASK_KINDS } },
-  taskSize: { purpose: "tasks", weight: 25, about: "한 번 맡기는 작업의 보통 크기", shape: { type: "enum", values: TASK_SIZES } },
+  taskKinds: { purpose: "tasks", weight: 40, about: "AI 로 하는 작업 종류(여러 개)", shape: { type: "tags", values: TASK_KINDS } },
+  mainTask: { purpose: "tasks", weight: 20, about: "그중 가장 많이 하는 작업 하나", shape: { type: "enum", values: TASK_KINDS } },
+  recentTask: { purpose: "tasks", weight: 15, about: "가장 최근에 AI 에 맡긴 회사 일 하나(보통이 아니라 가장 최근 것)", shape: { type: "enum", values: RECENT_TASKS } },
+  /** 그 일이 언제였나 — 지난주 0일이라고 했는데 지난주였다면 앞뒤가 안 맞는다(metrics.ts consistencyFlags). num 은 몇 주 전 */
+  recentWhen: {
+    purpose: "tasks", weight: 0, about: "그 가장 최근 일이 언제였나",
+    shape: { type: "number", input: { kind: "bucket", unit: "주 전", buckets: [{ label: "이번 주", num: 0, upTo: 0 }, { label: "지난주", num: 1, upTo: 1 }, { label: "그보다 전", num: 2, over: true }] } },
+  },
+  /** 그 일 하나에 AI 와 주고받은 시간(분) — 작업 크기 보정에 taskSize 보다 먼저 쓴다 */
+  recentTime: {
+    purpose: "tasks", weight: 10, about: "그 가장 최근 일 하나에 AI 와 주고받은 시간",
+    shape: { type: "number", input: { kind: "bucket", unit: "분", buckets: [{ label: "5분 이내", num: 5, upTo: 5 }, { label: "5~30분", num: 15, upTo: 30 }, { label: "30분~1시간", num: 45, upTo: 60 }, { label: "1시간 넘게", num: 90, over: true }] } },
+  },
+  taskSize: { purpose: "tasks", weight: 15, about: "한 번 맡기는 작업의 보통 크기", shape: { type: "enum", values: TASK_SIZES } },
   wishes: { purpose: "wishes", weight: 60, about: "옴니스(사내 AI)가 해 주면 좋겠는 일(여러 개). 범용 AI 가 아니라 옴니스에 바라는 것이다", shape: { type: "tags", values: WISH_TAGS } },
   pain: { purpose: "wishes", weight: 40, about: "범용 AI(ChatGPT · Claude · Gemini 같은 것)를 쓰며 아쉬운 점(여러 개). 옴니스에 대한 것이 아니다", shape: { type: "labels", defaults: ["답이 부정확하다", "회사 자료를 모른다", "한도 · 비용이 부담된다", "쓰는 법을 잘 모르겠다", "보안이 걱정된다"] } },
   /** 칸에 넣지 않는 후속 질문 — 원문에만 남는다. 충족도에 들지 않고 3번까지 */
@@ -123,8 +172,8 @@ export const SLOTS = {
 export type Slot = keyof typeof SLOTS
 export const SLOT_NAMES = Object.keys(SLOTS) as Slot[]
 export const MAX_FREE_TURNS = 3
-/** 이만큼 물었으면 남은 칸이 있어도 마무리한다 — 끝나지 않는 설문을 막는다 */
-export const MAX_TURNS = 14
+/** 이만큼 물었으면 남은 칸이 있어도 마무리한다 — 끝나지 않는 설문을 막는다. 가장 최근 일 · 언제 · 주고받은 시간이 늘어 14 → 17 */
+export const MAX_TURNS = 17
 export const MAX_FIELDS = 3
 /** 말로 한 답의 길이 */
 export const SAY_MAX = 300
@@ -208,11 +257,21 @@ export interface Turn {
 const filled = (facts: Facts, slot: Slot) => facts[slot] !== undefined
 const num = (facts: Facts, slot: Slot) => (facts[slot]?.unknown ? undefined : facts[slot]?.num)
 
+/** 지난주 0일이어도 묻는 칸 — 지난주에 안 썼어도 그 전에 맡긴 일은 있을 수 있고, 그 일이 지난주였다면 앞뒤가 안 맞는다 */
+const ASKED_EVEN_IF_ZERO: readonly Slot[] = ["daysPerWeek", "recentTask", "recentWhen"]
+
 /** 물을 필요가 없어진 칸 — 앞 답이 정한다 */
 export function notApplicable(slot: Slot, facts: Facts): boolean {
   if (slot === "free") return true
-  // 회사 일에 AI 를 안 쓴다 → 사용량 · 작업은 더 묻지 않고 바라는 것으로 간다
-  if (num(facts, "daysPerWeek") === 0 && SLOTS[slot].purpose !== "wishes" && slot !== "daysPerWeek") return true
+  // 지난주 회사 일에 AI 를 안 썼다 → 사용량 · 작업은 더 묻지 않고(가장 최근 일과 그 때만) 바라는 것으로 간다
+  if (num(facts, "daysPerWeek") === 0 && SLOTS[slot].purpose !== "wishes" && !ASKED_EVEN_IF_ZERO.includes(slot)) return true
+  // 가장 최근 일을 모르면 그 일이 언제였는지 · 얼마나 주고받았는지도 묻지 않는다
+  if (slot === "recentWhen" || slot === "recentTime") {
+    const r = facts.recentTask
+    return !!r && (r.unknown === true || r.values?.[0] === "none")
+  }
+  // 작업 크기는 가장 최근 일의 주고받은 시간으로 잰다 — 그걸 답했으면 「보통 크기」 는 묻지 않는다
+  if (slot === "taskSize" && facts.recentTime && !facts.recentTime.unknown) return true
   if (slot === "hoursPerDay") return filled(facts, "sessionsPerDay")
   if (slot === "sessionsPerDay") return filled(facts, "hoursPerDay")
   if (slot === "monthlyFeeKrw") {
@@ -227,7 +286,7 @@ export function notApplicable(slot: Slot, facts: Facts): boolean {
 }
 
 /** 앞 칸의 답이 있어야 물을 수 있는 칸 */
-const waitsFor: Partial<Record<Slot, Slot>> = { monthlyFeeKrw: "payer", mainTask: "taskKinds" }
+const waitsFor: Partial<Record<Slot, Slot>> = { monthlyFeeKrw: "payer", mainTask: "taskKinds", recentWhen: "recentTask", recentTime: "recentTask", taskSize: "recentTask" }
 
 /** 아직 물어야 하는 칸 — 지금 물을 수 있는 것만, 정의 순서대로 */
 export function missingSlots(facts: Facts): Slot[] {
@@ -317,7 +376,7 @@ function labelOptions(defaults: readonly string[], raw: RawField["options"]): Fi
 }
 
 /** 칸 하나의 폼. 범위 · 구간 · 값 목록은 코드가 정하고 모델에게서는 말(보기 이름)만 받는다. 만들 수 없으면 null */
-function buildField(id: string, slot: Slot, raw: RawField, facts: Facts): Field | null {
+function buildField(id: string, slot: Slot, raw: RawField, facts: Facts, week: string): Field | null {
   const def = SLOTS[slot]
   const label = clean(raw.label, 30) || undefined
   const shape: SlotType = def.shape
@@ -325,7 +384,9 @@ function buildField(id: string, slot: Slot, raw: RawField, facts: Facts): Field 
     case "number": {
       const i = shape.input
       if (i.kind === "slider") return { id, slot, kind: "slider", label, min: i.min, max: i.max, step: i.step, unit: i.unit, ...(i.overLabel ? { overLabel: i.overLabel } : {}) }
-      return { id, slot, kind: "bucket", label, unit: i.unit, options: i.buckets.map((b: Bucket, n) => ({ id: `o${n + 1}`, label: b.label, num: b.num, ...(b.upTo !== undefined ? { upTo: b.upTo } : {}), ...(b.over ? { over: true as const } : {}) })) }
+      // 「지난주」 칩에는 날짜를 붙인다 — 어느 주인지 응답자가 바로 안다
+      const bucketLabel = (b: Bucket) => (slot === "recentWhen" && b.num === 1 ? `지난주(${week})` : b.label)
+      return { id, slot, kind: "bucket", label, unit: i.unit, options: i.buckets.map((b: Bucket, n) => ({ id: `o${n + 1}`, label: bucketLabel(b), num: b.num, ...(b.upTo !== undefined ? { upTo: b.upTo } : {}), ...(b.over ? { over: true as const } : {}) })) }
     }
     case "enum": {
       // 가장 많이 하는 작업은 앞에서 고른 작업 안에서만
@@ -368,9 +429,10 @@ export const freeTurns = (turns: Pick<Turn, "ask">[]) => turns.filter((t) => t.a
  * 한 질문은 한 갈래다: 범위 칸끼리는 3개까지 묶고, 말로 답하는 칸은 하나만 묻는다(첫 칸의 갈래를 따른다).
  * 남는 칸이 없거나 질문 글이 비면 null — 부르는 쪽이 준비된 질문(fallbackAsk)을 쓴다.
  */
-export function normalizeAsk(raw: RawAsk | null | undefined, facts: Facts, freeUsed = 0): Ask | null {
+export function normalizeAsk(raw: RawAsk | null | undefined, facts: Facts, freeUsed = 0, now: Date = new Date()): Ask | null {
   const question = clean(raw?.question, 200)
   if (!question) return null
+  const week = lastWeekLabel(now)
   const open = new Set<Slot>(missingSlots(facts))
   const fields: Field[] = []
   const used = new Set<Slot>()
@@ -381,19 +443,25 @@ export function normalizeAsk(raw: RawAsk | null | undefined, facts: Facts, freeU
     if (slot === "free" ? freeUsed >= MAX_FREE_TURNS : !open.has(slot)) continue
     // 시간 · 횟수를 한 번에 둘 다 묻지 않는다
     if ((slot === "hoursPerDay" && used.has("sessionsPerDay")) || (slot === "sessionsPerDay" && used.has("hoursPerDay"))) continue
-    const f = buildField(`f${fields.length + 1}`, slot, rf, facts)
+    const f = buildField(`f${fields.length + 1}`, slot, rf, facts, week)
     if (!f) continue
     if (fields.length > 0 && (fieldMode(fields[0]) === "chat" || fieldMode(f) === "chat")) continue
     used.add(slot)
     fields.push(f)
   }
-  return fields.length ? { question, fields } : null
+  if (!fields.length) return null
+  // 사용 일수 · 사용량은 지난주로 묻는다 — 모델이 날짜를 빠뜨려도 넣는다
+  return { question: fields.some((f) => LAST_WEEK_SLOTS.includes(f.slot)) ? withLastWeek(question, week) : question, fields }
 }
 
+/** 준비된 질문 글. {week} 는 지난주 날짜 */
 const FALLBACK_QUESTION: Record<Exclude<Slot, "free">, string> = {
-  daysPerWeek: "회사 일을 하면서 AI 를 일주일에 며칠 쓰세요? 주말도 넣어서요.",
-  hoursPerDay: "쓰는 날에는 하루에 얼마나 쓰세요?",
-  sessionsPerDay: "쓰는 날에는 하루에 몇 번쯤 물어보세요?",
+  daysPerWeek: "지난주({week})에 회사 일로 AI 를 쓴 날은 며칠이에요? 주말도 넣어서요.",
+  hoursPerDay: "지난주({week}) AI 를 쓴 날에는 하루에 얼마나 쓰셨어요?",
+  sessionsPerDay: "지난주({week}) AI 를 쓴 날에는 하루에 몇 번쯤 물어보셨어요?",
+  recentTask: "가장 최근에 AI 에 맡긴 회사 일 하나는 무엇이었나요?",
+  recentWhen: "그 일은 언제였나요?",
+  recentTime: "그 일 하나에 AI 와 주고받은 시간은 얼마쯤이었나요?",
   tools: "어떤 AI 도구를 쓰세요?",
   payer: "유료로 쓰는 AI 가 있나요? 있다면 누가 내나요?",
   monthlyFeeKrw: "유료 구독에 한 달에 얼마쯤 나가나요?",
@@ -428,11 +496,12 @@ const FALLBACK_OPTIONS: Partial<Record<Slot, { label: string; value: string }[]>
 }
 
 /** 준비된 질문 — 모델을 못 쓸 때(키 없음 · 예산 도달 · 오류 · 시험). 남은 칸 하나를 묻는다. 남은 칸이 없으면 null */
-export function fallbackAsk(facts: Facts): Ask | null {
+export function fallbackAsk(facts: Facts, now: Date = new Date()): Ask | null {
   const slot = missingSlots(facts)[0]
   if (!slot || slot === "free") return null
-  const field = buildField("f1", slot, { options: FALLBACK_OPTIONS[slot] ?? null }, facts)
-  return field ? { question: FALLBACK_QUESTION[slot], fields: [field] } : null
+  const week = lastWeekLabel(now)
+  const field = buildField("f1", slot, { options: FALLBACK_OPTIONS[slot] ?? null }, facts, week)
+  return field ? { question: FALLBACK_QUESTION[slot].replace("{week}", week), fields: [field] } : null
 }
 
 // ─── 응답 ─────────────────────────────────────────────
@@ -500,11 +569,19 @@ export function applyAnswer(facts: Facts, ask: Ask, values: AnswerValues, turnId
   return next
 }
 
-/** 앞 답이 바뀌어 뜻이 없어진 칸을 지운다 — 0일이면 사용량 · 작업, 유료가 아니면 금액, 작업이 하나면(또는 고른 작업 밖이면) 가장 많이 하는 작업 */
+/**
+ * 앞 답이 바뀌어 뜻이 없어진 칸을 지운다 — 0일이면 사용량 · 작업(가장 최근 일 · 그 때는 남긴다), 유료가 아니면 금액,
+ * 작업이 하나면(또는 고른 작업 밖이면) 가장 많이 하는 작업, 가장 최근 일을 모르면 그 때 · 주고받은 시간
+ */
 export function pruneFacts(facts: Facts): Facts {
   const next: Facts = { ...facts }
   if (num(next, "daysPerWeek") === 0) {
-    for (const s of SLOT_NAMES) if (s !== "daysPerWeek" && (SLOTS[s].purpose === "usage" || SLOTS[s].purpose === "tasks")) delete next[s]
+    for (const s of SLOT_NAMES) if (!ASKED_EVEN_IF_ZERO.includes(s) && (SLOTS[s].purpose === "usage" || SLOTS[s].purpose === "tasks")) delete next[s]
+  }
+  const r = next.recentTask
+  if (r && (r.unknown || r.values?.[0] === "none")) {
+    delete next.recentWhen
+    delete next.recentTime
   }
   const p = next.payer
   if (p && (p.unknown || p.values?.[0] === "none")) delete next.monthlyFeeKrw
@@ -626,6 +703,11 @@ function saidAnswer(f: Field, raw: RawSay, text: string): FieldAnswer | null {
   if (shape.type === "enum") {
     // 폼이 낸 보기 안에서만(가장 많이 하는 작업은 고른 작업 안에서만)
     const o = (f.options ?? []).find((x) => x.value !== undefined && values.includes(x.value))
+    if (o && o.value !== "other") return { said, values: [o.value!], labels: [shape.values[o.value!] ?? o.label] }
+    // 보기에 「기타」 가 있는 칸(가장 최근 일)은 보기에 없는 말을 글 그대로 「기타」 로 받는다
+    const other = (f.options ?? []).find((x) => x.value === "other")
+    const note = labels[0] ?? (said && said.length <= LABEL_MAX ? said : "")
+    if (other && note) return { said, values: ["other"], labels: [note], others: [note] }
     return o ? { said, values: [o.value!], labels: [shape.values[o.value!] ?? o.label] } : null
   }
   if (shape.type === "tags") {
