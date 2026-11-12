@@ -30,6 +30,9 @@ import { listWeeklyReports, updateWeeklyReport, upsertThisWeekReport } from "@/l
 import { createOmnisCard, updateOmnisCard } from "@/lib/omnis-cards"
 import { listReadableRooms, readableRooms, readRoomFeed, readChatFeed, ROOM_KIND_LABEL, searchRoomMessages, type FeedView } from "@/lib/chat-feed"
 import { formatRoomHit, mergeResults, roomLimit } from "@/lib/chat-room-search"
+import { kakaoMissingAttachment, missingAttachmentToolNote } from "@/lib/kakao-placeholder"
+import { sourceMessageFacts } from "@/lib/source-messages"
+import { sourceFactToolLine } from "@/lib/source-facts"
 import { pickByMembers, pickByRef, type PickableRoom } from "@/lib/chat-room-pick"
 import type { Prisma } from "@/generated/prisma/client"
 import { createNotification } from "@/lib/notifications"
@@ -857,7 +860,7 @@ async function listRoomChat(args: Record<string, unknown>, caller: Caller): Prom
       ...r.messages.map((m) =>
         `[${kst(m.createdAt, true)}] ${m.author}${m.taskSlug ? ` · #${m.taskSlug}` : ""}: ` +
         `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
-        `${m.files.length ? ` [첨부: ${m.files.map((f) => `${f.name} (${f.id})`).join(", ")}]` : ""}`
+        `${m.files.length ? ` [첨부: ${m.files.map((f) => `${f.name} (${f.id})`).join(", ")}]` : m.missing ? ` ${missingAttachmentToolNote(m.missing)}` : ""}`
       ),
     ].join("\n"),
   }
@@ -909,13 +912,21 @@ export async function runTool(
       if (embedded.error) console.warn("[search_knowledge] 의미 검색 실패 — 방 글만 돌려준다:", embedError)
       const merged = mergeResults(embedded.chunks, roomHits, limit)
       if (merged.length === 0) return { text: "비슷한 조각이 없습니다." }
+      // 채팅 글 결과에는 원문 자리 · 바로가기 · 첨부(파일 ID) 또는 「첨부 없음」 을 붙인다 — 파일명만 보고 첨부가 있다고 말하지 않게
+      const messageIds = merged.map((m) => (m.kind === "room" ? m.item.messageId : m.item.source === "CHAT_MESSAGE" ? m.item.sourceId : null)).filter((x): x is string => !!x)
+      const facts = new Map((await sourceMessageFacts(messageIds, caller.userId).catch(() => [])).map((f) => [f.id, f]))
+      const factLine = (id: string | null) => {
+        const f = id ? facts.get(id) : undefined
+        return f ? `\n${sourceFactToolLine(f)}` : ""
+      }
       return {
         text: (embedded.error ? "(의미 검색을 하지 못해 방 글만 보입니다)\n\n" : "") + merged
           .map((m, i) =>
             m.kind === "room"
-              ? formatRoomHit(i + 1, m.item, ROOM_KIND_LABEL)
+              ? formatRoomHit(i + 1, m.item, ROOM_KIND_LABEL) + factLine(m.item.messageId)
               : // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
-                `[${i + 1}] ${SOURCE_LABEL[m.item.source]} · ${m.item.title} (${Math.round(m.item.similarity * 100)}%)\n${m.item.content.slice(0, m.item.source === "CHAT_MESSAGE" || m.item.source === "PHOTO" ? 1500 : 600)}`,
+                `[${i + 1}] ${SOURCE_LABEL[m.item.source]} · ${m.item.title} (${Math.round(m.item.similarity * 100)}%)\n${m.item.content.slice(0, m.item.source === "CHAT_MESSAGE" || m.item.source === "PHOTO" ? 1500 : 600)}` +
+                factLine(m.item.source === "CHAT_MESSAGE" ? m.item.sourceId : null),
           )
           .join("\n\n"),
       }
@@ -969,7 +980,11 @@ export async function runTool(
       const msgs = await prisma.chatMessage.findMany({
         // 화면과 같다 — 참여자 전용 방의 글은 그 방 사람에게만
         where: { taskId: t.id, kind: "NORMAL", ...NOT_EXTERNAL_WHERE, ...visibleMessageWhere(caller.userId) },
-        select: { createdAt: true, content: true, author: { select: { name: true } }, files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true } } },
+        select: {
+          createdAt: true, content: true, sourceId: true, author: { select: { name: true } },
+          files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true } },
+          _count: { select: { files: true } },
+        },
         orderBy: { createdAt: "desc" }, take: n,
       })
       // 파일 ID 를 함께 보여준다 — read_file 이 ID 로 읽는다.
@@ -989,7 +1004,9 @@ export async function runTool(
       if (msgs.length) {
         lines.push("", `대화 (최근 ${msgs.length}건, 시간순):`)
         for (const m of msgs.reverse()) {
-          lines.push(`[${kst(m.createdAt, true)}] ${m.author.name}: ${m.content}${m.files.length ? ` [첨부: ${m.files.map(fileRef).join(", ")}]` : ""}`)
+          // 카톡 자리표시(「File: 이름」 · 첨부 없음)는 그렇다고 밝힌다 — 파일명만 보고 「첨부가 있다」 고 답하지 않게
+          const missing = m._count.files === 0 ? kakaoMissingAttachment(m) : null
+          lines.push(`[${kst(m.createdAt, true)}] ${m.author.name}: ${m.content}${m.files.length ? ` [첨부: ${m.files.map(fileRef).join(", ")}]` : missing ? ` ${missingAttachmentToolNote(missing)}` : ""}`)
         }
       }
       return { text: lines.join("\n") }
