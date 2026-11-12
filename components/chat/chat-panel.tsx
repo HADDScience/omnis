@@ -18,6 +18,7 @@ import { ChatSearch } from "@/components/chat/chat-search"
 import { ChatPhotoViewer } from "@/components/photo-viewer/chat-photo-viewer"
 import { serverTimeOf, writeSnapshot } from "@/lib/room-snapshot"
 import { applyChanges, encodeCursor, laterOf, mergeIncoming } from "@/lib/chat-cursor"
+import { anchoredMessageId } from "@/lib/answer-actions"
 
 interface Message {
   id: string
@@ -406,6 +407,16 @@ export function ChatPanel({
     },
     [loadAround],
   )
+
+  // 주소가 글 하나를 가리키면(#m-<id>) 그 글로 — 옴니스 답의 각주 · 파일 카드 「원문 글로」(lib/source-facts.ts sourceHref).
+  // 검색 결과로 갈 때와 같은 길(jumpTo: 주변 글을 받아 가운데 두고 강조)이다. 방에 처음 들어올 때 한 번만 본다
+  const arrivedFromHash = useRef(false)
+  useEffect(() => {
+    if (arrivedFromHash.current) return
+    arrivedFromHash.current = true
+    const id = anchoredMessageId(window.location.hash)
+    if (id) void jumpTo(id)
+  }, [jumpTo])
 
   // 검색 줄을 닫으면 최신 목록으로 돌아간다. 옛 자리에 머물면 새 글이 안 들어온다(폴링이 멈춰 있다)
   const [searchText, setSearchText] = useState("")

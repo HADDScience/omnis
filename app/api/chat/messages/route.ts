@@ -6,6 +6,7 @@ import { CHAT_DELETED_TEXT, CHAT_PAGE_SIZE } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
 import { MESSAGE_INCLUDE, shapeMessage, type MessageRow } from "@/lib/chat-message-shape"
 import { loadPeopleRoom, postPeopleMessage } from "@/lib/chat-people"
+import { PEOPLE_MESSAGE_MAX } from "@/lib/chat-people-rules"
 import { callOmnisFromRoom } from "@/lib/omnis-mention"
 import { AttachFileIdsSchema, ChatClientIdSchema } from "@/lib/schemas/chat-room"
 import { decideClientId, isUniqueViolation } from "@/lib/chat-client-id"
@@ -15,7 +16,6 @@ import { changedSince, FIRST_CHANGE_LOOKBACK_MS, newerThan, olderThan, parseCurs
 export const maxDuration = 60
 
 /** 사람끼리 방 글 한 줄 상한 — 전사방 글에는 상한이 없었다. 새 길이라 둔다 */
-const PEOPLE_MESSAGE_MAX = 4000
 
 /** 답장 인용을 화면 모양(작성자 · 앞 80자)으로 */
 function shapeReply<T extends { replyTo: { id: string; content: string; deletedAt: Date | null; author: { name: string } } | null }>(m: T) {

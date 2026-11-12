@@ -58,3 +58,15 @@ export function missingAttachmentLabel(a: MissingAttachment): string {
 export function missingAttachmentRest(a: MissingAttachment): string {
   return a.deleted ? KAKAO_DELETED_LINE : ""
 }
+
+/**
+ * 도구 결과(옴니스 · MCP)에 붙일 말 — 자리표시 글을 「첨부가 있다」 로 잘못 읽지 않게(2026-11-12 기능 요청:
+ * 「File: …pdf」 를 찾아 「첨부 있음」 이라 했다가 「조회되지 않음」 으로 정정한 일). 대괄호 한 덩어리로 글 끝에 붙인다.
+ */
+export function missingAttachmentToolNote(a: MissingAttachment): string {
+  const what = a.kind === "file" ? `「${a.name}」 파일` : missingAttachmentLabel(a)
+  return `[첨부 없음 — ${what}은 카톡에서 옮길 때 받지 못해 옴니스에 원본이 없다. 열기 · 내려받기 불가. 카톡 원본이나 보낸 사람에게 요청해야 한다]`
+}
+
+/** 원본 파일이 없을 때 화면 · 답에 쓰는 한 줄 */
+export const MISSING_ATTACHMENT_ADVICE = "원본 파일이 옴니스에 없습니다 — 카톡 원본이나 보낸 사람에게 요청하세요"

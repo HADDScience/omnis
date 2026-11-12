@@ -1,6 +1,7 @@
 // 채팅 피드 읽기 — 화면(app/api/chat/feed)과 MCP(list_chat)가 같은 길을 쓴다.
 // 라우트에서 그대로 옮겼다(2026-09-16). 보기(view)마다 무엇을 모으는지가 여기 한 곳에 있다.
 import { prisma } from "@/lib/db"
+import { kakaoMissingAttachment, type MissingAttachment } from "@/lib/kakao-placeholder"
 import { listRooms, PUBLIC_MESSAGE_WHERE, roomAccess } from "@/lib/chat-rooms"
 import { peopleRoomTitle } from "@/lib/chat-people-rules"
 import { displayAuthor, EXTERNAL_SPEAKER_SELECT, externalSpeakerLabel } from "@/lib/external-speaker"
@@ -139,6 +140,8 @@ export interface RoomFeedMessage {
   content: string
   taskSlug: string | null
   files: { id: string; name: string }[]
+  /** 카톡에서 옮길 때 실물을 받지 못한 자리표시 글이면 그 첨부(lib/kakao-placeholder.ts) — 도구 결과가 「첨부 없음」 을 밝힌다 */
+  missing: MissingAttachment | null
 }
 
 /**
@@ -174,6 +177,7 @@ export async function readRoomFeed(input: {
       content: m.content,
       taskSlug: m.task?.slug ?? null,
       files: m.files,
+      missing: kakaoMissingAttachment(m),
     })),
   }
 }
