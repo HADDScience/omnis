@@ -153,7 +153,8 @@ test.describe("파일 응답 헤더", () => {
       // 미리보기는 srcset(480w)이라 1px 시험 그림의 naturalWidth 는 0 으로 내려간다 — 그려졌는지는 decode 로 본다
       await expect.poll(() => image.evaluate((el: HTMLImageElement) => el.decode().then(() => el.currentSrc, () => "")), { timeout: 10_000 }).toContain("/thumb?w=")
       await expect(page.locator('img[alt="카드.svg"]')).toHaveCount(0)
-      await expect(page.getByRole("link", { name: /카드\.svg/ })).toBeVisible()
+      // 파일 카드는 링크가 아니라 카드 안에서 받는 단추다(2026-11-13, components/chat/file-card.tsx)
+      await expect(page.locator("[data-attachment-file]").filter({ hasText: "카드.svg" }).filter({ visible: true })).toBeVisible()
       await prisma.file.updateMany({ where: { messageId: message.id }, data: { messageId: null } })
       await prisma.chatMessage.delete({ where: { id: message.id } })
     } finally {

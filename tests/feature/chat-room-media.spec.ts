@@ -189,7 +189,7 @@ test.describe("PC", () => {
       const p = el.querySelector(":scope > p") as HTMLElement
       const a = el.querySelector("[data-attachment-image]") as HTMLElement
       const caption = a.querySelector("div") as HTMLElement
-      return { bodyBg: getComputedStyle(el).backgroundColor, padding: getComputedStyle(p).paddingLeft, radius: getComputedStyle(p).borderTopLeftRadius, caption: getComputedStyle(caption).display, imageBelow: a.getBoundingClientRect().top >= p.getBoundingClientRect().bottom }
+      return { bodyBg: getComputedStyle(el).backgroundColor, padding: getComputedStyle(p).paddingLeft, radius: getComputedStyle(p).borderTopRightRadius, caption: getComputedStyle(caption).display, imageBelow: a.getBoundingClientRect().top >= p.getBoundingClientRect().bottom }
     })
     expect(inside.bodyBg).toMatch(/rgba\(0, 0, 0, 0\)|transparent/)
     expect(inside.padding).toBe("18px")

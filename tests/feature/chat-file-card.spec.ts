@@ -16,8 +16,6 @@ const roomId = randomUUID()
 const ids: Record<string, string> = {}
 const fileIds: Record<string, string> = {}
 let meId = ""
-/** 첨부만 보내기 시험 — 올리기(/api/files)는 데모 빌드에서 막혀 있어 미리 만든 내 파일을 돌려준다 */
-let pendingUpload: { id: string; name: string; path: string; size: number; mimeType: string } | null = null
 
 /** 아주 작은 PDF 한 장 — 받은 뒤 첫 장 미리보기를 그린다 */
 const PDF = Buffer.from(
@@ -59,10 +57,6 @@ async function serveFiles(page: Page, delayMs: number) {
     const id = route.request().url().split("/api/files/")[1].split("/")[0]
     const body = id === fileIds.report ? PDF : Buffer.alloc(1024, 7)
     await route.fulfill({ status: 200, contentType: id === fileIds.report ? "application/pdf" : "application/octet-stream", body }).catch(() => {})
-  })
-  await page.route("**/api/files", async (route) => {
-    if (route.request().method() !== "POST" || !pendingUpload) return route.fallback()
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(pendingUpload) })
   })
 }
 
@@ -145,25 +139,25 @@ test.describe("PC 1440 @chat", () => {
     if (mine?.preview) expect(mine.preview).not.toContain("[파일")
   })
 
-  // 지키는 것: 글 없이 첨부만 보내면 본문이 비어 카드만 보인다(대괄호 자리글을 넣지 않는다)
+  // 지키는 것: 글 없이 첨부만 보내면 본문이 비어 카드만 보인다(대괄호 자리글을 넣지 않는다). 글도 첨부도 없으면 거절한다
+  // 데모 빌드는 입력창 첨부가 꺼져 있다(IS_DEMO) — 입력창이 보내는 것과 같은 요청(빈 본문 + fileIds)을 API 로 보낸다
   test("첨부만 보낸 글에 대괄호 글이 없다", async ({ page }) => {
     const fileId = randomUUID()
-    pendingUpload = { id: fileId, name: "첨부만.pdf", path: `/api/files/${fileId}/raw`, size: PDF.length, mimeType: "application/pdf" }
-    await prisma.file.create({ data: { ...pendingUpload, privateToUserId: meId } })
+    await prisma.file.create({ data: { id: fileId, name: "첨부만.pdf", path: `/api/files/${fileId}/raw`, size: PDF.length, mimeType: "application/pdf", privateToUserId: meId } })
     await open(page)
-    const input = page.locator("[data-composer-file-input]").first()
-    await expect(async () => {
-      await input.setInputFiles([])
-      await input.setInputFiles({ name: "첨부만.pdf", mimeType: "application/pdf", buffer: PDF })
-      await expect(page.getByRole("button", { name: "첨부만.pdf 빼기" })).toBeVisible({ timeout: 2_000 })
-    }).toPass({ timeout: 30_000 })
-    await page.getByRole("button", { name: "보내기", exact: true }).click()
-    const sent = page.locator("[data-message-id]").filter({ has: page.locator("[data-attachment-name]", { hasText: "첨부만.pdf" }) }).last()
-    await expect(sent).toBeVisible({ timeout: 20_000 })
-    await expect.poll(async () => (await prisma.file.findUnique({ where: { id: fileId }, select: { message: { select: { content: true } } } }))?.message?.content, { timeout: 20_000 }).toBe("")
+    const empty = await page.request.post("/api/chat/messages", { data: { roomId, content: "" } })
+    expect(empty.status()).toBe(400)
+    const res = await page.request.post("/api/chat/messages", { data: { roomId, content: "", fileIds: [fileId] } })
+    expect(res.status()).toBe(201)
+    const saved = (await res.json()) as { id: string; content: string }
+    expect(saved.content).toBe("")
+    const sent = page.locator(`[data-message-id="${saved.id}"]`)
+    await expect(sent.locator("[data-attachment-file]")).toBeVisible({ timeout: 20_000 })
     await expect(sent).not.toContainText("[파일")
     await expect(sent.locator("[data-message-body] > p")).toBeHidden()
-    pendingUpload = null
+    // 그 글에 답장하면 인용은 「파일 1개」
+    const reply = await page.request.post("/api/chat/messages", { data: { roomId, content: "확인", replyToId: saved.id } })
+    expect(((await reply.json()) as { replyTo: { content: string } }).replyTo.content).toBe("파일 1개")
   })
 })
 
