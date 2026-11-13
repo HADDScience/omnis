@@ -10,6 +10,8 @@
 
 export const LOGIN_FAIL_PREFIX = "fail"
 export const LOGIN_LOCKED_PREFIX = "locked"
+/** 계정 쪽 실패 수를 0 으로 되돌리는 기록 — 로그인 성공(ok)과 관리자의 잠금 해제(unlock, /admin/users) */
+export const LOGIN_RESET_ACTIONS = ["ok", "unlock"] as const
 
 /** 입력한 이름을 조회 · 잠금 키 모두 같은 모양으로 — 앞뒤 공백, 맥에서 온 자모 분리(NFD) */
 export function normalizeLoginName(raw: string): string {

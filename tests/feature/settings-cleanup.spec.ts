@@ -130,15 +130,15 @@ test.describe("앱 정보", () => {
     }
   })
 
-  test("관리자 — 관리 화면 링크 한 줄이 남는다", async ({ page }) => {
+  test("관리자 — 「관리자 페이지」 링크 하나만 남는다", async ({ page }) => {
     await quiet(page)
     await quickLogin(page, "팀장")
     await page.goto("/settings?tab=info")
     const admin = page.locator("[data-admin-links]")
-    // 넷째 「AI 활용 설문 결과」 는 설문이 열린 관리자만(main #204, AI_SURVEY_ALLOW_USER_IDS) — 시험 환경에 따라 있거나 없다
-    const links = await admin.getByRole("link").allTextContents()
-    expect(links.slice(0, 3)).toEqual(["기능 요청 보기", "AI 비용 상한", "배포별 측정 보기"])
-    expect(links.slice(3).every((t) => t === "AI 활용 설문 결과")).toBe(true)
+    // 흩어져 있던 관리 링크는 /admin 으로 묶었다(2026-11-13)
+    expect(await admin.getByRole("link").allTextContents()).toEqual(["관리자 페이지"])
+    await admin.getByRole("link", { name: "관리자 페이지" }).click()
+    await page.waitForURL("**/admin/users")
   })
 })
 
