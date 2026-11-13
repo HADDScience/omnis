@@ -296,7 +296,8 @@ export function MessageInput({
     setAttached([])
     openTrigger(null)
     try {
-      await onSend(trimmed || `[파일 ${sent.length}개 첨부]`, raws.length > 0 ? raws : undefined, nasPaths.length > 0 ? nasPaths : undefined)
+      // 글 없이 첨부만 보내면 본문을 비운다 — 카드만 보인다(목록 · 인용 · 알림은 「파일 N개」, lib/attachment-text.ts)
+      await onSend(trimmed, raws.length > 0 ? raws : undefined, nasPaths.length > 0 ? nasPaths : undefined)
       sent.forEach((a) => a.item.preview && URL.revokeObjectURL(a.item.preview))
     } catch {
       // 보내지 못했다 — 쓴 글과 첨부를 되돌린다. 알림은 onSend 쪽이 띄운다.

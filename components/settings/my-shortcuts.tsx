@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react"
 import { signOut } from "next-auth/react"
+import { clearFileCache } from "@/lib/file-cache/client"
 import { clearChatCache } from "@/lib/chat-cache"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -100,6 +101,8 @@ export function MyShortcuts({ below }: { /** 메뉴 카드(로그아웃 줄) 바
             onClick={async () => {
               // 이 기기에 저장해 둔 채팅(방 목록 · 방별 최근 글)을 먼저 지운다 — lib/chat-cache.ts
               await clearChatCache().catch(() => {})
+              // 카드에서 받아 둔 파일도 — lib/file-cache/client.ts
+              await clearFileCache().catch(() => {})
               await signOut({ callbackUrl: "/", redirectTo: "/" })
             }}
           />

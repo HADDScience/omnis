@@ -1,5 +1,6 @@
 "use client"
 
+import { visibleBody } from "@/lib/attachment-text"
 import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -366,7 +367,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey, onChanged
                           {m.deletedAt ? (
                             m.content
                           ) : (
-                            <MessageContent content={tidyBody(missing ? missingAttachmentRest(missing) : m.content)} tasks={refs.tasks} />
+                            <MessageContent content={tidyBody(missing ? missingAttachmentRest(missing) : m.files?.length ? visibleBody(m.content) : m.content)} tasks={refs.tasks} />
                           )}
                         </div>
                       )}

@@ -4,6 +4,7 @@
 // 이 방들의 글은 참여자만 본다. 그래서 전사방 글쓰기(lib/chat-post.ts)를 타지 않는다 — 그 길은
 // 업무 연결 · AI 재구성 · 사내 지식 색인(임베딩) · 업무 알림을 붙인다. 여기서는 저장 · 방 시각 · 참여자 채팅 푸시 · 멘션 알림만 한다.
 // 옴니스는 이 방들에 들어가지 않는다(@옴니스 호출도 이번 범위 밖, 작업지시자 결정 2026-10-29).
+import { attachAwareText } from "@/lib/attachment-text"
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
@@ -179,7 +180,7 @@ const MESSAGE_INCLUDE = {
   author: { select: { id: true, name: true } },
   task: { select: { id: true, name: true, slug: true } },
   files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
-  replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
+  replyTo: { select: { id: true, content: true, deletedAt: true, _count: { select: { files: true } }, author: { select: { name: true } } } },
 } satisfies Prisma.ChatMessageInclude
 
 /** 알림 한 줄에 보일 본문 길이 */
@@ -238,7 +239,7 @@ export async function postPeopleMessage(
   queueChatPush({
     room: { kind: room.kind, id: room.id, name: room.title, memberIds: room.members.map((m) => m.id) },
     author: me,
-    content,
+    content: attachAwareText(content, fileIds.length),
     mentionedUserIds: targets,
   })
   if (targets.length > 0) {

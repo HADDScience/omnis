@@ -124,20 +124,21 @@ test.describe("폰 402px", () => {
     for (const t of tiles) expect(t[0]).toBe(t[1])
   })
 
-  test("파일 카드 — 폭 70% · 모서리 13 · 이름 두 줄 말줄임 · 아이콘 오른쪽, 누르면 원본 주소로 열린다", async ({ page }) => {
+  // 카톡처럼 바뀌었다(2026-11-13) — 누르면 새 탭으로 원본을 열던 링크가 아니라 카드 안에서 받는 단추다. 받기 · 열기는 chat-file-card.spec.ts
+  test("파일 카드 — 폭 70% · 모서리 13 · 이름 두 줄 말줄임 · 받기 단추 오른쪽 · 공유 단추는 카드 바깥", async ({ page }) => {
     await open(page)
     const card = page.locator(`[data-message-id="${ids.ppt}"] [data-attachment-file]`)
     const g = await card.evaluate((el) => {
       const r = el.getBoundingClientRect()
       const cs = getComputedStyle(el)
       const name = el.querySelector("[data-attachment-name]") as HTMLElement
-      const icon = el.querySelector("span")!.getBoundingClientRect()
-      return { w: r.width, radius: cs.borderTopLeftRadius, lines: Math.round(name.getBoundingClientRect().height / 20), clamped: name.scrollHeight > name.clientHeight, iconRight: icon.left > name.getBoundingClientRect().right, icon: icon.width }
+      const action = el.querySelector("[data-file-action]")!.getBoundingClientRect()
+      const share = el.parentElement!.querySelector("[data-file-share]")!.getBoundingClientRect()
+      return { w: r.width, radius: cs.borderTopLeftRadius, lines: Math.round(name.getBoundingClientRect().height / 20), clamped: name.scrollHeight > name.clientHeight, actionRight: action.left > name.getBoundingClientRect().right, action: action.width, shareOutside: share.right <= r.left || share.left >= r.right }
     })
     expect(g.w).toBeCloseTo(281.4, 0)
-    expect(g).toMatchObject({ radius: "13px", lines: 2, clamped: true, iconRight: true, icon: 40 })
-    await expect(card).toHaveAttribute("href", /\/api\/files\/.+\/raw$/)
-    await expect(card).toHaveAttribute("target", "_blank")
+    expect(g).toMatchObject({ radius: "13px", lines: 2, clamped: true, actionRight: true, action: 44, shareOutside: true })
+    await expect(card).toHaveAttribute("data-file-state", "idle")
   })
 
   test("받지 못한 사진은 깨진 표시 대신 안내가 나온다", async ({ page }) => {

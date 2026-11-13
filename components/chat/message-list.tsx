@@ -12,14 +12,8 @@ import {
   ArrowTurnBackwardIcon,
   Delete02Icon,
   Download04Icon,
-  Doc01Icon,
-  File01Icon,
-  Pdf01Icon,
   PencilEdit01Icon,
-  Ppt01Icon,
   Task01Icon,
-  Xls01Icon,
-  ZipIcon,
 } from "@hugeicons/core-free-icons"
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS } from "@/lib/constants"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
@@ -41,6 +35,8 @@ import { ARRIVAL_FLASH_MS, arrivalEffects, playArrival } from "@/lib/chat-arriva
 import { SwipeReply } from "./swipe-reply"
 import { kakaoMissingAttachment, missingAttachmentRest } from "@/lib/kakao-placeholder"
 import { MissingAttachmentTile } from "@/components/chat/missing-attachment"
+import { FileCard } from "@/components/chat/file-card"
+import { attachAwareText, visibleBody } from "@/lib/attachment-text"
 export interface FileInfo {
   id: string
   name: string
@@ -469,10 +465,12 @@ export function MessageList({
             const mine = isMe && !selectionMode
             // 카톡에서 옮겼지만 첨부 실물이 없는 글 — 자리표시 글 대신 흐린 첨부 칸(lib/kakao-placeholder.ts)
             const missing = kakaoMissingAttachment(msg)
+            const split = !msg.deletedAt && (!!msg.files?.length || !!missing)
             const flashing = flashId === msg.id
             const pending = msg.id.startsWith("temp-")
             const fresh = !msg._settled && new Date(msg.createdAt).getTime() > mountedAt
-            const reply = () => onReply?.({ id: msg.id, authorName: msg.author.name, content: msg.content.slice(0, 80) })
+            // 첨부만 보낸 글은 「파일 N개」 로 인용한다
+            const reply = () => onReply?.({ id: msg.id, authorName: msg.author.name, content: attachAwareText(msg.content, msg.files?.length ?? 0).slice(0, 80) })
             // 인용 탭 → 원글로. 고르는 중이면 줄 고르기가 먼저다. 민 뒤의 클릭은 SwipeReply 가 먹어 여기 오지 않는다
             const quote = msg.replyTo
             const goToReply =
@@ -532,7 +530,10 @@ export function MessageList({
                         mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground max-md:in-data-[messenger]:max-w-[calc(var(--app-vw)*0.7)]" : "bg-muted max-md:in-data-[messenger]:max-w-[calc(var(--app-vw)*0.7)]"
                       } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:[&_a]:max-w-full max-md:in-data-[messenger]:[&_a]:rounded-[13px] ${
                         msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
-                      } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} transition-opacity duration-300`}
+                      } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} ${
+                        // 첨부가 든 글 — PC 도 폰처럼 글 말풍선과 카드를 따로 놓는다(한 말풍선에 글 + 파일 목록을 넣지 않는다)
+                        split ? `max-md:in-data-[messenger]:max-w-none! md:in-data-[chat-room-chrome]:flex md:in-data-[chat-room-chrome]:flex-col md:in-data-[chat-room-chrome]:gap-[6px] md:in-data-[chat-room-chrome]:bg-transparent! md:in-data-[chat-room-chrome]:p-0 md:in-data-[chat-room-chrome]:ring-0 ${mine ? "md:in-data-[chat-room-chrome]:items-end" : "md:in-data-[chat-room-chrome]:items-start"}` : ""
+                      } transition-opacity duration-300`}
                     >
                       {editingId === msg.id ? (
                         // 고치기는 말풍선 자리에서 한다 — 창을 띄우면 앞뒤 대화가 가려진다
@@ -566,7 +567,11 @@ export function MessageList({
                           <p
                             data-bubble
                             data-tail={row.groupStart && !msg.files?.length && !missing ? (mine ? "mine" : "other") : undefined}
-                            className={`whitespace-pre-wrap break-keep [overflow-wrap:anywhere] max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:empty:hidden ${msg.deletedAt ? "max-md:in-data-[messenger]:bg-muted/50" : mine ? "max-md:in-data-[messenger]:bg-(--bubble-mine)" : "max-md:in-data-[messenger]:bg-muted"}`}
+                            className={`whitespace-pre-wrap break-keep [overflow-wrap:anywhere] ${
+                              split
+                                ? `max-md:in-data-[messenger]:max-w-[calc(var(--app-vw)*0.7)] md:in-data-[chat-room-chrome]:max-w-full md:in-data-[chat-room-chrome]:rounded-[24px] md:in-data-[chat-room-chrome]:px-[18px] md:in-data-[chat-room-chrome]:py-[12px] md:in-data-[chat-room-chrome]:empty:hidden ${mine ? "md:in-data-[chat-room-chrome]:rounded-br-lg md:in-data-[chat-room-chrome]:bg-(--bubble-mine)" : "md:in-data-[chat-room-chrome]:rounded-tl-lg md:in-data-[chat-room-chrome]:bg-muted"}`
+                                : ""
+                            } max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:px-[10px] max-md:in-data-[messenger]:py-[6px] max-md:in-data-[messenger]:empty:hidden ${msg.deletedAt ? "max-md:in-data-[messenger]:bg-muted/50" : mine ? "max-md:in-data-[messenger]:bg-(--bubble-mine)" : "max-md:in-data-[messenger]:bg-muted"}`}
                           >
                             {msg.replyTo && (
                               <button
@@ -584,7 +589,7 @@ export function MessageList({
                             {msg.deletedAt ? (
                               msg.content
                             ) : (
-                              <MessageContent content={tidyBody(missing ? missingAttachmentRest(missing) : msg.content)} tasks={tasks} isMe={mine} />
+                              <MessageContent content={tidyBody(missing ? missingAttachmentRest(missing) : msg.files?.length ? visibleBody(msg.content) : msg.content)} tasks={tasks} isMe={mine} />
                             )}
                           </p>
                           {!msg.deletedAt && msg.files && msg.files.length > 0 && (
@@ -763,20 +768,6 @@ function cutPathTail(raw: string): string {
   return m ? p.slice(0, sep + 1 + m.index!) : p
 }
 
-const fileSizeLabel = (size: number) =>
-  size < 1024 ? `${size}B` : size < 1048576 ? `${Math.round(size / 1024)}KB` : `${(size / 1048576).toFixed(1)}MB`
-
-/** 확장자로 아이콘과 짧은 형식 이름 — 파일 카드에서 무엇인지 먼저 보이게 */
-function fileKind(name: string): { icon: typeof File01Icon; label: string; tone: string } {
-  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : ""
-  if (ext === "pdf") return { icon: Pdf01Icon, label: "PDF", tone: "text-red-600 bg-red-50 dark:bg-red-950/40 dark:text-red-300" }
-  if (["ppt", "pptx", "key"].includes(ext)) return { icon: Ppt01Icon, label: "PPT", tone: "text-orange-600 bg-orange-50 dark:bg-orange-950/40 dark:text-orange-300" }
-  if (["xls", "xlsx", "csv"].includes(ext)) return { icon: Xls01Icon, label: ext.toUpperCase(), tone: "text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300" }
-  if (["doc", "docx", "hwp", "hwpx", "txt", "md"].includes(ext)) return { icon: Doc01Icon, label: ext.toUpperCase(), tone: "text-sky-700 bg-sky-50 dark:bg-sky-950/40 dark:text-sky-300" }
-  if (["zip", "7z", "rar"].includes(ext)) return { icon: ZipIcon, label: ext.toUpperCase(), tone: "text-violet-700 bg-violet-50 dark:bg-violet-950/40 dark:text-violet-300" }
-  return { icon: File01Icon, label: ext ? ext.toUpperCase() : "파일", tone: "text-muted-foreground bg-muted" }
-}
-
 /** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
 /** 받은 사진의 세로/가로 — 다시 그릴 때 받기 전부터 자리를 맞춘다. 파일 표에 크기가 없어 첫 표시는 4:3 으로 시작한다 */
 const imageRatios = new Map<string, number>()
@@ -883,39 +874,14 @@ export function MessageFiles({ files, onPrimary = false, messageId }: { files: F
             </div>
           )
         }
-        const uploading = f._uploading
-        const kind = fileKind(f.name)
-        return (
-          <a
-            key={f.id}
-            href={uploading ? undefined : apiUrl(f.path)}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={f.name}
-            data-attachment-file
-            className={`relative flex max-w-[280px] items-center gap-2.5 overflow-hidden rounded-lg border px-2.5 py-2 in-data-[messenger]:max-w-[340px] in-data-[messenger]:gap-3 in-data-[messenger]:rounded-xl max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:max-w-none max-md:in-data-[chat-room-chrome]:flex-row-reverse max-md:in-data-[chat-room-chrome]:gap-[10px] max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:border-0 max-md:in-data-[chat-room-chrome]:bg-muted max-md:in-data-[chat-room-chrome]:p-[10px] ${
-              onPrimary ? "border-white/25 bg-white/10 hover:bg-white/15 in-data-[messenger]:border-border in-data-[messenger]:bg-background in-data-[messenger]:hover:bg-muted/60" : "bg-background hover:bg-muted/60"
-            } ${uploading ? "opacity-70" : ""}`}
-            onClick={(e) => { if (uploading) e.preventDefault(); e.stopPropagation() }}
-          >
-            {uploading && (
-              <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />
-            )}
-            <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md in-data-[messenger]:size-[44px] in-data-[messenger]:[&_svg]:size-[22px] max-md:in-data-[chat-room-chrome]:size-[40px] max-md:in-data-[chat-room-chrome]:rounded-full ${onPrimary ? "bg-white/20 text-white in-data-[messenger]:bg-muted in-data-[messenger]:text-foreground" : kind.tone}`}>
-              <HugeiconsIcon icon={kind.icon} size={17} aria-hidden />
-            </span>
-            <span className="relative min-w-0 flex-1">
-              <span data-attachment-name className={`block truncate text-[12.5px] in-data-[messenger]:text-[15px] font-medium max-md:in-data-[chat-room-chrome]:line-clamp-2 max-md:in-data-[chat-room-chrome]:whitespace-normal max-md:in-data-[chat-room-chrome]:font-normal max-md:in-data-[chat-room-chrome]:leading-[20px] max-md:in-data-[chat-room-chrome]:[overflow-wrap:anywhere] ${onPrimary ? "text-white in-data-[messenger]:text-foreground" : "text-foreground"}`}>{f.name}</span>
-              <span className={`block text-[11px] in-data-[messenger]:text-[13px] max-md:in-data-[chat-room-chrome]:mt-[2px] max-md:in-data-[chat-room-chrome]:leading-[18px] ${onPrimary ? "text-white/70 in-data-[messenger]:text-muted-foreground" : "text-muted-foreground"}`}>
-                {uploading ? "업로드 중..." : `${kind.label} · ${fileSizeLabel(f.size)}`}
-              </span>
-            </span>
-          </a>
-        )
+        // 파일은 카톡처럼 한 장씩 — 받기 · 진행률 · 열기 · 공유(components/chat/file-card.tsx). 폰 · PC 가 같은 카드다
+        return <FileCard key={f.id} file={f} uploading={f._uploading} mine={onPrimary} />
       })}
       {saveAll && (
+        // 숨김(2026-11-13) — 여러 개 받기는 방 서랍에서 골라 받는다. 코드는 남겨 둔다
         <button
           type="button"
+          hidden
           data-save-all
           onClick={(e) => {
             e.stopPropagation()

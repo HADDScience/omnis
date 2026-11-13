@@ -8,6 +8,7 @@
 //   - postChatMessage: 저장 · 업무 연결 · 멘션까지만 하고, 재구성할 일이 있으면 rebuild 로 돌려준다
 //   - runTaskRebuild: AI 재구성 · 상태 변경 · 알림 · 시스템 메시지. 끝나면 활동 기록을 남겨 화면이 끝났음을 안다
 // 화면 경로는 응답 뒤(after)에 runTaskRebuild 를 돌리고, MCP 는 기다려서 결과를 글로 돌려준다.
+import { attachAwareText } from "@/lib/attachment-text"
 import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
 import { PUBLIC_MESSAGE_WHERE } from "@/lib/chat-rooms"
 import { prisma } from "@/lib/db"
@@ -134,7 +135,8 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
     const pushRoom: ChatPushRoom = threadTask
       ? { kind: "TASK", id: threadTask.id, name: threadTask.name }
       : { kind: "COMPANY", id: roomId, name: chatRoom.name }
-    queueChatPush({ room: pushRoom, author: user, content: trimmedContent })
+    // 첨부만 보낸 글은 본문이 비어 있다 — 알림에는 「파일 N개」
+    queueChatPush({ room: pushRoom, author: user, content: attachAwareText(trimmedContent, fileIds?.length ?? 0) })
 
     if (task && restText.trim().length > 0) {
       // 메시지를 업무에 연결
@@ -181,7 +183,7 @@ export async function postChatMessage(input: PostMessageInput, options: PostMess
       task: { select: { id: true, name: true, slug: true } },
       files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
       // 보낸 직후에도 답장 인용이 보이게 — 폴링을 기다리지 않는다
-      replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
+      replyTo: { select: { id: true, content: true, deletedAt: true, _count: { select: { files: true } }, author: { select: { name: true } } } },
     },
   })
 
