@@ -4,7 +4,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 
 import { FeatureRequestsSection } from "@/components/admin/feature-requests-section"
-import { OnboardingSection } from "@/components/admin/onboarding-section"
 import { requireAdminPage } from "@/lib/admin-access-server"
 import { loadSurveyCounts } from "@/lib/admin-users-server"
 import { surveyAllowed } from "@/lib/ai-survey/access"
@@ -21,7 +20,7 @@ const KNOWLEDGE_LINKS = [
   { href: "/omnis/staff", label: "인력" },
 ] as const
 
-/** 운영 — 온보딩 다시 띄우기 · 기능 요청 · 설문 현황(응답 수만) */
+/** 운영 — 온보딩(사용자 탭 링크) · 기능 요청 · 설문 현황(응답 수만) */
 export default async function AdminOperationsPage() {
   const adminId = await requireAdminPage()
   const survey = await loadSurveyCounts()
@@ -30,7 +29,14 @@ export default async function AdminOperationsPage() {
   return (
     <>
       <h1 className="sr-only">운영</h1>
-      <OnboardingSection />
+      {/* 온보딩 조절은 사용자 탭의 계정 표 위로 옮겼다(2026-11-13) — 여기는 링크만 */}
+      <Link href="/admin/users#admin-onboarding-title" data-admin-onboarding-link className={`${SECTION} touch-target flex items-center justify-between text-sm transition-colors hover:bg-muted/40`}>
+        <span>
+          <span className="font-semibold">사용 안내(온보딩)</span>
+          <span className="ml-2 text-[12.5px] text-muted-foreground">모두에게 · 사람별로 다시 띄우기 · 끄기는 사용자 탭에서</span>
+        </span>
+        <HugeiconsIcon icon={ArrowRight01Icon} size={14} className="shrink-0 text-muted-foreground" aria-hidden />
+      </Link>
 
       <section aria-labelledby="admin-survey-title" className={SECTION} data-admin-survey>
         <div className="flex flex-wrap items-baseline justify-between gap-2">

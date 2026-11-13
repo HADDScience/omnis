@@ -5,6 +5,7 @@
  * 칸 단위로 고정하고, DB 행을 그 모양으로 옮길 때 허용한 칸만 집어 담는다(toAdminUserRow). 메일은 서버에서 가려서 보낸다.
  */
 import { attemptInfo, LOGIN_RESET_ACTIONS } from "./login-attempts"
+import { seenOnboardingVersion, type OnboardingSeen } from "./onboarding-version"
 
 /** jwoochang@haddscience.com → jw•••••••@haddscience.com. 앞 두 글자(짧으면 한 글자)만 남긴다 */
 export function maskEmail(email: string | null | undefined): string | null {
@@ -59,6 +60,7 @@ export interface AdminUserRow {
   /** 관리자가 정해 준 임시 비밀번호를 아직 쓴다(lib/password-notice.ts 의 pending) */
   tempPassword: boolean
   lock: AccountLock
+  onboarding: OnboardingRow
 }
 
 export interface AdminUserSource {
@@ -72,7 +74,7 @@ export interface AdminUserSource {
 
 export function toAdminUserRow(
   u: AdminUserSource,
-  extra: { lastLoginAt: Date | null; social: readonly string[]; tempPassword: boolean; lock: AccountLock },
+  extra: { lastLoginAt: Date | null; social: readonly string[]; tempPassword: boolean; lock: AccountLock; onboarding: OnboardingRow },
 ): AdminUserRow {
   return {
     id: u.id,
@@ -84,6 +86,7 @@ export function toAdminUserRow(
     social: [...extra.social].sort(),
     tempPassword: extra.tempPassword,
     lock: extra.lock,
+    onboarding: extra.onboarding,
   }
 }
 
@@ -97,3 +100,36 @@ export const CODE_HISTORY_DAYS = 30
  */
 export const ADMIN_AUDIT_ACTIONS = ["onboarding.replayed", "ai_budget.saved", "ai_budget.raised", "feature_request.status"] as const
 export const ADMIN_UNLOCK_ACTION = "admin.login_unlocked"
+
+// ─── 온보딩(사용 안내) — 사람별 판 ─────────────────────────────
+
+/** 봤음: 지금 판까지 봤다 · 다시 뜰 예정: 예전 판만 봤다(다음 화면에 뜬다) · 안 봄: 한 번도 마치거나 건너뛰지 않았다 */
+export type OnboardingStatus = "seen" | "due" | "never"
+export const ONBOARDING_STATUS_LABEL: Record<OnboardingStatus, string> = { seen: "봤음", due: "다시 뜰 예정", never: "안 봄" }
+
+export interface OnboardingRow {
+  /** 이 사람이 본 판(lib/onboarding-version.ts 의 seenOnboardingVersion) */
+  seen: number
+  status: OnboardingStatus
+  lastSeenAt: string | null
+}
+
+export function onboardingRow(user: OnboardingSeen, current: number, lastSeenAt: Date | null): OnboardingRow {
+  const seen = seenOnboardingVersion(user)
+  const status: OnboardingStatus = seen >= current ? "seen" : seen === 0 && !user.onboardingCompletedAt ? "never" : "due"
+  return { seen, status, lastSeenAt: lastSeenAt ? lastSeenAt.toISOString() : null }
+}
+
+/**
+ * 관리자가 한 사람에게 하는 조작 → User.onboardingVersion 에 쓸 값. 행을 지우지 않고 이 칸만 바꾼다.
+ * - replay(다시 띄우기): 지금 판보다 하나 낮게 → 다음 화면에 뜬다(needsOnboarding). 마친 시각은 그대로
+ * - dismiss(끄기): 지금 판 → 이번 판은 본 것으로
+ */
+export type OnboardingAdminAction = "replay" | "dismiss"
+export const onboardingTargetVersion = (action: OnboardingAdminAction, current: number) => (action === "replay" ? Math.max(0, current - 1) : current)
+export const ONBOARDING_ADMIN_AUDIT: Record<OnboardingAdminAction, { action: string; verb: string }> = {
+  replay: { action: "admin.onboarding_replay_user", verb: "온보딩 다시 띄우기" },
+  dismiss: { action: "admin.onboarding_dismiss_user", verb: "온보딩 끄기" },
+}
+/** 사람이 안내를 마치거나 건너뛴 기록 — 「마지막으로 본 시각」 을 읽는다(공개 활동 기록에는 내보내지 않는다) */
+export const ONBOARDING_SEEN_ENTITY = "onboarding.seen"
