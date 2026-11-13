@@ -13,6 +13,7 @@
  * ## 규칙
  *
  * - 계정: 마지막 성공 뒤의 실패가 창(15분) 안에 5번이면 잠근다. 성공하면 다시 센다.
+ *   관리자가 /admin/users 에서 「잠금 해제」 하면 `unlock` 줄이 남고, 성공과 똑같이 그 뒤부터 다시 센다.
  * - IP: 창 안의 실패가 30번이면 잠근다. 여러 이름을 돌려 가며 찍는 경우를 막는다.
  * - 잠긴 동안에는 비밀번호를 대조하지 않는다. 시간이 지나면 저절로 풀린다.
  *
@@ -21,7 +22,7 @@
  */
 import { createHash } from "node:crypto"
 import { prisma } from "./db"
-import { attemptInfo, normalizeLoginName, type LoginAttemptInfo } from "./login-attempts"
+import { attemptInfo, LOGIN_RESET_ACTIONS, normalizeLoginName, type LoginAttemptInfo } from "./login-attempts"
 
 export const LOGIN_LIMITS = {
   account: { max: 5, windowMs: 15 * 60 * 1000 },
@@ -29,8 +30,10 @@ export const LOGIN_LIMITS = {
 } as const
 
 export const LOGIN_ENTITY = "auth.login"
-/** 활동 기록 화면·API 에 내보내지 않는 entity. 인증 흔적은 남이 볼 것이 아니다 */
-export const PRIVATE_ACTIVITY_ENTITIES = [LOGIN_ENTITY, "auth.password", "auth.code"]
+/** 관리자 행동 감사 기록(/admin/audit) — 누구의 잠금을 풀었는지 같은 것. 관리자 화면에서만 읽는다 */
+export const ADMIN_AUDIT_ENTITY = "admin"
+/** 활동 기록 화면·API 에 내보내지 않는 entity. 인증 흔적 · 관리자 감사 기록은 남이 볼 것이 아니다 */
+export const PRIVATE_ACTIVITY_ENTITIES = [LOGIN_ENTITY, "auth.password", "auth.code", ADMIN_AUDIT_ENTITY]
 
 const digest = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 32)
 export const accountKey = (name: string) => `acct:${digest(normalizeLoginName(name).toLowerCase())}`
@@ -55,7 +58,7 @@ export type LockState = { locked: false } | { locked: true; reason: "account" | 
 export async function loginAttemptInfo(name: string, ip: string | null, now = Date.now()): Promise<LoginAttemptInfo> {
   const acct = accountKey(name)
   const lastOk = await prisma.activityLog.findFirst({
-    where: { entity: LOGIN_ENTITY, entityId: acct, action: "ok" },
+    where: { entity: LOGIN_ENTITY, entityId: acct, action: { in: [...LOGIN_RESET_ACTIONS] } },
     orderBy: { createdAt: "desc" },
     select: { createdAt: true },
   })

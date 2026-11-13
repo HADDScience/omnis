@@ -1,17 +1,9 @@
 import type { Metadata } from "next"
 
+import { AiBudgetSection } from "@/components/admin/ai-budget-section"
 import { Header } from "@/components/layout/header"
-import { AiBudgetForm } from "@/components/settings/ai-budget-form"
-import { AiCostUsage } from "@/components/settings/ai-cost-usage"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
-import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
-import { loadBudget, loadRunCostBasis } from "@/lib/ai-budget"
-import { budgetDefaults } from "@/lib/ai-budget-rules"
 import { auth } from "@/lib/auth"
-import { prisma } from "@/lib/db"
-import { configuredRecipientIds } from "@/lib/notify-recipients"
-import { SYSTEM_USER_ID } from "@/lib/system-user"
 
 export const metadata: Metadata = { title: "AI 비용 상한" }
 export const dynamic = "force-dynamic"
@@ -38,27 +30,11 @@ export default async function AiBudgetPage() {
     )
   }
 
-  const [budget, recipients, people, basis] = await Promise.all([
-    loadBudget(),
-    configuredRecipientIds(),
-    prisma.user.findMany({ where: { id: { not: SYSTEM_USER_ID }, ...ACTIVE_MEMBER_WHERE }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    loadRunCostBasis(),
-  ])
-  const defaults = budgetDefaults()
-
   return (
     <>
       <Header crumbs={["마이", "AI 비용 상한"]} />
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6 sm:px-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">상한</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AiBudgetForm initial={{ ...budget, recipients }} people={people} defaults={{ userDailyKrw: defaults.userDailyKrw, monthlyKrw: defaults.monthlyKrw }} basis={basis} />
-          </CardContent>
-        </Card>
-        <AiCostUsage userId={userId} isAdmin showAdminLink={false} />
+      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+        <AiBudgetSection userId={userId} />
       </div>
     </>
   )

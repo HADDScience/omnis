@@ -36,7 +36,7 @@ export const dynamic = "force-dynamic"
  * ⌘K 검색 줄은 걷고 그 자리에 앱 설치 줄. 옛 `?tab=` 은 redirect 한다(lib/settings-tab.ts).
  *
  * 2026-11-11: 「알림 설정」 앞에 「일반」(테마 · 키보드 단축키). 앱 정보는 버전과 약관 · 개인정보 처리방침 링크만 —
- * 「시스템 설정」 카드와 「사용 기록 안내」 는 걷었다(안내는 개인정보 처리방침의 한 절로 옮김). 관리자 화면 링크는 관리자에게만 한 줄로 남긴다.
+ * 「시스템 설정」 카드와 「사용 기록 안내」 는 걷었다(안내는 개인정보 처리방침의 한 절로 옮김). 관리자에게만 「관리자 페이지」(/admin) 링크 하나를 둔다(2026-11-13).
  * 임시 비밀번호를 쓰는 동안 프로필 카드 아래에 경고 줄을 둔다(lib/password-notice.ts).
  */
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string; error?: string }> }) {
@@ -159,28 +159,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 </Link>
               ))}
             </nav>
-            {/* 관리자 화면 — 예전 「시스템 설정」 카드에 있던 링크. 관리자에게만 */}
+            {/* 관리자 화면 — 흩어져 있던 관리 링크를 /admin 한 곳으로 묶었다(2026-11-13). 관리자에게만 */}
             {role === "ADMIN" && (
-              <p data-admin-links className="flex flex-wrap gap-x-4 gap-y-1 px-1 text-[12.5px] text-muted-foreground">
-                <span>관리</span>
-                <Link href="/settings/feature-requests" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
-                  기능 요청 보기
+              <p data-admin-links className="px-1 text-[12.5px] text-muted-foreground">
+                <Link href="/admin" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
+                  관리자 페이지
                 </Link>
-                <Link href="/settings/ai-budget" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
-                  AI 비용 상한
-                </Link>
-                <Link href="/settings/ui-metrics" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
-                  배포별 측정 보기
-                </Link>
-                <Link href="/settings/onboarding" className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
-                  온보딩 다시 띄우기
-                </Link>
-                {/* 설문 결과(회사 전체 추정 · 원문) — 설문이 열린 관리자만(main #204) */}
-                {survey && (
-                  <Link href="/settings/ai-survey/results" data-ai-survey-results-link className="touch-target inline-flex items-center underline underline-offset-4 hover:text-foreground">
-                    AI 활용 설문 결과
-                  </Link>
-                )}
               </p>
             )}
           </TabsContent>

@@ -559,7 +559,8 @@ test.describe("AI 활용 설문 @settings", () => {
     await put("사원2", { daysPerWeek: f({ num: 2 }), hoursPerDay: f({ num: 1 }), payer: f({ values: ["none"] }), recentTask: f({ values: ["write"] }), pain: f({ labels: ["회사 자료를 모른다"] }) })
 
     await quickLogin(page, "팀장")
-    await page.goto("/settings?tab=info")
+    // 결과 링크는 관리자 페이지 「운영」 의 설문 칸에 있다(2026-11-13)
+    await page.goto("/admin/operations")
     await page.locator("[data-ai-survey-results-link]").click()
     const results = page.locator("[data-survey-results]")
     await expect(results).toBeVisible({ timeout: 30_000 })
