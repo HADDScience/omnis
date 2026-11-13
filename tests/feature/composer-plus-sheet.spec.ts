@@ -29,7 +29,8 @@ test.describe("폰", () => {
     expect(await box(page).evaluate((el) => document.activeElement === el)).toBe(false)
     await expect(page.getByRole("menuitem")).toHaveCount(0)
     const labels = await sheet(page).locator("button").allInnerTexts()
-    expect(labels.map((t) => t.trim())).toEqual(["업무 지시", "사람 언급", "업무 언급"])
+    // 시험 빌드는 가짜 NAS 와 함께 첨부를 연다(NEXT_PUBLIC_E2E_ATTACH) — 첨부 항목(사진 · 파일 · 시놀로지)이 앞에 붙는다
+    expect(labels.map((t) => t.split("\n")[0].trim())).toEqual(["사진", "파일 업로드", "시놀로지 파일 연결", "업무 지시", "사람 언급", "업무 언급"])
     // 화면 아래에 붙고 안전 영역 + 여백이 있다
     await expect.poll(() => sheet(page).evaluate((el) => Math.round(el.getBoundingClientRect().bottom))).toBe(844)
     expect(await sheet(page).evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThanOrEqual(16)
@@ -91,6 +92,6 @@ test("PC 는 기존 메뉴 그대로다", async ({ page }) => {
   await open(page)
   await plus(page).click()
   await expect(page.getByRole("menuitem").first()).toBeVisible()
-  expect((await page.getByRole("menuitem").allInnerTexts()).map((t) => t.split("\n")[0].trim())).toEqual(["업무 지시", "사람 언급", "업무 언급"])
+  expect((await page.getByRole("menuitem").allInnerTexts()).map((t) => t.split("\n")[0].trim())).toEqual(["파일 업로드", "시놀로지 파일 연결", "업무 지시", "사람 언급", "업무 언급"])
   await expect(sheet(page)).toHaveCount(0)
 })

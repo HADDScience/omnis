@@ -11,7 +11,8 @@ import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { createSerialQueue } from "@/lib/serial-queue"
 import { reportIncident } from "@/lib/report-client-error"
-import { startLargeUpload, type UploadedFile } from "@/lib/large-upload/client"
+import { UploadCancelled, cancelLargeUpload, largeUploadId, largeUploadSnapshot, startLargeUpload, subscribeLargeUploads, type UploadedFile } from "@/lib/large-upload/client"
+import { UploadAborted, cancelAllUploads, clearUpload, onCancelUpload, setUploadProgress as setCardProgress, uploadSmallFile } from "@/lib/upload-progress"
 import { isLargeUpload, largeUploadClientEnabled } from "@/lib/large-upload/rules"
 import { noteRoomFirstMessage, noteAttachAttempt, noteUiSend, trackUi } from "@/lib/ui-metrics/client"
 import { ChatSearch } from "@/components/chat/chat-search"
@@ -584,9 +585,121 @@ export function ChatPanel({
     [people, stopSending, fetchMessages, onTaskUpdated, waitForRebuild, seenIds, nudgeRoomList],
   )
 
+  // 바로 보내기(카톡처럼)로 올리다 실패한 파일 — 다시 보내기가 같은 말풍선에서 처음부터 올린다
+  const failedUploads = useRef(new Map<string, { file: File; clientId: string; replyToId?: string }>())
+  // 이 방에서 올리고 있는 카드 키 — 방을 떠나면 멈춘다(화면 떠남은 lib/upload-progress.ts 가 pagehide 로)
+  const liveUploads = useRef(new Set<string>())
+  useEffect(() => {
+    const live = liveUploads.current
+    return () => cancelAllUploads([...live])
+  }, [])
+
+  /**
+   * 파일 하나를 올리고 보낸다 — 말풍선(파일 카드)은 이미 떠 있다. 진행은 lib/upload-progress 에, 큰 파일은 R2 조각 업로드 진행을 옮겨 적는다.
+   * X 로 멈추면 말풍선을 거두고, 실패하면 카드에 「다시 보내기」 를 남긴다
+   */
+  const runFileUpload = useCallback(
+    async (tempId: string, file: File, clientId: string, replyToId?: string) => {
+      const key = `up-${tempId}`
+      liveUploads.current.add(key)
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _failed: undefined } : m)))
+      let uploaded: UploadedFile
+      try {
+        if (isLargeUpload(file.size)) {
+          const opts = people ? ({ scope: "private" } as const) : {}
+          const jobId = largeUploadId(file, opts)
+          setCardProgress(key, { loaded: 0, total: file.size })
+          const off = subscribeLargeUploads(() => {
+            const v = largeUploadSnapshot().find((j) => j.id === jobId)
+            if (v) setCardProgress(key, { loaded: v.loaded, total: v.size })
+          })
+          onCancelUpload(key, () => cancelLargeUpload(jobId))
+          try {
+            uploaded = await startLargeUpload(file, opts)
+          } finally {
+            off()
+          }
+        } else {
+          const form = new FormData()
+          form.append("file", file)
+          // 사람끼리 방 — 참여자만 보는 파일로 올린다(lib/file-access.ts)
+          if (people) form.append("scope", "private")
+          uploaded = await uploadSmallFile<UploadedFile>(key, file, form)
+        }
+      } catch (err) {
+        liveUploads.current.delete(key)
+        clearUpload(key)
+        if (err instanceof UploadAborted || err instanceof UploadCancelled) {
+          failedUploads.current.delete(tempId)
+          setMessages((prev) => prev.filter((m) => m.id !== tempId))
+          return
+        }
+        reportIncident({ kind: "upload_failed", message: err instanceof Error ? err.message : "파일 업로드 실패", status: (err as { status?: number }).status, size: file.size, fileName: file.name })
+        failedUploads.current.set(tempId, { file, clientId, replyToId })
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _failed: err instanceof Error ? err.message : "파일을 올리지 못했습니다" } : m)))
+        return
+      }
+      // 다 올라갔다 — 글이 서버에 닿을 때까지 카드는 「보내는 중」
+      setCardProgress(key, { loaded: file.size, total: file.size, sent: true })
+      onCancelUpload(key, () => {})
+      failedUploads.current.delete(tempId)
+      sendsInFlight.current++
+      try {
+        await sendQueue.current.run(() =>
+          deliver(tempId, { roomId, content: "", taskId: filterTaskId ?? undefined, fileIds: [uploaded.id], fileNames: [uploaded.name], replyToId, clientId }, false),
+        )
+      } finally {
+        sendsInFlight.current--
+        liveUploads.current.delete(key)
+        clearUpload(key)
+      }
+    },
+    [people, roomId, filterTaskId, deliver],
+  )
+
+  /** 고른 파일을 확인 없이 바로 — 파일마다 카드 한 장(카톡처럼). 답장 대상은 첫 카드에만 */
+  const sendFilesNow = useCallback(
+    (files: File[]) => {
+      noteUiSend()
+      noteAttachAttempt()
+      // 옛 자리를 보다가 보내면 새 글이 엉뚱한 자리에 붙는다 — 최신 목록으로 돌아가서 보낸다(handleSend 와 같다)
+      if (jumpedRef.current) {
+        endJump()
+        setHighlight(null)
+        lastFetchedAt.current = null
+        setMessages([])
+        setHasMoreOlder(true)
+      }
+      const reply = replyTo
+      setReplyTo(null)
+      files.forEach((file, i) => {
+        const tempId = `temp-${Date.now()}-${++tempSeq}`
+        const clientId = crypto.randomUUID()
+        const tempMsg = {
+          id: tempId,
+          content: "",
+          createdAt: new Date().toISOString(),
+          isTaskInstruction: false,
+          author: { id: "me", name: "" },
+          task: null,
+          files: [{ id: `up-${tempId}`, name: file.name, path: file.type.startsWith("image/") && !isLargeUpload(file.size) ? URL.createObjectURL(file) : "", size: file.size, mimeType: file.type, _uploading: true }],
+          _clientId: clientId,
+        }
+        setMessages((prev) => [...prev, tempMsg])
+        void runFileUpload(tempId, file, clientId, i === 0 ? reply?.id : undefined)
+      })
+    },
+    [replyTo, endJump, runFileUpload],
+  )
+
   /** 보내지 못한 글을 같은 clientId 로 다시 보낸다 */
   const resend = useCallback(
     async (tempId: string) => {
+      const upload = failedUploads.current.get(tempId)
+      if (upload) {
+        void runFileUpload(tempId, upload.file, upload.clientId, upload.replyToId)
+        return
+      }
       const payload = failedPayloads.current.get(tempId)
       if (!payload) return
       setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _failed: undefined } : m)))
@@ -597,12 +710,13 @@ export function ChatPanel({
         sendsInFlight.current--
       }
     },
-    [deliver],
+    [deliver, runFileUpload],
   )
 
   /** 보내지 못한 글을 거둔다 — 서버에 닿았던 글이면 폴링이 진짜 글로 다시 들여온다 */
   const discardFailed = useCallback((tempId: string) => {
     failedPayloads.current.delete(tempId)
+    failedUploads.current.delete(tempId)
     setMessages((prev) => prev.filter((m) => m.id !== tempId))
   }, [])
 
@@ -899,9 +1013,10 @@ export function ChatPanel({
             taskMentions={false}
             placeholder="메시지 입력...  @ 사람"
             handoffKey={handoffKey}
+            onPickFiles={sendFilesNow}
           />
         ) : (
-          <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} handoffKey={handoffKey} />
+          <MessageInput onSend={handleSend} tasks={tasks} files={uploadedFiles} users={users} handoffKey={handoffKey} onPickFiles={sendFilesNow} />
         )}
       </div>
 

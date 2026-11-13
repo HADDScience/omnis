@@ -20,6 +20,9 @@ export interface LargeUploadView {
   percent: number
   /** 「약 3분」. 아직 모르면 null */
   remaining: string | null
+  /** 올라간 바이트 · 전체 — 채팅 파일 카드의 「3.0 / 28.8MB」 */
+  loaded: number
+  size: number
 }
 
 export interface ResumableView {
@@ -68,6 +71,8 @@ function viewOf(job: Job): LargeUploadView {
     name: job.name,
     percent: Math.min(99, Math.floor((loaded / job.size) * 100)),
     remaining: remainingLabel(loaded, job.size, Date.now() - job.startedAt),
+    loaded: Math.min(loaded, job.size),
+    size: job.size,
   }
 }
 
@@ -117,6 +122,9 @@ export async function discardResumable(fingerprint: string) {
   if (record?.backend === "r2") await postJson("/api/uploads/r2/abort", { session: record.session }).catch(() => {})
   await deleteResume(fingerprint)
 }
+
+/** 이 파일을 올리는 작업의 id — 화면이 진행률 · 멈추기를 이 id 로 찾는다 */
+export const largeUploadId = (file: File, opts: { scope?: "private" } = {}) => fingerprintOf(file, opts.scope === "private")
 
 const fingerprintOf = (file: File, isPrivate: boolean) => `${file.name}|${file.size}|${file.lastModified}|${isPrivate ? "p" : "c"}`
 

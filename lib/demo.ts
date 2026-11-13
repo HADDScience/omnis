@@ -2,6 +2,9 @@
  *  클라이언트 컴포넌트도 가져가므로 next/server 같은 서버 전용 모듈을 들이지 않는다. */
 export const IS_DEMO = process.env.NEXT_PUBLIC_IS_DEMO === "true"
 
+/** 데모 빌드지만 가짜 NAS 를 띄운 시험(CI · scripts/e2e-local.mjs) — 입력창 첨부를 연다. 배포본에는 두지 않는다 */
+export const E2E_ATTACH = process.env.NEXT_PUBLIC_E2E_ATTACH === "1"
+
 export const DEMO_STORAGE_MESSAGE = "시연용 데모에서는 파일 저장을 쓸 수 없습니다"
 
 /**

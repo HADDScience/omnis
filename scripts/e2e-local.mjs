@@ -34,6 +34,8 @@ const env = {
   NEXTAUTH_URL: `http://localhost:${port}`,
   AUTH_URL: `http://localhost:${port}`,
   NEXT_PUBLIC_IS_DEMO: "true",
+  // 가짜 NAS 와 함께 입력창 첨부를 연다(lib/demo.ts E2E_ATTACH) — CI 와 같다
+  NEXT_PUBLIC_E2E_ATTACH: "1",
   NEXT_PUBLIC_UI_METRICS: "1",
   // 옴니스 실행은 시험 모델로 — 벤더를 부르지 않는다(lib/agent/fake-model.ts, CI 와 같다)
   OMNIS_AGENT_FAKE: "1",
