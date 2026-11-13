@@ -79,7 +79,16 @@ test.describe("PC 1440 @chat", () => {
   test.use({ viewport: { width: 1440, height: 900 } })
 
   // 지키는 것: 파일을 누르면 바로 열리지 않고 카드 안에서 받기가 진행되며, 받은 뒤 다시 누르면 새 탭으로 열린다. 다시 들어와도 받음이 남는다
-  test("받기 진행 → 열기 · 기기에 기억", async ({ page, context }) => {
+  test("받기 진행 → 열기 · 기기에 기억", async ({ page }) => {
+    // 헤드리스 크롬은 PDF 새 탭을 내려받기로 돌려 탭 주소가 비어 있다 — 무엇을 열었는지만 적어 둔다
+    await page.addInitScript(() => {
+      const w = window as unknown as { __opened: string[] }
+      w.__opened = []
+      window.open = ((u?: string | URL) => {
+        w.__opened.push(String(u))
+        return { opener: null } as unknown as Window
+      }) as typeof window.open
+    })
     await open(page)
     const pdf = card(page, "우수사례발표")
     await expect(pdf).toHaveAttribute("data-file-state", "idle")
@@ -90,9 +99,8 @@ test.describe("PC 1440 @chat", () => {
     await expect(pdf).toHaveAttribute("data-file-state", "done", { timeout: 10_000 })
     // PDF 는 첫 장이 미리보기가 된다
     await expect(pdf.locator("[data-file-thumb]")).toBeVisible({ timeout: 15_000 })
-    const [tab] = await Promise.all([context.waitForEvent("page"), pdf.locator("[data-file-open]").click()])
-    expect(tab.url()).toMatch(/^blob:/)
-    await tab.close()
+    await pdf.locator("[data-file-open]").click()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __opened: string[] }).__opened)).toEqual([expect.stringMatching(/^blob:/)])
 
     // 다시 들어와도 받지 않는다 — 요청 없이 「받음」
     let fetched = 0

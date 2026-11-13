@@ -72,7 +72,8 @@ const imageBox = (page: Page, messageId: string) =>
     const img = el.querySelector("img") as HTMLImageElement
     img.loading = "eager"
     el.scrollIntoView({ block: "center" })
-    for (let i = 0; i < 40 && !img.naturalWidth; i++) await new Promise((r) => setTimeout(r, 100))
+    // 사진은 미리보기(/thumb)를 거쳐 원본으로 온다 — 앞 시험이 서버를 데워 두면 4초 안에 못 올 때가 있다
+    for (let i = 0; i < 200 && !img.naturalWidth; i++) await new Promise((r) => setTimeout(r, 100))
     await new Promise((r) => setTimeout(r, 100))
     const r = el.getBoundingClientRect()
     const cs = getComputedStyle(el)
@@ -180,16 +181,20 @@ test.describe("폰 402px", () => {
 test.describe("PC", () => {
   test.use({ viewport: { width: 1440, height: 900 } })
 
-  test("사진 · 파일 모양이 그대로다", async ({ page }) => {
+  // 지키는 것(2026-11-13 바뀜): PC 도 폰처럼 글 말풍선과 사진 · 파일을 따로 놓는다 — 예전에는 사진이 글 말풍선 안에 들었다
+  test("글 말풍선과 사진이 따로 · 사진 이름 줄은 그대로", async ({ page }) => {
     await open(page)
     const body = page.locator(`[data-message-id="${ids.textPhoto}"] [data-message-body]`)
     const inside = await body.evaluate((el) => {
+      const p = el.querySelector(":scope > p") as HTMLElement
       const a = el.querySelector("[data-attachment-image]") as HTMLElement
       const caption = a.querySelector("div") as HTMLElement
-      return { padding: getComputedStyle(el).paddingLeft, maxW: getComputedStyle(a).maxWidth, caption: getComputedStyle(caption).display, radius: getComputedStyle(el).borderTopLeftRadius }
+      return { bodyBg: getComputedStyle(el).backgroundColor, padding: getComputedStyle(p).paddingLeft, radius: getComputedStyle(p).borderTopLeftRadius, caption: getComputedStyle(caption).display, imageBelow: a.getBoundingClientRect().top >= p.getBoundingClientRect().bottom }
     })
+    expect(inside.bodyBg).toMatch(/rgba\(0, 0, 0, 0\)|transparent/)
     expect(inside.padding).toBe("18px")
     expect(inside.radius).toBe("24px")
+    expect(inside.imageBelow).toBe(true)
     expect(inside.caption).not.toBe("none")
     expect(await page.locator(`[data-message-id="${ids.reply}"] [data-reply-in-bubble]`).isVisible()).toBe(false)
     expect(await page.locator(`[data-message-id="${ids.grid}"] [data-attachment-grid]`).evaluate((el) => getComputedStyle(el).display)).toBe("contents")

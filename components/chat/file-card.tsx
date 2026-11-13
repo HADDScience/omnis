@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Cancel01Icon, Doc01Icon, Download04Icon, File01Icon, Pdf01Icon, Ppt01Icon, Refresh01Icon, Share08Icon, Xls01Icon, ZipIcon } from "@hugeicons/core-free-icons"
+import { Cancel01Icon, Doc01Icon, Download04Icon, File01Icon, Pdf01Icon, Ppt01Icon, Refresh01Icon, Upload04Icon, Xls01Icon, ZipIcon } from "@hugeicons/core-free-icons"
 import {
   cancelFileDownload,
   fileThumb,
@@ -98,7 +98,7 @@ export function FileCard({ file, uploading = false, mine = false }: { file: Card
         data-attachment-file
         data-file-state={uploading ? "uploading" : state.phase}
         title={file.name}
-        className={`glass relative flex w-[min(340px,100%)] items-center gap-[10px] overflow-hidden rounded-[18px] p-[10px] pl-[14px] text-foreground max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:pl-[12px] ${uploading ? "opacity-70" : ""}`}
+        className={`glass relative flex w-[340px] min-w-0 shrink items-center gap-[10px] overflow-hidden rounded-[18px] p-[10px] pl-[14px] text-foreground max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:pl-[12px] ${uploading ? "opacity-70" : ""}`}
       >
         {uploading && <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />}
         <button
@@ -147,8 +147,14 @@ export function FileCard({ file, uploading = false, mine = false }: { file: Card
             className="relative flex size-[44px] shrink-0 items-center justify-center rounded-full bg-foreground/[0.07] text-foreground transition-colors hover:bg-foreground/[0.12] active:scale-95 disabled:opacity-50 dark:bg-white/10 dark:hover:bg-white/15"
           >
             {state.phase === "downloading" && <Ring ratio={ratio} />}
+            {/* 올리는 중 — 진행을 모르는 도는 원(카톡의 올리기 표시와 같은 자리) */}
+            {uploading && (
+              <span className="absolute inset-0 animate-spin motion-reduce:animate-none">
+                <Ring ratio={0.25} />
+              </span>
+            )}
             <HugeiconsIcon
-              icon={state.phase === "downloading" ? Cancel01Icon : state.phase === "done" ? kind.icon : state.phase === "error" ? Refresh01Icon : Download04Icon}
+              icon={uploading ? Upload04Icon : state.phase === "downloading" ? Cancel01Icon : state.phase === "done" ? kind.icon : state.phase === "error" ? Refresh01Icon : Download04Icon}
               size={state.phase === "downloading" ? 16 : 21}
               aria-hidden
             />
@@ -174,7 +180,7 @@ export function FileCard({ file, uploading = false, mine = false }: { file: Card
           }}
           className="glass flex size-[36px] shrink-0 items-center justify-center rounded-full text-foreground/80 transition-transform active:scale-95 touch-hit"
         >
-          <HugeiconsIcon icon={Share08Icon} size={17} aria-hidden />
+          <HugeiconsIcon icon={Upload04Icon} size={17} aria-hidden />
         </button>
       )}
     </div>
