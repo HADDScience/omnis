@@ -3,6 +3,7 @@
 // 지울 때 행을 지우지 않는다(`deletedAt`) — 답장이 가리키는 글 · 업무 연결 · 색인이 함께 사라진다.
 // 고치거나 지운 글이 업무에 붙어 있으면 응답 뒤에 재구성을 다시 돌린다(작업지시자 결정 2026-09-16):
 // 지웠는데 그 내용이 업무 카드에 남아 있으면 지운 의미가 없다.
+import { attachAwareText } from "@/lib/attachment-text"
 import { after, NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
@@ -118,7 +119,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
         author: { select: { id: true, name: true } },
         task: { select: { id: true, name: true, slug: true } },
         files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
-        replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
+        replyTo: { select: { id: true, content: true, deletedAt: true, _count: { select: { files: true } }, author: { select: { name: true } } } },
       },
     })
     return NextResponse.json({
@@ -127,7 +128,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
         ? {
             id: edited.replyTo.id,
             authorName: edited.replyTo.author.name,
-            content: edited.replyTo.deletedAt ? CHAT_DELETED_TEXT : edited.replyTo.content.slice(0, 80),
+            content: edited.replyTo.deletedAt ? CHAT_DELETED_TEXT : attachAwareText(edited.replyTo.content, edited.replyTo._count.files).slice(0, 80),
             deleted: !!edited.replyTo.deletedAt,
           }
         : null,
@@ -145,7 +146,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
       author: { select: { id: true, name: true } },
       task: { select: { id: true, name: true, slug: true } },
       files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
-      replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
+      replyTo: { select: { id: true, content: true, deletedAt: true, _count: { select: { files: true } }, author: { select: { name: true } } } },
     },
   })
 
@@ -164,7 +165,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
       ? {
           id: updated.replyTo.id,
           authorName: updated.replyTo.author.name,
-          content: updated.replyTo.deletedAt ? CHAT_DELETED_TEXT : updated.replyTo.content.slice(0, 80),
+          content: updated.replyTo.deletedAt ? CHAT_DELETED_TEXT : attachAwareText(updated.replyTo.content, updated.replyTo._count.files).slice(0, 80),
           deleted: !!updated.replyTo.deletedAt,
         }
       : null,

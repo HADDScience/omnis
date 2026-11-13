@@ -17,6 +17,7 @@ import { ensureReadBaseline, listFolders } from "@/lib/chat-prefs"
 import { sharedLabel } from "@/lib/omnis-session-share-rules"
 import { groupFaceNames, peopleRoomTitle } from "@/lib/chat-people-rules"
 import { kakaoMissingAttachment, missingAttachmentLabel } from "@/lib/kakao-placeholder"
+import { attachAwareText, visibleBody } from "@/lib/attachment-text"
 
 /** 「전체」 팀 채팅. 채팅 패널 · 업무 생성 · MCP 가 이 id 로 쓴다 */
 export const COMPANY_ROOM_ID = "default-room"
@@ -111,14 +112,16 @@ export function previewText(content: string, kind: string, files: { mimeType: st
   // 카톡에서 옮겼지만 첨부 실물이 없는 글 — 자리표시(`3 photos` · `File: 이름`) 대신 화면의 흐린 칸과 같은 이름
   const missing = sourceId ? kakaoMissingAttachment({ sourceId, content, files }) : null
   if (missing) return missingAttachmentLabel(missing)
-  const flat = content
+  // 옛 화면이 첨부만 보낼 때 넣던 「[파일 N개 첨부]」 는 글이 아니다 — 첨부 이름(「파일 4개」)으로
+  const flat = visibleBody(content)
     // 맨 앞 🤖 표식은 글에서 떼고, 목록은 옴니스 아이콘을 앞에 둔다(previewByOmnis · room-list.tsx)
     .replace(/^\u{1F916}\uFE0F?\s*/u, "")
     .replace(/\*\*|__|`|^#{1,6}\s+|\|/gm, "")
     .replace(/\s?\[\d+(?:\s*[,，~–-]\s*\d+)*\]/g, "")
     .replace(/\s+/g, " ")
     .trim()
-  if (!flat) return attachmentPreview(files)
+  // 첨부 목록을 안 받은 자리(업무방)는 자리글의 숫자로
+  if (!flat) return attachmentPreview(files) || attachAwareText(content).trim()
   return flat.length > PREVIEW_MAX ? `${flat.slice(0, PREVIEW_MAX)}…` : flat
 }
 

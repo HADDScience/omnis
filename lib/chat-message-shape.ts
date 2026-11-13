@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client"
+import { attachAwareText } from "@/lib/attachment-text"
 import { CHAT_DELETED_TEXT } from "@/lib/constants"
 import { displayAuthor, EXTERNAL_SPEAKER_SELECT } from "@/lib/external-speaker"
 
@@ -21,7 +22,7 @@ export const MESSAGE_INCLUDE = {
     },
   },
   files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
-  replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT } },
+  replyTo: { select: { id: true, content: true, deletedAt: true, _count: { select: { files: true } }, author: { select: { name: true } }, externalSpeaker: EXTERNAL_SPEAKER_SELECT } },
 } satisfies Prisma.ChatMessageInclude
 
 export type MessageRow = Prisma.ChatMessageGetPayload<{ include: typeof MESSAGE_INCLUDE }>
@@ -37,7 +38,7 @@ export function shapeMessage({ externalSpeaker, ...m }: MessageRow) {
       ? {
           id: m.replyTo.id,
           authorName: displayAuthor({ id: "", name: m.replyTo.author.name }, m.replyTo.externalSpeaker).name,
-          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
+          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : attachAwareText(m.replyTo.content, m.replyTo._count.files).slice(0, 80),
           deleted: !!m.replyTo.deletedAt,
         }
       : null,

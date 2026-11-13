@@ -1,4 +1,5 @@
 import { after, NextRequest, NextResponse } from "next/server"
+import { attachAwareText } from "@/lib/attachment-text"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { postChatMessage, runTaskRebuild } from "@/lib/chat-post"
@@ -18,14 +19,14 @@ export const maxDuration = 60
 /** 사람끼리 방 글 한 줄 상한 — 전사방 글에는 상한이 없었다. 새 길이라 둔다 */
 
 /** 답장 인용을 화면 모양(작성자 · 앞 80자)으로 */
-function shapeReply<T extends { replyTo: { id: string; content: string; deletedAt: Date | null; author: { name: string } } | null }>(m: T) {
+function shapeReply<T extends { replyTo: { id: string; content: string; deletedAt: Date | null; author: { name: string }; _count?: { files: number } } | null }>(m: T) {
   return {
     ...m,
     replyTo: m.replyTo
       ? {
           id: m.replyTo.id,
           authorName: m.replyTo.author.name,
-          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
+          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : attachAwareText(m.replyTo.content, m.replyTo._count?.files).slice(0, 80),
           deleted: !!m.replyTo.deletedAt,
         }
       : null,
@@ -188,7 +189,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { roomId, content, taskId, fileIds, replyToId } = body
 
-  if (!roomId || !content?.trim()) {
+  // 글 없이 첨부만 보낸 글은 본문이 비어 있다(카드만 보인다) — 첨부도 글도 없으면 거절
+  const hasFiles = Array.isArray(fileIds) && fileIds.length > 0
+  if (!roomId || typeof (content ?? "") !== "string" || (!content?.trim() && !hasFiles)) {
     return NextResponse.json({ error: "roomId, content 필수" }, { status: 400 })
   }
   // 화면이 만든 id — 없으면(MCP · 옛 화면) 예전처럼 매번 새로 저장한다

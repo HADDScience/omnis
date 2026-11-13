@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth"
+import { attachAwareText } from "@/lib/attachment-text"
 import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
 import { visibleMessageWhere } from "@/lib/chat-rooms"
 import { visibleFileWhere } from "@/lib/file-access"
@@ -48,7 +49,7 @@ export default async function TaskDetailPage({ params }: Props) {
         author: { select: { id: true, name: true } },
         // 참여자 전용 방의 글이 카드에 연결돼도 첨부는 그 방 사람에게만(lib/file-access.ts)
         files: { where: visibleFileWhere(session.user.id), select: { id: true, name: true, path: true, size: true, mimeType: true } },
-        replyTo: { select: { id: true, content: true, deletedAt: true, author: { select: { name: true } } } },
+        replyTo: { select: { id: true, content: true, deletedAt: true, _count: { select: { files: true } }, author: { select: { name: true } } } },
       },
     }),
     prisma.file.findMany({
@@ -119,7 +120,7 @@ export default async function TaskDetailPage({ params }: Props) {
       ? {
           id: m.replyTo.id,
           authorName: m.replyTo.author.name,
-          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : m.replyTo.content.slice(0, 80),
+          content: m.replyTo.deletedAt ? CHAT_DELETED_TEXT : attachAwareText(m.replyTo.content, m.replyTo._count.files).slice(0, 80),
         }
       : null,
   }))

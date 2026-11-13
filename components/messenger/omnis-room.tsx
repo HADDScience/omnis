@@ -38,6 +38,7 @@ import { useChatUserId, useRoomListReload } from "./messenger-shell"
 import { useRoomListNudge } from "@/hooks/use-room-list-nudge"
 import { AttachChips, ComposerPlus, RoomComposer, type PickedFile } from "@/components/chat/room-composer"
 import { useOmnisAttachments } from "./omnis-attach"
+import { visibleBody } from "@/lib/attachment-text"
 import { IS_DEMO } from "@/lib/demo"
 import { noteUiSend } from "@/lib/ui-metrics/client"
 
@@ -936,9 +937,10 @@ function PeerMessage({ name, content, iso, fresh = false, files }: { name: strin
   return (
     <div data-peer-message className={cn("mt-3 flex flex-col items-start gap-0.5 in-data-[messenger]:mt-5 in-data-[messenger]:gap-1", fresh && MESSAGE_ENTER)}>
       <span className="px-1 text-[11.5px] text-muted-foreground in-data-[messenger]:text-[13.5px]">{name}</span>
-      <div className="max-w-[85%] whitespace-pre-wrap break-keep rounded-2xl rounded-tl-md bg-muted px-3.5 py-2 text-[13.5px] leading-[1.6] [overflow-wrap:anywhere] in-data-[messenger]:rounded-[24px] in-data-[messenger]:rounded-tl-lg in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] in-data-[messenger]:leading-[1.6]">
+      {/* 첨부만 보낸 글의 자리글(「[파일 N개 첨부]」)은 말풍선을 그리지 않는다 — 카드만 */}
+      {(files?.length ? visibleBody(content) : content) && <div className="max-w-[85%] whitespace-pre-wrap break-keep rounded-2xl rounded-tl-md bg-muted px-3.5 py-2 text-[13.5px] leading-[1.6] [overflow-wrap:anywhere] in-data-[messenger]:rounded-[24px] in-data-[messenger]:rounded-tl-lg in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] in-data-[messenger]:leading-[1.6]">
         {tidyBody(content)}
-      </div>
+      </div>}
       {files && files.length > 0 && (
         <div className="flex max-w-[85%]">
           <MessageFiles files={files} />
@@ -952,18 +954,18 @@ function PeerMessage({ name, content, iso, fresh = false, files }: { name: strin
 export function MyMessage({ content, iso, sending = false, fresh = false, files }: { content: string; iso?: string; sending?: boolean; fresh?: boolean; files?: FileInfo[] }) {
   return (
     <div className={cn("mt-3 flex flex-col items-end gap-0.5 in-data-[messenger]:mt-5 in-data-[messenger]:gap-1", fresh && MESSAGE_ENTER)}>
-      <div
+      {(files?.length ? visibleBody(content) : content) && <div
         className={cn(
           "max-w-[85%] whitespace-pre-wrap break-keep rounded-2xl rounded-br-md bg-primary/10 px-3.5 py-2 text-[13.5px] leading-[1.6] [overflow-wrap:anywhere] in-data-[messenger]:rounded-[24px] in-data-[messenger]:rounded-br-lg in-data-[messenger]:px-[18px] in-data-[messenger]:py-[12px] in-data-[messenger]:text-[17px] in-data-[messenger]:leading-[1.6]",
           sending && "opacity-60",
         )}
       >
         {tidyBody(content)}
-      </div>
+      </div>}
       {/* 질문에 붙인 파일 — 사람 방과 같은 파일 카드(이미지는 미리보기), 말풍선 아래 오른쪽 */}
       {files && files.length > 0 && (
         <div className={cn("flex max-w-[85%] justify-end [&>div]:items-end", sending && "opacity-60")}>
-          <MessageFiles files={files} />
+          <MessageFiles files={files} onPrimary />
         </div>
       )}
       {sending ? (

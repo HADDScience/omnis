@@ -169,18 +169,23 @@ test.describe("PC", () => {
     expect(Object.keys(pz.files).map((n) => n.split("/")[1].replace(/^\d{4}-\d{2}-\d{2}_/, "")).sort()).toEqual(["사원1_현장 (2).png", "사원1_현장.png"])
   })
 
-  test("받는 중 취소 · 묶음 글의 「모두 저장」", async ({ page }) => {
+  // 지키는 것: 받는 중에 멈출 수 있다. 묶음 글의 「모두 저장」 은 숨겼다(2026-11-13) — 여러 개 받기는 서랍에서 골라 받는다
+  test("받는 중 취소 · 묶음 글의 「모두 저장」 은 숨김", async ({ page }) => {
     await open(page)
     // 받기를 늦춰 멈출 틈을 만든다
     await page.route(/\/api\/files\/[^/]+\/raw$/, async (route) => {
       await new Promise((r) => setTimeout(r, 4000))
       await route.fulfill({ status: 200, body: "slow" }).catch(() => {})
     })
-    const save = page.locator("[data-save-all]")
-    await expect(save).toHaveCount(2) // 사진 두 장 글 · 문서 두 개 글
-    await save.last().click()
+    await expect(page.locator("[data-save-all]")).toHaveCount(2) // 코드는 남아 있다 — 사진 두 장 글 · 문서 두 개 글
+    for (const b of await page.locator("[data-save-all]").all()) await expect(b).toBeHidden()
+    await openDrawer(page)
+    await drawer(page).getByRole("tab", { name: "파일" }).click()
+    await drawer(page).getByRole("button", { name: "선택", exact: true }).click()
+    await drawer(page).getByRole("button", { name: "모두 선택" }).click()
+    await drawer(page).locator("[data-drawer-download]").click()
     const status = page.locator("[data-room-download-status]")
-    await expect(status).toContainText(`${ROOM_NAME} · 2개`)
+    await expect(status).toContainText(`${ROOM_NAME} · `)
     await status.getByRole("button", { name: /받기 멈추기$/ }).click()
     await expect(status).toContainText("멈췄습니다")
   })
