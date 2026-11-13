@@ -530,7 +530,7 @@ export function MessageList({
                         mine ? "bg-primary text-primary-foreground in-data-[messenger]:rounded-br-lg in-data-[messenger]:bg-primary/10 in-data-[messenger]:text-foreground max-md:in-data-[messenger]:max-w-[calc(var(--app-vw)*0.7)]" : "bg-muted max-md:in-data-[messenger]:max-w-[calc(var(--app-vw)*0.7)]"
                       } ${mine && !row.groupStart ? "rounded-tr-md" : ""} ${!mine && !row.groupStart ? "rounded-tl-md in-data-[messenger]:rounded-tl-lg" : ""} max-md:in-data-[messenger]:rounded-[13px] max-md:in-data-[messenger]:[&_a]:max-w-full max-md:in-data-[messenger]:[&_a]:rounded-[13px] ${
                         msg.isTaskInstruction ? "ring-2 ring-primary/30" : ""
-                      } ${pending ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} ${
+                      } ${pending && !split ? "opacity-70" : ""} ${msg.deletedAt ? "bg-muted/50 italic text-muted-foreground" : ""} ${
                         // 첨부가 든 글 — PC 도 폰처럼 글 말풍선과 카드를 따로 놓는다(한 말풍선에 글 + 파일 목록을 넣지 않는다)
                         split ? `max-md:in-data-[messenger]:max-w-none! md:in-data-[chat-room-chrome]:flex md:in-data-[chat-room-chrome]:flex-col md:in-data-[chat-room-chrome]:gap-[6px] md:in-data-[chat-room-chrome]:bg-transparent! md:in-data-[chat-room-chrome]:p-0 md:in-data-[chat-room-chrome]:ring-0 ${mine ? "md:in-data-[chat-room-chrome]:items-end" : "md:in-data-[chat-room-chrome]:items-start"}` : ""
                       } transition-opacity duration-300`}
@@ -593,7 +593,7 @@ export function MessageList({
                             )}
                           </p>
                           {!msg.deletedAt && msg.files && msg.files.length > 0 && (
-                            <MessageFiles files={msg.files} onPrimary={mine} messageId={msg.id} />
+                            <MessageFiles files={msg.files} onPrimary={mine} messageId={msg.id} failed={pending && !!msg._failed} onRetry={onResend ? () => onResend(msg.id) : undefined} />
                           )}
                           {missing && <MissingAttachmentTile attachment={missing} onPrimary={mine} />}
                         </>
@@ -846,7 +846,20 @@ function ImageAttachment({ file: f, tile, onOpen }: { file: FileInfo; tile: bool
 const imageGridCols = (n: number) => (n === 2 || n === 4 ? "max-md:in-data-[chat-room-chrome]:grid-cols-2" : "max-md:in-data-[chat-room-chrome]:grid-cols-3")
 
 /** 메시지에 붙은 파일 — 이미지는 미리보기, 나머지는 형식 아이콘 · 이름 · 크기 카드. 채팅과 업무 스레드가 같이 쓴다. */
-export function MessageFiles({ files, onPrimary = false, messageId }: { files: FileInfo[]; onPrimary?: boolean; messageId?: string }) {
+export function MessageFiles({
+  files,
+  onPrimary = false,
+  messageId,
+  failed = false,
+  onRetry,
+}: {
+  files: FileInfo[]
+  onPrimary?: boolean
+  messageId?: string
+  /** 보내는 카드가 올리기 · 보내기에 실패했다 — 카드에 「다시 보내기」 */
+  failed?: boolean
+  onRetry?: () => void
+}) {
   const viewer = usePhotoViewer()
   const download = useRoomDownload()
   // 한 글에 여러 사진 · 파일 — 「모두 저장」(서랍이 있는 방만). 폰의 사진은 공유 시트, 나머지는 zip(lib/room-download/client.ts)
@@ -875,7 +888,7 @@ export function MessageFiles({ files, onPrimary = false, messageId }: { files: F
           )
         }
         // 파일은 카톡처럼 한 장씩 — 받기 · 진행률 · 열기 · 공유(components/chat/file-card.tsx). 폰 · PC 가 같은 카드다
-        return <FileCard key={f.id} file={f} uploading={f._uploading} mine={onPrimary} />
+        return <FileCard key={f.id} file={f} uploading={f._uploading} mine={onPrimary} failed={failed} onRetry={onRetry} />
       })}
       {saveAll && (
         // 숨김(2026-11-13) — 여러 개 받기는 방 서랍에서 골라 받는다. 코드는 남겨 둔다

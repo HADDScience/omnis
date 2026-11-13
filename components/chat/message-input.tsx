@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { AtIcon, Attachment01Icon, Task01Icon } from "@hugeicons/core-free-icons"
 import { SLASH_COMMANDS } from "./slash-command-parser"
-import { IS_DEMO } from "@/lib/demo"
+import { E2E_ATTACH, IS_DEMO } from "@/lib/demo"
 import { toast } from "sonner"
 import { attachLimitBytes, isLargeUpload } from "@/lib/large-upload/rules"
 import { resolveHandoff } from "@/lib/chat-entry"
@@ -46,6 +46,11 @@ interface MessageInputProps {
   ariaLabel?: string
   /** 메신저 방 키(room: · task:) — 방이 오기 전 loading 입력창에 쓴 글을 이어받는다(lib/chat-entry.ts). 메신저 밖은 비운다 */
   handoffKey?: string
+  /**
+   * 기기에서 고른 파일을 확인 단계 없이 바로 보낸다(카톡처럼) — 칩을 만들지 않고 넘긴다. 진행 · 취소는 대화의 카드가 한다.
+   * 없으면 예전처럼 칩으로 모았다가 보낼 때 올린다. 시놀로지 파일 연결은 늘 칩이다
+   */
+  onPickFiles?: (files: File[]) => void
 }
 
 /** 고른 첨부 하나 — 칩에 그릴 것과 보낼 때 넘길 것 */
@@ -90,6 +95,7 @@ export function MessageInput({
   placeholder = "메시지 입력...  / 명령 · @ 사람 · # 업무",
   ariaLabel = "메시지 입력",
   handoffKey,
+  onPickFiles,
 }: MessageInputProps) {
   const [content, setContent] = useState("")
   /** 같은 순간 두 번 — 입력칸이 비는 것은 다음 그리기에야 보여, 표시 없이는 같은 글이 두 번 나간다. 그릴 때마다 푼다 */
@@ -135,8 +141,8 @@ export function MessageInput({
     })
   }
 
-  // 데모에는 NAS 가 없어 파일을 받지 않는다
-  const noFiles = IS_DEMO || !attachments
+  // 데모에는 NAS 가 없어 파일을 받지 않는다 — 가짜 NAS 를 띄운 시험 빌드만 연다(lib/demo.ts E2E_ATTACH)
+  const noFiles = (IS_DEMO && !E2E_ATTACH) || !attachments
 
   const mentionItems = useMemo<MentionItem[]>(() => {
     if (!trigger) return []
@@ -249,8 +255,12 @@ export function MessageInput({
         })
       }
     }
-    const fresh = picked
-      .filter((f) => f.size <= limit)
+    const fits = picked.filter((f) => f.size <= limit)
+    if (onPickFiles) {
+      if (fits.length > 0) onPickFiles(fits)
+      return
+    }
+    const fresh = fits
       .map<Attached>((f) => ({
         raw: f,
         item: {

@@ -51,6 +51,14 @@ export function progressLabel(bytes: number, total: number): string {
   return `${Math.round(progressRatio(bytes, total) * 100)}% · ${fileSizeLabel(bytes)} / ${fileSizeLabel(total)}`
 }
 
+/** 보내는 카드 — 「업로드 중 · 3.0 / 28.8MB」(카톡과 같은 꼴). 두 숫자는 큰 쪽의 단위로 맞춘다 */
+export function uploadLabel(loaded: number, total: number): string {
+  const t = Math.max(total, loaded)
+  const [unit, div] = t >= 1048576 ? ["MB", 1048576] : ["KB", 1024]
+  const n = (v: number) => (unit === "MB" ? (v / div).toFixed(1) : String(Math.round(v / div)))
+  return `업로드 중 · ${n(Math.min(loaded, t))} / ${n(t)}${unit}`
+}
+
 export type OpenWay = "share" | "tab" | "save"
 
 /**

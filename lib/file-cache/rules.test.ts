@@ -2,7 +2,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 
-import { openWay, planEviction, progressLabel, progressRatio } from "./rules"
+import { openWay, planEviction, progressLabel, progressRatio, uploadLabel } from "./rules"
 
 const MB = 1024 * 1024
 const e = (id: string, size: number, at: number) => ({ id, size: size * MB, at })
@@ -38,4 +38,11 @@ test("열기 — 폰은 공유 시트, PC 는 안전한 형식만 새 탭 · 나
   assert.equal(openWay({ touch: false, canShareFile: true, inlineType: "application/pdf" }), "tab")
   // zip · hwp, 그리고 HTML · SVG(safeInlineType 이 null) — 새 탭으로 열면 우리 주소에서 스크립트가 돈다
   assert.equal(openWay({ touch: false, canShareFile: false, inlineType: null }), "save")
+})
+
+test("보내는 카드 글 — 「업로드 중 · 3.0 / 28.8MB」, 작은 파일은 KB", () => {
+  assert.equal(uploadLabel(3 * MB, 28.8 * MB), "업로드 중 · 3.0 / 28.8MB")
+  assert.equal(uploadLabel(100 * 1024, 379 * 1024), "업로드 중 · 100 / 379KB")
+  // 올린 양이 전체를 넘겨 보고돼도(헤더 몫) 전체에 맞춘다
+  assert.equal(uploadLabel(2 * MB, 1.5 * MB), "업로드 중 · 2.0 / 2.0MB")
 })

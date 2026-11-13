@@ -14,7 +14,8 @@ import {
   useFileState,
   type CardFile,
 } from "@/lib/file-cache/client"
-import { fileSizeLabel, progressLabel, progressRatio } from "@/lib/file-cache/rules"
+import { fileSizeLabel, progressLabel, progressRatio, uploadLabel } from "@/lib/file-cache/rules"
+import { cancelUpload, useUploadProgress } from "@/lib/upload-progress"
 
 /** 확장자로 아이콘과 짧은 형식 이름 — 파일 카드에서 무엇인지 먼저 보이게 */
 function fileKind(name: string): { icon: typeof File01Icon; label: string } {
@@ -59,8 +60,26 @@ function Ring({ ratio }: { ratio: number }) {
  * 폰은 공유 시트(미리보기 · 저장), PC 는 새 탭(PDF · 사진) 또는 저장. 받은 상태는 기기에 남는다(lib/file-cache).
  * 받은 PDF · 사진은 오른쪽 칸이 미리보기가 된다. 공유 단추는 말풍선 바깥 옆(내 글은 왼쪽, 남의 글은 오른쪽)
  */
-export function FileCard({ file, uploading = false, mine = false }: { file: CardFile; uploading?: boolean; mine?: boolean }) {
+export function FileCard({
+  file,
+  uploading = false,
+  mine = false,
+  failed = false,
+  onRetry,
+}: {
+  file: CardFile
+  /** 보내는 중(카톡처럼 고르자마자 뜬 내 카드) — 진행은 lib/upload-progress 에서 file.id 로 읽는다 */
+  uploading?: boolean
+  mine?: boolean
+  /** 올리기 · 보내기에 실패했다 — 카드에 「다시 보내기」 */
+  failed?: boolean
+  onRetry?: () => void
+}) {
   const state = useFileState(file.id)
+  const up = useUploadProgress(file.id)
+  const sending = uploading && !failed
+  const upRatio = up ? progressRatio(up.loaded, up.total) : 0
+  const upDone = !!up?.sent
   const kind = fileKind(file.name)
   const [thumb, setThumb] = useState<string | null>(null)
   const done = state.phase === "done"
@@ -83,9 +102,13 @@ export function FileCard({ file, uploading = false, mine = false }: { file: Card
     else if (state.phase !== "downloading") void startFileDownload(file)
   }
   const ratio = progressRatio(state.bytes, state.total)
-  const meta = uploading
-    ? "업로드 중..."
-    : state.phase === "downloading"
+  const meta = failed
+    ? "보내지 못했어요"
+    : sending
+      ? upDone
+        ? "보내는 중…"
+        : uploadLabel(up?.loaded ?? 0, up?.total ?? file.size)
+      : state.phase === "downloading"
       ? progressLabel(state.bytes, state.total)
       : state.phase === "error"
         ? "받지 못했어요 · 다시 눌러 받기"
@@ -96,11 +119,10 @@ export function FileCard({ file, uploading = false, mine = false }: { file: Card
     <div data-attachment-file-row className={`flex w-fit max-w-full items-center gap-[6px] ${mine ? "flex-row-reverse self-end" : ""}`}>
       <div
         data-attachment-file
-        data-file-state={uploading ? "uploading" : state.phase}
+        data-file-state={failed ? "send-failed" : sending ? "uploading" : state.phase}
         title={file.name}
-        className={`glass relative flex w-[340px] min-w-0 shrink items-center gap-[10px] overflow-hidden rounded-[18px] p-[10px] pl-[14px] text-foreground max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:pl-[12px] ${uploading ? "opacity-70" : ""}`}
+        className={`glass relative flex w-[340px] min-w-0 shrink items-center gap-[10px] overflow-hidden rounded-[18px] p-[10px] pl-[14px] text-foreground max-md:in-data-[chat-room-chrome]:w-[calc(var(--app-vw)*0.7)] max-md:in-data-[chat-room-chrome]:rounded-[13px] max-md:in-data-[chat-room-chrome]:pl-[12px] `}
       >
-        {uploading && <div className="absolute inset-y-0 left-0 bg-primary/15 animate-[gauge_1.5s_ease-in-out_infinite]" />}
         <button
           type="button"
           data-file-open
@@ -114,7 +136,7 @@ export function FileCard({ file, uploading = false, mine = false }: { file: Card
           <span data-attachment-name className="line-clamp-2 text-[15px] leading-[20px] [overflow-wrap:anywhere] max-md:in-data-[chat-room-chrome]:text-[15px]">
             {file.name}
           </span>
-          <span data-file-meta aria-live={state.phase === "downloading" ? "polite" : undefined} className="mt-[2px] block text-[13px] leading-[18px] text-muted-foreground tabular-nums">
+          <span data-file-meta aria-live={state.phase === "downloading" || sending ? "polite" : undefined} className={`mt-[2px] block text-[13px] leading-[18px] tabular-nums ${failed ? "text-destructive" : "text-muted-foreground"}`}>
             {meta}
           </span>
         </button>
@@ -132,6 +154,24 @@ export function FileCard({ file, uploading = false, mine = false }: { file: Card
             {/* eslint-disable-next-line @next/next/no-img-element -- 기기에서 그린 미리보기(data URL) */}
             <img data-file-thumb src={thumb} alt="" className="size-full object-cover object-top" />
           </button>
+        ) : uploading ? (
+          // 보내는 카드 — 원형 진행 + X(멈추기). 실패하면 다시 보내기
+          <button
+            type="button"
+            data-file-action={failed ? "retry" : "cancel-upload"}
+            aria-label={`${file.name} ${failed ? "다시 보내기" : "보내기 취소"}`}
+            title={failed ? "다시 보내기" : "보내기 취소"}
+            disabled={failed ? !onRetry : upDone}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (failed) onRetry?.()
+              else cancelUpload(file.id)
+            }}
+            className="relative flex size-[44px] shrink-0 items-center justify-center rounded-full bg-foreground/[0.07] text-foreground transition-colors hover:bg-foreground/[0.12] active:scale-95 disabled:opacity-50 dark:bg-white/10 dark:hover:bg-white/15"
+          >
+            {sending && <Ring ratio={upDone ? 1 : upRatio} />}
+            <HugeiconsIcon icon={failed ? Refresh01Icon : Cancel01Icon} size={failed ? 21 : 16} aria-hidden />
+          </button>
         ) : (
           <button
             type="button"
@@ -147,22 +187,16 @@ export function FileCard({ file, uploading = false, mine = false }: { file: Card
             className="relative flex size-[44px] shrink-0 items-center justify-center rounded-full bg-foreground/[0.07] text-foreground transition-colors hover:bg-foreground/[0.12] active:scale-95 disabled:opacity-50 dark:bg-white/10 dark:hover:bg-white/15"
           >
             {state.phase === "downloading" && <Ring ratio={ratio} />}
-            {/* 올리는 중 — 진행을 모르는 도는 원(카톡의 올리기 표시와 같은 자리) */}
-            {uploading && (
-              <span className="absolute inset-0 animate-spin motion-reduce:animate-none">
-                <Ring ratio={0.25} />
-              </span>
-            )}
             <HugeiconsIcon
-              icon={uploading ? Upload04Icon : state.phase === "downloading" ? Cancel01Icon : state.phase === "done" ? kind.icon : state.phase === "error" ? Refresh01Icon : Download04Icon}
+              icon={state.phase === "downloading" ? Cancel01Icon : state.phase === "done" ? kind.icon : state.phase === "error" ? Refresh01Icon : Download04Icon}
               size={state.phase === "downloading" ? 16 : 21}
               aria-hidden
             />
           </button>
         )}
-        {state.phase === "downloading" && (
+        {(state.phase === "downloading" || sending) && (
           <span aria-hidden data-file-progress className="absolute inset-x-0 bottom-0 h-[3px] bg-foreground/5">
-            <span className="block h-full bg-primary transition-[width] duration-150 motion-reduce:transition-none" style={{ width: `${Math.round(ratio * 100)}%` }} />
+            <span className="block h-full bg-primary transition-[width] duration-150 motion-reduce:transition-none" style={{ width: `${Math.round((sending ? (upDone ? 1 : upRatio) : ratio) * 100)}%` }} />
           </span>
         )}
       </div>
