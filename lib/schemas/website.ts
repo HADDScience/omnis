@@ -75,13 +75,38 @@ export const CardImageSchema = z.object({
 const badge = z.string().max(200)
 const headline = z.string().max(1_000)
 
-const chapterBase = { type: z.literal("chapter"), badge, headline }
+/**
+ * 손그림 표시(연필 동그라미·화살표·별). 사이트 기사 페이지에서 그려지듯 나타난다.
+ * 문자열이면 카드 오른쪽 위, 배열이면 카드(1080) 기준 % 좌표에 그린다. 글자는 없다.
+ */
+const doodleKind = z.enum(["circle", "arrow", "star"])
+const pct = z.number().min(0).max(100)
+export const CardDoodleSchema = z.union([
+  doodleKind,
+  z
+    .array(
+      z.object({
+        kind: doodleKind,
+        x: pct,
+        y: pct,
+        w: pct,
+        h: pct.optional(),
+        rotate: z.number().min(-360).max(360).optional(),
+      }),
+    )
+    .min(1)
+    .max(6),
+])
+const doodle = CardDoodleSchema.optional()
+
+const chapterBase = { type: z.literal("chapter"), badge, headline, doodle }
 
 export const CardSchema = z.union([
-  z.object({ type: z.literal("cover"), title: headline, cta: short, handle: short.optional(), titleSize: z.enum(["sm"]).optional() }),
+  z.object({ type: z.literal("cover"), title: headline, cta: short, handle: short.optional(), titleSize: z.enum(["sm"]).optional(), doodle }),
   z.object({
     type: z.literal("quote"),
     badge,
+    doodle,
     quote: short,
     attrib: short,
     image: CardImageSchema.optional(),
