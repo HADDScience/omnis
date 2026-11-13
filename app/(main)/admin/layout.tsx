@@ -16,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <>
       <Header crumbs={["마이", "관리자"]} />
-      <div data-admin-page className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-4 sm:px-6 md:grid md:grid-cols-[13rem_minmax(0,1fr)] md:gap-6 md:py-6">
+      <div data-admin-page className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-4 py-4 sm:px-6 md:grid md:grid-cols-[13rem_minmax(0,1fr)] md:gap-6 md:py-6">
         <AdminNav />
         <div className="flex min-w-0 flex-col gap-4">{children}</div>
       </div>

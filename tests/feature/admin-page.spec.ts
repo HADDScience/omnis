@@ -31,10 +31,12 @@ test("구성원 — 화면은 404, API 는 403 · 로그인 안 하면 401", asy
   expect((await page.request.get("/api/admin/users")).status()).toBe(403)
   expect((await page.request.get("/api/admin/login-codes")).status()).toBe(403)
   expect((await page.request.post("/api/admin/users/anyone/unlock")).status()).toBe(403)
+  expect((await page.request.post("/api/admin/onboarding", { data: { action: "replay", userIds: ["anyone"] } })).status()).toBe(403)
   await page.goto("/settings?tab=info")
   await expect(page.locator("[data-admin-links]")).toHaveCount(0)
   await page.context().clearCookies()
   expect((await page.request.get("/api/admin/users")).status()).toBe(401)
+  expect((await page.request.post("/api/admin/onboarding", { data: { action: "dismiss", userIds: ["anyone"] } })).status()).toBe(401)
 })
 
 test("관리자 — 메뉴 넷 · 계정 목록에 비밀번호 · 해시 · 원래 메일이 없다", async ({ page }) => {
@@ -110,6 +112,75 @@ test("잠금 해제 — 실패 다섯 번으로 잠긴 계정을 풀면 기록 �
     await page.context().clearCookies()
     await quickLogin(page, "사원3")
   } finally {
+    await prisma.$disconnect()
+  }
+})
+
+test("온보딩 — 줄마다 다시 띄우기 · 끄기, 체크해서 여러 명 한꺼번에, 값만 바뀌고 기록 탭에 남는다", async ({ page }) => {
+  test.skip(process.env.E2E_ISOLATED !== "true", "시험 DB 를 직접 읽는다 — 격리된 DB 에서만")
+  const prisma = new PrismaClient()
+  const read = (name: string) => prisma.user.findFirstOrThrow({ where: { name }, select: { id: true, onboardingVersion: true, onboardingCompletedAt: true } })
+  const original = await prisma.user.findMany({ where: { name: { in: ["사원1", "사원2"] } }, select: { id: true, onboardingVersion: true } })
+  try {
+    const before = await read("사원2")
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await quickLogin(page, "팀장")
+    await page.goto("/admin/users")
+    const current = Number((await page.locator("[data-admin-onboarding] [data-onboarding-version]").innerText()).replace(/\D/g, ""))
+    expect(current).toBeGreaterThan(0)
+    // 「모두에게」 단추는 사용자 탭 표 위에 있고, 운영 탭에는 링크만
+    await expect(page.locator("[data-admin-onboarding] [data-onboarding-replay]")).toBeVisible()
+
+    const row = page.locator('[data-admin-user="사원2"]')
+    await row.locator('[data-onboarding-row-replay="사원2"]').click()
+    await expect(row.locator('[data-onboarding-state="due"]')).toBeVisible({ timeout: 15_000 })
+    let after = await read("사원2")
+    expect(after.onboardingVersion).toBe(current - 1)
+    expect(after.onboardingCompletedAt?.getTime() ?? null).toBe(before.onboardingCompletedAt?.getTime() ?? null)
+    expect(after.id).toBe(before.id)
+
+    await row.locator('[data-onboarding-row-dismiss="사원2"]').click()
+    await expect(row.locator('[data-onboarding-state="seen"]')).toBeVisible({ timeout: 15_000 })
+    after = await read("사원2")
+    expect(after.onboardingVersion).toBe(current)
+    expect(after.onboardingCompletedAt?.getTime() ?? null).toBe(before.onboardingCompletedAt?.getTime() ?? null)
+
+    // 여러 명 — 사원1 · 사원2 체크 → 다시 띄우기
+    await page.getByRole("checkbox", { name: "사원1 고르기" }).first().click()
+    await page.getByRole("checkbox", { name: "사원2 고르기" }).first().click()
+    await expect(page.locator("[data-onboarding-bulk]")).toContainText("2명 고름")
+    await page.locator("[data-onboarding-bulk-replay]").click()
+    for (const n of ["사원1", "사원2"]) await expect(page.locator(`[data-admin-user="${n}"] [data-onboarding-state="due"]`)).toBeVisible({ timeout: 15_000 })
+    expect((await read("사원1")).onboardingVersion).toBe(current - 1)
+    // 1280 에서 표가 틀 안에 들어간다 — 끄기 단추 · 잠금 칸이 잘리지 않는다
+    const wrap = page.locator("[data-admin-users] table").locator("..")
+    expect(await wrap.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+    await expect(row.locator('[data-onboarding-row-dismiss="사원2"]')).toBeInViewport()
+    await shot(page, "05-onboarding-pc.png")
+
+    // 잘못된 요청은 400
+    expect((await page.request.post("/api/admin/onboarding", { data: { action: "wipe", userIds: [before.id] } })).status()).toBe(400)
+    expect((await page.request.post("/api/admin/onboarding", { data: { action: "replay", userIds: [] } })).status()).toBe(400)
+
+    await page.locator("[data-admin-nav]").getByRole("link", { name: "기록" }).click()
+    await page.waitForURL("**/admin/audit")
+    await expect(page.locator('[data-audit-action="admin.onboarding_replay_user"]').first()).toContainText("팀장")
+    await expect(page.locator('[data-audit-action="admin.onboarding_dismiss_user"]').first()).toContainText("온보딩 끄기 — 사원2")
+    expect(await page.locator('[data-audit-action="admin.onboarding_replay_user"]').count()).toBeGreaterThanOrEqual(3)
+
+    await page.locator("[data-admin-nav]").getByRole("link", { name: "운영" }).click()
+    await expect(page.locator("[data-admin-onboarding-link]")).toBeVisible()
+    await expect(page.locator("[data-onboarding-replay]")).toHaveCount(0)
+
+    // 폰 — 묶음에도 같은 단추 · 가로로 넘치지 않는다
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto("/admin/users")
+    await expect(page.locator('[data-admin-user-card="사원1"] [data-onboarding-row-dismiss="사원1"]')).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+    await shot(page, "06-onboarding-phone.png")
+  } finally {
+    // 사원1 · 사원2 의 판을 시험 전 값 그대로 돌려 둔다 — 뒤따르는 onboarding.spec 이 처음 상태를 기대한다
+    for (const o of original) await prisma.user.update({ where: { id: o.id }, data: { onboardingVersion: o.onboardingVersion } })
     await prisma.$disconnect()
   }
 })

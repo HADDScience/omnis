@@ -18,7 +18,7 @@ export default async function AdminAuditPage() {
     <section aria-labelledby="admin-audit-title" className="glass rounded-2xl p-4" data-admin-audit>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h1 id="admin-audit-title" className="text-base font-semibold">관리자 행동 기록</h1>
-        <p className="text-[12.5px] text-muted-foreground">최근 {rows.length}건 · 잠금 해제 · 온보딩 다시 띄우기 · AI 비용 상한 · 기능 요청 상태</p>
+        <p className="text-[12.5px] text-muted-foreground">최근 {rows.length}건 · 잠금 해제 · 온보딩(모두 · 사람별) · AI 비용 상한 · 기능 요청 상태</p>
       </div>
       {rows.length === 0 ? (
         <Empty className="rounded-xl border border-dashed">

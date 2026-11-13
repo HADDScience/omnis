@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db"
 import { onboardingActionSchema } from "@/lib/schemas/onboarding"
 import { publicUrl } from "@/lib/base-path"
 import { currentOnboardingVersion } from "@/lib/onboarding-version-store"
+import { ONBOARDING_SEEN_ENTITY } from "@/lib/admin-users"
 
 const selection = {
   onboardingVideoSeenAt: true,
@@ -80,6 +81,10 @@ export async function POST(request: NextRequest) {
           OR: [{ onboardingVersion: null }, { onboardingVersion: { lt: version } }],
         },
         data: { onboardingVersion: version },
+      })
+      // 마지막으로 본 시각 — 관리자 사용자 탭이 읽는다(lib/admin-users.ts 의 ONBOARDING_SEEN_ENTITY, 공개 활동 기록에는 안 나간다)
+      await tx.activityLog.create({
+        data: { userId: user.id, entity: ONBOARDING_SEEN_ENTITY, entityId: user.id, action: "completed", title: `사용 안내 ${version}판` },
       })
     }
   })

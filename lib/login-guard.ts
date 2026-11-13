@@ -33,7 +33,7 @@ export const LOGIN_ENTITY = "auth.login"
 /** 관리자 행동 감사 기록(/admin/audit) — 누구의 잠금을 풀었는지 같은 것. 관리자 화면에서만 읽는다 */
 export const ADMIN_AUDIT_ENTITY = "admin"
 /** 활동 기록 화면·API 에 내보내지 않는 entity. 인증 흔적 · 관리자 감사 기록은 남이 볼 것이 아니다 */
-export const PRIVATE_ACTIVITY_ENTITIES = [LOGIN_ENTITY, "auth.password", "auth.code", ADMIN_AUDIT_ENTITY]
+export const PRIVATE_ACTIVITY_ENTITIES = [LOGIN_ENTITY, "auth.password", "auth.code", ADMIN_AUDIT_ENTITY, "onboarding.seen"]
 
 const digest = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 32)
 export const accountKey = (name: string) => `acct:${digest(normalizeLoginName(name).toLowerCase())}`

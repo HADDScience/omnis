@@ -9,16 +9,22 @@ import { CODE_ENTITY } from "./login-code"
 import { passwordNotice } from "./password-notice"
 import { PASSWORD_ENTITY } from "./password-state"
 import { SYSTEM_USER_ID } from "./system-user"
+import { currentOnboardingVersion } from "./onboarding-version-store"
 import {
   accountLock,
+  onboardingRow,
+  ONBOARDING_SEEN_ENTITY,
   ADMIN_AUDIT_ACTIONS,
   ADMIN_UNLOCK_ACTION,
   CODE_HISTORY_DAYS,
+  ONBOARDING_ADMIN_AUDIT,
+  onboardingTargetVersion,
+  type OnboardingAdminAction,
   toAdminUserRow,
   type AdminUserRow,
 } from "./admin-users"
 
-const USER_SELECT = { id: true, name: true, email: true, role: true, isActive: true } as const
+const USER_SELECT = { id: true, name: true, email: true, role: true, isActive: true, onboardingVersion: true, onboardingCompletedAt: true } as const
 
 /** 그 사람으로 들어오는 로그인 키 — 비밀번호는 이름, 로그인 코드는 이름 또는 웍스 메일로 들어온다(lib/auth.ts) */
 const loginKeys = (u: { name: string; email: string | null }) => [
@@ -34,7 +40,7 @@ export async function loadAdminUsers(now = Date.now()): Promise<AdminUserRow[]> 
   })
   const ids = users.map((u) => u.id)
   const keys = users.flatMap(loginKeys)
-  const [lastLogins, windowRows, pwLogs] = await Promise.all([
+  const [lastLogins, windowRows, pwLogs, lastSeen, current] = await Promise.all([
     prisma.activityLog.groupBy({
       by: ["userId"],
       where: { entity: LOGIN_ENTITY, action: "ok", userId: { in: ids } },
@@ -48,14 +54,19 @@ export async function loadAdminUsers(now = Date.now()): Promise<AdminUserRow[]> 
       where: { entity: PASSWORD_ENTITY, entityId: { in: ids }, action: { in: ["reset", "changed", "snoozed", "code_login"] } },
       select: { entityId: true, action: true, createdAt: true },
     }),
+    prisma.activityLog.groupBy({ by: ["userId"], where: { entity: ONBOARDING_SEEN_ENTITY, userId: { in: ids } }, _max: { createdAt: true } }),
+    currentOnboardingVersion(),
   ])
   const last = new Map(lastLogins.map((l) => [l.userId, l._max.createdAt]))
+  const seenAt = new Map(lastSeen.map((l) => [l.userId, l._max.createdAt]))
   return users.map((u) =>
     toAdminUserRow(u, {
       lastLoginAt: last.get(u.id) ?? null,
       social: u.identities.map((i) => i.provider),
       tempPassword: passwordNotice(pwLogs.filter((l) => l.entityId === u.id), new Date(now)).pending,
       lock: accountLock(windowRows, loginKeys(u), now, LOGIN_LIMITS.account),
+      // 마지막으로 본 시각 — 마칠 때마다 남는 기록(2026-11-13 부터), 그 전 사람은 처음 마친 시각
+      onboarding: onboardingRow(u, current, seenAt.get(u.id) ?? u.onboardingCompletedAt ?? null),
     }),
   )
 }
@@ -139,4 +150,29 @@ export async function loadSurveyCounts(): Promise<{ inProgress: number; confirm:
   const groups = await prisma.aiSurvey.groupBy({ by: ["status"], _count: { _all: true } })
   const n = (s: string) => groups.find((g) => g.status === s)?._count._all ?? 0
   return { inProgress: n("IN_PROGRESS"), confirm: n("CONFIRM"), submitted: n("SUBMITTED") }
+}
+
+/**
+ * 사람별 온보딩 조절 — User.onboardingVersion 값만 바꾼다(행 삭제 없음 · 마친 시각 그대로). 사람마다 감사 기록 한 줄.
+ * 시스템 계정 · 없는 id 는 건너뛴다. 바꾼 사람 이름을 돌려준다
+ */
+export async function setOnboardingFor(adminId: string, userIds: readonly string[], action: OnboardingAdminAction): Promise<{ version: number; names: string[] }> {
+  const current = await currentOnboardingVersion()
+  const version = onboardingTargetVersion(action, current)
+  const users = await prisma.user.findMany({ where: { id: { in: [...new Set(userIds)], not: SYSTEM_USER_ID } }, select: { id: true, name: true, onboardingVersion: true } })
+  const audit = ONBOARDING_ADMIN_AUDIT[action]
+  await prisma.$transaction([
+    prisma.user.updateMany({ where: { id: { in: users.map((u) => u.id) } }, data: { onboardingVersion: version } }),
+    prisma.activityLog.createMany({
+      data: users.map((u) => ({
+        userId: adminId,
+        entity: ADMIN_AUDIT_ENTITY,
+        entityId: u.id,
+        action: audit.action,
+        title: `${audit.verb} — ${u.name} (${current}판 기준)`,
+        metadata: { from: u.onboardingVersion, to: version, current },
+      })),
+    }),
+  ])
+  return { version, names: users.map((u) => u.name) }
 }
