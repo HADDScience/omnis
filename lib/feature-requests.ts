@@ -6,10 +6,20 @@
 // 계획: mydocs/plans/2026-11-10-app-ai-mcp-parity.md
 
 import { prisma } from "@/lib/db"
+import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
+import { createNotification } from "@/lib/notifications"
 import { notifyDevelopers } from "@/lib/notify-recipients"
 
-import { isFeatureStatus, type FeatureStatus } from "@/lib/feature-requests-shared"
+import {
+  FEATURE_DONE_NOTIFY_TYPE,
+  doneEntityId,
+  doneNoticeText,
+  isFeatureStatus,
+  type DoneNotice,
+  type FeatureStatus,
+} from "@/lib/feature-requests-shared"
 export { FEATURE_STATUSES, FEATURE_STATUS_LABEL, isFeatureStatus, type FeatureStatus } from "@/lib/feature-requests-shared"
+export { FEATURE_DONE_NOTIFY_TYPE, doneNoticeText, parseDoneNotice, type DoneNotice } from "@/lib/feature-requests-shared"
 
 /** 알림 종류 — lib/schemas/notification.ts notificationHref 가 관리 화면으로 잇는다 */
 export const FEATURE_NOTIFY_TYPE = "feature_request"
@@ -105,6 +115,56 @@ export async function submitFeatureRequest(input: FeatureInput, ctx: SubmitCtx):
   return { id: saved.id, merged, count: saved.count, notified }
 }
 
+/** 완료 알림을 받을 사람 — 그 묶음에 요청을 남긴 재직 계정, 바꾸는 사람은 뺀다 */
+export async function requesterIds(requestId: string, exceptUserId: string): Promise<string[]> {
+  const rows = await prisma.featureRequestEntry.findMany({
+    where: { requestId, requesterId: { not: exceptUserId }, requester: ACTIVE_MEMBER_WHERE },
+    select: { requesterId: true },
+    distinct: ["requesterId"],
+  })
+  return rows.map((r) => r.requesterId)
+}
+
+/**
+ * 상태 바꾸기. 완료로 「넘어갈 때」 notice 가 있으면 요청한 사람에게 알린다.
+ * 넘어감은 조건부 updateMany 로 잡는다 — 이미 완료인 것을 다시 눌러도, 두 탭에서 함께 눌러도 알림은 한 번이다.
+ */
+export async function changeFeatureStatus(
+  id: string,
+  status: FeatureStatus,
+  actorId: string,
+  notice?: DoneNotice | null,
+): Promise<{ found: boolean; title: string; notified: number }> {
+  const row = await prisma.featureRequest.findUnique({ where: { id }, select: { title: true } })
+  if (!row) return { found: false, title: "", notified: 0 }
+  if (status !== "DONE") {
+    await prisma.featureRequest.update({ where: { id }, data: { status } })
+    return { found: true, title: row.title, notified: 0 }
+  }
+  const moved = await prisma.featureRequest.updateMany({ where: { id, status: { not: "DONE" } }, data: { status } })
+  if (moved.count === 0 || !notice) return { found: true, title: row.title, notified: 0 }
+
+  const text = doneNoticeText(row.title, notice)
+  let notified = 0
+  for (const uid of await requesterIds(id, actorId)) {
+    try {
+      await createNotification(uid, FEATURE_DONE_NOTIFY_TYPE, text.title, text.content, doneEntityId(id, notice.link))
+      notified++
+    } catch (err) {
+      console.error("[feature-requests] 완료 알림 실패", id, err)
+    }
+  }
+  return { found: true, title: row.title, notified }
+}
+
+/** 완료 알림의 「답장」 — 그 요청을 남긴 사람만. 같은 곳(기능 요청)에 `[답장] 제목` 으로 쌓는다 */
+export async function featureForReply(requestId: string, userId: string): Promise<{ title: string } | null> {
+  return prisma.featureRequest.findFirst({
+    where: { id: requestId, status: "DONE", entries: { some: { requesterId: userId } } },
+    select: { title: true },
+  })
+}
+
 export interface FeatureRow {
   id: string
   title: string
@@ -112,7 +172,7 @@ export interface FeatureRow {
   count: number
   createdAt: Date
   updatedAt: Date
-  entries: { id: string; detail: string; attempted: string | null; roomId: string | null; createdAt: Date; requester: { name: string } }[]
+  entries: { id: string; requesterId: string; detail: string; attempted: string | null; roomId: string | null; createdAt: Date; requester: { name: string; isActive: boolean; staffProfile: { employment: string } | null } }[]
 }
 
 /** 관리 화면 목록 — 새로 · 검토 먼저, 최근 순 */
@@ -120,7 +180,7 @@ export async function listFeatureRequests(): Promise<FeatureRow[]> {
   const rows = await prisma.featureRequest.findMany({
     orderBy: [{ updatedAt: "desc" }],
     take: 200,
-    include: { entries: { orderBy: { createdAt: "desc" }, take: 20, include: { requester: { select: { name: true } } } } },
+    include: { entries: { orderBy: { createdAt: "desc" }, take: 20, include: { requester: { select: { name: true, isActive: true, staffProfile: { select: { employment: true } } } } } } },
   })
   const rank: Record<string, number> = { NEW: 0, REVIEW: 1, DONE: 2 }
   return rows
