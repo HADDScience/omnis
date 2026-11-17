@@ -24,6 +24,23 @@ export function fakeAnswer(question: string): string {
   return `시험 답입니다 — 「${q}」 를 받았어요.\n실제 모델은 부르지 않았습니다.\n셋째 줄은 세션에만 있습니다.`
 }
 
+/**
+ * 시험 도구 부르기 — 마지막 사용자 글에 `[[도구 이름 {"입력":"json"}]]` 이 있으면, 그 글에 처음 답할 때 그 도구를 부른다.
+ * 도구 결과 · 확인 카드 응답 뒤(마지막 글이 사용자 글이 아니면)에는 보통 답을 한다. e2e 가 실제 도구 목록 · 확인 카드 · 실행 경로를 지나게 한다.
+ */
+export function scriptedToolCall(prompt: CallOptions["prompt"]): { toolName: string; input: string } | null {
+  const last = prompt[prompt.length - 1]
+  if (!last || last.role !== "user") return null
+  const m = /\[\[([a-z_]+)\s+(\{[\s\S]*?\})\]\]/.exec(lastUserText(prompt))
+  if (!m) return null
+  try {
+    JSON.parse(m[2])
+  } catch {
+    return null
+  }
+  return { toolName: m[1], input: m[2] }
+}
+
 const USAGE = {
   inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
   outputTokens: { total: 0, text: 0, reasoning: 0 },
@@ -40,6 +57,22 @@ export function fakeAgentModel(spec: { vendor: string; model: string }): V4 {
       return { content: [{ type: "text", text: fakeAnswer(lastUserText(options.prompt)) }], finishReason: STOP, usage: USAGE, warnings: [] }
     },
     async doStream(options: CallOptions) {
+      const call = scriptedToolCall(options.prompt)
+      if (call) {
+        const parts: StreamPart[] = [
+          { type: "stream-start", warnings: [] },
+          { type: "tool-call", toolCallId: `fake-${Date.now()}`, toolName: call.toolName, input: call.input },
+          { type: "finish", usage: USAGE, finishReason: { unified: "tool-calls", raw: "tool_calls" } },
+        ]
+        return {
+          stream: new ReadableStream<StreamPart>({
+            start(c) {
+              for (const p of parts) c.enqueue(p)
+              c.close()
+            },
+          }),
+        }
+      }
       const text = fakeAnswer(lastUserText(options.prompt))
       const parts: StreamPart[] = [
         { type: "stream-start", warnings: [] },

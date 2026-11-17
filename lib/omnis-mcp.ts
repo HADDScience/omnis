@@ -43,6 +43,7 @@ import type { Prisma } from "@/generated/prisma/client"
 import { createNotification } from "@/lib/notifications"
 import { getIpAccess, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
+import { TOOL_POLICY } from "@/lib/tools/registry"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { findOrgsLoose, recordSampleDelivery } from "@/lib/crm-sample-server"
 import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
@@ -632,6 +633,12 @@ export const OMNIS_TOOLS = [
 ] as const
 
 export const TOOLS = [...OMNIS_TOOLS, ...IP_TOOLS]
+
+// 도구 레지스트리와 맞춤 — MCP 에 새 도구를 더하면 lib/tools/registry.ts 에 한 줄(노출 · 위험 · 확인)을 더해야 tsc 가 지나간다.
+// 앱 AI · 질문 경로에 열지 말지는 그 한 줄이 정한다(한쪽에만 등록하는 일을 막는다)
+type McpToolName = (typeof TOOLS)[number]["name"]
+const REGISTERED: { readonly [K in McpToolName]: { readonly mcp: true } } = TOOL_POLICY
+void REGISTERED
 
 const IP_TOOL_NAMES = new Set<string>(IP_TOOLS.map((t) => t.name))
 

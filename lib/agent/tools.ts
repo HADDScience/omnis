@@ -19,6 +19,7 @@ import { TASK_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/constants"
 import { migrateContent } from "@/lib/omnis-types"
 import { sectionToText } from "@/lib/embeddings"
 import type { Caller } from "@/lib/omnis-mcp"
+import { AGENT_READ_NAMES, AGENT_WRITE_NAMES, IP_WRITE_NAMES, MCP_TOOL_NAMES, toolPolicy, type ToolName, type TOOL_POLICY } from "@/lib/tools/registry"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
 
@@ -32,58 +33,29 @@ export interface AgentToolSpec {
   risk: ToolRisk
 }
 
+// 어느 도구를 읽기 · 쓰기로 여는지는 도구 레지스트리(lib/tools/registry.ts) 한 곳에 있다 — 여기서 손으로 적지 않는다.
+
+type Policy = typeof TOOL_POLICY
+/** 앱 AI 쓰기 중 MCP 의 runTool 로 실행하는 것. 결과물 도구(문서 초안 · 파일 · 기록 제안 · 기능 요청)는 lib/agent/outputs.ts */
+export type AgentWriteTool = { [K in ToolName]: Policy[K]["agent"] extends "write" ? (Policy[K]["mcp"] extends true ? K : never) : never }[ToolName]
+
 /** 읽기 — 자동 실행. search_knowledge · ip_overview 는 여기서 직접 처리한다(각주 번호를 실행에 이어 붙여야 해서) */
-export const AGENT_READ_TOOLS = [
-  "search_knowledge", "ip_overview",
-  "list_tasks", "get_task", "list_projects", "list_members", "crm_overview", "find_org",
-  "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat", "list_notifications",
-  // 내가 든 단톡방 · 1:1 — MCP 와 같은 함수(lib/chat-feed). 에이전트는 요청한 사람의 옴니스 1:1 방에서만 돌아 답도 그 사람만 본다
-  "list_rooms",
-  "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
-  "list_market_companies", "get_context",
-  // 웍스 캘린더 — 캘린더 탭과 같은 함수 · 보기 권한(lib/calendar/agent-tool)
-  "list_calendar",
-  // 지식재산권 읽기 — 구성원이 아니면 runTool 이 거절한다. read_guide 는 쓰기 전 확인 코드를 준다
-  "list_stages", "list_ip", "get_ip", "list_todo", "read_guide",
-  // 첨부 읽기 — 화면과 같은 파일 권한(lib/file-access)
-  "read_file",
-] as const
+export const AGENT_READ_TOOLS: readonly string[] = AGENT_READ_NAMES
 
-/** 쓰기 — 확인 카드를 거친다. MCP 와 같은 함수(runTool)로 실행한다. 결과물 도구(문서 초안 · 파일 · 기록 제안)는 lib/agent/outputs.ts */
-export const AGENT_WRITE_TOOLS = [
-  "create_task", "update_task", "update_checklist", "post_message", "write_omnis_card", "save_company_record",
-  // 4단계 — 주간보고 초안. 기존 저장 경로(lib/weekly-report.ts) 그대로
-  "write_weekly_report",
-  // MCP 와 맞춤(2026-11-10) — 되돌리기 어려운 것이라 카드에 따라오는 일을 적는다
-  "respond_notification", "delete_company_record", "decide_record_proposal", "upload_file",
-  // CRM 샘플 전달(#231) — 기관이 없으면 만들지 먼저 묻고, 재고까지 빠진다
-  "record_sample",
-  // 지식재산권 쓰기 — read_guide 확인 코드 규칙은 runTool(lib/ip-mcp guideGate)이 그대로 지킨다
-  "add_progress", "correct_ip", "create_ip", "add_ip_image",
-] as const
+/** 쓰기 — 확인 카드를 거친다. MCP 와 같은 함수(runTool)로 실행한다 */
+export const AGENT_WRITE_TOOLS = AGENT_WRITE_NAMES.filter((n) => toolPolicy(n)?.mcp) as readonly AgentWriteTool[]
 
-/**
- * MCP 에만 있는 도구 — 이유와 함께 둔다(시험이 MCP 목록과 맞춰 본다).
- * ask_omnis: 에이전트가 곧 옴니스다 — 같은 AI 를 다시 부른다.
- * create_upload_link: 셸(curl)로 올리는 링크. 앱에서는 입력창에 파일을 붙인다. 링크가 곧 사용자 권한이라 대화 기록에 남기지 않는다.
- */
-export const AGENT_EXCLUDED: Record<string, string> = {
-  ask_omnis: "에이전트가 곧 옴니스",
-  create_upload_link: "셸 클라이언트용 업로드 링크",
-}
+/** MCP 에만 있는 도구와 그 까닭 — 레지스트리의 why */
+export const AGENT_EXCLUDED: Record<string, string> = Object.fromEntries(
+  MCP_TOOL_NAMES.filter((n) => !toolPolicy(n)?.agent).map((n) => [n, toolPolicy(n)?.why ?? ""]),
+)
 
-const IP_WRITE_TOOLS = new Set(["add_progress", "correct_ip", "create_ip", "add_ip_image"])
+const IP_WRITE_TOOLS = new Set(IP_WRITE_NAMES)
 
-export type AgentWriteTool = (typeof AGENT_WRITE_TOOLS)[number]
 export const isWriteTool = (name: string): name is AgentWriteTool => (AGENT_WRITE_TOOLS as readonly string[]).includes(name)
 
-/** 에이전트에서는 쓰기 입력 일부를 뺀다 */
-const DROP_PROPS: Record<string, string[]> = {
-  // draft(Gemini 초안)는 모델이 본문을 직접 쓰니 필요 없다. 제출(submit)은 확인 카드에 「제출」 로 보인다
-  write_weekly_report: ["draft"],
-  // MCP 는 confirm 없이 부르면 미리보기만 준다. 여기서는 확인 카드가 그 자리라 executeWrite 가 붙인다
-  record_sample: ["confirm"],
-}
+/** 에이전트에서는 쓰기 입력 일부를 뺀다 — 레지스트리의 agentDropProps */
+const dropProps = (name: string) => toolPolicy(name)?.agentDropProps ?? []
 
 /** 에이전트에서 설명을 바꾸는 도구 — MCP 설명이 에이전트에서 열지 않은 인자를 말할 때 */
 const AGENT_DESCRIPTIONS: Record<string, string> = {
@@ -96,7 +68,7 @@ const WRITE_SUFFIX = " — 쓰기 도구다. 부르면 바로 실행되지 않�
 
 export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
   const { OMNIS_TOOLS, TOOLS } = await import("@/lib/omnis-mcp")
-  const byName = new Map(TOOLS.map((t) => [t.name, t]))
+  const byName = new Map<string, (typeof TOOLS)[number]>(TOOLS.map((t) => [t.name, t]))
   const specs: AgentToolSpec[] = [
     {
       name: "search_knowledge",
@@ -124,7 +96,7 @@ export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
     const t = byName.get(name) ?? OMNIS_TOOLS.find((x) => x.name === name)
     if (!t) throw new Error(`에이전트 도구 ${name} 가 MCP 도구 목록에 없습니다`)
     const schema = structuredClone(t.inputSchema) as { type: string; properties?: Record<string, unknown>; required?: string[] }
-    for (const p of DROP_PROPS[name] ?? []) delete schema.properties?.[p]
+    for (const p of dropProps(name)) delete schema.properties?.[p]
     if (name === "write_weekly_report") schema.required = ["markdown"]
     // 지식재산권 쓰기는 guide 확인 코드를 그대로 받는다(read_guide 가 준다). 그 밖에는 guide 칸이 없다
     if (!IP_WRITE_TOOLS.has(name)) delete schema.properties?.guide
@@ -572,7 +544,7 @@ async function buildMorePreview(name: string, args: Record<string, unknown>, ctx
 /** 확인된 쓰기를 실행한다 — MCP 와 같은 runTool. 확인 여부는 부르는 쪽(steps.runWriteTool)이 이미 확인했다 */
 export async function executeWrite(name: AgentWriteTool, args: Record<string, unknown>, caller: Caller): Promise<{ ok: boolean; text: string }> {
   const { runTool } = await import("@/lib/omnis-mcp")
-  // record_sample 은 confirm 이 있어야 쓴다 — 사용자가 확인 카드를 눌러 여기까지 왔다
-  const r = await runTool(name, name === "record_sample" ? { ...args, confirm: true } : args, caller)
+  // confirm 으로 확인하는 도구(레지스트리 confirm: "param")는 confirm 이 있어야 쓴다 — 사용자가 확인 카드를 눌러 여기까지 왔다
+  const r = await runTool(name, toolPolicy(name)?.confirm === "param" ? { ...args, confirm: true } : args, caller)
   return "error" in r ? { ok: false, text: r.error } : { ok: true, text: r.text }
 }
