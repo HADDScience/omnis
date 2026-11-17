@@ -15,6 +15,8 @@ const isolated = process.env.E2E_ISOLATED === "true"
 
 const row = (page: Page, text: string) =>
   page.locator('[role="log"][aria-label="채팅 메시지"] [data-message-id]', { hasText: text })
+/** 고치는 중에는 본문이 textarea 값이라 글로 찾을 수 없다 — 글 ID 로 잡는다 */
+const rowById = (page: Page, id: string) => page.locator(`[role="log"][aria-label="채팅 메시지"] [data-message-id="${id}"]`)
 
 async function post(page: Page, content: string) {
   const res = await page.request.post("/api/chat/messages", { data: { roomId: ROOM, content } })
@@ -54,16 +56,21 @@ test("내 글을 고치면 「수정됨」 이 붙고, 남의 글 · 카톡 글�
     await expect(row(page, mineText)).toBeVisible({ timeout: 30_000 })
 
     // 내 글 — 올려 두면 메뉴가 뜨고 「수정」 이 있다
-    await row(page, mineText).hover()
-    await row(page, mineText).getByRole("button", { name: "수정" }).click()
-    const box = row(page, mineText).locator("textarea")
+    const mineRow = rowById(page, mineId)
+    await mineRow.hover()
+    await mineRow.getByRole("button", { name: "수정" }).click()
+    const box = mineRow.locator("textarea")
     await box.fill(editedText)
+    // dev 서버는 라우트를 처음 부를 때 컴파일하느라 늦다 — 저장 응답을 기다린 뒤 본다
+    const saved = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().endsWith(`/api/chat/messages/${mineId}`), { timeout: 60_000 })
     await box.press("Enter")
+    expect((await saved).status()).toBe(200)
 
-    const edited = row(page, editedText)
-    await expect(edited).toBeVisible()
-    await expect(edited.locator("[data-edited]").first()).toHaveText(/^수정됨 오[전후] \d{1,2}:\d{2}$/)
-    await expect(row(page, mineText)).toHaveCount(0)
+    // 고치는 칸이 닫히고 새 본문 옆에 「수정됨 + 시각」
+    await expect(mineRow.locator("textarea")).toHaveCount(0)
+    await expect(mineRow).toContainText(editedText)
+    await expect(mineRow.locator("[data-edited]").first()).toHaveText(/^수정됨 오[전후] \d{1,2}:\d{2}$/)
+    await expect(mineRow).not.toContainText(mineText)
 
     // 남의 글 — 답장은 있고 수정 · 삭제는 없다
     await expect(row(page, otherText)).toBeVisible()
