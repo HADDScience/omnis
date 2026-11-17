@@ -28,11 +28,6 @@ export function messageChangeRefusal(message: ChangeTarget, userId: string, acti
   return null
 }
 
-/** 화면에서 「수정」 을 보일 글인가 — 서버 규칙 중 화면이 아는 것만(글쓴이 · 지움 · 카톡) */
-export function canEditInView(m: { authorId: string; deletedAt?: string | Date | null; sourceId?: string | null }, userId: string | undefined): boolean {
-  return !!userId && m.authorId === userId && !m.deletedAt && !isKakaoMessage(m)
-}
-
 /**
  * 「수정됨」 옆에 붙일 고친 시각. 보낸 날과 같은 날 고쳤으면 시각만, 다른 날이면 날짜까지.
  * 시간대는 화면(브라우저) 기준 — MessageTime 과 같다
