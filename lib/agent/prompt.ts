@@ -49,6 +49,7 @@ export function agentInstructions(p: { today: string; userName: string; maxTurns
 - 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true, 담당 미배정은 unassigned=true), 한 업무의 체크리스트·최근 대화는 get_task.
 - 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org, 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
 - 「거래처에 샘플(제품·수량)을 전달했다」 처럼 샘플 전달을 적어 달라면 record_sample. 기관이 CRM 에 없다는 답이 오면 새 기관으로 만들지 사용자에게 먼저 묻고, 그렇다고 하면 create_org=true 로 다시 부르세요.
+- 제품이 나오면 먼저 list_products 로 목록(product_id · 이름 · 영문 별칭 · 규격 · 재고)을 보고 골라 record_sample 에 product_id 로 넣으세요. 「2미리」 「ADDGEL」 처럼 줄이거나 영문으로 적어도 이름 · 별칭 · 규격으로 맞춥니다. 같은 제품의 규격이 여럿이거나 어느 것인지 애매하면 부르지 말고 후보를 보여 주며 사용자에게 물으세요. 제품이 여러 개면 제품마다 record_sample 을 한 번씩 부릅니다.
 - 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
 - 일정·행사·미팅·외근·출장, 「다음 주」「이번 달」「11/4」 같은 날짜 질문은 list_calendar(웍스 캘린더)로 찾으세요.
   날짜는 위의 오늘(서울)을 기준으로 YYYY-MM-DD 로 풀어 from·to 에 넣으세요 — 「다음 주」 는 다음 월요일부터 일요일까지, 「이번 달」 은 1일부터 말일까지입니다.

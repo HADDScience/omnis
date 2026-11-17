@@ -14,6 +14,7 @@ import type { OmnisTurn } from "@/lib/omnis-history"
 import { seoulDayLabel } from "@/lib/calendar/time"
 import { CALENDAR_WRITE_RULE, SOURCE_FILE_RULE } from "@/lib/agent/prompt"
 import { sourceFactSuffixes } from "@/lib/source-messages"
+import { ASK_PREVIEW_NAMES, ASK_READ_NAMES } from "@/lib/tools/registry"
 
 export const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   OMNIS_CARD: "옴니스 카드",
@@ -288,16 +289,27 @@ const HISTORY_RULE = `
 `
 
 /**
- * 질문 경로에 여는 MCP 도구 — 읽기만. 이 경로에는 쓰기 전 확인 단계가 없어서,
- * 빼는 목록으로 두면 MCP 에 새 쓰기 도구가 생길 때마다 확인 없이 열린다(update_task · delete_company_record 가 그랬다).
+ * 질문 경로에 여는 MCP 도구 — 읽기. 도구 레지스트리(lib/tools/registry.ts) ask: "read" 에서 나온다.
+ * 이 경로에는 쓰기 전 확인 단계가 없어서, 쓰기 도구는 열지 않는다(레지스트리에 ask 를 적지 않으면 닫힌 채다).
  * search_knowledge · ip_overview 는 아래에서 이 경로 전용으로 따로 정의한다.
  */
-export const ROUTE_READ_TOOLS = new Set([
-  "list_tasks", "get_task", "read_file", "list_notifications", "list_projects", "list_members",
-  "crm_overview", "find_org", "list_omnis_cards", "get_omnis_card", "list_weekly_reports", "list_chat",
-  "company_profile", "list_company_records", "list_record_proposals", "list_tax_invoices", "list_staff",
-  "list_market_companies", "get_context", "list_calendar",
-])
+export const ROUTE_READ_TOOLS = new Set(ASK_READ_NAMES.filter((n) => n !== "search_knowledge" && n !== "ip_overview"))
+
+/**
+ * 질문 경로에 「미리보기만」 으로 여는 쓰기 도구 — 레지스트리 ask: "preview"(confirm 으로 확인하는 도구만).
+ * confirm 칸을 지우고 늘 confirm 없이 부른다 → 쓰지 않고 남길 내용만 돌려준다. 실제 기록은 옴니스 대화방의 확인 카드나 MCP confirm=true.
+ */
+export const ROUTE_PREVIEW_TOOLS = new Set(ASK_PREVIEW_NAMES)
+
+export const PREVIEW_NOTE =
+  "\n\n(질문 경로에서는 기록하지 않고 미리보기만 합니다. 기록하려면 옴니스 대화방에서 같은 내용을 말해 확인 카드에서 확인하거나, MCP 에서는 이 도구를 confirm=true 로 부르세요. 사용자에게 이 방법을 알려 주세요.)"
+
+/** 미리보기 도구의 스키마 — confirm 칸을 지운다 */
+export function routePreviewSchema(schema: { type: string; properties?: Record<string, unknown>; required?: string[] }) {
+  const properties = { ...schema.properties }
+  delete properties.confirm
+  return { ...schema, properties }
+}
 
 /**
  * 질문 경로에서는 list_chat 의 방 보기(view=room)를 닫는다 — 이 경로의 근거는 전사방 · 업무 글뿐이다(검색 색인과 같다).
@@ -327,7 +339,7 @@ ${withHistory ? HISTORY_RULE : ""}
 도구 고르는 법:
 - 대화 내용·진행 상황·"누가 뭐라고 했나" 는 search_knowledge 로 찾으세요. 사람 이름·기관명·제품명처럼 고유명사가 있으면 그것을 query 에 넣으세요.
 - 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true, 담당 미배정은 unassigned=true), 한 업무의 체크리스트·최근 대화는 get_task.
-- 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org, 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
+- 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org. 제품 · 재고는 list_products. 샘플 전달을 CRM 에 남겨 달라고 하면 list_products 로 제품을 골라 record_sample(product_id)로 미리보기를 보여 주고 기록하는 방법을 알려 주세요(이 경로에서는 기록하지 않습니다), 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
 - 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
 - 일정·행사·미팅·외근·「다음 주」「11/4」 같은 날짜 질문은 list_calendar(웍스 캘린더). 날짜는 오늘(서울)을 기준으로 YYYY-MM-DD 로 풀어 from·to 에 넣으세요.
 - 사진을 찾으면(「~ 사진」 「~ 찍은 것」 「명함」 「포스터」) search_knowledge 를 sources=["PHOTO"] · limit 20 으로 부르세요. 사진 결과는 사진 속 모습 · 글자를 글로 옮긴 설명입니다.
@@ -386,6 +398,11 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
       const hasProps = schema.properties && Object.keys(schema.properties).length > 0
       return { name: t.name, description: t.description, ...(hasProps ? { parameters: schema } : {}) }
     }),
+    ...OMNIS_TOOLS.filter((t) => ROUTE_PREVIEW_TOOLS.has(t.name)).map((t) => ({
+      name: t.name,
+      description: `${t.description} — 이 경로에서는 미리보기만 한다(기록하지 않는다).`,
+      parameters: routePreviewSchema(t.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[] }),
+    })),
     { name: "ip_overview", description: "상표·특허 전량 한 줄 요약과 우리 차례로 남은 지식재산권 업무. 상표·특허·출원·등록을 물으면 쓴다." },
   ]
 
@@ -411,6 +428,13 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
         .join("\n\n")
     }
     if (call.name === "ip_overview") return (await buildIpOverview()) || "지식재산권 자료가 없습니다."
+    // 쓰기 도구는 미리보기만 — confirm 을 늘 지운다
+    if (ROUTE_PREVIEW_TOOLS.has(call.name)) {
+      const args = { ...call.args }
+      delete args.confirm
+      const r = await runTool(call.name, args, caller)
+      return "error" in r ? `오류: ${r.error}` : `${r.text}${PREVIEW_NOTE}`
+    }
     // 내놓지 않은 이름을 모델이 지어 불러도 실행하지 않는다
     if (!ROUTE_READ_TOOLS.has(call.name)) return `오류: ${call.name} 은(는) 이 질문 경로에서 쓸 수 없는 도구입니다.`
     const refused = routeArgsRefusal(call.name, call.args)

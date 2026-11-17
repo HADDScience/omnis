@@ -8,14 +8,46 @@ import { writeActivity } from "@/lib/api"
 import { nextCode, nextDatedCode } from "@/lib/crm"
 import { createWithUniqueCode } from "@/lib/crm-server"
 import {
-  parseSampleArgs, pickOrg, pickProduct, productLabel, rankOrgs, sampleRequestText,
-  type SampleArgs,
+  parseSampleArgs, pickOrg, productLabel, productListLine, rankOrgs, resolveProduct, sampleRequestText, stockText, stockWarning,
+  normalizeOrgName, normalizeUnits, productNameVariants,
+  type ProductRow, type SampleArgs,
 } from "@/lib/crm-sample-rules"
 
 /** 이름 · 코드로 기관 찾기 — 기관 표는 작다(수십~수백). 전부 읽어 규칙으로 고른다 */
 export async function findOrgsLoose(query: string, take = 5) {
   const all = await prisma.crmOrg.findMany({ select: { id: true, name: true, code: true } })
   return rankOrgs(query, all).slice(0, take)
+}
+
+/** CRM 제품 + 현재고(장부 IN − OUT). 보관(archived) 제품은 뺀다 */
+export async function listProductsWithStock(): Promise<ProductRow[]> {
+  const [products, sums] = await Promise.all([
+    prisma.crmProduct.findMany({ where: { archived: false }, select: { id: true, code: true, name: true, spec: true, stockUnit: true }, orderBy: { code: "asc" } }),
+    prisma.crmStockMove.groupBy({ by: ["productId", "direction"], _sum: { quantity: true } }),
+  ])
+  const bal = new Map<string, number>()
+  for (const r of sums) {
+    const q = Number(r._sum.quantity ?? 0) * (r.direction === "IN" ? 1 : -1)
+    bal.set(r.productId, (bal.get(r.productId) ?? 0) + q)
+  }
+  return products.map((p) => ({
+    id: p.id, code: p.code, name: p.name, spec: p.spec, unit: p.stockUnit,
+    stock: Math.round((bal.get(p.id) ?? 0) * 1000) / 1000,
+  }))
+}
+
+/** list_products 도구의 답 — query 가 있으면 이름 · 별칭 · 규격 · 코드에 그 말이 든 것만 */
+export async function productListText(query?: string): Promise<string> {
+  const all = await listProductsWithStock()
+  const q = query ? normalizeOrgName(normalizeUnits(query)) : ""
+  const rows = q
+    ? all.filter((p) => [...productNameVariants(p.name).map((n) => `${n}${p.spec ?? ""}`), p.code].some((k) => normalizeOrgName(k).includes(q) || q.includes(normalizeOrgName(k))))
+    : all
+  if (rows.length === 0) return q ? `'${query}' 에 맞는 제품이 없습니다. query 없이 불러 전체 목록을 보세요.` : "CRM 제품이 없습니다."
+  return [
+    `CRM 제품 ${rows.length}개 — record_sample 에는 product_id 를 넣으세요. 규격이 여럿이면 사용자에게 어느 것인지 물으세요.`,
+    ...rows.map(productListLine),
+  ].join("\n")
 }
 
 export interface PlanRow {
@@ -31,6 +63,10 @@ export interface SamplePlan {
   /** 없는 기관을 새로 만든다(create_org=true 일 때만) */
   newOrgName?: string
   product?: { id: string; name: string; spec: string | null } | null
+  /** 샘플 출고로 바뀌는 재고(제품 · 수량이 있을 때) */
+  stock?: { before: number; after: number; unit: ProductRow["unit"] } | null
+  /** 재고가 0 이 되거나 모자랄 때 — 확인 카드 · 미리보기에 보인다 */
+  warning?: string | null
   contact?: { id: string; name: string } | null
   rows: PlanRow[]
 }
@@ -58,14 +94,20 @@ export async function planSampleDelivery(raw: Record<string, unknown>): Promise<
   }
 
   let product: SamplePlan["product"] = null
-  if (v.product) {
-    const products = await prisma.crmProduct.findMany({
-      where: { archived: false }, select: { id: true, name: true, spec: true }, orderBy: { code: "asc" },
-    })
-    const p = pickProduct(v.product, products)
-    if (p.kind === "many") return { args: v, rows: [], problem: `'${v.product}' 에 제품이 여럿 걸립니다: ${p.candidates.map(productLabel).join(" / ")}. 규격까지 적어 다시 부르세요.` }
-    if (p.kind === "none") return { args: v, rows: [], problem: `'${v.product}' 제품이 CRM 제품 목록에 없습니다. 목록에 있는 이름으로 다시 부르거나, 제품 없이 content 에 적어 남기세요.` }
-    product = p.product
+  let stock: SamplePlan["stock"] = null
+  let warning: string | null = null
+  if (v.productId || v.product) {
+    const products = await listProductsWithStock()
+    const r = resolveProduct(v, products)
+    if ("problem" in r) return { args: v, rows: [], problem: r.problem }
+    if (r.product) {
+      const p = r.product
+      product = { id: p.id, name: p.name, spec: p.spec }
+      if (v.quantity) {
+        stock = { before: p.stock, after: Math.round((p.stock - v.quantity) * 1000) / 1000, unit: p.unit }
+        warning = stockWarning(p.stock, v.quantity, p.unit)
+      }
+    }
   }
 
   let contact: SamplePlan["contact"] = null
@@ -82,13 +124,15 @@ export async function planSampleDelivery(raw: Record<string, unknown>): Promise<
   ]
   if (product) rows.push({ label: "제품", value: productLabel(product) })
   if (product && v.quantity) rows.push({ label: "샘플 출고", value: `${productLabel(product)} ${v.quantity}개 · 재고에서 뺍니다` })
+  if (stock) rows.push({ label: "재고", value: `${stockText(stock.before, stock.unit)} → ${stockText(stock.after, stock.unit)}` })
   if (v.contact) rows.push({ label: "담당자", value: contact ? contact.name : `${v.contact} (CRM 담당자에 없어 비고에 적습니다)` })
   if (v.referral) rows.push({ label: "소개경로", value: v.referral })
   if (v.note) rows.push({ label: "비고", value: v.note })
-  return { args: v, org, newOrgName, product, contact, rows }
+  return { args: v, org, newOrgName, product, stock, warning, contact, rows }
 }
 
-export const planText = (plan: SamplePlan) => plan.rows.map((r) => `- ${r.label}: ${r.value}`).join("\n")
+export const planText = (plan: SamplePlan) =>
+  [...plan.rows.map((r) => `- ${r.label}: ${r.value}`), plan.warning ? `⚠ ${plan.warning}` : null].filter(Boolean).join("\n")
 
 /**
  * 쓴다. confirm 이 없으면 계획만 돌려준다 — MCP 에는 확인 카드가 없어서, 사용자에게 보여 주고
