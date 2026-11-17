@@ -1,11 +1,18 @@
 name: CI
 
 # main 으로 가는 PR 과 main 자체를 지킨다.
-# 브랜치 보호에서 아래 두 job 이름(verify · e2e)을 필수 검사로 걸어 둔다 —
-# 이름을 바꾸면 보호 설정도 같이 바꿔야 한다.
+# 머지 판단은 두 job — verify · e2e — 를 본다. e2e 는 네 조각(e2e (1/4) …)으로 나눠 돌고,
+# 같은 이름의 `e2e` job 이 조각 결과를 모아 판정한다(scripts/e2e-gate.mjs).
+# 브랜치 보호에 필수 검사를 걸 때도 이 두 이름(verify · e2e)을 건다 — 이름을 바꾸면 보호 설정도 같이 바꾼다.
+#
+# 급한 수정(2026-11-18): 브랜치가 hotfix/ 이거나 PR 에 hotfix 라벨이 있으면 PR 에서는 e2e 를 돌리지 않는다.
+# 머지 뒤 main 에서 전체가 돌고, 알려진 실패(tests/e2e-known-failures.json) 밖의 실패가 나오면 이슈를 연다.
+# 문서만 바꾼 변경(mydocs/ · docs/ · 최상위 *.md)도 e2e 를 건너뛴다 — 앱이 이 파일들을 읽지 않는다.
 on:
   pull_request:
     branches: [main]
+    # labeled · unlabeled — 열린 PR 에 hotfix 라벨을 달거나 떼면 다시 판정한다
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
   workflow_dispatch:
@@ -16,6 +23,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # e2e 를 돌릴지 정한다 — 바뀐 파일 목록은 API 로 받는다(전체 이력을 받지 않으려고)
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      e2e: ${{ steps.decide.outputs.e2e }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          out() { echo "e2e=$1" >> "$GITHUB_OUTPUT"; echo "reason=$2" >> "$GITHUB_OUTPUT"; echo "e2e=$1 — $2"; }
+          if [ "$EVENT" = "pull_request" ]; then
+            if [[ "$HEAD_REF" == hotfix/* ]] || grep -q '"hotfix"' <<< "$LABELS"; then
+              out false "급한 수정(hotfix) — 머지 뒤 main 에서 전체 e2e 가 돈다"; exit 0
+            fi
+            files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          elif [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            # compare 는 300 개까지만 준다 — 그 이상이면 모른다고 보고 전체를 돌린다
+            files=$(gh api "repos/$REPO/compare/$BEFORE...$SHA" --jq '.files[].filename')
+            [ "$(echo "$files" | wc -l)" -lt 300 ] || { out true "바뀐 파일 300개 이상"; exit 0; }
+          else
+            out true "$EVENT — 전체"; exit 0
+          fi
+          [ -n "$files" ] || { out true "바뀐 파일 목록이 비었다 — 전체"; exit 0; }
+          if grep -qvE '^(mydocs/|docs/)|^[^/]+\.md$' <<< "$files"; then
+            out true "코드 변경"
+          else
+            out false "문서만 바뀜"
+          fi
+
   verify:
     name: verify
     runs-on: ubuntu-latest
@@ -37,13 +88,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm run lint
+      # 단위 시험은 DB 없이 5초 안팎이다. 급한 수정은 PR 에서 이것까지만 본다
+      - run: pnpm test:unit
 
-  e2e:
-    name: e2e
+  # 한 줄로 20분이던 e2e 를 네 조각으로 나눠 동시에 돌린다(2026-11-18). 조각마다 자기 DB · 빌드 · 서버를 띄운다 —
+  # 조각끼리 DB 를 나누지 않으므로 시험 순서 · 데이터가 섞이지 않는다. 저장소가 공개라 표준 러너 시간은 과금되지 않는다.
+  # 조각의 성패는 판정이 아니다(시험 단계가 실패해도 job 은 통과로 끝난다) — 판정은 아래 `e2e` job 이 한다.
+  e2e-shard:
+    name: e2e (${{ matrix.shard }}/4)
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
-    # 25분은 부족했다 — 상한에 걸려 잘리면 playwright 가 실패 요약을 못 찍어
-    # 무엇이 왜 깨졌는지 알 수 없다. 넉넉히 두고, 오래 걸리면 그때 쪼갠다.
-    timeout-minutes: 45
+    # 한 줄일 때 25분은 부족해 45분을 줬다. 조각은 5~6분이 시험 본체다 — 잘리면 판정 job 이 「보고서 빠짐」 으로 잡는다
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     # 러너는 개발자의 로컬 DB(운영 스냅샷)에 닿을 수 없다 — 주소가 사설이고,
     # 열어 두는 것도 옳지 않다. 그래서 여기서 자기 DB 를 띄우고 데모 시드로 채운다.
@@ -115,8 +176,24 @@ jobs:
       - name: e2e 계정 확인
         run: pnpm exec tsx scripts/ensure-e2e-accounts.ts
 
+      # Next 빌드 캐시(.next/cache) — 같은 의존성이면 지난 빌드의 webpack 캐시를 다시 쓴다.
+      # PR 은 main 과 자기 브랜치의 캐시를 읽는다. 네 조각이 같은 키를 쓰므로 저장은 1번 조각만 한다
+      - name: 빌드 캐시 받기
+        uses: actions/cache/restore@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
       - name: 빌드
         run: pnpm run build
+
+      - name: 빌드 캐시 저장
+        if: matrix.shard == 1
+        uses: actions/cache/save@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
 
       - name: 브라우저 설치
         run: pnpm exec playwright install --with-deps chromium
@@ -143,13 +220,107 @@ jobs:
           }
           echo "서버 준비됨"
 
+      # test:e2e 와 같은 두 프로젝트(feature · mobile)를 조각으로 나눈다
       - name: feature e2e
-        run: pnpm run test:e2e
+        id: pw
+        continue-on-error: true
+        env:
+          E2E_JSON_REPORT: ${{ github.workspace }}/e2e-report/shard-${{ matrix.shard }}.json
+        run: pnpm exec playwright test --project=feature --project=mobile --shard=${{ matrix.shard }}/4
+
+      - name: 판정용 보고서 올리기
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-json-${{ matrix.shard }}
+          path: e2e-report/
+          retention-days: 3
+          if-no-files-found: ignore
 
       # 실패했을 때만 남긴다. 화면에 데모 데이터만 있어 올려도 된다.
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: steps.pw.outcome == 'failure'
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 7
+
+  # e2e 판정 — 조각 보고서를 모아 알려진 실패를 뺀 뒤 새 실패가 있으면 실패한다.
+  # e2e 를 건너뛴 변경(급한 수정 · 문서만)은 통과로 끝난다. main 에서 새 실패가 나오면 이슈를 열거나 이어 단다.
+  # 이슈 본문에는 시험 이름 · 커밋 · 실행 주소만 쓴다 — 저장소가 공개라 이슈도 공개다(시험 이름은 이미 공개 코드에 있다)
+  e2e:
+    name: e2e
+    needs: [changes, e2e-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: 판정 job 이 돌 수 있었나
+        if: needs.changes.result != 'success'
+        run: |
+          echo "changes job 이 ${{ needs.changes.result }} — e2e 를 돌릴지 정하지 못했다"; exit 1
+
+      - name: 건너뜀
+        if: needs.changes.result == 'success' && needs.changes.outputs.e2e != 'true'
+        run: echo "e2e 건너뜀 — ${{ needs.changes.outputs.reason }}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v4
+        if: needs.changes.outputs.e2e == 'true'
+        with:
+          sparse-checkout: |
+            scripts/e2e-gate.mjs
+            tests/e2e-known-failures.json
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        if: needs.changes.outputs.e2e == 'true'
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@v4
+        if: needs.changes.outputs.e2e == 'true'
+        with:
+          pattern: e2e-json-*
+          path: e2e-report
+          merge-multiple: true
+
+      - name: 판정
+        id: gate
+        if: needs.changes.outputs.e2e == 'true'
+        env:
+          E2E_GATE_OUT: ${{ runner.temp }}/new-failures.md
+        run: |
+          if node scripts/e2e-gate.mjs e2e-report --shards=4; then echo "ok=1" >> "$GITHUB_OUTPUT"; else echo "ok=0" >> "$GITHUB_OUTPUT"; fi
+
+      - name: main 새 실패 알림(이슈)
+        if: steps.gate.outputs.ok == '0' && github.event_name == 'push' && !cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LIST: ${{ runner.temp }}/new-failures.md
+        run: |
+          set -euo pipefail
+          title="main e2e 새 실패"
+          {
+            echo "main \`${SHA:0:7}\` 의 e2e 에서 알려진 실패(tests/e2e-known-failures.json) 밖의 실패가 나왔다."
+            echo
+            echo "실행: $RUN_URL"
+            echo
+            cat "$LIST"
+          } > "$RUNNER_TEMP/body.md"
+          num=$(gh issue list --repo "$REPO" --state open --label ci --search "in:title \"$title\"" --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --repo "$REPO" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh issue create --repo "$REPO" --title "$title" --label ci --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+      - name: 결과
+        if: steps.gate.outputs.ok == '0'
+        run: exit 1
