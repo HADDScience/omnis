@@ -1,12 +1,17 @@
 import { FeatureStatusButtons } from "@/components/settings/feature-status"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { isActiveMember } from "@/lib/active-members"
+import { auth } from "@/lib/auth"
 import { FEATURE_STATUS_LABEL, listFeatureRequests } from "@/lib/feature-requests"
 
 const dateTime = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "short", timeStyle: "short" })
 
 /** 기능 요청 목록 — /settings/feature-requests 와 /admin/operations 가 같이 쓴다. 권한은 부르는 화면이 본다 */
 export async function FeatureRequestsSection() {
-  const rows = await listFeatureRequests()
+  const [rows, session] = await Promise.all([listFeatureRequests(), auth()])
+  const me = session?.user?.id
+  // 완료 알림 받을 사람 — 바꾸는 나는 빼고, 같은 사람은 한 번(서버 lib/feature-requests.ts requesterIds 와 같은 기준)
+  const othersOf = (r: (typeof rows)[number]) => [...new Map(r.entries.filter((e) => e.requesterId !== me && isActiveMember(e.requester)).map((e) => [e.requesterId, e.requester.name])).values()]
   const counts = { NEW: 0, REVIEW: 0, DONE: 0 }
   for (const r of rows) counts[r.status]++
 
@@ -33,7 +38,7 @@ export async function FeatureRequestsSection() {
                     {FEATURE_STATUS_LABEL[r.status]} · 요청 {r.count}건 · 처음 {dateTime.format(r.createdAt)} · 마지막 {dateTime.format(r.updatedAt)}
                   </p>
                 </div>
-                <FeatureStatusButtons id={r.id} status={r.status} />
+                <FeatureStatusButtons id={r.id} status={r.status} title={r.title} requesters={othersOf(r)} />
               </div>
               <ul className="mt-3 flex flex-col gap-2 border-t pt-3">
                 {r.entries.map((e) => (

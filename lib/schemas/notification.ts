@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { FEATURE_DONE_NOTIFY_TYPE, parseDoneEntityId } from "@/lib/feature-requests-shared"
 
 /**
  * 알림 액션 단일 진실 소스 (SSOT).
@@ -73,6 +74,8 @@ export function notificationHref(type: string, entityId: string | null): string 
   if (type === "crm_invoice_request") return `/crm/invoices/new?quote=${entityId}`
   // 앱 AI 기능 요청 — 관리 화면(lib/feature-requests.ts FEATURE_ADMIN_PATH)
   if (type === "feature_request") return "/settings/feature-requests"
+  // 요청한 기능이 생겼다 — 관리자가 적은 써 볼 곳(entityId `<요청 id>:<경로>`, lib/feature-requests-shared.ts)
+  if (type === FEATURE_DONE_NOTIFY_TYPE) return parseDoneEntityId(entityId)?.link ?? null
   // AI 비용 월 상한 80% · 100%(lib/ai-budget-alerts)
   if (type === "ai_budget") return "/settings/ai-budget"
   // 새 일정 — entityId 가 `YYYY-MM-DD:<일정 id>` 다(lib/notify-rules.ts calendarNotices). 캘린더의 그 날짜를 연다

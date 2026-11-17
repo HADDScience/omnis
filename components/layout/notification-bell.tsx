@@ -21,6 +21,8 @@ import {
   type NotificationResponse,
 } from "@/lib/schemas/notification"
 import { currentSubscription } from "@/lib/pwa"
+import { DONE_TITLE_PREFIX, FEATURE_DONE_NOTIFY_TYPE, parseDoneEntityId } from "@/lib/feature-requests-shared"
+import { FeatureReplyDialog } from "@/components/settings/feature-reply-dialog"
 
 import { apiUrl } from "@/lib/base-path"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
@@ -78,6 +80,8 @@ export function NotificationBell() {
   useVisibleInterval(fetchNotifications, NOTIFICATION_POLL_MS)
 
   const [responding, setResponding] = useState<string | null>(null)
+  // 기능 완료 알림의 「답장」 창 — 벨(팝오버)을 닫고 띄운다
+  const [replyTo, setReplyTo] = useState<{ requestId: string; title: string } | null>(null)
 
   // 이 기기가 푸시를 받고 있는가. 아니라면 벨 안에서 설정으로 데려간다 —
   // 설정 화면을 스스로 찾아 들어가는 사람은 드물다.
@@ -174,6 +178,7 @@ export function NotificationBell() {
   }
 
   return (
+    <>
     <Popover
       open={open}
       onOpenChange={(next) => {
@@ -271,6 +276,28 @@ export function NotificationBell() {
                         </button>
                       )}
                     </div>
+                    {n.type === FEATURE_DONE_NOTIFY_TYPE && parseDoneEntityId(n.entityId) && (
+                      // 요청한 기능이 생겼다 — 바로 써 보거나, 써 보고 불편하면 답장
+                      <div className="mt-2 flex gap-1.5" data-feature-done-actions>
+                        <Button size="sm" className="h-8 flex-1 text-xs" onClick={() => openNotification(n)}>
+                          써 보기
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 flex-1 text-xs"
+                          onClick={() => {
+                            const d = parseDoneEntityId(n.entityId)
+                            if (!d) return
+                            if (!n.read) void markRead(n.id)
+                            setOpen(false)
+                            setReplyTo({ requestId: d.requestId, title: n.title.startsWith(DONE_TITLE_PREFIX) ? n.title.slice(DONE_TITLE_PREFIX.length) : n.title })
+                          }}
+                        >
+                          답장
+                        </Button>
+                      </div>
+                    )}
                     {pending && action.success && (
                       <div className="mt-2 flex gap-1.5">
                         {ACTION_BUTTONS[action.data].map((b) => (
@@ -309,5 +336,7 @@ export function NotificationBell() {
         )}
       </PopoverContent>
     </Popover>
+    <FeatureReplyDialog replyTo={replyTo} onClose={() => setReplyTo(null)} />
+    </>
   )
 }

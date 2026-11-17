@@ -26,3 +26,14 @@ export function feedbackRequest(kind: unknown, text: unknown): { title: string; 
   const head = first.length > 50 ? `${first.slice(0, 49)}…` : first
   return { title: `[${label}] ${head}`, detail }
 }
+
+/**
+ * 완료 알림의 「답장」 — 그 기능을 써 보고 남기는 말. 제목은 `[답장] <기능 요청 제목>` 이라
+ * 같은 기능에 온 답장은 관리 화면에서 한 줄로 묶인다(lib/feature-requests.ts featureKey).
+ */
+export function feedbackReply(featureTitle: string, text: unknown): { title: string; detail: string } | { problem: string } {
+  const detail = typeof text === "string" ? text.trim().slice(0, TEXT_MAX) : ""
+  if (!detail) return { problem: "내용을 적어 주세요" }
+  const head = featureTitle.length > 60 ? `${featureTitle.slice(0, 59)}…` : featureTitle
+  return { title: `[답장] ${head}`, detail }
+}
