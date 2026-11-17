@@ -293,10 +293,10 @@ jobs:
         env:
           E2E_GATE_OUT: ${{ runner.temp }}/new-failures.md
         run: |
-          if node scripts/e2e-gate.mjs e2e-report --shards=4; then echo "ok=1" >> "$GITHUB_OUTPUT"; else echo "ok=0" >> "$GITHUB_OUTPUT"; fi
+          if node scripts/e2e-gate.mjs e2e-report --shards=4; then echo "verdict=pass" >> "$GITHUB_OUTPUT"; else echo "verdict=fail" >> "$GITHUB_OUTPUT"; fi
 
       - name: main 새 실패 알림(이슈)
-        if: steps.gate.outputs.ok == '0' && github.event_name == 'push' && !cancelled()
+        if: steps.gate.outputs.verdict == 'fail' && github.event_name == 'push' && !cancelled()
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -322,5 +322,5 @@ jobs:
           fi
 
       - name: 결과
-        if: steps.gate.outputs.ok == '0'
+        if: steps.gate.outputs.verdict == 'fail'
         run: exit 1
