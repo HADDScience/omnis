@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db"
 import { getIpAccess } from "@/lib/ip-data"
 import { retrieveHybrid, type EmbeddingSource } from "@/lib/embeddings"
 import { buildIpOverview, SOURCE_LABEL, type AskSource } from "@/lib/omnis-ask"
+import { sourceFactSuffixes } from "@/lib/source-messages"
 import { TASK_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/constants"
 import { migrateContent } from "@/lib/omnis-types"
 import { sectionToText } from "@/lib/embeddings"
@@ -166,6 +167,9 @@ export async function runReadTool(
     const limit = Math.min(Math.max(Number(args.limit) || 8, 1), 20)
     const { chunks } = await retrieveHybrid(q, { limit, sources: kinds, userId: caller.userId })
     if (chunks.length === 0) return { text: "비슷한 조각이 없습니다.", sources }
+    // 채팅 글에는 원문 바로가기 · 첨부 ID · 이름이 같은 파일을 붙인다 — 파일 이름만 보고는 실물을 찾아가지 못한다.
+    // 이 경로의 답은 요청한 사람만 보므로 그 사람이 볼 수 있는 첨부를 다 싣는다
+    const factLine = await sourceFactSuffixes(chunks.filter((c) => c.source === "CHAT_MESSAGE").map((c) => c.sourceId), caller.userId)
     const next = [...sources]
     const text = chunks
       .map((c) => {
@@ -174,7 +178,7 @@ export async function runReadTool(
           next.push({ id: c.id, source: c.source, sourceId: c.sourceId, title: c.title, sourceLabel: SOURCE_LABEL[c.source], similarity: Math.round(c.similarity * 100) })
           n = next.length
         }
-        return `[${n}] ${SOURCE_LABEL[c.source]} · ${c.title}\n${c.content.slice(0, 1500)}`
+        return `[${n}] ${SOURCE_LABEL[c.source]} · ${c.title}\n${c.content.slice(0, 1500)}` + factLine(c.source === "CHAT_MESSAGE" ? c.sourceId : null)
       })
       .join("\n\n")
     return { text, sources: next }

@@ -44,4 +44,8 @@ test("자료 · 파일 규칙 — 두 경로 모두 · 첨부 없는 자리표�
   assert.match(SOURCE_FILE_RULE, /처음부터 「원본 파일이 옴니스에 없음 — 카톡 원본이나 보낸 사람에게 요청」/)
   assert.match(SOURCE_FILE_RULE, /다른 판/)
   assert.match(SOURCE_FILE_RULE, /↳ 원문/)
+  // 이름이 같은 파일은 그 글의 첨부로 말하지 않는다 · 파일 ID 로 read_file
+  assert.match(SOURCE_FILE_RULE, /\[이름이 같은 파일\(이 글의 첨부 아님\)/)
+  assert.match(SOURCE_FILE_RULE, /「이 글에 첨부돼 있다」 고 하지 말고/)
+  assert.match(SOURCE_FILE_RULE, /파일 ID 로 read_file/)
 })
