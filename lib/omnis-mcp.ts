@@ -44,6 +44,7 @@ import { createNotification } from "@/lib/notifications"
 import { getIpAccess, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
+import { findOrgsLoose, recordSampleDelivery } from "@/lib/crm-sample-server"
 import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
@@ -383,8 +384,32 @@ export const OMNIS_TOOLS = [
   },
   {
     name: "find_org",
-    description: "거래 기관 찾기. 이름·코드 일부로 찾아 담당자·견적·샘플요청·출고 이력을 돌려준다.",
+    description: "거래 기관 찾기. 이름·코드 일부로 찾아 담당자·견적·샘플요청·출고 이력을 돌려준다. 띄어쓰기·(주)·주식회사 같은 법인 표기는 무시한다.",
     inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+  },
+  {
+    name: "record_sample",
+    description:
+      "거래처에 샘플을 전달한 내역을 CRM 샘플요청(발송완료)으로 남긴다. 제품·수량을 주면 샘플 출고 한 줄과 그만큼 재고 출고가 함께 남는다. " +
+      "confirm 없이 부르면 쓰지 않고 남길 내용만 돌려준다 — 사용자에게 보여 주고 동의를 받은 뒤 confirm=true 로 다시 부른다. " +
+      "기관이 CRM 에 없으면 거절된다: 새 기관으로 만들지 사용자에게 먼저 묻고, 그렇다고 하면 create_org=true 로 부른다. 기관이 여럿 걸리면 후보를 돌려준다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        org: { type: "string", description: "기관 이름 또는 코드(ORG001). 일부여도 된다" },
+        product: { type: "string", description: "CRM 제품 이름(규격까지 적으면 더 정확하다 — 예: 이름 5ml)" },
+        quantity: { type: "integer", description: "전달한 수량(개). product 가 있어야 한다" },
+        date: { type: "string", description: "전달한 날 YYYY-MM-DD. 비우면 오늘(서울). 앞날은 안 된다" },
+        contact: { type: "string", description: "받은 사람(기관 담당자) 이름" },
+        content: { type: "string", description: "요청사항 원문. 비우면 제품·수량으로 적는다" },
+        referral: { type: "string", description: "소개경로 — 학회·지인·전화 등" },
+        note: { type: "string", description: "비고" },
+        create_org: { type: "boolean", description: "기관이 없을 때 새로 만든다. 사용자가 그렇게 하라고 했을 때만 true" },
+        org_type: { type: "string", enum: ["UNIVERSITY", "RESEARCH", "COMPANY", "HOSPITAL", "OTHER"], description: "새 기관의 종류. 비우면 OTHER" },
+        confirm: { type: "boolean", description: "사용자가 남길 내용에 동의했으면 true. 없으면 미리보기만" },
+      },
+      required: ["org"],
+    },
   },
   {
     name: "list_omnis_cards",
@@ -1507,17 +1532,19 @@ export async function runTool(
     case "find_org": {
       const q = str(args.query)
       if (!q) return { error: "query 가 비어 있습니다." }
-      const orgs = await prisma.crmOrg.findMany({
-        where: { OR: [{ name: { contains: q, mode: "insensitive" } }, { code: { contains: q, mode: "insensitive" } }] },
+      // 띄어쓰기 · 법인 표기 · 이름 일부가 달라도 찾는다(lib/crm-sample-rules rankOrgs) — contains 한 번으로는 「(주)」 하나에 놓쳤다
+      const ranked = await findOrgsLoose(q)
+      const order = new Map(ranked.map((r, i) => [r.org.id, i]))
+      const orgs = (await prisma.crmOrg.findMany({
+        where: { id: { in: ranked.map((r) => r.org.id) } },
         include: {
           contacts: true,
           quotes: { include: { items: { include: { product: true } } }, orderBy: { quotedAt: "desc" } },
           sampleRequests: { include: { product: true }, orderBy: { requestedAt: "desc" } },
           shipments: { include: { product: true }, orderBy: { shippedAt: "desc" }, take: 10 },
         },
-        take: 5,
-      })
-      if (orgs.length === 0) return { text: `'${q}' 에 맞는 기관이 없습니다.` }
+      })).sort((a, b) => order.get(a.id)! - order.get(b.id)!)
+      if (orgs.length === 0) return { text: `'${q}' 에 맞는 기관이 없습니다. 샘플 전달 등을 적으려면 record_sample — 없는 기관은 사용자에게 새로 만들지 물은 뒤 create_org=true.` }
       const out: string[] = []
       for (const o of orgs) {
         out.push(`# ${o.name} (${o.code} · ${o.type})${o.address ? ` · ${o.address}` : ""}${o.note ? `\n${o.note}` : ""}`)
@@ -1534,6 +1561,9 @@ export async function runTool(
       }
       return { text: out.join("\n").trim() }
     }
+
+    case "record_sample":
+      return recordSampleDelivery(args, caller.userId)
 
     case "list_omnis_cards": {
       const q = str(args.query)
