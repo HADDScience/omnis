@@ -13,6 +13,7 @@ import { listCases, listOpenTurns } from "@/lib/ip-data"
 import type { OmnisTurn } from "@/lib/omnis-history"
 import { seoulDayLabel } from "@/lib/calendar/time"
 import { CALENDAR_WRITE_RULE, SOURCE_FILE_RULE } from "@/lib/agent/prompt"
+import { sourceFactSuffixes } from "@/lib/source-messages"
 
 export const SOURCE_LABEL: Record<EmbeddingSource, string> = {
   OMNIS_CARD: "옴니스 카드",
@@ -398,11 +399,14 @@ export async function askOmnisRoute(question: string, userId: string, opts: Rout
       const limit = Math.min(Math.max(Number(call.args.limit) || 8, 1), 20)
       const { chunks } = await retrieveHybrid(q, { limit, sources, userId })
       if (chunks.length === 0) return "비슷한 조각이 없습니다."
+      // 채팅 글에 원문 바로가기 · 첨부 ID · 이름이 같은 파일을 붙인다. 이 경로의 답은 OmnisQuery 로 남아 여러 사람 앞에
+      // 붙을 수 있어(ROUTE_ROOM_PROPS 와 같은 까닭) 참여자 전용 첨부는 싣지 않는다
+      const factLine = await sourceFactSuffixes(chunks.filter((c) => c.source === "CHAT_MESSAGE").map((c) => c.sourceId), userId, { publicOnly: true })
       return chunks
         .map((c) => {
           if (!found.has(c.id)) found.set(c.id, c)
           const n = [...found.keys()].indexOf(c.id) + 1
-          return `[${n}] ${SOURCE_LABEL[c.source]} · ${c.title}\n${c.content.slice(0, 1500)}`
+          return `[${n}] ${SOURCE_LABEL[c.source]} · ${c.title}\n${c.content.slice(0, 1500)}` + factLine(c.source === "CHAT_MESSAGE" ? c.sourceId : null)
         })
         .join("\n\n")
     }
