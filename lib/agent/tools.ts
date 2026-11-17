@@ -188,6 +188,8 @@ export interface WritePreview {
   risk: string
   /** 대상을 못 찾는 등 실행해도 실패할 이유 — 있으면 카드를 막는다 */
   problem?: string
+  /** 확인은 되지만 눈여겨볼 것(재고가 0 · 모자람 등) — 카드에 경고로 보인다 */
+  warning?: string
   /** 초안 카드 — 본문 미리보기(접힘 · 펼치기). copy 가 있으면 [복사] 단추(메일 회신 등) */
   draft?: { body: string; copy?: string }
   /** 확인 단추 글 — 기본 「확인」. 초안은 「저장」, 파일은 「만들기」 */
@@ -488,11 +490,18 @@ async function buildMorePreview(name: string, args: Record<string, unknown>, ctx
     }
     case "record_sample": {
       const { planSampleDelivery } = await import("@/lib/crm-sample-server")
+      const { stockText } = await import("@/lib/crm-sample-rules")
       const plan = await planSampleDelivery(args)
       return {
         title: plan.newOrgName ? "CRM 샘플 전달 기록 — 새 기관 포함" : "CRM 샘플 전달 기록",
         target: plan.org?.name ?? plan.newOrgName ?? (s(args.org) || "(기관 없음)"),
-        changes: plan.rows.map((r) => ({ label: r.label, before: null, after: r.value })),
+        // 재고는 지금 → 뒤 로 보인다(lib/crm-sample-server planSampleDelivery stock)
+        changes: plan.rows.map((r) =>
+          r.label === "재고" && plan.stock
+            ? { label: r.label, before: stockText(plan.stock.before, plan.stock.unit), after: stockText(plan.stock.after, plan.stock.unit) }
+            : { label: r.label, before: null, after: r.value },
+        ),
+        ...(plan.warning ? { warning: plan.warning } : {}),
         risk: [
           "CRM 샘플요청에 발송완료 한 줄이 생기고 활동 기록에 내 이름으로 남습니다.",
           plan.product && plan.args?.quantity ? "샘플 출고가 함께 남아 그 제품 재고가 줄어듭니다." : null,

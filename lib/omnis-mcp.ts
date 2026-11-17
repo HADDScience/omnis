@@ -45,7 +45,7 @@ import { getIpAccess, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { TOOL_POLICY } from "@/lib/tools/registry"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
-import { findOrgsLoose, recordSampleDelivery } from "@/lib/crm-sample-server"
+import { findOrgsLoose, productListText, recordSampleDelivery } from "@/lib/crm-sample-server"
 import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
@@ -389,17 +389,29 @@ export const OMNIS_TOOLS = [
     inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
   },
   {
+    name: "list_products",
+    description:
+      "CRM 제품 목록 — product_id · 코드 · 이름 · 영문 별칭 · 규격 · 현재 재고. 샘플 전달 등에서 제품이 나오면 먼저 이것으로 골라 record_sample 에 product_id 로 넣는다. " +
+      "「2미리」 「ADDGEL」 처럼 적힌 말은 이름 · 별칭 · 규격을 보고 고르고, 규격이 여럿이면 사용자에게 후보를 보여 주고 묻는다.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "이름 · 별칭 · 규격 · 코드 일부. 비우면 전체" } },
+    },
+  },
+  {
     name: "record_sample",
     description:
       "거래처에 샘플을 전달한 내역을 CRM 샘플요청(발송완료)으로 남긴다. 제품·수량을 주면 샘플 출고 한 줄과 그만큼 재고 출고가 함께 남는다. " +
+      "제품은 list_products 에서 고른 product_id 로 준다(이름 product 는 product_id 가 없을 때만 맞춰 본다). " +
       "confirm 없이 부르면 쓰지 않고 남길 내용만 돌려준다 — 사용자에게 보여 주고 동의를 받은 뒤 confirm=true 로 다시 부른다. " +
       "기관이 CRM 에 없으면 거절된다: 새 기관으로 만들지 사용자에게 먼저 묻고, 그렇다고 하면 create_org=true 로 부른다. 기관이 여럿 걸리면 후보를 돌려준다.",
     inputSchema: {
       type: "object",
       properties: {
         org: { type: "string", description: "기관 이름 또는 코드(ORG001). 일부여도 된다" },
-        product: { type: "string", description: "CRM 제품 이름(규격까지 적으면 더 정확하다 — 예: 이름 5ml)" },
-        quantity: { type: "integer", description: "전달한 수량(개). product 가 있어야 한다" },
+        product_id: { type: "string", description: "list_products 의 product_id(또는 코드 PRD001). 있으면 product 보다 먼저 쓴다" },
+        product: { type: "string", description: "CRM 제품 이름(규격까지 적으면 더 정확하다 — 예: 이름 5ml). product_id 가 없을 때만 쓴다" },
+        quantity: { type: "integer", description: "전달한 수량(개). product_id 또는 product 가 있어야 한다" },
         date: { type: "string", description: "전달한 날 YYYY-MM-DD. 비우면 오늘(서울). 앞날은 안 된다" },
         contact: { type: "string", description: "받은 사람(기관 담당자) 이름" },
         content: { type: "string", description: "요청사항 원문. 비우면 제품·수량으로 적는다" },
@@ -1568,6 +1580,9 @@ export async function runTool(
       }
       return { text: out.join("\n").trim() }
     }
+
+    case "list_products":
+      return { text: await productListText(str(args.query) || undefined) }
 
     case "record_sample":
       return recordSampleDelivery(args, caller.userId)

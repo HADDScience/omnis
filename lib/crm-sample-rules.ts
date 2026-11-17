@@ -83,12 +83,17 @@ export function productNameVariants(name: string): string[] {
   return [...new Set([name, outside, ...inside].filter(Boolean))]
 }
 
+/** 말로 적은 단위를 규격 표기로 — 「2미리」 「2밀리」 「2㎖」 「2 mL」 → 2ml */
+export function normalizeUnits(s: string): string {
+  return s.replace(/(\d)\s*(미리리터|밀리리터|미리|밀리|㎖|ml)/gi, "$1ml").replace(/(\d)\s*(그램|그람|g)\b/gi, "$1g")
+}
+
 /** 제품 고르기 — 「이름 규격」 이 같으면 그것, 이름만 맞으면 규격이 하나일 때만 */
 export function pickProduct<T extends ProductLike>(query: string, products: T[]):
   | { kind: "one"; product: T }
   | { kind: "many"; candidates: T[] }
   | { kind: "none" } {
-  const q = normalizeOrgName(query)
+  const q = normalizeOrgName(normalizeUnits(query))
   if (!q) return { kind: "none" }
   const spec = (p: T) => normalizeOrgName(p.spec ?? "")
   const full = products.filter((p) => productNames(p.name).some((n) => n + spec(p) === q))
@@ -103,11 +108,69 @@ export function pickProduct<T extends ProductLike>(query: string, products: T[])
 
 export const productLabel = (p: ProductLike) => `${p.name}${p.spec ? ` ${p.spec}` : ""}`
 
+export interface ProductRow extends ProductLike {
+  id: string
+  code: string
+  /** 현재고(장부 IN − OUT) */
+  stock: number
+  unit: "PIECE" | "GRAM"
+}
+
+const unitText = (qty: number, unit: ProductRow["unit"]) => (unit === "GRAM" ? `${Number(qty.toFixed(3))}g` : `${qty}개`)
+
+/** list_products 한 줄 — AI 가 여기서 product_id 를 골라 record_sample 에 넣는다 */
+export function productListLine(p: ProductRow): string {
+  const alias = productNameVariants(p.name).slice(2)
+  return [
+    `- product_id=${p.id}`,
+    p.code,
+    p.name,
+    alias.length ? `별칭 ${alias.join(", ")}` : null,
+    `규격 ${p.spec ?? "-"}`,
+    `재고 ${unitText(p.stock, p.unit)}`,
+  ].filter(Boolean).join(" · ")
+}
+
+/**
+ * record_sample 의 제품 정하기 — product_id(또는 코드)가 있으면 그것만 본다(이름은 무시).
+ * 없으면 이름 맞추기(pickProduct). 여럿이면 id 와 함께 후보를 돌려줘 AI 가 사용자에게 묻고 product_id 로 다시 부르게 한다.
+ */
+export function resolveProduct<T extends ProductLike & { id: string; code: string }>(
+  v: Pick<SampleArgs, "productId" | "product">,
+  products: T[],
+): { product: T | null } | { problem: string } {
+  if (v.productId) {
+    const key = v.productId.trim()
+    const hit = products.find((p) => p.id === key || p.code.toUpperCase() === key.toUpperCase())
+    return hit ? { product: hit } : { problem: `product_id '${key}' 인 제품이 CRM 에 없습니다. list_products 로 목록을 보고 다시 고르세요.` }
+  }
+  if (!v.product) return { product: null }
+  const p = pickProduct(v.product, products)
+  if (p.kind === "one") return { product: p.product }
+  if (p.kind === "many") {
+    return { problem: `'${v.product}' 에 제품이 여럿 걸립니다: ${p.candidates.map((c) => `${productLabel(c)}(product_id=${c.id})`).join(" / ")}. 규격까지 적어 다시 부르세요 — 어느 것인지 애매하면 사용자에게 후보를 보여 주고 물은 뒤 product_id 로 부릅니다.` }
+  }
+  // 앞 문장은 예전 답 그대로(바깥 MCP 클라이언트가 볼 수 있다) — list_products 안내만 더했다
+  return { problem: `'${v.product}' 제품이 CRM 제품 목록에 없습니다. 목록에 있는 이름으로 다시 부르거나, 제품 없이 content 에 적어 남기세요. list_products 로 목록을 보고 product_id 로 부르면 정확합니다.` }
+}
+
+/** 출고 뒤 재고 경고 — 0 이 되거나 모자라면 */
+export function stockWarning(before: number, quantity: number, unit: ProductRow["unit"] = "PIECE"): string | null {
+  const after = Math.round((before - quantity) * 1000) / 1000
+  if (after < 0) return `재고가 모자랍니다 — 지금 ${unitText(before, unit)}인데 ${unitText(quantity, unit)}를 빼면 ${unitText(after, unit)}가 됩니다. 장부가 맞는지 확인하세요.`
+  if (after === 0) return `출고하면 이 제품 재고가 0 이 됩니다(지금 ${unitText(before, unit)}).`
+  return null
+}
+
+export const stockText = unitText
+
 const ORG_TYPES = ["UNIVERSITY", "RESEARCH", "COMPANY", "HOSPITAL", "OTHER"] as const
 export type OrgTypeArg = (typeof ORG_TYPES)[number]
 
 export interface SampleArgs {
   org: string
+  /** CRM 제품 id(또는 코드 PRD001) — list_products 에서 고른 것. 있으면 이름보다 먼저 쓴다 */
+  productId: string | null
   product: string | null
   quantity: number | null
   /** YYYY-MM-DD — 전달한 날 */
@@ -131,6 +194,7 @@ export function parseSampleArgs(args: Record<string, unknown>, now = new Date())
   const org = str(args.org)
   if (!org) return { ok: false, error: "org(기관 이름)가 비어 있습니다." }
   const product = str(args.product) || null
+  const productId = str(args.product_id).slice(0, 64) || null
   let quantity: number | null = null
   if (args.quantity !== undefined && args.quantity !== null && String(args.quantity).trim() !== "") {
     const n = Number(args.quantity)
@@ -138,7 +202,7 @@ export function parseSampleArgs(args: Record<string, unknown>, now = new Date())
     if (n > 10000) return { ok: false, error: "quantity 가 너무 큽니다(10000 초과) — 단위를 확인하세요." }
     quantity = n
   }
-  if (quantity !== null && !product) return { ok: false, error: "수량을 적으려면 product(제품)가 필요합니다." }
+  if (quantity !== null && !product && !productId) return { ok: false, error: "수량을 적으려면 product_id(또는 product)가 필요합니다." }
   const today = kstToday(now)
   const date = str(args.date) || today
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) return { ok: false, error: "date 는 YYYY-MM-DD 입니다." }
@@ -151,6 +215,7 @@ export function parseSampleArgs(args: Record<string, unknown>, now = new Date())
     ok: true,
     value: {
       org: org.slice(0, 200),
+      productId,
       product,
       quantity,
       date,

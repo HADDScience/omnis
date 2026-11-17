@@ -74,6 +74,18 @@ export function AgentCard({
 
       {p.draft && p.draft.body && <DraftBody body={p.draft.body} copy={p.draft.copy} />}
 
+      {p.warning && card.status !== "BLOCKED" && (
+        // 확인은 되지만 눈여겨볼 것 — 재고가 0 이 되거나 모자란다 등(lib/agent/tools.ts WritePreview.warning)
+        <p
+          data-agent-card-warning
+          role="note"
+          className="flex gap-2 border-t bg-amber-500/10 px-3.5 py-2.5 text-[12.5px] text-amber-800 dark:text-amber-200 in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[15px]"
+        >
+          <HugeiconsIcon icon={Alert02Icon} size={15} className="mt-0.5 shrink-0 in-data-[messenger]:size-[20px]" aria-hidden />
+          <span className="break-keep">{p.warning}</span>
+        </p>
+      )}
+
       {card.status === "BLOCKED" && card.blockedReason ? (
         <p className="flex gap-2 border-t bg-destructive/5 px-3.5 py-2.5 text-[12.5px] text-destructive in-data-[messenger]:px-[18px] in-data-[messenger]:py-[14px] in-data-[messenger]:text-[15px]" role="alert">
           <HugeiconsIcon icon={SquareLock02Icon} size={15} className="mt-0.5 shrink-0 in-data-[messenger]:size-[20px]" aria-hidden />

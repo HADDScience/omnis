@@ -60,6 +60,8 @@ export const TOOL_POLICY = {
   list_members: R,
   crm_overview: R,
   find_org: R,
+  // CRM 제품 · 재고 — record_sample 의 product_id 를 여기서 고른다
+  list_products: R,
   list_omnis_cards: R,
   get_omnis_card: R,
   list_weekly_reports: R,

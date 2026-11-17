@@ -94,6 +94,7 @@ export const TOOL_LABEL: Record<string, string> = {
   list_members: "구성원 목록",
   crm_overview: "CRM 현황",
   find_org: "거래 기관",
+  list_products: "CRM 제품 목록",
   record_sample: "샘플 전달 기록",
   list_omnis_cards: "지식 카드 목록",
   get_omnis_card: "지식 카드",

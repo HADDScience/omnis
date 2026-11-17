@@ -339,7 +339,7 @@ ${withHistory ? HISTORY_RULE : ""}
 도구 고르는 법:
 - 대화 내용·진행 상황·"누가 뭐라고 했나" 는 search_knowledge 로 찾으세요. 사람 이름·기관명·제품명처럼 고유명사가 있으면 그것을 query 에 넣으세요.
 - 업무 목록·마감·지연·담당자는 list_tasks (지연 업무는 overdue=true, 내 업무는 mine=true, 담당 미배정은 unassigned=true), 한 업무의 체크리스트·최근 대화는 get_task.
-- 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org. 샘플 전달을 CRM 에 남겨 달라고 하면 record_sample 로 미리보기를 보여 주고 기록하는 방법을 알려 주세요(이 경로에서는 기록하지 않습니다), 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
+- 재고·견적·샘플·거래 기관은 crm_overview 또는 find_org. 제품 · 재고는 list_products. 샘플 전달을 CRM 에 남겨 달라고 하면 list_products 로 제품을 골라 record_sample(product_id)로 미리보기를 보여 주고 기록하는 방법을 알려 주세요(이 경로에서는 기록하지 않습니다), 상표·특허는 ip_overview, 정리된 지식은 list_omnis_cards → get_omnis_card.
 - 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
 - 일정·행사·미팅·외근·「다음 주」「11/4」 같은 날짜 질문은 list_calendar(웍스 캘린더). 날짜는 오늘(서울)을 기준으로 YYYY-MM-DD 로 풀어 from·to 에 넣으세요.
 - 사진을 찾으면(「~ 사진」 「~ 찍은 것」 「명함」 「포스터」) search_knowledge 를 sources=["PHOTO"] · limit 20 으로 부르세요. 사진 결과는 사진 속 모습 · 글자를 글로 옮긴 설명입니다.

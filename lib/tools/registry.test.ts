@@ -92,9 +92,12 @@ const BEFORE_ROUTE_READ = [
   "list_market_companies", "get_context", "list_calendar",
 ]
 
-test("재설계 전과 노출이 같다 — 앱 AI 읽기 · 쓰기, 질문 경로 읽기, MCP 전용", () => {
-  assert.deepEqual(sorted(AGENT_READ_TOOLS), sorted(BEFORE_AGENT_READ))
+// 재설계 뒤 새로 더한 읽기 도구 — 세 경로 모두에 연다
+const ADDED_READ = ["list_products"]
+
+test("재설계 전과 노출이 같다(새 도구만 더함) — 앱 AI 읽기 · 쓰기, 질문 경로 읽기, MCP 전용", () => {
+  assert.deepEqual(sorted(AGENT_READ_TOOLS), sorted([...BEFORE_AGENT_READ, ...ADDED_READ]))
   assert.deepEqual(sorted(AGENT_WRITE_TOOLS), sorted(BEFORE_AGENT_WRITE))
-  assert.deepEqual(sorted(ROUTE_READ_TOOLS), sorted(BEFORE_ROUTE_READ))
+  assert.deepEqual(sorted(ROUTE_READ_TOOLS), sorted([...BEFORE_ROUTE_READ, ...ADDED_READ]))
   assert.deepEqual(sorted(Object.keys(AGENT_EXCLUDED)), ["ask_omnis", "create_upload_link"])
 })
