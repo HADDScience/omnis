@@ -63,6 +63,16 @@ export interface ProductLike {
   spec: string | null
 }
 
+/**
+ * 제품 이름의 여러 부름 — 「애드젤 (ADD Gel)」 이면 전체 · 「애드젤」 · 「ADD Gel」.
+ * 사람은 괄호 별칭 없이 한쪽 이름만 말한다.
+ */
+function productNames(name: string): string[] {
+  const aliases = [...name.matchAll(/[(（]([^()（）]+)[)）]/g)].map((m) => m[1])
+  const base = name.replace(/[(（][^()（）]*[)）]/g, " ")
+  return [...new Set([name, base, ...aliases].map(normalizeOrgName).filter(Boolean))]
+}
+
 /** 제품 고르기 — 「이름 규격」 이 같으면 그것, 이름만 맞으면 규격이 하나일 때만 */
 export function pickProduct<T extends ProductLike>(query: string, products: T[]):
   | { kind: "one"; product: T }
@@ -70,11 +80,12 @@ export function pickProduct<T extends ProductLike>(query: string, products: T[])
   | { kind: "none" } {
   const q = normalizeOrgName(query)
   if (!q) return { kind: "none" }
-  const full = products.filter((p) => normalizeOrgName(`${p.name}${p.spec ?? ""}`) === q)
+  const spec = (p: T) => normalizeOrgName(p.spec ?? "")
+  const full = products.filter((p) => productNames(p.name).some((n) => n + spec(p) === q))
   if (full.length === 1) return { kind: "one", product: full[0] }
-  const byName = products.filter((p) => normalizeOrgName(p.name) === q)
+  const byName = products.filter((p) => productNames(p.name).includes(q))
   if (byName.length === 1) return { kind: "one", product: byName[0] }
-  const loose = byName.length ? byName : products.filter((p) => normalizeOrgName(`${p.name}${p.spec ?? ""}`).includes(q))
+  const loose = byName.length ? byName : products.filter((p) => productNames(p.name).some((n) => (n + spec(p)).includes(q)))
   if (loose.length === 1) return { kind: "one", product: loose[0] }
   if (loose.length > 1) return { kind: "many", candidates: loose.slice(0, 8) }
   return { kind: "none" }
