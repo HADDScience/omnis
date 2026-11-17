@@ -11,7 +11,12 @@ export default defineConfig({
   fullyParallel: false,
   retries: IS_REMOTE ? 2 : 1,
   workers: 1,
-  reporter: [["html", { open: "never" }], ["list"]],
+  // CI 는 조각마다 JSON 보고서를 남기고 e2e job 이 모아 판정한다(scripts/e2e-gate.mjs)
+  reporter: [
+    ["html", { open: "never" }],
+    ["list"],
+    ...(process.env.E2E_JSON_REPORT ? [["json", { outputFile: process.env.E2E_JSON_REPORT }] as const] : []),
+  ],
   use: {
     baseURL: BASE_URL,
     headless: true,
