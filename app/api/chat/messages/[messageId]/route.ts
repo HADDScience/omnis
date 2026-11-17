@@ -12,6 +12,7 @@ import { replaceMentions } from "@/lib/mentions"
 import { syncEmbeddingsSafe, deleteEmbeddingsSafe } from "@/lib/embeddings"
 import { CHAT_DELETED_TEXT } from "@/lib/constants"
 import { roomAccess } from "@/lib/chat-rooms"
+import { messageChangeRefusal } from "@/lib/message-edit"
 
 export const maxDuration = 60
 
@@ -21,12 +22,12 @@ interface Props {
 
 const TARGET = {
   id: true, authorId: true, roomId: true, taskId: true,
-  kind: true, content: true, deletedAt: true, createdAt: true,
+  kind: true, content: true, deletedAt: true, createdAt: true, sourceId: true,
 } as const
 
 type Target = {
   id: string; authorId: string; roomId: string; taskId: string | null
-  kind: string; content: string; deletedAt: Date | null; createdAt: Date
+  kind: string; content: string; deletedAt: Date | null; createdAt: Date; sourceId: string | null
 }
 
 /** 사람끼리 방(1:1 · 단톡)의 글인가 */
@@ -39,15 +40,9 @@ async function roomAccessOk(roomId: string, userId: string): Promise<boolean> {
   return (await roomAccess(roomId, userId)) === "ok"
 }
 
-/** 손댈 수 있는 글인지. 막을 이유가 있으면 그 문장을 돌려준다. */
-function refusal(message: Target, userId: string): string | null {
-  if (message.authorId !== userId) return "내가 쓴 글만 고치거나 지울 수 있습니다"
-  if (message.kind !== "NORMAL") return "옴니스가 남긴 글은 고치거나 지울 수 없습니다"
-  if (message.content.startsWith("__TASK_CREATED__:")) return "업무 카드는 고치거나 지울 수 없습니다"
-  if (message.content.startsWith("🤖")) return "옴니스가 남긴 글은 고치거나 지울 수 없습니다"
-  if (message.deletedAt) return "이미 지운 글입니다"
-  return null
-}
+/** 고치기 전 본문 한 줄(관리자 감사). 본문 바꾸기와 한 트랜잭션에 넣는다 — 둘이 함께 되거나 함께 안 된다 */
+const revisionOf = (message: Target, userId: string) =>
+  prisma.chatMessageRevision.create({ data: { messageId: message.id, content: message.content, editedById: userId } })
 
 /**
  * 업무에 붙은 글이 바뀌었으니 카드를 다시 만든다.
@@ -104,14 +99,16 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   const message = await prisma.chatMessage.findUnique({ where: { id: messageId }, select: TARGET })
   if (!message) return NextResponse.json({ error: "없는 메시지입니다" }, { status: 404 })
 
-  const refused = refusal(message, session.user.id)
+  const refused = messageChangeRefusal(message, session.user.id, "edit")
   if (refused) return NextResponse.json({ error: refused }, { status: 403 })
+  // 같은 본문이면 고친 것이 아니다 — 「수정됨」 · 이력 · 재구성을 남기지 않는다
+  if (content === message.content) return NextResponse.json({ error: "바뀐 내용이 없습니다" }, { status: 400 })
 
   // 사람끼리 방(1:1 · 단톡) — 지금 참여자일 때만 고친다. 업무 연결 · 재구성 · 색인 · 멘션 표를 건드리지 않는다(방 밖으로 새는 길)
   const people = await peopleRoomOf(message.roomId)
   if (people) {
     if (!(await roomAccessOk(message.roomId, session.user.id))) return NextResponse.json({ error: "방을 찾을 수 없습니다" }, { status: 404 })
-    const edited = await prisma.chatMessage.update({
+    const [, edited] = await prisma.$transaction([revisionOf(message, session.user.id), prisma.chatMessage.update({
       where: { id: messageId },
       // changedAt — 남의 화면 폴링이 이 글을 다시 받아 간다
       data: { content, editedAt: new Date(), changedAt: new Date() },
@@ -121,7 +118,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
         files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
         replyTo: { select: { id: true, content: true, deletedAt: true, _count: { select: { files: true } }, author: { select: { name: true } } } },
       },
-    })
+    })])
     return NextResponse.json({
       ...edited,
       replyTo: edited.replyTo
@@ -139,7 +136,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   const { taskId: nextTaskId, restText } = await resolveTask(content, message.taskId)
   const movedFrom = message.taskId && nextTaskId !== message.taskId ? message.taskId : null
 
-  const updated = await prisma.chatMessage.update({
+  const [, updated] = await prisma.$transaction([revisionOf(message, session.user.id), prisma.chatMessage.update({
     where: { id: messageId },
     data: { content, editedAt: new Date(), changedAt: new Date(), taskId: nextTaskId },
     include: {
@@ -148,7 +145,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
       files: { select: { id: true, name: true, path: true, size: true, mimeType: true } },
       replyTo: { select: { id: true, content: true, deletedAt: true, _count: { select: { files: true } }, author: { select: { name: true } } } },
     },
-  })
+  })])
 
   // 멘션은 더하지 않고 갈아끼운다 — 옛 멘션이 남으면 스레드 라우팅이 옛 업무를 가리킨다
   void replaceMentions(messageId, content).catch(() => {})
@@ -183,7 +180,7 @@ export async function DELETE(_req: NextRequest, { params }: Props) {
   const message = await prisma.chatMessage.findUnique({ where: { id: messageId }, select: TARGET })
   if (!message) return NextResponse.json({ error: "없는 메시지입니다" }, { status: 404 })
 
-  const refused = refusal(message, session.user.id)
+  const refused = messageChangeRefusal(message, session.user.id, "delete")
   if (refused) return NextResponse.json({ error: refused }, { status: 403 })
   if ((await peopleRoomOf(message.roomId)) && !(await roomAccessOk(message.roomId, session.user.id))) {
     return NextResponse.json({ error: "방을 찾을 수 없습니다" }, { status: 404 })

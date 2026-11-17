@@ -21,6 +21,7 @@ import { Spinner } from "@/components/ui/spinner"
 import {
   AuthorAvatar,
   DayDivider,
+  EditedMark,
   EventRow,
   MessageTime,
   eventSummary,
@@ -28,6 +29,8 @@ import {
   type ChatEventKind,
 } from "@/components/chat/message-parts"
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
+import { useLongPressMenu } from "@/components/chat/use-long-press"
+import { isKakaoMessage } from "@/lib/message-edit"
 import { apiUrl } from "@/lib/base-path"
 import { writeSnapshot } from "@/lib/room-snapshot"
 import { anchoredMessageId } from "@/lib/answer-actions"
@@ -205,6 +208,8 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey, onChanged
   // 답장 · 고치기 · 지우기 (2026-09-16). 고치는 중인 글은 한 번에 하나다.
   const [replyTarget, setReplyTarget] = useState<{ id: string; authorName: string; content: string } | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // 폰 — 줄을 길게 누르면 그 줄의 메뉴(답장 · 수정 · 삭제)를 붙잡아 연다
+  const longPress = useLongPressMenu()
   const [editDraft, setEditDraft] = useState("")
 
   /**
@@ -299,6 +304,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey, onChanged
                     key={row.key}
                     data-message-id={m.id}
                     data-arrived={arrivedId === m.id ? "" : undefined}
+                    {...longPress.bind(m.id, !m.deletedAt && editingId !== m.id)}
                     className={`group/msg relative -mx-3 flex gap-2.5 px-3 transition-colors duration-700 in-data-[messenger]:gap-3 hover:bg-muted/40 data-[arrived]:bg-primary/10 ${row.groupStart ? "mt-2.5 pt-1 in-data-[messenger]:mt-4" : ""} ${row.groupEnd ? "pb-1" : ""} ${
                       new Date(m.createdAt).getTime() > mountedAt ? MESSAGE_ENTER : ""
                     }`}
@@ -320,9 +326,7 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey, onChanged
                         <div className="flex items-baseline gap-1.5 in-data-[messenger]:gap-2">
                           <span className="text-[13px] font-semibold in-data-[messenger]:text-[15.5px]">{m.author.name}</span>
                           <MessageTime iso={m.createdAt} />
-                          {m.editedAt && !m.deletedAt && (
-                            <span className="text-[10px] text-muted-foreground in-data-[messenger]:text-[12px]">수정됨</span>
-                          )}
+                          {m.editedAt && !m.deletedAt && <EditedMark createdAt={m.createdAt} editedAt={m.editedAt} />}
                         </div>
                       )}
                       {m.replyTo && (
@@ -376,37 +380,50 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey, onChanged
                     </div>
                     {/* 줄 오른쪽에 붙는다 — 본문 폭을 줄이지 않게 hover 에만 보인다 */}
                     {!m.deletedAt && editingId !== m.id && (
-                      <div className="absolute right-2 top-0 flex gap-0.5 rounded-md border bg-background px-0.5 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
+                      // 길게 눌러 연 메뉴는 붙잡아 둔다(글래스 판) — 밖을 누르거나 하나를 고르면 닫힌다
+                      <div
+                        data-message-actions={m.id}
+                        data-open={longPress.menuId === m.id ? "" : undefined}
+                        className={`absolute right-2 top-0 flex gap-0.5 rounded-md px-0.5 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 ${
+                          longPress.menuId === m.id ? "glass opacity-100" : "border bg-background opacity-0 shadow-sm"
+                        }`}
+                      >
                         <button
                           type="button"
                           aria-label="답장"
                           title="답장"
-                          onClick={() =>
+                          onClick={() => {
+                            longPress.closeMenu()
                             setReplyTarget({ id: m.id, authorName: m.author.name, content: m.content.slice(0, 80) })
-                          }
+                          }}
                           className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
                         >
                           <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
                         </button>
                         {currentUserId === m.author.id && (
                           <>
-                            <button
-                              type="button"
-                              aria-label="수정"
-                              title="수정"
-                              onClick={() => {
-                                setEditDraft(m.content)
-                                setEditingId(m.id)
-                              }}
-                              className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
-                            >
-                              <HugeiconsIcon icon={PencilEdit01Icon} size={13} />
-                            </button>
+                            {/* 카톡에서 옮겨 온 글은 카톡 원문과 같아야 해 고치지 않는다(lib/message-edit.ts) */}
+                            {!isKakaoMessage(m) && (
+                              <button
+                                type="button"
+                                aria-label="수정"
+                                title="수정"
+                                onClick={() => {
+                                  longPress.closeMenu()
+                                  setEditDraft(m.content)
+                                  setEditingId(m.id)
+                                }}
+                                className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
+                              >
+                                <HugeiconsIcon icon={PencilEdit01Icon} size={13} />
+                              </button>
+                            )}
                             <button
                               type="button"
                               aria-label="삭제"
                               title="삭제"
                               onClick={() => {
+                                longPress.closeMenu()
                                 if (!window.confirm("이 메시지를 지울까요? 자리는 남고 내용만 사라집니다.")) return
                                 void changeMessage(m.id, { method: "DELETE" })
                               }}

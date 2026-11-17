@@ -19,7 +19,9 @@ import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS } from "@/lib/c
 import { layoutMessages, tidyBody } from "@/lib/chat-layout"
 import { arrivals, followOnAppend, unseenLabel } from "@/lib/chat-follow"
 import { isStuckToBottom } from "@/lib/agent/scroll-follow"
-import { AuthorAvatar, DayDivider, MessageTime } from "@/components/chat/message-parts"
+import { AuthorAvatar, DayDivider, EditedMark, MessageTime } from "@/components/chat/message-parts"
+import { useLongPressMenu } from "@/components/chat/use-long-press"
+import { isKakaoMessage } from "@/lib/message-edit"
 import { SystemPill } from "@/components/chat/system-pill"
 import { OmnisInlineIcon } from "@/components/chat/robot-text"
 import { stripRobotMark } from "@/lib/robot-mark"
@@ -169,6 +171,8 @@ export function MessageList({
   const scrollRef = useRef<HTMLDivElement>(null)
   // 고치는 중인 글은 한 번에 하나다 — 여러 줄을 동시에 열면 무엇을 저장하는지 흐려진다
   const [editingId, setEditingId] = useState<string | null>(null)
+  // 폰 — 글을 길게 누르면 그 글의 메뉴(답장 · 수정 · 삭제)를 붙잡아 연다
+  const longPress = useLongPressMenu()
   const [editDraft, setEditDraft] = useState("")
   const [busyId, setBusyId] = useState<string | null>(null)
   // 이 시각 뒤에 생긴 메시지만 떠오르게 한다 — 처음 불러온 목록 · 이전 메시지는 가만히 둔다
@@ -489,6 +493,7 @@ export function MessageList({
                   row.groupStart ? "mt-3 in-data-[messenger]:mt-5 max-md:in-data-[messenger]:mt-[12px]" : "mt-0.5 in-data-[messenger]:mt-1 max-md:in-data-[messenger]:mt-[6px]"
                 } ${fresh ? MESSAGE_ENTER : ""} ${selectionMode ? "cursor-pointer" : ""} ${isSelected ? "bg-primary/5 ring-1 ring-primary/20 p-1" : ""} ${flashing ? "bg-amber-200/50 ring-2 ring-amber-400/60 dark:bg-amber-400/15" : ""}`}
                 onClick={selectionMode ? () => onToggleSelect?.(msg.id) : undefined}
+                {...longPress.bind(msg.id, !selectionMode && !pending && !msg.deletedAt && editingId !== msg.id)}
               >
                 {selectionMode && (
                   <div className="flex items-start pt-1 shrink-0">
@@ -602,31 +607,45 @@ export function MessageList({
                     {/* 폰 메신저는 시각을 말풍선 옆 아래에 둔다 */}
                     {row.groupEnd && !pending && (
                       <span data-bubble-time className="hidden shrink-0 flex-col max-md:in-data-[messenger]:flex max-md:in-data-[messenger]:items-start">
-                        {msg.editedAt && !msg.deletedAt && <span className="text-[10.5px] leading-[13px] text-muted-foreground">수정됨</span>}
+                        {msg.editedAt && !msg.deletedAt && <EditedMark createdAt={msg.createdAt} editedAt={msg.editedAt} className="text-[10.5px]! leading-[13px]" />}
                         <MessageTime iso={msg.createdAt} className="max-md:in-data-[messenger]:text-[10.5px] max-md:in-data-[messenger]:leading-[13px]" />
                       </span>
                     )}
                     {/* 말풍선에 겹치지 않게 옆에 둔다. 손이 닿는 화면에서는 늘 보인다 */}
                     {!selectionMode && !pending && !msg.deletedAt && editingId !== msg.id && (
                       // 폰 메신저에서는 자리를 차지하면 말풍선 폭이 줄어 위에 겹쳐 띄운다. 안 보일 때는 눌리지 않게 한다
-                      <div className={`flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 max-md:in-data-[messenger]:pointer-events-none max-md:in-data-[messenger]:absolute max-md:in-data-[messenger]:bottom-full max-md:in-data-[messenger]:z-10 max-md:in-data-[messenger]:rounded-lg max-md:in-data-[messenger]:bg-background max-md:in-data-[messenger]:shadow-sm max-md:in-data-[messenger]:group-hover/msg:pointer-events-auto max-md:in-data-[messenger]:focus-within:pointer-events-auto ${mine ? "max-md:in-data-[messenger]:right-0" : "max-md:in-data-[messenger]:left-0"}`}>
+                      // 길게 눌러 연 메뉴는 붙잡아 둔다(글래스 판) — 밖을 누르거나 하나를 고르면 닫힌다
+                      <div
+                        data-message-actions={msg.id}
+                        data-open={longPress.menuId === msg.id ? "" : undefined}
+                        className={`flex shrink-0 gap-0.5 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 max-md:in-data-[messenger]:absolute max-md:in-data-[messenger]:bottom-full max-md:in-data-[messenger]:z-10 max-md:in-data-[messenger]:rounded-lg max-md:in-data-[messenger]:group-hover/msg:pointer-events-auto max-md:in-data-[messenger]:focus-within:pointer-events-auto ${
+                          longPress.menuId === msg.id
+                            ? "glass rounded-lg opacity-100"
+                            : "opacity-0 max-md:in-data-[messenger]:pointer-events-none max-md:in-data-[messenger]:bg-background max-md:in-data-[messenger]:shadow-sm"
+                        } ${mine ? "max-md:in-data-[messenger]:right-0" : "max-md:in-data-[messenger]:left-0"}`}
+                      >
                         {onReply && (
                           <button
                             type="button"
                             aria-label="답장"
                             title="답장"
-                            onClick={reply}
+                            onClick={() => {
+                              longPress.closeMenu()
+                              reply()
+                            }}
                             className="rounded p-1 text-muted-foreground in-data-[messenger]:p-2 in-data-[messenger]:[&_svg]:size-[18px] hover:bg-muted"
                           >
                             <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
                           </button>
                         )}
-                        {isMe && onEdit && (
+                        {/* 카톡에서 옮겨 온 글은 카톡 원문과 같아야 해 고치지 않는다(lib/message-edit.ts) */}
+                        {isMe && onEdit && !isKakaoMessage(msg) && (
                           <button
                             type="button"
                             aria-label="수정"
                             title="수정"
                             onClick={() => {
+                              longPress.closeMenu()
                               setEditDraft(msg.content)
                               setEditingId(msg.id)
                             }}
@@ -642,6 +661,7 @@ export function MessageList({
                             title="삭제"
                             disabled={busyId === msg.id}
                             onClick={() => {
+                              longPress.closeMenu()
                               if (!window.confirm("이 메시지를 지울까요? 자리는 남고 내용만 사라집니다.")) return
                               setBusyId(msg.id)
                               void onDelete(msg.id).finally(() => setBusyId(null))
@@ -689,9 +709,7 @@ export function MessageList({
                           <span className="flex items-center gap-1 max-md:in-data-[messenger]:hidden">
                             <MessageTime iso={msg.createdAt} className="text-[10.5px]" />
                             {/* 고친 글임을 알린다 — 나중에 읽는 사람이 원문과 다름을 알아야 한다 */}
-                            {msg.editedAt && !msg.deletedAt && (
-                              <span className="text-[10px] text-muted-foreground in-data-[messenger]:text-[12px]">수정됨</span>
-                            )}
+                            {msg.editedAt && !msg.deletedAt && <EditedMark createdAt={msg.createdAt} editedAt={msg.editedAt} />}
                           </span>
                         ))}
                       {msg.task && (row.groupEnd || msg.nextTaskId !== msg.task.id) && (
