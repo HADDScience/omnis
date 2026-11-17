@@ -4,7 +4,7 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { normalizeOrgName, parseSampleArgs, pickOrg, pickProduct, rankOrgs, sampleRequestText } from "./crm-sample-rules"
+import { normalizeOrgName, parseSampleArgs, pickOrg, pickProduct, productNameVariants, rankOrgs, sampleRequestText } from "./crm-sample-rules"
 
 const ORGS = [
   { id: "1", name: "가나바이오 주식회사", code: "ORG001" },
@@ -125,4 +125,23 @@ test("요청사항 — 준 말이 먼저, 없으면 제품 · 수량", () => {
   assert.equal(sampleRequestText({ content: "카탈로그 함께" }, PRODUCTS[0], 2), "카탈로그 함께")
   assert.equal(sampleRequestText({ content: null }, PRODUCTS[0], 2), "시험젤 1ml 2개 샘플 전달")
   assert.equal(sampleRequestText({ content: null }, null, null), "샘플 전달")
+})
+
+test("괄호 별칭이 붙은 제품 이름 — 한글만 · 별칭만 · 전부 어느 것에 규격을 붙여도 찾는다", () => {
+  const P = [
+    { name: "시험젤 (Test Gel)", spec: "2ml" },
+    { name: "시험젤 (Test Gel)", spec: "5ml" },
+    { name: "다른젤 (Other Gel)", spec: "2ml" },
+  ]
+  assert.deepEqual(productNameVariants("시험젤 (Test Gel)"), ["시험젤 (Test Gel)", "시험젤", "Test Gel"])
+  for (const q of ["시험젤 2ml", "Test Gel 2ml", "시험젤 (Test Gel) 2ml", "testgel2ml"]) {
+    const r = pickProduct(q, P)
+    assert.equal(r.kind, "one", q)
+    assert.equal(r.kind === "one" && r.product.spec, "2ml", q)
+  }
+  // 규격 없이 이름만이면 규격이 갈려 후보를 돌려준다
+  const many = pickProduct("시험젤", P)
+  assert.equal(many.kind, "many")
+  assert.equal(many.kind === "many" && many.candidates.length, 2)
+  assert.equal(pickProduct("없는젤 2ml", P).kind, "none")
 })

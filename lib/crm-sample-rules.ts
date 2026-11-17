@@ -73,6 +73,16 @@ function productNames(name: string): string[] {
   return [...new Set([name, base, ...aliases].map(normalizeOrgName).filter(Boolean))]
 }
 
+/**
+ * 제품 이름의 다른 이름들(정규화 전) — 「한글 (English)」 이면 전체 · 한글 · English. 목록 줄(list_products)의 별칭 칸이 쓴다.
+ * 고르기는 위 productNames(핫픽스 #237)가 한다.
+ */
+export function productNameVariants(name: string): string[] {
+  const outside = name.replace(/\s*[(（][^)）]*[)）]\s*/g, " ").trim()
+  const inside = [...name.matchAll(/[(（]([^)）]+)[)）]/g)].map((m) => m[1].trim())
+  return [...new Set([name, outside, ...inside].filter(Boolean))]
+}
+
 /** 제품 고르기 — 「이름 규격」 이 같으면 그것, 이름만 맞으면 규격이 하나일 때만 */
 export function pickProduct<T extends ProductLike>(query: string, products: T[]):
   | { kind: "one"; product: T }
