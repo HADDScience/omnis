@@ -674,6 +674,10 @@ export function MessageList({
                       </div>
                     )}
                   </div>
+                  {/* 시각은 묶음 끝 줄에만 있다 — 묶음 중간에서 고친 글도 고쳤음을 알 수 있게 따로 단다 */}
+                  {!row.groupEnd && !pending && msg.editedAt && !msg.deletedAt && (
+                    <EditedMark createdAt={msg.createdAt} editedAt={msg.editedAt} className="px-0.5" />
+                  )}
                   {(row.groupEnd || (msg.task && msg.nextTaskId !== msg.task.id)) && (
                     <div className={`flex items-center gap-2 px-0.5 ${!pending && !msg.task ? "max-md:in-data-[messenger]:hidden" : ""}`}>
                       {row.groupEnd &&

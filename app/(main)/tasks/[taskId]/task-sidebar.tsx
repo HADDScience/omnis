@@ -376,6 +376,8 @@ export function TaskThread({ taskId, messages, currentUserId, roomKey, onChanged
                         </div>
                       )}
                       {!m.deletedAt && m.files && m.files.length > 0 && <MessageFiles files={m.files} />}
+                      {/* 「수정됨」 은 묶음 첫 줄 머리에만 있다 — 묶음 안에서 고친 줄에도 단다 */}
+                      {!row.groupStart && m.editedAt && !m.deletedAt && <EditedMark createdAt={m.createdAt} editedAt={m.editedAt} />}
                       {missing && <MissingAttachmentTile attachment={missing} />}
                     </div>
                     {/* 줄 오른쪽에 붙는다 — 본문 폭을 줄이지 않게 hover 에만 보인다 */}
