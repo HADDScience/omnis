@@ -66,6 +66,28 @@ test("제품은 규격까지 맞으면 고르고, 규격이 갈리면 후보를 
   assert.equal(pickProduct("없는젤", PRODUCTS).kind, "none")
 })
 
+const ALIASED = [
+  { id: "a1", name: "가나젤 (GANA Gel)", spec: "2ml" },
+  { id: "a2", name: "가나젤 (GANA Gel)", spec: "10ml" },
+  { id: "b1", name: "다라젤 (DARA Gel)", spec: "3ml" },
+]
+
+test("괄호 영문 별칭이 붙은 제품도 한글 · 영문 · 전체 이름으로 고른다", () => {
+  for (const q of ["가나젤 2ml", "GANA Gel 2ml", "gana gel 2ml", "가나젤 (GANA Gel) 2ml"]) {
+    const r = pickProduct(q, ALIASED)
+    assert.equal(r.kind === "one" && r.product.id, "a1", q)
+  }
+  const b = pickProduct("다라젤 3ml", ALIASED)
+  assert.equal(b.kind === "one" && b.product.id, "b1")
+  const bName = pickProduct("다라젤", ALIASED)
+  assert.equal(bName.kind === "one" && bName.product.id, "b1")
+  // 규격이 갈리면 지금처럼 후보를 돌려준다
+  const many = pickProduct("GANA Gel", ALIASED)
+  assert.equal(many.kind, "many")
+  assert.equal(many.kind === "many" && many.candidates.length, 2)
+  assert.equal(pickProduct("가나젤 5ml", ALIASED).kind, "none")
+})
+
 const NOW = new Date("2026-11-17T03:00:00Z") // 서울 2026-11-17 12:00
 
 test("입력 검사 — 받는 것", () => {
