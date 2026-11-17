@@ -53,6 +53,18 @@ test("기능 요청 도구는 쓰기(확인 카드)다", async () => {
   assert.deepEqual((rf!.schema as { required: string[] }).required, ["title", "detail"])
 })
 
+test("샘플 전달 기록은 확인 카드(쓰기)로 열리고, 에이전트에는 confirm 칸이 없다 — 카드가 그 자리다", async () => {
+  assert.equal(isWriteTool("record_sample"), true)
+  const specs = await agentToolSpecs()
+  const rs = specs.find((s) => s.name === "record_sample")!
+  assert.equal(rs.risk, "write")
+  const props = (rs.schema as { properties: Record<string, unknown> }).properties
+  assert.equal("confirm" in props, false)
+  assert.ok("create_org" in props)
+  const mcp = TOOLS.find((t) => t.name === "record_sample")!.inputSchema as { properties: Record<string, unknown> }
+  assert.ok("confirm" in mcp.properties, "MCP 는 confirm 으로 확인한다")
+})
+
 test("도구 이름이 겹치지 않는다", async () => {
   const names = (await agentToolSpecs()).map((s) => s.name)
   assert.equal(new Set(names).size, names.length)

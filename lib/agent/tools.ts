@@ -55,6 +55,8 @@ export const AGENT_WRITE_TOOLS = [
   "write_weekly_report",
   // MCP 와 맞춤(2026-11-10) — 되돌리기 어려운 것이라 카드에 따라오는 일을 적는다
   "respond_notification", "delete_company_record", "decide_record_proposal", "upload_file",
+  // CRM 샘플 전달(#231) — 기관이 없으면 만들지 먼저 묻고, 재고까지 빠진다
+  "record_sample",
   // 지식재산권 쓰기 — read_guide 확인 코드 규칙은 runTool(lib/ip-mcp guideGate)이 그대로 지킨다
   "add_progress", "correct_ip", "create_ip", "add_ip_image",
 ] as const
@@ -78,6 +80,8 @@ export const isWriteTool = (name: string): name is AgentWriteTool => (AGENT_WRIT
 const DROP_PROPS: Record<string, string[]> = {
   // draft(Gemini 초안)는 모델이 본문을 직접 쓰니 필요 없다. 제출(submit)은 확인 카드에 「제출」 로 보인다
   write_weekly_report: ["draft"],
+  // MCP 는 confirm 없이 부르면 미리보기만 준다. 여기서는 확인 카드가 그 자리라 executeWrite 가 붙인다
+  record_sample: ["confirm"],
 }
 
 /** 에이전트에서 설명을 바꾸는 도구 — MCP 설명이 에이전트에서 열지 않은 인자를 말할 때 */
@@ -506,6 +510,22 @@ async function buildMorePreview(name: string, args: Record<string, unknown>, ctx
         ...(!s(args.name) ? { problem: "파일 이름이 없습니다" } : hasText === (typeof args.content_base64 === "string") ? { problem: "content 와 content_base64 중 하나만 주세요" } : {}),
       }
     }
+    case "record_sample": {
+      const { planSampleDelivery } = await import("@/lib/crm-sample-server")
+      const plan = await planSampleDelivery(args)
+      return {
+        title: plan.newOrgName ? "CRM 샘플 전달 기록 — 새 기관 포함" : "CRM 샘플 전달 기록",
+        target: plan.org?.name ?? plan.newOrgName ?? (s(args.org) || "(기관 없음)"),
+        changes: plan.rows.map((r) => ({ label: r.label, before: null, after: r.value })),
+        risk: [
+          "CRM 샘플요청에 발송완료 한 줄이 생기고 활동 기록에 내 이름으로 남습니다.",
+          plan.product && plan.args?.quantity ? "샘플 출고가 함께 남아 그 제품 재고가 줄어듭니다." : null,
+          plan.newOrgName ? "CRM 기관 목록에 새 기관이 생깁니다 — 이름이 다르게 이미 있으면 견적 · 계산서가 갈리니 확인하세요." : null,
+          "지우려면 CRM 화면에서 직접 지워야 합니다.",
+        ].filter(Boolean).join(" "),
+        ...(plan.problem ? { problem: plan.problem } : {}),
+      }
+    }
     case "add_progress":
       return {
         title: "지식재산권 진행 기록 남기기",
@@ -548,6 +568,7 @@ async function buildMorePreview(name: string, args: Record<string, unknown>, ctx
 /** 확인된 쓰기를 실행한다 — MCP 와 같은 runTool. 확인 여부는 부르는 쪽(steps.runWriteTool)이 이미 확인했다 */
 export async function executeWrite(name: AgentWriteTool, args: Record<string, unknown>, caller: Caller): Promise<{ ok: boolean; text: string }> {
   const { runTool } = await import("@/lib/omnis-mcp")
-  const r = await runTool(name, args, caller)
+  // record_sample 은 confirm 이 있어야 쓴다 — 사용자가 확인 카드를 눌러 여기까지 왔다
+  const r = await runTool(name, name === "record_sample" ? { ...args, confirm: true } : args, caller)
   return "error" in r ? { ok: false, text: r.error } : { ok: true, text: r.text }
 }

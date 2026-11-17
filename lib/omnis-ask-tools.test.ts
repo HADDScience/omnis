@@ -9,7 +9,7 @@ import { OMNIS_TOOLS } from "./omnis-mcp"
 const WRITE_TOOLS = [
   "post_message", "upload_file", "create_upload_link", "respond_notification", "update_task", "update_checklist",
   "create_task", "write_omnis_card", "write_weekly_report", "save_company_record", "delete_company_record",
-  "decide_record_proposal", "ask_omnis",
+  "decide_record_proposal", "ask_omnis", "record_sample",
 ]
 
 test("질문 경로에 쓰기 도구가 없다", () => {
