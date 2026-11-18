@@ -4,8 +4,10 @@ import { prisma } from "@/lib/db"
 import { writeActivity } from "@/lib/api"
 import { normalizeOrgName } from "@/lib/crm-sample-rules"
 import { listProductsWithStock } from "@/lib/crm-sample-server"
-import { createOrg, createProduction, createStockMove, deleteSampleRequest, updateOrg, updateSampleRequest, type OpResult } from "@/lib/crm-ops"
-import { crmPlanText, planCrmWrite, type CrmOp, type CrmPlan, type CrmPort, type CrmSampleView, type CrmWriteToolName } from "@/lib/crm-write-rules"
+import { createOrg, createPayment, createProduction, createQuote, createShipment, createStockMove, deleteQuote, deleteSampleRequest, updateOrg, updateQuote, updateSampleRequest, type OpResult } from "@/lib/crm-ops"
+import { receivableChains } from "@/lib/crm-receivables"
+import { QUOTE_STATUS_LABEL, quoteTotals } from "@/lib/crm"
+import { crmPlanText, planCrmWrite, type CrmOp, type CrmPlan, type CrmPort, type CrmQuoteView, type CrmReceivableView, type CrmSampleView, type CrmWriteToolName } from "@/lib/crm-write-rules"
 
 const kst = (d: Date) => d.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 10)
 
@@ -23,27 +25,90 @@ async function sampleView(ref: string): Promise<CrmSampleView | null> {
   }
 }
 
+const isUuid = (k: string) => /^[0-9a-f-]{36}$/i.test(k)
+const label = (p: { name: string; spec: string | null }) => `${p.name}${p.spec ? ` ${p.spec}` : ""}`
+
+async function quoteView(ref: string): Promise<CrmQuoteView | null> {
+  const key = ref.trim()
+  const q = await prisma.crmQuote.findFirst({
+    where: isUuid(key) ? { id: key } : { code: { equals: key, mode: "insensitive" } },
+    include: {
+      org: { select: { id: true, name: true } },
+      items: { include: { product: { select: { name: true, spec: true } } }, orderBy: { sortOrder: "asc" } },
+      _count: { select: { shipments: true, taxInvoices: true } },
+    },
+  })
+  if (!q) return null
+  return {
+    id: q.id, code: q.code, date: kst(q.quotedAt), org: q.org, status: q.status, note: q.note, discount: q.discountAmount, vatRate: q.vatRate,
+    items: q.items.map((i) => ({ productId: i.productId, label: label(i.product), quantity: i.quantity, unitPrice: i.unitPrice })),
+    shipments: q._count.shipments, taxInvoices: q._count.taxInvoices,
+  }
+}
+
+/** 세금계산서 묶음의 남은 금액 — 화면(미수금)과 같은 receivableChains */
+async function receivableView(ref: string): Promise<CrmReceivableView | null> {
+  const key = ref.trim()
+  const inv = await prisma.taxInvoice.findFirst({
+    where: isUuid(key) ? { id: key } : { approvalNo: key },
+    select: { id: true, direction: true, approvalNo: true, originalApprovalNo: true },
+  })
+  if (!inv) return null
+  const root = inv.originalApprovalNo ?? inv.approvalNo
+  const c = (await receivableChains(inv.direction)).find((x) => x.approvalNo === root || x.invoiceId === inv.id)
+  if (!c) return null
+  return { invoiceId: c.invoiceId, approvalNo: c.approvalNo, direction: inv.direction, who: c.counterName, issuedOn: c.issuedOn, total: c.total, paid: c.paid, remaining: c.remaining }
+}
+
 /** 계획이 읽는 CRM — 운영 DB */
 export const prismaCrmPort: CrmPort = {
   async products() {
     const [rows, extra] = await Promise.all([
       listProductsWithStock(),
-      prisma.crmProduct.findMany({ where: { archived: false }, select: { id: true, isMaterial: true, volumeMl: true, concentrationPct: true } }),
+      prisma.crmProduct.findMany({ where: { archived: false }, select: { id: true, isMaterial: true, volumeMl: true, concentrationPct: true, unitPrice: true } }),
     ])
     const by = new Map(extra.map((e) => [e.id, e]))
     return rows.map((r) => {
       const e = by.get(r.id)
-      return { ...r, isMaterial: e?.isMaterial ?? false, volumeMl: e?.volumeMl ? Number(e.volumeMl) : null, concentrationPct: e?.concentrationPct ? Number(e.concentrationPct) : null }
+      return { ...r, isMaterial: e?.isMaterial ?? false, volumeMl: e?.volumeMl ? Number(e.volumeMl) : null, concentrationPct: e?.concentrationPct ? Number(e.concentrationPct) : null, unitPrice: e?.unitPrice ?? null }
     })
   },
   orgs: () => prisma.crmOrg.findMany({ select: { id: true, code: true, name: true, type: true, address: true, note: true, billingOrgId: true } }),
   sample: sampleView,
+  quote: quoteView,
+  receivable: receivableView,
 }
 
 export const planCrm = (name: CrmWriteToolName, args: Record<string, unknown>) => planCrmWrite(name, args, prismaCrmPort)
 
-async function runOp(op: CrmOp): Promise<OpResult<{ id: string; text: string }>> {
+async function runOp(op: CrmOp, userId: string): Promise<OpResult<{ id: string; text: string }>> {
   switch (op.kind) {
+    case "createQuote": {
+      const r = await createQuote({ ...op.input, quotedAt: `${op.input.quotedAt}T00:00:00Z` })
+      if (!r.ok) return r
+      return { ok: true, value: { id: r.value.id, text: `만들었습니다: 견적 ${r.value.code} · 합계 ${r.value.totals.total.toLocaleString("ko-KR")}원` } }
+    }
+    case "updateQuote": {
+      const actor = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true } })
+      const r = await updateQuote(op.id, op.input, { id: userId, name: actor?.name })
+      if (!r.ok) return r
+      return { ok: true, value: { id: op.id, text: `고쳤습니다: 견적 ${r.value.code}` } }
+    }
+    case "deleteQuote": {
+      const r = await deleteQuote(op.id)
+      if (!r.ok) return r
+      return { ok: true, value: { id: op.id, text: `지웠습니다: 견적 ${r.value.code}` } }
+    }
+    case "shipment": {
+      const r = await createShipment({ ...op.input, shippedAt: `${op.input.shippedAt}T00:00:00Z` })
+      if (!r.ok) return r
+      return { ok: true, value: { id: r.value.id, text: `출고 ${r.value.code} 를 남겼습니다 — 재고에서 뺐습니다.` } }
+    }
+    case "payment": {
+      const r = await createPayment(op.input, userId)
+      if (!r.ok) return r
+      return { ok: true, value: { id: r.value.id, text: `적었습니다${r.value.remaining !== null ? ` — 남은 금액 ${r.value.remaining.toLocaleString("ko-KR")}원` : ""}.` } }
+    }
     case "updateSample": {
       const r = await updateSampleRequest(op.id, op.input)
       if (!r.ok) return r
@@ -95,7 +160,7 @@ export async function runCrmWrite(name: CrmWriteToolName, args: Record<string, u
   if (args.confirm !== true) {
     return { text: `아직 쓰지 않았습니다. 아래 내용을 사용자에게 보여 주고 동의를 받은 뒤 confirm=true 로 다시 부르세요.\n${crmPlanText(plan)}` }
   }
-  const r = await runOp(plan.op)
+  const r = await runOp(plan.op, userId)
   if (!r.ok) return { error: r.error }
   if (plan.done) {
     await writeActivity({
@@ -133,6 +198,57 @@ export async function sampleListText(query?: string, limit = 20): Promise<string
       s.shipments.length ? `출고 ${s.shipments.map((x) => `${x.code} ${x.quantity}개`).join(", ")}` : "출고 없음",
       s.status === "SENT" ? "발송완료" : "미발송",
       s.request ? `요청 ${s.request.slice(0, 60)}` : null,
+    ].filter(Boolean).join(" · ")),
+  ].join("\n")
+}
+
+/** list_quotes — quote_id 를 여기서 고른다 */
+export async function quoteListText(query?: string, limit = 20): Promise<string> {
+  const take = Math.min(Math.max(limit || 20, 1), 50)
+  const rows = await prisma.crmQuote.findMany({
+    orderBy: [{ quotedAt: "desc" }, { createdAt: "desc" }],
+    take: query ? 500 : take,
+    include: {
+      org: { select: { name: true, code: true } },
+      items: { include: { product: { select: { name: true, spec: true } } }, orderBy: { sortOrder: "asc" } },
+      _count: { select: { taxInvoices: true, shipments: true } },
+    },
+  })
+  const q = query ? normalizeOrgName(query) : ""
+  const hit = q
+    ? rows.filter((x) => [x.code, x.org.name, x.org.code, ...x.items.map((i) => `${i.product.name}${i.product.spec ?? ""}`)].some((k) => normalizeOrgName(k).includes(q))).slice(0, take)
+    : rows
+  if (hit.length === 0) return query ? `'${query}' 에 맞는 견적이 없습니다.` : "견적이 없습니다."
+  return [
+    `견적 ${hit.length}건(최근 것부터) — 고치기 · 지우기는 quote_id 로(update_quote · delete_quote).`,
+    ...hit.map((x) => [
+      `- quote_id=${x.id}`, x.code, kst(x.quotedAt), `${x.org.name}(${x.org.code})`,
+      x.items.map((i) => `${label(i.product)} ${i.quantity}개 × ${i.unitPrice.toLocaleString("ko-KR")}원`).join(", "),
+      `합계 ${quoteTotals(x.items, x.discountAmount, x.vatRate).total.toLocaleString("ko-KR")}원`,
+      QUOTE_STATUS_LABEL[x.status],
+      x._count.taxInvoices ? `세금계산서 ${x._count.taxInvoices}장` : "세금계산서 없음",
+      x._count.shipments ? `출고 ${x._count.shipments}건` : null,
+    ].filter(Boolean).join(" · ")),
+  ].join("\n")
+}
+
+/** list_receivables — invoice_id 를 여기서 고른다(화면 미수금과 같은 receivableChains) */
+export async function receivableListText(args: Record<string, unknown>): Promise<string> {
+  const direction = args.direction === "PURCHASE" ? "PURCHASE" : "SALE"
+  const q = typeof args.query === "string" && args.query.trim() ? normalizeOrgName(args.query) : ""
+  const all = await receivableChains(direction)
+  const rows = all
+    .filter((c) => args.include_paid === true || c.remaining > 0)
+    .filter((c) => !q || [c.counterName, c.approvalNo, c.quote?.code ?? ""].some((k) => normalizeOrgName(k).includes(q)))
+    .slice(0, 50)
+  const word = direction === "SALE" ? "받은" : "준"
+  if (rows.length === 0) return direction === "SALE" ? "받을 돈이 남은 세금계산서가 없습니다." : "줄 돈이 남은 세금계산서가 없습니다."
+  return [
+    `세금계산서 ${rows.length}장(${direction === "SALE" ? "매출 — 받을 돈" : "매입 — 줄 돈"}) — 입금은 invoice_id 로(record_payment).`,
+    ...rows.map((c) => [
+      `- invoice_id=${c.invoiceId}`, c.counterName, `${c.issuedOn} 발행`, `합계 ${c.total.toLocaleString("ko-KR")}원`,
+      `${word} ${c.paid.toLocaleString("ko-KR")}원`, `남은 ${c.remaining.toLocaleString("ko-KR")}원`,
+      c.quote ? `견적 ${c.quote.code}` : null, `승인번호 ${c.approvalNo}`,
     ].filter(Boolean).join(" · ")),
   ].join("\n")
 }

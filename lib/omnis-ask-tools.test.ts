@@ -12,6 +12,7 @@ const WRITE_TOOLS = [
   "decide_record_proposal", "ask_omnis", "record_sample",
   // CRM 고치기 — 질문 경로에는 미리보기로만(ROUTE_PREVIEW_TOOLS) 열린다
   "update_sample", "delete_sample", "create_org", "update_org", "record_stock", "record_production",
+  "create_quote", "update_quote", "delete_quote", "record_shipment", "record_payment",
 ]
 
 test("질문 경로에 쓰기 도구가 없다", () => {

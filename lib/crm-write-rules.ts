@@ -6,7 +6,7 @@
 //   앱 AI    — 이 계획이 확인 카드(바뀌기 전 → 뒤, 재고 변화, 0 이하 경고)가 되고, 확인하면 confirm=true 로 실행한다
 //   질문 경로 — 미리보기만(confirm 칸이 없다)
 // 대상은 ID(또는 코드)로 고른다 — list_samples · find_org · list_products 로 찾는다. 이름이 여럿 걸리면 후보를 돌려주고 묻게 한다.
-import { gramsForQuantity, ORG_TYPE_LABEL } from "@/lib/crm"
+import { gramsForQuantity, ORG_TYPE_LABEL, QUOTE_STATUS_LABEL, quoteTotals, SHIPMENT_KIND_LABEL, SHIPMENT_STATUS_LABEL } from "@/lib/crm"
 import {
   kstToday, normalizeOrgName, pickOrg, productLabel, rankOrgs, resolveProduct, stockText, stockWarning,
   type ProductRow,
@@ -143,10 +143,136 @@ export const CRM_WRITE_TOOLS = [
       required: ["product_id", "material_id", "quantity"],
     },
   },
+  // ─── 견적 · 출하 · 입금 ───
+  {
+    name: "list_quotes",
+    description:
+      "CRM 견적 목록 — quote_id · 코드 · 날짜 · 기관 · 품목 · 합계 · 상태 · 세금계산서 수. 최근 것부터. 견적을 고치거나 지우려면 먼저 이것으로 quote_id 를 찾는다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "기관 이름 · 기관 코드 · 견적 코드 · 제품 이름 일부. 비우면 최근 것" },
+        limit: { type: "integer", description: "기본 20, 최대 50" },
+      },
+    },
+  },
+  {
+    name: "create_quote",
+    description:
+      "CRM 견적을 새로 만든다 — 기관 · 품목(제품 · 수량 · 단가) · 할인 · 상태. 단가를 비우면 제품 기본 단가. 합계(공급가 · 부가세 10%)가 미리보기에 보인다. " +
+      "기관은 find_org 의 코드, 제품은 list_products 의 product_id. " + PREVIEW_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        org: { type: "string", description: "기관 코드(ORG001) · 이름" },
+        items: {
+          type: "array",
+          description: "품목들",
+          items: {
+            type: "object",
+            properties: {
+              product_id: { type: "string", description: "list_products 의 product_id(또는 코드)" },
+              quantity: { type: "integer", description: "수량" },
+              unit_price: { type: "integer", description: "단가(원, 부가세 별도). 비우면 제품 기본 단가" },
+            },
+            required: ["product_id", "quantity"],
+          },
+        },
+        date: DATE,
+        discount: { type: "integer", description: "할인 금액(원). 비우면 0" },
+        status: { type: "string", enum: ["DRAFT", "SENT"], description: "작성중(DRAFT, 기본) · 발송(SENT)" },
+        note: { type: "string", description: "비고" },
+        confirm: CONFIRM,
+      },
+      required: ["org", "items"],
+    },
+  },
+  {
+    name: "update_quote",
+    description:
+      "CRM 견적의 상태 · 비고를 고친다(화면과 같다 — 품목을 바꾸려면 지우고 새로 만든다). 완료(DONE)로 바꾸고 세금계산서가 없으면 재무 담당에게 발행 요청 알림이 간다. " +
+      "quote_id 는 list_quotes 로 찾는다. " + PREVIEW_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        quote_id: { type: "string", description: "list_quotes 의 quote_id(또는 견적 코드)" },
+        status: { type: "string", enum: ["DRAFT", "SENT", "DONE", "CANCELLED"], description: "작성중 · 발송 · 완료 · 취소" },
+        note: { type: "string", description: "비고" },
+        confirm: CONFIRM,
+      },
+      required: ["quote_id"],
+    },
+  },
+  {
+    name: "delete_quote",
+    description:
+      "CRM 견적을 지운다. 품목은 함께 지워지고, 이 견적에서 나간 출고 · 세금계산서는 남고 연결만 끊긴다. quote_id 는 list_quotes 로 찾는다. " + PREVIEW_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        quote_id: { type: "string", description: "list_quotes 의 quote_id(또는 견적 코드)" },
+        confirm: CONFIRM,
+      },
+      required: ["quote_id"],
+    },
+  },
+  {
+    name: "record_shipment",
+    description:
+      "CRM 출하(출고) 한 건 — 판매 · 샘플 · 증정으로 제품이 나간 것. 그만큼 재고가 빠진다(재고가 모자라도 적되 경고한다). " +
+      "샘플 전달은 record_sample 이 요청 기록까지 함께 남긴다. 기관은 find_org 의 코드, 제품은 list_products 의 product_id, 견적은 list_quotes 의 quote_id. " + PREVIEW_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        org: { type: "string", description: "받는 기관 코드(ORG001) · 이름" },
+        product_id: { type: "string", description: "list_products 의 product_id(또는 코드)" },
+        quantity: { type: "integer", description: "수량(개)" },
+        kind: { type: "string", enum: ["SALE", "SAMPLE", "GIFT"], description: "판매(기본) · 샘플 · 증정" },
+        status: { type: "string", enum: ["PREPARING", "SHIPPING", "DELIVERED"], description: "준비중 · 배송중 · 배송완료(기본)" },
+        quote_id: { type: "string", description: "이어지는 견적(있으면)" },
+        date: DATE,
+        note: { type: "string", description: "비고 — 송장번호 등" },
+        confirm: CONFIRM,
+      },
+      required: ["org", "product_id", "quantity"],
+    },
+  },
+  {
+    name: "list_receivables",
+    description:
+      "세금계산서별 받을 돈 · 줄 돈 — invoice_id · 거래처 · 발행일 · 합계 · 받은(준) 금액 · 남은 금액. 입금을 적으려면 먼저 이것으로 invoice_id 를 찾는다(record_payment).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        direction: { type: "string", enum: ["SALE", "PURCHASE"], description: "매출(받을 돈, 기본) · 매입(줄 돈)" },
+        query: { type: "string", description: "거래처 이름 · 견적 코드 · 승인번호 일부" },
+        include_paid: { type: "boolean", description: "다 받은 것도 보기" },
+      },
+    },
+  },
+  {
+    name: "record_payment",
+    description:
+      "세금계산서에 들어온 돈(매출) · 나간 돈(매입) 한 줄을 적는다. 나눠 들어오면 여러 번. 남은 금액보다 많으면 거절된다. " +
+      "invoice_id 는 list_receivables 로 찾는다. " + PREVIEW_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        invoice_id: { type: "string", description: "list_receivables 의 invoice_id(또는 승인번호)" },
+        amount: { type: "integer", description: "금액(원, 부가세 포함 실제 들어온 돈)" },
+        date: { type: "string", description: "들어온 날 YYYY-MM-DD. 비우면 오늘" },
+        note: { type: "string", description: "비고 — 입금자명 등" },
+        confirm: CONFIRM,
+      },
+      required: ["invoice_id", "amount"],
+    },
+  },
 ] as const
 
-export type CrmWriteToolName = Exclude<(typeof CRM_WRITE_TOOLS)[number]["name"], "list_samples">
-export const CRM_WRITE_NAMES = CRM_WRITE_TOOLS.map((t) => t.name).filter((n) => n !== "list_samples") as CrmWriteToolName[]
+/** CRM 도구 중 읽기 — 고칠 대상의 ID 를 찾는다 */
+export const CRM_READ_NAMES = ["list_samples", "list_quotes", "list_receivables"] as const
+export type CrmWriteToolName = Exclude<(typeof CRM_WRITE_TOOLS)[number]["name"], (typeof CRM_READ_NAMES)[number]>
+export const CRM_WRITE_NAMES = CRM_WRITE_TOOLS.map((t) => t.name).filter((n) => !(CRM_READ_NAMES as readonly string[]).includes(n)) as CrmWriteToolName[]
 export const isCrmWriteTool = (n: string): n is CrmWriteToolName => (CRM_WRITE_NAMES as string[]).includes(n)
 
 // ─── 계획 ───────────────────────────────────────────────────────────
@@ -155,6 +281,8 @@ export interface CrmProductRow extends ProductRow {
   isMaterial?: boolean
   volumeMl?: number | null
   concentrationPct?: number | null
+  /** 견적 기본 단가(원) */
+  unitPrice?: number | null
 }
 
 export interface CrmOrgRow {
@@ -181,12 +309,41 @@ export interface CrmSampleView {
   shipments: { id: string; code: string; quantity: number; productId: string }[]
 }
 
+export interface CrmQuoteView {
+  id: string
+  code: string
+  date: string
+  org: { id: string; name: string }
+  status: keyof typeof QUOTE_STATUS_LABEL
+  note: string | null
+  discount: number
+  vatRate: number
+  items: { productId: string; label: string; quantity: number; unitPrice: number }[]
+  shipments: number
+  taxInvoices: number
+}
+
+export interface CrmReceivableView {
+  invoiceId: string
+  approvalNo: string
+  direction: "SALE" | "PURCHASE"
+  who: string
+  issuedOn: string
+  total: number
+  paid: number
+  remaining: number
+}
+
 /** 계획이 읽는 CRM — 서버는 prisma, 시험은 스텁 */
 export interface CrmPort {
   products(): Promise<CrmProductRow[]>
   orgs(): Promise<CrmOrgRow[]>
   /** id 또는 코드로 */
   sample(ref: string): Promise<CrmSampleView | null>
+  /** id 또는 견적 코드로 */
+  quote(ref: string): Promise<CrmQuoteView | null>
+  /** 세금계산서 id 또는 승인번호로 — 묶음(수정세금계산서 포함)의 남은 금액 */
+  receivable(ref: string): Promise<CrmReceivableView | null>
 }
 
 export interface CrmChange {
@@ -203,6 +360,11 @@ export type CrmOp =
   | { kind: "updateOrg"; id: string; input: Record<string, unknown> }
   | { kind: "stockMove"; input: { movedAt: string; productId: string; direction: "IN" | "OUT"; quantity: number; note: string | null } }
   | { kind: "production"; input: { producedAt: string; productId: string; materialId: string; quantity: number; materialGrams?: number; note: string | null } }
+  | { kind: "createQuote"; input: { quotedAt: string; orgId: string; discountAmount: number; status: "DRAFT" | "SENT"; note: string | null; items: { productId: string; quantity: number; unitPrice: number }[] } }
+  | { kind: "updateQuote"; id: string; input: { status?: string; note?: string | null } }
+  | { kind: "deleteQuote"; id: string }
+  | { kind: "shipment"; input: { shippedAt: string; kind: string; orgId: string; productId: string; quantity: number; status: string; quoteId: string | null; note: string | null } }
+  | { kind: "payment"; input: { invoiceId: string; paidOn: string; amountKrw: number; note: string | null } }
 
 export interface CrmPlan {
   title: string
@@ -273,6 +435,11 @@ export async function planCrmWrite(name: CrmWriteToolName, args: Record<string, 
     case "update_org": return planUpdateOrg(args, port)
     case "record_stock": return planStock(args, port, now)
     case "record_production": return planProduction(args, port, now)
+    case "create_quote": return planCreateQuote(args, port, now)
+    case "update_quote": return planUpdateQuote(args, port)
+    case "delete_quote": return planDeleteQuote(args, port)
+    case "record_shipment": return planShipment(args, port, now)
+    case "record_payment": return planPayment(args, port, now)
   }
 }
 
@@ -576,6 +743,186 @@ async function planProduction(args: Record<string, unknown>, port: CrmPort, now:
     risk: "CRM 생산 기록 한 건이 생기고 완제품 재고는 늘고 원료 재고는 줍니다(한 번에). 활동 기록에 내 이름으로 남습니다. 잘못 적었으면 CRM › 재고 화면에서 고칩니다.",
     op: { kind: "production", input: { producedAt: d.date, productId: p.id, materialId: m.id, quantity: q, materialGrams: grams, note } },
     done: { entity: "crm.production", action: "create", title: `생산 ${productLabel(p)} ${q}개` },
+  }
+}
+
+const won = (n: number) => `${n.toLocaleString("ko-KR")}원`
+const totalsRows = (t: ReturnType<typeof quoteTotals>): CrmChange[] => [
+  { label: "공급가", before: null, after: won(t.supply) },
+  ...(t.discount ? [{ label: "할인", before: null, after: won(t.discount) }] : []),
+  { label: "부가세", before: null, after: won(t.vat) },
+  { label: "합계", before: null, after: won(t.total) },
+]
+
+async function planCreateQuote(args: Record<string, unknown>, port: CrmPort, now: Date): Promise<CrmPlan> {
+  const T = "CRM 견적 만들기"
+  const o = resolveOrgRef(str(args.org), await port.orgs())
+  if (!str(args.org)) return fail(T, "(기관 없음)", "org(기관)가 비어 있습니다 — find_org 로 찾으세요.")
+  if ("problem" in o) return fail(T, str(args.org), o.problem)
+  const target = `${o.org.name} (${o.org.code})`
+  const raw = Array.isArray(args.items) ? args.items : []
+  if (raw.length === 0) return fail(T, target, "items(품목)가 비어 있습니다 — [{product_id, quantity, unit_price}].")
+  if (raw.length > 30) return fail(T, target, "품목이 너무 많습니다(30 초과).")
+  const products = await port.products()
+  const items: { product: CrmProductRow; quantity: number; unitPrice: number }[] = []
+  for (const [i, it] of raw.entries()) {
+    const r = (it ?? {}) as Record<string, unknown>
+    const pr = productRef(str(r.product_id), products)
+    if ("problem" in pr) return fail(T, target, `${i + 1}번째 품목: ${pr.problem}`)
+    const q = Number(r.quantity)
+    if (!Number.isInteger(q) || q < 1) return fail(T, target, `${i + 1}번째 품목: quantity 는 1 이상의 정수입니다.`)
+    const price = has(r, "unit_price") ? Number(r.unit_price) : pr.product.unitPrice ?? null
+    if (price === null) return fail(T, target, `${i + 1}번째 품목(${productLabel(pr.product)})에 기본 단가가 없습니다 — unit_price 를 주세요.`)
+    if (!Number.isInteger(price) || price < 0) return fail(T, target, `${i + 1}번째 품목: unit_price 는 0 이상의 정수(원)입니다.`)
+    items.push({ product: pr.product, quantity: q, unitPrice: price })
+  }
+  const d = parseDate(args.date, now)
+  if ("problem" in d) return fail(T, target, d.problem)
+  const discount = has(args, "discount") ? Number(args.discount) : 0
+  if (!Number.isInteger(discount) || discount < 0) return fail(T, target, "discount 는 0 이상의 정수(원)입니다.")
+  const status = str(args.status).toUpperCase() || "DRAFT"
+  if (status !== "DRAFT" && status !== "SENT") return fail(T, target, "새 견적의 status 는 DRAFT(작성중) · SENT(발송) 중 하나입니다.")
+  const note = str(args.note).slice(0, 2000) || null
+  const t = quoteTotals(items, discount, 10)
+  return {
+    title: T, target,
+    changes: [
+      { label: "견적일", before: null, after: d.date },
+      ...items.map((it, i) => ({ label: `품목 ${i + 1}`, before: null, after: `${productLabel(it.product)} ${it.quantity}개 × ${won(it.unitPrice)} = ${won(it.quantity * it.unitPrice)}` })),
+      ...totalsRows(t),
+      { label: "상태", before: null, after: QUOTE_STATUS_LABEL[status as "DRAFT"] },
+      ...(note ? [{ label: "비고", before: null, after: note }] : []),
+    ],
+    warning: discount > t.supply ? `할인(${won(discount)})이 공급가보다 커서 공급가만큼만 깎입니다.` : null,
+    risk: "CRM 견적 한 건이 생기고 견적 코드(HADD…)가 붙습니다. 재고는 바뀌지 않습니다(출하를 적을 때 빠집니다). 활동 기록에 내 이름으로 남습니다.",
+    op: { kind: "createQuote", input: { quotedAt: d.date, orgId: o.org.id, discountAmount: discount, status, note, items: items.map((it) => ({ productId: it.product.id, quantity: it.quantity, unitPrice: it.unitPrice })) } },
+    done: { entity: "crm.quote", action: "create", title: `견적 ${o.org.name} ${won(t.total)}` },
+  }
+}
+
+const quoteLine = (q: CrmQuoteView) => {
+  const t = quoteTotals(q.items, q.discount, q.vatRate)
+  return [q.code, q.date, q.org.name, q.items.map((i) => `${i.label} ${i.quantity}개`).join(", "), won(t.total), QUOTE_STATUS_LABEL[q.status]].join(" · ")
+}
+
+async function planUpdateQuote(args: Record<string, unknown>, port: CrmPort): Promise<CrmPlan> {
+  const T = "CRM 견적 고치기"
+  const ref = str(args.quote_id)
+  if (!ref) return fail(T, "(견적 없음)", "quote_id 가 비어 있습니다 — list_quotes 로 찾으세요.")
+  const q = await port.quote(ref)
+  if (!q) return fail(T, ref, `'${ref}' 견적이 없습니다 — list_quotes 로 quote_id 를 확인하세요.`)
+  const target = quoteLine(q)
+  const changes: CrmChange[] = []
+  const input: { status?: string; note?: string | null } = {}
+  if (has(args, "status")) {
+    const st = str(args.status).toUpperCase()
+    if (!(st in QUOTE_STATUS_LABEL)) return fail(T, target, "status 는 DRAFT · SENT · DONE · CANCELLED 중 하나입니다.")
+    if (st !== q.status) { input.status = st; changes.push({ label: "상태", before: QUOTE_STATUS_LABEL[q.status], after: QUOTE_STATUS_LABEL[st as "DRAFT"] }) }
+  }
+  if (has(args, "note")) {
+    const v = str(args.note).slice(0, 2000)
+    if (v !== (q.note ?? "")) { input.note = v || null; changes.push({ label: "비고", before: q.note || "(없음)", after: v || "(비움)" }) }
+  }
+  if (changes.length === 0) return fail(T, target, "바뀌는 것이 없습니다 — status · note 를 주세요(품목은 지우고 새로 만듭니다).")
+  const invoiceAsk = input.status === "DONE" && q.taxInvoices === 0
+  return {
+    title: T, target, changes,
+    risk: [
+      "CRM 견적이 바뀌고 활동 기록에 내 이름으로 남습니다.",
+      invoiceAsk ? "완료로 바뀌고 세금계산서가 없어 재무 담당에게 세금계산서 발행 요청 알림이 갑니다." : null,
+    ].filter(Boolean).join(" "),
+    op: { kind: "updateQuote", id: q.id, input },
+    done: { entity: "crm.quote", action: "update", title: `견적 고침 ${q.code} · ${q.org.name}` },
+  }
+}
+
+async function planDeleteQuote(args: Record<string, unknown>, port: CrmPort): Promise<CrmPlan> {
+  const T = "CRM 견적 지우기"
+  const ref = str(args.quote_id)
+  if (!ref) return fail(T, "(견적 없음)", "quote_id 가 비어 있습니다 — list_quotes 로 찾으세요.")
+  const q = await port.quote(ref)
+  if (!q) return fail(T, ref, `'${ref}' 견적이 없습니다 — list_quotes 로 quote_id 를 확인하세요.`)
+  const t = quoteTotals(q.items, q.discount, q.vatRate)
+  return {
+    title: T, target: `${q.code} · ${q.org.name}`,
+    changes: [
+      { label: "지울 견적", before: quoteLine(q), after: "지움" },
+      ...q.items.map((it, i) => ({ label: `품목 ${i + 1}`, before: `${it.label} ${it.quantity}개 × ${won(it.unitPrice)}`, after: "함께 지움" })),
+      { label: "합계", before: won(t.total), after: "지움" },
+    ],
+    warning: q.taxInvoices ? `이 견적에 세금계산서 ${q.taxInvoices}장이 이어져 있습니다 — 계산서는 남고 견적과의 연결만 끊깁니다.` : null,
+    risk: [
+      "견적과 품목을 지웁니다. 되돌릴 수 없습니다 — 다시 넣으려면 새로 만들어야 합니다.",
+      q.shipments ? `이 견적에서 나간 출고 ${q.shipments}건은 남고 연결만 끊깁니다(재고는 그대로).` : null,
+    ].filter(Boolean).join(" "),
+    op: { kind: "deleteQuote", id: q.id },
+    done: { entity: "crm.quote", action: "delete", title: `견적 지움 ${q.code} · ${q.org.name}` },
+  }
+}
+
+async function planShipment(args: Record<string, unknown>, port: CrmPort, now: Date): Promise<CrmPlan> {
+  const T = "CRM 출하 기록"
+  if (!str(args.org)) return fail(T, "(기관 없음)", "org(받는 기관)가 비어 있습니다 — find_org 로 찾으세요.")
+  const o = resolveOrgRef(str(args.org), await port.orgs())
+  if ("problem" in o) return fail(T, str(args.org), o.problem)
+  const pr = productRef(str(args.product_id), await port.products())
+  if ("problem" in pr) return fail(T, o.org.name, pr.problem)
+  const p = pr.product
+  const target = `${o.org.name} · ${productLabel(p)}`
+  const q = Number(args.quantity)
+  if (!Number.isInteger(q) || q < 1) return fail(T, target, "quantity 는 1 이상의 정수입니다.")
+  const kind = str(args.kind).toUpperCase() || "SALE"
+  if (!(kind in SHIPMENT_KIND_LABEL)) return fail(T, target, "kind 는 SALE · SAMPLE · GIFT 중 하나입니다.")
+  const status = str(args.status).toUpperCase() || "DELIVERED"
+  if (!(status in SHIPMENT_STATUS_LABEL)) return fail(T, target, "status 는 PREPARING · SHIPPING · DELIVERED 중 하나입니다.")
+  const d = parseDate(args.date, now)
+  if ("problem" in d) return fail(T, target, d.problem)
+  let quote: CrmQuoteView | null = null
+  if (has(args, "quote_id")) {
+    quote = await port.quote(str(args.quote_id))
+    if (!quote) return fail(T, target, `'${str(args.quote_id)}' 견적이 없습니다 — list_quotes 로 확인하세요.`)
+    if (quote.org.id !== o.org.id) return fail(T, target, `견적 ${quote.code} 는 ${quote.org.name} 의 견적입니다 — 기관이 다릅니다.`)
+  }
+  const note = str(args.note).slice(0, 2000) || null
+  const e = stockEffect(p, -q)
+  return {
+    title: T, target,
+    changes: [
+      { label: "출하", before: null, after: `${d.date} · ${o.org.name} · ${productLabel(p)} ${q}개 · ${SHIPMENT_KIND_LABEL[kind as "SALE"]} · ${SHIPMENT_STATUS_LABEL[status as "DELIVERED"]}` },
+      ...(quote ? [{ label: "견적", before: null, after: quote.code }] : []),
+      ...(note ? [{ label: "비고", before: null, after: note }] : []),
+      e.row,
+    ],
+    warning: e.warning,
+    risk: "CRM 출고 한 건과 그만큼 재고 출고가 함께 남습니다(한 번에). 활동 기록에 내 이름으로 남습니다. 잘못 적었으면 CRM › 출고에서 지우면 재고가 돌아옵니다.",
+    op: { kind: "shipment", input: { shippedAt: d.date, kind, orgId: o.org.id, productId: p.id, quantity: q, status, quoteId: quote?.id ?? null, note } },
+    done: { entity: "crm.shipment", action: "create", title: `출하 ${o.org.name} · ${productLabel(p)} ${q}개` },
+  }
+}
+
+async function planPayment(args: Record<string, unknown>, port: CrmPort, now: Date): Promise<CrmPlan> {
+  const T = "CRM 입금 기록"
+  const ref = str(args.invoice_id)
+  if (!ref) return fail(T, "(계산서 없음)", "invoice_id 가 비어 있습니다 — list_receivables 로 찾으세요.")
+  const r = await port.receivable(ref)
+  if (!r) return fail(T, ref, `'${ref}' 세금계산서가 없습니다 — list_receivables 로 invoice_id 를 확인하세요.`)
+  const word = r.direction === "SALE" ? "입금" : "지급"
+  const target = `${r.who} · ${r.issuedOn} 발행 · 합계 ${won(r.total)}`
+  const amount = Number(args.amount)
+  if (!Number.isInteger(amount) || amount <= 0) return fail(T, target, "amount 는 0보다 큰 정수(원)입니다.")
+  if (amount > r.remaining) return fail(T, target, `남은 금액(${won(r.remaining)})보다 많습니다 — 이미 ${won(r.paid)} 적혀 있습니다. 금액을 확인하세요.`)
+  const d = parseDate(args.date, now)
+  if ("problem" in d) return fail(T, target, d.problem)
+  const note = str(args.note).slice(0, 200) || null
+  return {
+    title: r.direction === "SALE" ? T : "CRM 지급 기록", target,
+    changes: [
+      { label: word, before: null, after: `${d.date} · ${won(amount)}${note ? ` · ${note}` : ""}` },
+      { label: r.direction === "SALE" ? "받은 금액" : "준 금액", before: won(r.paid), after: won(r.paid + amount) },
+      { label: "남은 금액", before: won(r.remaining), after: won(r.remaining - amount) },
+    ],
+    risk: `세금계산서에 ${word} 한 줄이 남아 미수금 · 미지급 화면이 바뀝니다. 활동 기록에 내 이름으로 남습니다. 잘못 적었으면 CRM › 입금에서 그 줄을 지웁니다.`,
+    op: { kind: "payment", input: { invoiceId: r.invoiceId, paidOn: d.date, amountKrw: amount, note } },
   }
 }
 

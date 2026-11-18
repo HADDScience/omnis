@@ -66,6 +66,9 @@ export const TOOL_POLICY = {
   list_products: R,
   // CRM 샘플요청 목록 — update_sample · delete_sample 의 sample_id 를 여기서 고른다
   list_samples: R,
+  // 견적 · 받을 돈 목록 — update_quote · delete_quote 의 quote_id, record_payment 의 invoice_id
+  list_quotes: R,
+  list_receivables: R,
   list_omnis_cards: R,
   get_omnis_card: R,
   list_weekly_reports: R,
@@ -113,6 +116,11 @@ export const TOOL_POLICY = {
   update_org: CRM_W,
   record_stock: CRM_W,
   record_production: CRM_W,
+  create_quote: CRM_W,
+  update_quote: CRM_W,
+  delete_quote: CRM_W,
+  record_shipment: CRM_W,
+  record_payment: CRM_W,
 
   // ─── MCP 에만 ───
   ask_omnis: { mcp: true, agent: false, ask: false, why: "앱 AI · 질문 경로가 곧 옴니스 — 같은 AI 를 다시 부르지 않는다" },

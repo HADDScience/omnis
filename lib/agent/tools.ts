@@ -420,7 +420,7 @@ async function buildMorePreview(name: string, args: Record<string, unknown>, ctx
       title: p.title, target: p.target, changes: p.changes, risk: p.risk,
       ...(p.warning ? { warning: p.warning } : {}),
       ...(p.problem ? { problem: p.problem } : {}),
-      ...(p.op?.kind === "deleteSample" ? { confirmLabel: "지우기" } : {}),
+      ...(p.op?.kind === "deleteSample" || p.op?.kind === "deleteQuote" ? { confirmLabel: "지우기" } : {}),
     }
   }
   switch (name) {

@@ -4,9 +4,12 @@
 // 그래서 AI 로 고쳐도 화면에서 고친 것과 같은 규칙을 지난다(#crm-write).
 import { z } from "zod"
 import { prisma } from "@/lib/db"
-import { CrmSampleStatus, CrmShipmentKind, CrmShipmentStatus, Prisma } from "@/generated/prisma"
-import { billingOrgProblem, gramsForQuantity, nextCode, orgCreateSchema, orgUpdateSchema } from "@/lib/crm"
+import { CrmQuoteStatus, CrmSampleStatus, CrmShipmentKind, CrmShipmentStatus, Prisma } from "@/generated/prisma"
+import { billingOrgProblem, gramsForQuantity, nextCode, nextDatedCode, orgCreateSchema, orgUpdateSchema, quoteCreateSchema, quoteTotals } from "@/lib/crm"
 import { createWithUniqueCode } from "@/lib/crm-server"
+import { createNotification } from "@/lib/notifications"
+import { receivableChains } from "@/lib/crm-receivables"
+import { writeActivity } from "@/lib/api"
 
 export type OpResult<T> =
   | { ok: true; value: T }
@@ -365,4 +368,125 @@ export async function updateSampleRequest(id: string, input: unknown): Promise<O
     })
   )
   return { ok: true, value: r }
+}
+
+// ─── 견적 ───────────────────────────────────────────────────────────
+
+/** 견적 만들기 — 담당자가 그 기관 소속인지 본다(엑셀은 이름 문자열이라 아무 조합이나 됐다) */
+export async function createQuote(input: unknown): Promise<OpResult<Prisma.CrmQuoteGetPayload<{ include: { items: true } }> & { totals: ReturnType<typeof quoteTotals> }>> {
+  const parsed = quoteCreateSchema.safeParse(input)
+  if (!parsed.success) return fail(firstIssue(parsed.error))
+  const { items, quotedAt, orgId, contactId, membershipId, ...rest } = parsed.data
+  if (contactId) {
+    const c = await prisma.crmContact.findUnique({ where: { id: contactId } })
+    if (!c || c.orgId !== orgId) return fail("담당자가 이 기관 소속이 아닙니다")
+  }
+  const quote = await createWithUniqueCode(() =>
+    prisma.$transaction(async (tx) => {
+      const codes = (await tx.crmQuote.findMany({ select: { code: true } })).map((q) => q.code)
+      return tx.crmQuote.create({
+        data: {
+          ...rest,
+          code: nextDatedCode(quotedAt, codes),
+          quotedAt,
+          org: { connect: { id: orgId } },
+          contact: contactId ? { connect: { id: contactId } } : undefined,
+          membership: membershipId ? { connect: { id: membershipId } } : undefined,
+          items: {
+            create: items.map((it, i) => ({
+              quantity: it.quantity, unitPrice: it.unitPrice, note: it.note ?? null, sortOrder: i,
+              product: { connect: { id: it.productId } },
+            })),
+          },
+        },
+        include: { items: true },
+      })
+    })
+  )
+  // 응답에 계산 결과를 함께 준다 — 화면이 같은 식을 다시 짜지 않게.
+  return { ok: true, value: { ...quote, totals: quoteTotals(quote.items, quote.discountAmount, quote.vatRate) } }
+}
+
+export const quotePatchSchema = z.object({
+  status: z.enum(CrmQuoteStatus).optional(),
+  /** 세금계산서 발행일. 지우려면 null 을 보낸다 */
+  taxInvoicedAt: z.coerce.date().nullable().optional(),
+  note: z.string().trim().max(2000).nullable().optional(),
+})
+
+/**
+ * 견적 고치기(상태 · 비고 · 발행일). 완료가 됐는데 세금계산서가 없으면 재무 담당에게 발행을 부탁한다 —
+ * 담당자가 메신저로 전하던 일이다. 알림을 누르면 이 견적이 잡힌 채 세금계산서 등록이 열린다.
+ */
+export async function updateQuote(quoteId: string, input: unknown, actor: { id: string; name?: string | null }) {
+  const parsed = quotePatchSchema.safeParse(input)
+  if (!parsed.success) return fail(firstIssue(parsed.error))
+  const before = await prisma.crmQuote.findUnique({ where: { id: quoteId } })
+  if (!before) return fail("견적을 찾을 수 없습니다", 404)
+  // 완료로 옮길 때 세금계산서 발행일을 오늘로 채우던 것을 멈춘다(2026-09-17).
+  // 세금계산서가 없어도 「발행」 으로 보여서 재무 담당에게 틀린 정보였다. 발행일은 세금계산서가 이어질 때만 적힌다(lib/tax-invoice-save).
+  const data = { ...parsed.data }
+  const quote = await prisma.crmQuote.update({
+    where: { id: quoteId },
+    data,
+    include: { org: { select: { name: true } }, _count: { select: { taxInvoices: true } } },
+  })
+  if (data.status === CrmQuoteStatus.DONE && before.status !== CrmQuoteStatus.DONE && quote._count.taxInvoices === 0) {
+    const finance = await prisma.user.findMany({
+      where: { isActive: true, department: { contains: "재무" }, id: { not: actor.id } },
+      select: { id: true },
+    })
+    for (const u of finance) {
+      await createNotification(
+        u.id,
+        "crm_invoice_request",
+        `세금계산서 발행 요청: ${quote.org.name}`,
+        `${actor.name ?? "담당자"}님이 견적 ${quote.code} 를 완료했습니다. 세금계산서를 발행해 올려 주세요.`,
+        quote.id
+      )
+    }
+  }
+  return { ok: true as const, value: quote }
+}
+
+/** 견적을 지운다. 품목은 함께 사라지고(Cascade), 출고는 남고 연결만 끊긴다(SetNull) — 나간 물건은 없던 일이 되지 않는다 */
+export async function deleteQuote(quoteId: string): Promise<OpResult<{ code: string }>> {
+  const quote = await prisma.crmQuote.findUnique({ where: { id: quoteId }, select: { code: true } })
+  if (!quote) return fail("견적을 찾을 수 없습니다", 404)
+  await prisma.crmQuote.delete({ where: { id: quoteId } })
+  return { ok: true, value: { code: quote.code } }
+}
+
+// ─── 입금 ───────────────────────────────────────────────────────────
+
+export const paymentSchema = z.object({
+  invoiceId: z.string().min(1),
+  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "날짜는 YYYY-MM-DD"),
+  amountKrw: z.coerce.number().int("금액은 원 단위 정수").positive("금액은 0보다 커야 합니다"),
+  note: z.string().trim().max(200).optional().nullable(),
+})
+
+/** 들어온 돈 · 나간 돈 한 줄. 나눠 들어오면 여러 번 적는다. 묶음(수정세금계산서 포함)의 남은 금액을 넘지 않게 — 두 번 적는 실수를 막는다 */
+export async function createPayment(input: unknown, userId: string): Promise<OpResult<{ id: string; remaining: number | null }>> {
+  const parsed = paymentSchema.safeParse(input)
+  if (!parsed.success) return fail(firstIssue(parsed.error))
+  const { invoiceId, paidOn, amountKrw, note } = parsed.data
+  const invoice = await prisma.taxInvoice.findUnique({ where: { id: invoiceId }, select: { id: true, direction: true, approvalNo: true, originalApprovalNo: true, buyerName: true, supplierName: true } })
+  if (!invoice) return fail("세금계산서를 찾을 수 없습니다", 404)
+  const root = invoice.originalApprovalNo ?? invoice.approvalNo
+  const chain = (await receivableChains(invoice.direction)).find((c) => c.approvalNo === root || c.invoiceId === invoiceId)
+  if (chain && amountKrw > chain.remaining) return fail(`남은 금액(${chain.remaining.toLocaleString("ko-KR")}원)보다 많습니다`, 409)
+  const payment = await prisma.crmPayment.create({
+    data: { invoiceId, paidOn: new Date(`${paidOn}T00:00:00Z`), amountKrw: BigInt(amountKrw), note: note || null, createdById: userId },
+  })
+  const who = invoice.direction === "SALE" ? invoice.buyerName : invoice.supplierName
+  await writeActivity({
+    userId,
+    action: invoice.direction === "SALE" ? "crm.payment.received" : "crm.payment.paid",
+    entity: "TAX_INVOICE",
+    entityId: invoiceId,
+    title: `${invoice.direction === "SALE" ? "입금" : "지급"}: ${who} ${amountKrw.toLocaleString("ko-KR")}원 (${paidOn})`,
+    metadata: { paymentId: payment.id, amountKrw },
+  })
+  return { ok: true, value: { id: payment.id, remaining: chain ? chain.remaining - amountKrw : null } }
 }

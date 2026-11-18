@@ -5,7 +5,7 @@
  */
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { crmPlanText, planCrmWrite, resolveOrgRef, type CrmOrgRow, type CrmPort, type CrmProductRow, type CrmSampleView } from "./crm-write-rules"
+import { crmPlanText, planCrmWrite, resolveOrgRef, type CrmOrgRow, type CrmPort, type CrmProductRow, type CrmQuoteView, type CrmReceivableView, type CrmSampleView } from "./crm-write-rules"
 import { TOOLS } from "./omnis-mcp"
 import { agentToolSpecs } from "./agent/tools"
 import { ROUTE_PREVIEW_TOOLS } from "./omnis-ask"
@@ -13,7 +13,7 @@ import { toolPolicy } from "./tools/registry"
 
 const NOW = new Date("2026-11-18T03:00:00Z")
 const P: CrmProductRow[] = [
-  { id: "p-2ml", code: "PRD101", name: "시험젤 (TESTGEL)", spec: "2ml", stock: 10, unit: "PIECE", volumeMl: 2, concentrationPct: 1 },
+  { id: "p-2ml", code: "PRD101", name: "시험젤 (TESTGEL)", spec: "2ml", stock: 10, unit: "PIECE", volumeMl: 2, concentrationPct: 1, unitPrice: 50000 },
   { id: "p-5ml", code: "PRD102", name: "시험젤 (TESTGEL)", spec: "5ml", stock: 2, unit: "PIECE" },
   { id: "p-raw", code: "PRD103", name: "시험원료", spec: null, stock: 0.05, unit: "GRAM", isMaterial: true },
 ]
@@ -26,10 +26,18 @@ const S: CrmSampleView[] = [
   { id: "s-1", code: "HADD261117-001", date: "2026-11-17", org: { id: "o-3", name: "다라연구소" }, productId: "p-2ml", request: "시험젤 2ml 3개 샘플 전달", referral: null, note: null, sent: true, shipments: [{ id: "sh-1", code: "SH101", quantity: 3, productId: "p-2ml" }] },
   { id: "s-2", code: "HADD261117-002", date: "2026-11-17", org: { id: "o-3", name: "다라연구소" }, productId: null, request: "자료 요청", referral: null, note: null, sent: false, shipments: [] },
 ]
+const Q: CrmQuoteView[] = [
+  { id: "q-1", code: "HADD261110-001", date: "2026-11-10", org: { id: "o-3", name: "다라연구소" }, status: "SENT", note: null, discount: 0, vatRate: 10, items: [{ productId: "p-2ml", label: "시험젤 (TESTGEL) 2ml", quantity: 2, unitPrice: 50000 }], shipments: 1, taxInvoices: 0 },
+]
+const RCV: CrmReceivableView[] = [
+  { invoiceId: "inv-1", approvalNo: "20261110-0001", direction: "SALE", who: "다라연구소", issuedOn: "2026-11-10", total: 110000, paid: 50000, remaining: 60000 },
+]
 const port: CrmPort = {
   products: async () => P,
   orgs: async () => O,
   sample: async (ref) => S.find((s) => s.id === ref || s.code === ref) ?? null,
+  quote: async (ref) => Q.find((q) => q.id === ref || q.code === ref) ?? null,
+  receivable: async (ref) => RCV.find((r) => r.invoiceId === ref || r.approvalNo === ref) ?? null,
 }
 const plan = (name: Parameters<typeof planCrmWrite>[0], args: Record<string, unknown>) => planCrmWrite(name, args, port, NOW)
 const row = (p: Awaited<ReturnType<typeof plan>>, label: string) => p.changes.find((c) => c.label === label)
@@ -163,9 +171,53 @@ test("모델 스텁 — 목록에서 ID 를 골라 고친다, 후보가 여럿�
   assert.equal(row(p, "재고 · 시험젤 (TESTGEL) 2ml")?.after, "11개")
 })
 
+test("create_quote — 품목 · 합계(부가세 10%) · 기본 단가, 단가가 없으면 묻는다", async () => {
+  const p = await plan("create_quote", { org: "ORG103", items: [{ product_id: "p-2ml", quantity: 2 }, { product_id: "PRD102", quantity: 1, unit_price: 80000 }], discount: 10000 })
+  assert.equal(p.problem, undefined)
+  assert.equal(row(p, "품목 1")?.after, "시험젤 (TESTGEL) 2ml 2개 × 50,000원 = 100,000원")
+  assert.equal(row(p, "공급가")?.after, "180,000원")
+  assert.equal(row(p, "부가세")?.after, "17,000원")
+  assert.equal(row(p, "합계")?.after, "187,000원")
+  assert.deepEqual(p.op, { kind: "createQuote", input: { quotedAt: "2026-11-18", orgId: "o-3", discountAmount: 10000, status: "DRAFT", note: null, items: [{ productId: "p-2ml", quantity: 2, unitPrice: 50000 }, { productId: "p-5ml", quantity: 1, unitPrice: 80000 }] } })
+  assert.match((await plan("create_quote", { org: "ORG103", items: [{ product_id: "p-5ml", quantity: 1 }] })).problem ?? "", /기본 단가가 없습니다/)
+  assert.match((await plan("create_quote", { org: "ORG103", items: [] })).problem ?? "", /items/)
+  assert.match((await plan("create_quote", { org: "ORG103", items: [{ product_id: "p-2ml", quantity: 1 }], status: "DONE" })).problem ?? "", /DRAFT/)
+})
+
+test("update_quote · delete_quote — 상태 전 → 뒤, 완료면 재무 알림을 알린다, 지우기는 품목 · 합계 · 남는 것", async () => {
+  const p = await plan("update_quote", { quote_id: "HADD261110-001", status: "DONE" })
+  assert.deepEqual(p.changes, [{ label: "상태", before: "발송", after: "완료" }])
+  assert.match(p.risk, /재무 담당/)
+  assert.deepEqual(p.op, { kind: "updateQuote", id: "q-1", input: { status: "DONE" } })
+  assert.match((await plan("update_quote", { quote_id: "q-1", status: "SENT" })).problem ?? "", /바뀌는 것이 없습니다/)
+  const d = await plan("delete_quote", { quote_id: "q-1" })
+  assert.equal(row(d, "품목 1")?.before, "시험젤 (TESTGEL) 2ml 2개 × 50,000원")
+  assert.equal(row(d, "합계")?.before, "110,000원")
+  assert.match(d.risk, /출고 1건은 남고/)
+  assert.deepEqual(d.op, { kind: "deleteQuote", id: "q-1" })
+})
+
+test("record_shipment — 재고가 빠지고 모자라면 경고, 다른 기관의 견적은 막는다", async () => {
+  const p = await plan("record_shipment", { org: "ORG103", product_id: "PRD102", quantity: 3, quote_id: "q-1" })
+  assert.equal(row(p, "재고 · 시험젤 (TESTGEL) 5ml")?.after, "-1개")
+  assert.match(p.warning ?? "", /모자랍니다/)
+  assert.deepEqual(p.op, { kind: "shipment", input: { shippedAt: "2026-11-18", kind: "SALE", orgId: "o-3", productId: "p-5ml", quantity: 3, status: "DELIVERED", quoteId: "q-1", note: null } })
+  assert.match((await plan("record_shipment", { org: "ORG101", product_id: "p-2ml", quantity: 1, quote_id: "q-1" })).problem ?? "", /기관이 다릅니다/)
+  assert.match((await plan("record_shipment", { org: "ORG103", product_id: "p-2ml", quantity: 1, kind: "RENT" })).problem ?? "", /kind/)
+})
+
+test("record_payment — 받은 · 남은 금액 전 → 뒤, 남은 금액보다 많으면 막는다", async () => {
+  const p = await plan("record_payment", { invoice_id: "inv-1", amount: 60000, note: "입금자 다라" })
+  assert.deepEqual(row(p, "남은 금액"), { label: "남은 금액", before: "60,000원", after: "0원" })
+  assert.deepEqual(row(p, "받은 금액"), { label: "받은 금액", before: "50,000원", after: "110,000원" })
+  assert.deepEqual(p.op, { kind: "payment", input: { invoiceId: "inv-1", paidOn: "2026-11-18", amountKrw: 60000, note: "입금자 다라" } })
+  assert.match((await plan("record_payment", { invoice_id: "20261110-0001", amount: 70000 })).problem ?? "", /남은 금액\(60,000원\)보다 많습니다/)
+  assert.match((await plan("record_payment", { invoice_id: "없음", amount: 1 })).problem ?? "", /list_receivables/)
+})
+
 test("레지스트리 — CRM 쓰기는 MCP confirm · 앱 AI 확인 카드(confirm 칸 없음) · 질문 경로 미리보기", async () => {
   const specs = await agentToolSpecs()
-  for (const name of ["update_sample", "delete_sample", "create_org", "update_org", "record_stock", "record_production"]) {
+  for (const name of ["update_sample", "delete_sample", "create_org", "update_org", "record_stock", "record_production", "create_quote", "update_quote", "delete_quote", "record_shipment", "record_payment"]) {
     const p = toolPolicy(name)!
     assert.equal(p.mcp, true, name)
     assert.equal(p.agent, "write", name)
@@ -178,6 +230,8 @@ test("레지스트리 — CRM 쓰기는 MCP confirm · 앱 AI 확인 카드(conf
     assert.equal(spec.risk, "write")
     assert.equal("confirm" in ((spec.schema as { properties: Record<string, unknown> }).properties), false, `${name} 앱 AI 에는 confirm 이 없다`)
   }
-  assert.equal(toolPolicy("list_samples")!.agent, "read")
-  assert.equal(toolPolicy("list_samples")!.ask, "read")
+  for (const name of ["list_samples", "list_quotes", "list_receivables"]) {
+    assert.equal(toolPolicy(name)!.agent, "read", name)
+    assert.equal(toolPolicy(name)!.ask, "read", name)
+  }
 })

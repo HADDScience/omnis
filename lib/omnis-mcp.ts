@@ -47,7 +47,7 @@ import { TOOL_POLICY } from "@/lib/tools/registry"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { findOrgsLoose, productListText, recordSampleDelivery } from "@/lib/crm-sample-server"
 import { CRM_WRITE_TOOLS, isCrmWriteTool } from "@/lib/crm-write-rules"
-import { runCrmWrite, sampleListText } from "@/lib/crm-write-tools"
+import { quoteListText, receivableListText, runCrmWrite, sampleListText } from "@/lib/crm-write-tools"
 import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
@@ -1594,12 +1594,23 @@ export async function runTool(
     case "list_samples":
       return { text: await sampleListText(str(args.query) || undefined, Number(args.limit) || 20) }
 
+    case "list_quotes":
+      return { text: await quoteListText(str(args.query) || undefined, Number(args.limit) || 20) }
+
+    case "list_receivables":
+      return { text: await receivableListText(args) }
+
     case "update_sample":
     case "delete_sample":
     case "create_org":
     case "update_org":
     case "record_stock":
     case "record_production":
+    case "create_quote":
+    case "update_quote":
+    case "delete_quote":
+    case "record_shipment":
+    case "record_payment":
       if (!isCrmWriteTool(name)) return { error: `알 수 없는 도구: ${name}` }
       return runCrmWrite(name, args, caller.userId)
 
