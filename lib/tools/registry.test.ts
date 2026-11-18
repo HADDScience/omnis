@@ -104,6 +104,10 @@ const ADDED_WRITE = [
 const B1_READ = ["list_task_products", "list_activity"]
 const B1_READ_NO_ASK = ["list_room_files"]
 const B1_WRITE = ["create_project", "merge_projects", "manage_room", "manage_notifications", "set_notification_prefs", "delete_weekly_report"]
+// #248 묶음 3 — 지식 카드. 내 질문 기록은 질문 경로에 열지 않는다
+const B3_READ = ["omnis_card_history", "list_card_proposals", "list_bookmarks"]
+const B3_READ_NO_ASK = ["list_my_questions"]
+const B3_WRITE = ["delete_omnis_card", "manage_omnis_category", "restore_omnis_card", "decide_card_proposal", "manage_bookmarks"]
 // #248 묶음 2 — CRM 나머지
 const B2_READ = ["list_stock_moves", "list_payments", "list_inquiries"]
 const B2_WRITE = [
@@ -112,8 +116,8 @@ const B2_WRITE = [
 ]
 
 test("재설계 전과 노출이 같다(새 도구만 더함) — 앱 AI 읽기 · 쓰기, 질문 경로 읽기, MCP 전용", () => {
-  assert.deepEqual(sorted(AGENT_READ_TOOLS), sorted([...BEFORE_AGENT_READ, ...ADDED_READ, ...B1_READ, ...B1_READ_NO_ASK, ...B2_READ]))
-  assert.deepEqual(sorted(AGENT_WRITE_TOOLS), sorted([...BEFORE_AGENT_WRITE, ...ADDED_WRITE, ...B1_WRITE, ...B2_WRITE]))
-  assert.deepEqual(sorted(ROUTE_READ_TOOLS), sorted([...BEFORE_ROUTE_READ, ...ADDED_READ, ...B1_READ, ...B2_READ]))
+  assert.deepEqual(sorted(AGENT_READ_TOOLS), sorted([...BEFORE_AGENT_READ, ...ADDED_READ, ...B1_READ, ...B1_READ_NO_ASK, ...B2_READ, ...B3_READ, ...B3_READ_NO_ASK]))
+  assert.deepEqual(sorted(AGENT_WRITE_TOOLS), sorted([...BEFORE_AGENT_WRITE, ...ADDED_WRITE, ...B1_WRITE, ...B2_WRITE, ...B3_WRITE]))
+  assert.deepEqual(sorted(ROUTE_READ_TOOLS), sorted([...BEFORE_ROUTE_READ, ...ADDED_READ, ...B1_READ, ...B2_READ, ...B3_READ]))
   assert.deepEqual(sorted(Object.keys(AGENT_EXCLUDED)), ["ask_omnis", "create_upload_link"])
 })

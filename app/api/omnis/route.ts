@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { apiError, parseJson, writeActivity } from "@/lib/api"
+import { apiError, parseJson } from "@/lib/api"
+import { createOmnisCategory, deleteOmnisCategory } from "@/lib/omnis-card-ops"
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -69,25 +70,10 @@ export async function POST(req: NextRequest) {
     return apiError(400, "name 필수")
   }
 
-  const maxSort = await prisma.omnisCategory.aggregate({ _max: { sortOrder: true } })
-  const nextSort = (maxSort._max.sortOrder ?? 0) + 1
-
-  const category = await prisma.omnisCategory.create({
-    data: {
-      name: name.trim(),
-      icon: icon || "📁",
-      sortOrder: nextSort,
-    },
-  })
-
-  await writeActivity({
-    userId: session.user.id,
-    action: "omnis_category.created",
-    entity: "OMNIS_CATEGORY",
-    entityId: category.id,
-    title: `카테고리 생성: ${category.name}`,
-  })
-
+  // 규칙은 lib/omnis-card-ops.ts(도구 manage_omnis_category 와 같다)
+  const r = await createOmnisCategory(session.user.id, { name, icon })
+  if (!r.ok) return apiError(r.status, r.error)
+  const category = r.value
   return NextResponse.json(category, { status: 201 })
 }
 
@@ -101,18 +87,7 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get("id")
   if (!id) return apiError(400, "id 필수")
 
-  const cardCount = await prisma.omnisCard.count({ where: { categoryId: id } })
-  if (cardCount > 0) {
-    return apiError(400, "카드가 있는 카테고리는 삭제할 수 없습니다")
-  }
-
-  const category = await prisma.omnisCategory.delete({ where: { id } })
-  await writeActivity({
-    userId: session.user.id,
-    action: "omnis_category.deleted",
-    entity: "OMNIS_CATEGORY",
-    entityId: id,
-    title: `카테고리 삭제: ${category.name}`,
-  })
+  const r = await deleteOmnisCategory(session.user.id, id)
+  if (!r.ok) return apiError(r.status, r.error)
   return NextResponse.json({ ok: true })
 }
