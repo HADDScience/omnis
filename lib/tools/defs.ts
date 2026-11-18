@@ -2,5 +2,6 @@
 import { WORK_TOOLS } from "./defs-work"
 import { CRM_MORE_TOOLS } from "./defs-crm"
 import { CARD_TOOLS } from "./defs-cards"
+import { ADMIN_TOOLS } from "./defs-admin"
 
-export const EXTRA_TOOLS = [...WORK_TOOLS, ...CRM_MORE_TOOLS, ...CARD_TOOLS] as const
+export const EXTRA_TOOLS = [...WORK_TOOLS, ...CRM_MORE_TOOLS, ...CARD_TOOLS, ...ADMIN_TOOLS] as const

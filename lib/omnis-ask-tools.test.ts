@@ -18,6 +18,7 @@ const WRITE_TOOLS = [
   "update_shipment", "delete_shipment", "delete_stock_move", "delete_payment", "settle_payments",
   "create_contact", "decide_inquiry", "link_tax_invoice", "delete_tax_invoice", "import_tax_invoice",
   "delete_omnis_card", "manage_omnis_category", "restore_omnis_card", "decide_card_proposal", "manage_bookmarks",
+  "update_company_profile", "save_company_year", "delete_company_year", "set_calendar_audience", "set_ai_budget", "set_feature_status", "send_feedback",
 ]
 
 test("질문 경로에 쓰기 도구가 없다", () => {
@@ -40,7 +41,7 @@ test("웍스 일정 읽기(list_calendar)는 질문 경로 · 에이전트 읽�
 test("MCP 의 도구는 읽기 목록이나 쓰기 목록 중 하나에 있다 — 새 도구가 생기면 어느 쪽인지 정해야 한다", () => {
   // list_rooms — 읽기지만 질문 경로에는 열지 않는다(아래 방 보기 시험)
   // list_room_files — 방 서랍도 같은 까닭으로 질문 경로 밖
-  const known = new Set<string>([...ROUTE_READ_TOOLS, ...WRITE_TOOLS, "search_knowledge", "list_rooms", "list_room_files", "list_my_questions"])
+  const known = new Set<string>([...ROUTE_READ_TOOLS, ...WRITE_TOOLS, "search_knowledge", "list_rooms", "list_room_files", "list_my_questions", "ai_budget", "list_feature_requests", "ai_survey_results"])
   // (list_samples 는 읽기 — ROUTE_READ_TOOLS 에 있다)
   for (const t of OMNIS_TOOLS) assert.ok(known.has(t.name), t.name)
 })

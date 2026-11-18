@@ -583,6 +583,11 @@ export const OMNIS_TOOLS = [
         subject: { type: "string", description: "과제명" },
         grant_no: { type: "string", description: "과제번호" },
         funding_krw: { type: "string", description: "지원금(원). 숫자" },
+        role: { type: "string", description: "역할(주관 · 참여 등)" },
+        own_cash_krw: { type: "string", description: "자부담 현금(원). 숫자" },
+        own_in_kind_krw: { type: "string", description: "자부담 현물(원). 숫자" },
+        partner: { type: "string", description: "대리점" },
+        category: { type: "string", description: "분류" },
         note: { type: "string", description: "비고 — 근거가 된 메일·문서를 적어 둔다" },
         visibility: { type: "string", enum: ["PUBLIC", "INTERNAL"], description: "공개범위. INTERNAL 은 대외비 — 외부 자료에 쓰지 않는다. 비우면 PUBLIC" },
       },
@@ -1880,6 +1885,7 @@ export async function runTool(
       const map: Record<string, string> = {
         starts_on: "startsOn", ends_on: "endsOn", period_raw: "periodRaw",
         grant_no: "grantNo", funding_krw: "fundingKrw", record_id: "record_id",
+        own_cash_krw: "ownCashKrw", own_in_kind_krw: "ownInKindKrw",
       }
       const mapped = Object.fromEntries(Object.entries(args).map(([k, v]) => [map[k] ?? k, v]))
       return saveCompanyRecordText(mapped, caller)
