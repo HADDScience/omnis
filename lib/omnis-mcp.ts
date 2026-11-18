@@ -46,6 +46,8 @@ import { persistMentions } from "@/lib/mentions"
 import { TOOL_POLICY } from "@/lib/tools/registry"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { findOrgsLoose, productListText, recordSampleDelivery } from "@/lib/crm-sample-server"
+import { CRM_WRITE_TOOLS, isCrmWriteTool } from "@/lib/crm-write-rules"
+import { quoteListText, receivableListText, runCrmWrite, sampleListText } from "@/lib/crm-write-tools"
 import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
@@ -424,6 +426,8 @@ export const OMNIS_TOOLS = [
       required: ["org"],
     },
   },
+  // CRM 고치기(샘플 · 기관 · 재고 · 생산) — 정의 · 계획은 lib/crm-write-rules.ts, 쓰기는 화면 API 와 같은 lib/crm-ops.ts
+  ...CRM_WRITE_TOOLS,
   {
     name: "list_omnis_cards",
     description: "사내 지식 카드(옴니스) 목록. 분류·제목·태그로 거른다. 본문은 get_omnis_card.",
@@ -1586,6 +1590,29 @@ export async function runTool(
 
     case "record_sample":
       return recordSampleDelivery(args, caller.userId)
+
+    case "list_samples":
+      return { text: await sampleListText(str(args.query) || undefined, Number(args.limit) || 20) }
+
+    case "list_quotes":
+      return { text: await quoteListText(str(args.query) || undefined, Number(args.limit) || 20) }
+
+    case "list_receivables":
+      return { text: await receivableListText(args) }
+
+    case "update_sample":
+    case "delete_sample":
+    case "create_org":
+    case "update_org":
+    case "record_stock":
+    case "record_production":
+    case "create_quote":
+    case "update_quote":
+    case "delete_quote":
+    case "record_shipment":
+    case "record_payment":
+      if (!isCrmWriteTool(name)) return { error: `알 수 없는 도구: ${name}` }
+      return runCrmWrite(name, args, caller.userId)
 
     case "list_omnis_cards": {
       const q = str(args.query)

@@ -2,9 +2,9 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { CrmSampleStatus } from "@/generated/prisma"
 import { nextDatedCode } from "@/lib/crm"
 import { createWithUniqueCode } from "@/lib/crm-server"
+import { setSampleSent } from "@/lib/crm-ops"
 
 export const runtime = "nodejs"
 
@@ -59,12 +59,6 @@ export async function PATCH(req: Request) {
     .safeParse(await req.json().catch(() => null))
   if (!body.success) return NextResponse.json({ error: "잘못된 입력" }, { status: 400 })
 
-  const s = await prisma.crmSampleRequest.update({
-    where: { id: body.data.id },
-    data: {
-      status: body.data.sent ? CrmSampleStatus.SENT : CrmSampleStatus.PENDING,
-      sentAt: body.data.sent ? new Date() : null,
-    },
-  })
+  const s = await setSampleSent(body.data.id, body.data.sent)
   return NextResponse.json(s)
 }

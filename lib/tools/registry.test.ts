@@ -93,11 +93,16 @@ const BEFORE_ROUTE_READ = [
 ]
 
 // 재설계 뒤 새로 더한 읽기 도구 — 세 경로 모두에 연다
-const ADDED_READ = ["list_products"]
+const ADDED_READ = ["list_products", "list_samples", "list_quotes", "list_receivables"]
+// 2026-11-18 더한 CRM 고치기 — 앱 AI 쓰기(확인 카드) · 질문 경로 미리보기 · MCP confirm
+const ADDED_WRITE = [
+  "update_sample", "delete_sample", "create_org", "update_org", "record_stock", "record_production",
+  "create_quote", "update_quote", "delete_quote", "record_shipment", "record_payment",
+]
 
 test("재설계 전과 노출이 같다(새 도구만 더함) — 앱 AI 읽기 · 쓰기, 질문 경로 읽기, MCP 전용", () => {
   assert.deepEqual(sorted(AGENT_READ_TOOLS), sorted([...BEFORE_AGENT_READ, ...ADDED_READ]))
-  assert.deepEqual(sorted(AGENT_WRITE_TOOLS), sorted(BEFORE_AGENT_WRITE))
+  assert.deepEqual(sorted(AGENT_WRITE_TOOLS), sorted([...BEFORE_AGENT_WRITE, ...ADDED_WRITE]))
   assert.deepEqual(sorted(ROUTE_READ_TOOLS), sorted([...BEFORE_ROUTE_READ, ...ADDED_READ]))
   assert.deepEqual(sorted(Object.keys(AGENT_EXCLUDED)), ["ask_omnis", "create_upload_link"])
 })
