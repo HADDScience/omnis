@@ -411,6 +411,18 @@ const RESPONSE_LABEL: Record<string, string> = { accept: "업무 수락", confir
 /** MCP 와 맞춰 연 쓰기(2026-11-10) — 되돌리기 어려운 것이라 따라오는 일을 카드에 적는다 */
 async function buildMorePreview(name: string, args: Record<string, unknown>, ctx: { userId: string }): Promise<WritePreview | null> {
   const { findTask } = await import("@/lib/omnis-mcp")
+  // CRM 고치기(샘플 · 기관 · 재고 · 생산) — MCP 미리보기와 같은 계획이 카드가 된다(전 → 뒤 · 재고 변화 · 경고)
+  const { isCrmWriteTool } = await import("@/lib/crm-write-rules")
+  if (isCrmWriteTool(name)) {
+    const { planCrm } = await import("@/lib/crm-write-tools")
+    const p = await planCrm(name, args)
+    return {
+      title: p.title, target: p.target, changes: p.changes, risk: p.risk,
+      ...(p.warning ? { warning: p.warning } : {}),
+      ...(p.problem ? { problem: p.problem } : {}),
+      ...(p.op?.kind === "deleteSample" ? { confirmLabel: "지우기" } : {}),
+    }
+  }
   switch (name) {
     case "respond_notification": {
       const response = s(args.response)

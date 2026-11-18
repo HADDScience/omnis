@@ -48,6 +48,8 @@ const R = { mcp: true, agent: "read", ask: "read" } as const satisfies ToolPolic
 const R_NO_ASK = (why: string) => ({ mcp: true, agent: "read", ask: false, why }) as const satisfies ToolPolicy
 /** 쓰기 — MCP 는 바로, 앱 AI 는 확인 카드, 질문 경로에는 없다(확인 단계가 없어서) */
 const W = { mcp: true, agent: "write", ask: false, confirm: "card" } as const satisfies ToolPolicy
+/** CRM 쓰기 — confirm 으로 확인한다: MCP 는 confirm=true 일 때만 쓰고, 앱 AI 는 확인 카드, 질문 경로는 미리보기만 */
+const CRM_W = { mcp: true, agent: "write", ask: "preview", confirm: "param", agentDropProps: ["confirm"] } as const satisfies ToolPolicy
 
 export const TOOL_POLICY = {
   // ─── MCP · 앱 AI · 질문 경로 공통 읽기 ───
@@ -62,6 +64,8 @@ export const TOOL_POLICY = {
   find_org: R,
   // CRM 제품 · 재고 — record_sample 의 product_id 를 여기서 고른다
   list_products: R,
+  // CRM 샘플요청 목록 — update_sample · delete_sample 의 sample_id 를 여기서 고른다
+  list_samples: R,
   list_omnis_cards: R,
   get_omnis_card: R,
   list_weekly_reports: R,
@@ -102,6 +106,13 @@ export const TOOL_POLICY = {
   upload_file: W,
   // CRM 샘플 전달(#231) — 기관이 없으면 만들지 먼저 묻고, 재고까지 빠진다. 질문 경로에서는 미리보기만
   record_sample: { mcp: true, agent: "write", ask: "preview", confirm: "param", agentDropProps: ["confirm"] },
+  // CRM 고치기 — record_sample 과 같은 방식(MCP confirm=true 일 때만 · 앱 AI 확인 카드 · 질문 경로 미리보기). lib/crm-write-rules.ts
+  update_sample: CRM_W,
+  delete_sample: CRM_W,
+  create_org: CRM_W,
+  update_org: CRM_W,
+  record_stock: CRM_W,
+  record_production: CRM_W,
 
   // ─── MCP 에만 ───
   ask_omnis: { mcp: true, agent: false, ask: false, why: "앱 AI · 질문 경로가 곧 옴니스 — 같은 AI 를 다시 부르지 않는다" },
