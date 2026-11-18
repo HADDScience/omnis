@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 
-import { prisma } from "@/lib/db"
-import type { KeywordSource } from "@/lib/column/collect"
+import { keywordAction } from "@/lib/column/board"
 import { requireWebsiteUser, websiteJson, websiteOptions } from "@/lib/website-auth"
 
 /**
@@ -34,42 +33,8 @@ export async function POST(req: NextRequest, { params }: Props) {
   const body = BodySchema.safeParse(await req.json().catch(() => null))
   if (!body.success) return websiteJson({ error: "invalid_body" }, 400, origin)
 
-  const k = await prisma.columnKeyword.findUnique({ where: { id }, include: { drafts: { select: { id: true } } } })
-  if (!k) return websiteJson({ error: "not_found" }, 404, origin)
-  const me = authed.user.id
-  const busyByOther = k.status === "reserved" && k.reservedById !== null && k.reservedById !== me
-
-  switch (body.data.action) {
-    case "reserve":
-      if (k.status !== "candidate") return websiteJson({ error: "bad_state", message: "후보 상태의 키워드만 예약할 수 있습니다" }, 409, origin)
-      await prisma.columnKeyword.update({ where: { id }, data: { status: "reserved", reservedById: me, reservedAt: new Date() } })
-      break
-    case "release":
-      if (k.status !== "reserved") return websiteJson({ error: "bad_state" }, 409, origin)
-      if (busyByOther) return websiteJson({ error: "reserved_by_other", message: "다른 사람이 예약했습니다" }, 409, origin)
-      if (k.drafts.length) return websiteJson({ error: "has_drafts", message: "초안이 있는 키워드는 초안을 지워야 예약이 풀립니다" }, 409, origin)
-      await prisma.columnKeyword.update({ where: { id }, data: { status: "candidate", reservedById: null, reservedAt: null } })
-      break
-    case "discard":
-      if (busyByOther || k.drafts.length) return websiteJson({ error: "in_use", message: "예약됐거나 초안이 있는 키워드는 버릴 수 없습니다" }, 409, origin)
-      await prisma.columnKeyword.update({ where: { id }, data: { status: "discarded", reservedById: null, reservedAt: null } })
-      break
-    case "restore":
-      if (k.status !== "discarded") return websiteJson({ error: "bad_state" }, 409, origin)
-      await prisma.columnKeyword.update({ where: { id }, data: { status: "candidate" } })
-      break
-    case "removeSource": {
-      const sources = (Array.isArray(k.sources) ? k.sources : []) as unknown as KeywordSource[]
-      const next = sources.filter((s) => s.url !== (body.data as { url: string }).url)
-      if (next.length === sources.length) return websiteJson({ error: "not_found", message: "그 근거가 없습니다" }, 404, origin)
-      if (!next.length) return websiteJson({ error: "last_source", message: "근거가 하나뿐이면 뺄 수 없습니다 — 키워드를 버려 주세요" }, 409, origin)
-      const dates = next.map((s) => s.date).filter((d): d is string => !!d).sort()
-      await prisma.columnKeyword.update({
-        where: { id },
-        data: { sources: next as object, timelyAt: dates.length ? new Date(dates.at(-1) as string) : null },
-      })
-      break
-    }
-  }
+  // 규칙은 lib/column/board.ts keywordAction(도구 column_keyword_action 와 같다)
+  const r = await keywordAction(id, authed.user.id, body.data)
+  if (!r.ok) return websiteJson({ error: r.error, ...(r.message ? { message: r.message } : {}) }, r.status, origin)
   return websiteJson({ ok: true }, 200, origin)
 }

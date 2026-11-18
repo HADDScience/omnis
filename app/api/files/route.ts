@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { demoStorageBlocked } from "@/lib/demo"
-import { visibleFileWhere } from "@/lib/file-access"
+import { recentVisibleFiles } from "@/lib/nas-link"
 
 /** 최근 파일 — 내가 볼 수 있는 것만(참여자만 보는 방의 파일은 그 방 사람에게만, lib/file-access.ts) */
 export async function GET() {
@@ -13,13 +13,8 @@ export async function GET() {
     return NextResponse.json({ error: "인증 필요" }, { status: 401 })
   }
 
-  const files = await prisma.file.findMany({
-    where: visibleFileWhere(session.user.id),
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    select: { id: true, name: true, path: true, mimeType: true, size: true },
-  })
-  return NextResponse.json(files)
+  // 목록은 lib/nas-link.ts recentVisibleFiles(도구 list_files 와 같다)
+  return NextResponse.json(await recentVisibleFiles(session.user.id))
 }
 
 export async function POST(req: NextRequest) {

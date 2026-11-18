@@ -11,10 +11,14 @@ import { ADMIN_READ_NAMES, type AdminReadName } from "./defs-admin"
 import { ADMIN_PLANNERS, runAdminRead } from "./plan-admin"
 import { IP_MORE_READ_NAMES, type IpMoreReadName } from "./defs-ip"
 import { IP_MORE_PLANNERS, runIpMoreRead } from "./plan-ip"
+import { WEBSITE_READ_NAMES, type WebsiteReadName } from "./defs-website"
+import { WEBSITE_PLANNERS, runWebsiteRead } from "./plan-website"
+import { FILE_READ_NAMES, type FileReadName } from "./defs-files"
+import { FILE_PLANNERS, runFileRead } from "./plan-files"
 
 type Reader = (args: Record<string, unknown>, caller: Caller) => Promise<{ text: string } | { error: string }>
 
-const PLANNERS: Record<string, Planner> = { ...WORK_PLANNERS, ...CRM_MORE_PLANNERS, ...CARD_PLANNERS, ...ADMIN_PLANNERS, ...IP_MORE_PLANNERS }
+const PLANNERS: Record<string, Planner> = { ...WORK_PLANNERS, ...CRM_MORE_PLANNERS, ...CARD_PLANNERS, ...ADMIN_PLANNERS, ...IP_MORE_PLANNERS, ...WEBSITE_PLANNERS, ...FILE_PLANNERS }
 
 const READERS: Record<string, Reader> = Object.fromEntries([
   ...WORK_READ_NAMES.map((n) => [n, (args: Record<string, unknown>, caller: Caller) => runWorkRead(n as WorkReadName, args, caller)] as const),
@@ -22,6 +26,8 @@ const READERS: Record<string, Reader> = Object.fromEntries([
   ...CARD_READ_NAMES.map((n) => [n, (args: Record<string, unknown>, caller: Caller) => runCardRead(n as CardReadName, args, caller)] as const),
   ...ADMIN_READ_NAMES.map((n) => [n, (args: Record<string, unknown>, caller: Caller) => runAdminRead(n as AdminReadName, args, caller)] as const),
   ...IP_MORE_READ_NAMES.map((n) => [n, (args: Record<string, unknown>, caller: Caller) => runIpMoreRead(n as IpMoreReadName, args, caller)] as const),
+  ...WEBSITE_READ_NAMES.map((n) => [n, (args: Record<string, unknown>, caller: Caller) => runWebsiteRead(n as WebsiteReadName, args, caller)] as const),
+  ...FILE_READ_NAMES.map((n) => [n, (args: Record<string, unknown>, caller: Caller) => runFileRead(n as FileReadName, args, caller)] as const),
 ])
 
 /** 계획을 먼저 세우는 쓰기 도구면 그 계획 함수 */

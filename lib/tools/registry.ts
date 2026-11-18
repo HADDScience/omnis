@@ -180,6 +180,26 @@ export const TOOL_POLICY = {
   ip_progress_edit: PW,
   ip_image_edit: PW,
 
+  // ─── 묶음 6(#248) 홈페이지 · 칼럼 — lib/tools/defs-website.ts. 홈페이지 관리 화면과 같은 권한(재직 구성원, 승인은 검토자) ───
+  list_website_posts: R,
+  website_stats: R,
+  list_column_keywords: R,
+  list_column_drafts: R,
+  save_website_post: PW,
+  delete_website_post: PW,
+  arrange_website_posts: PW,
+  upload_website_media: PW,
+  collect_column_keywords: PW,
+  column_keyword_action: PW,
+  create_column_draft: PW,
+  update_column_draft: PW,
+  column_draft_action: PW,
+
+  // ─── 묶음 7(#248) 파일 · NAS — lib/tools/defs-files.ts ───
+  list_files: R_NO_ASK("내가 볼 수 있는 파일에는 나만 보는 파일 · 단톡방 첨부가 섞여, 여러 사람이 보는 질문 경로의 답에 붙이지 않는다"),
+  browse_nas: R,
+  link_nas_file: PW,
+
   // ─── MCP 에만 ───
   ask_omnis: { mcp: true, agent: false, ask: false, why: "앱 AI · 질문 경로가 곧 옴니스 — 같은 AI 를 다시 부르지 않는다" },
   create_upload_link: { mcp: true, agent: false, ask: false, why: "셸(curl)로 올리는 링크. 앱에서는 입력창에 파일을 붙인다. 링크가 곧 사용자 권한이라 대화 기록에 남기지 않는다" },

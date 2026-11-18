@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 
-import { prisma } from "@/lib/db"
+import { listColumnDrafts } from "@/lib/column/board"
 import { DraftError, generateDraft, isReviewer } from "@/lib/column/draft"
 import { GeminiQuotaError } from "@/lib/gemini-usage"
 import { requireWebsiteUser, websiteJson, websiteOptions } from "@/lib/website-auth"
@@ -19,19 +19,12 @@ export async function GET(req: NextRequest) {
   const origin = req.headers.get("origin")
   const authed = await requireWebsiteUser(req)
   if ("error" in authed) return authed.error
-  const drafts = await prisma.columnDraft.findMany({
-    orderBy: { updatedAt: "desc" },
-    select: {
-      id: true, status: true, title: true, summary: true, postId: true, createdById: true, reviewerId: true,
-      reviewNote: true, createdAt: true, updatedAt: true, keyword: { select: { id: true, term: true } },
-    },
-  })
-  const ids = [...new Set(drafts.flatMap((d) => [d.createdById, d.reviewerId]).filter((x): x is string => !!x))]
-  const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
+  // 목록은 lib/column/board.ts(도구 list_column_drafts 와 같다)
+  const drafts = await listColumnDrafts()
   return websiteJson(
     {
       me: { id: authed.user.id, name: authed.user.name, isReviewer: isReviewer(authed.user.name) },
-      drafts: drafts.map((d) => ({ ...d, createdBy: names.get(d.createdById) ?? null, reviewer: d.reviewerId ? (names.get(d.reviewerId) ?? null) : null })),
+      drafts,
     },
     200,
     origin

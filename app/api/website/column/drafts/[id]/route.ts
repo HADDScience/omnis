@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 
-import { prisma } from "@/lib/db"
+import { columnDraftView } from "@/lib/column/board"
 import { DraftError, discardDraft, isReviewer, reviewProblems, updateDraft } from "@/lib/column/draft"
 import { ImageSuggestionsSchema } from "@/lib/column/image-suggest"
 import { PostBlockSchema } from "@/lib/schemas/website"
@@ -23,19 +23,9 @@ export async function GET(req: NextRequest, { params }: Props) {
   const authed = await requireWebsiteUser(req)
   if ("error" in authed) return authed.error
   const { id } = await params
-  const d = await prisma.columnDraft.findUnique({ where: { id }, include: { keyword: { select: { id: true, term: true, summary: true, sources: true } } } })
-  if (!d) return websiteJson({ error: "not_found" }, 404, origin)
-  const ids = [d.createdById, d.reviewerId].filter((x): x is string => !!x)
-  const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
-  return websiteJson(
-    {
-      draft: { ...d, createdBy: names.get(d.createdById) ?? null, reviewer: d.reviewerId ? (names.get(d.reviewerId) ?? null) : null },
-      problems: reviewProblems(d),
-      me: { id: authed.user.id, name: authed.user.name, isReviewer: isReviewer(authed.user.name) },
-    },
-    200,
-    origin
-  )
+  const v = await columnDraftView(id)
+  if (!v) return websiteJson({ error: "not_found" }, 404, origin)
+  return websiteJson({ ...v, me: { id: authed.user.id, name: authed.user.name, isReviewer: isReviewer(authed.user.name) } }, 200, origin)
 }
 
 const PutSchema = z.object({
