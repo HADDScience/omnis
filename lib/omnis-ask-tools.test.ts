@@ -15,6 +15,8 @@ const WRITE_TOOLS = [
   "create_quote", "update_quote", "delete_quote", "record_shipment", "record_payment",
   // #248 묶음 1 — 질문 경로에는 미리보기로만
   "create_project", "merge_projects", "manage_room", "manage_notifications", "set_notification_prefs", "delete_weekly_report",
+  "update_shipment", "delete_shipment", "delete_stock_move", "delete_payment", "settle_payments",
+  "create_contact", "decide_inquiry", "link_tax_invoice", "delete_tax_invoice", "import_tax_invoice",
 ]
 
 test("질문 경로에 쓰기 도구가 없다", () => {

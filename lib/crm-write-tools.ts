@@ -43,6 +43,7 @@ async function quoteView(ref: string): Promise<CrmQuoteView | null> {
     id: q.id, code: q.code, date: kst(q.quotedAt), org: q.org, status: q.status, note: q.note, discount: q.discountAmount, vatRate: q.vatRate,
     items: q.items.map((i) => ({ productId: i.productId, label: label(i.product), quantity: i.quantity, unitPrice: i.unitPrice })),
     shipments: q._count.shipments, taxInvoices: q._count.taxInvoices,
+    taxInvoicedAt: q.taxInvoicedAt ? kst(q.taxInvoicedAt) : null,
   }
 }
 

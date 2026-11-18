@@ -135,6 +135,21 @@ export const TOOL_POLICY = {
   set_notification_prefs: PW,
   delete_weekly_report: PW,
 
+  // ─── 묶음 2(#248) CRM 나머지 — lib/tools/defs-crm.ts ───
+  list_stock_moves: R,
+  list_payments: R,
+  list_inquiries: R,
+  update_shipment: PW,
+  delete_shipment: PW,
+  delete_stock_move: PW,
+  delete_payment: PW,
+  settle_payments: PW,
+  create_contact: PW,
+  decide_inquiry: PW,
+  link_tax_invoice: PW,
+  delete_tax_invoice: PW,
+  import_tax_invoice: PW,
+
   // ─── MCP 에만 ───
   ask_omnis: { mcp: true, agent: false, ask: false, why: "앱 AI · 질문 경로가 곧 옴니스 — 같은 AI 를 다시 부르지 않는다" },
   create_upload_link: { mcp: true, agent: false, ask: false, why: "셸(curl)로 올리는 링크. 앱에서는 입력창에 파일을 붙인다. 링크가 곧 사용자 권한이라 대화 기록에 남기지 않는다" },

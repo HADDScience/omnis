@@ -405,8 +405,8 @@ export const OMNIS_TOOLS = [
   },
   {
     name: "find_org",
-    description: "거래 기관 찾기. 이름·코드 일부로 찾아 담당자·견적·샘플요청·출고 이력을 돌려준다. 띄어쓰기·(주)·주식회사 같은 법인 표기는 무시한다.",
-    inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+    description: "거래 기관 찾기. 이름·코드 일부로 찾아 담당자·견적·샘플요청·출고 이력(각 ID 포함)을 돌려준다. 띄어쓰기·(주)·주식회사 같은 법인 표기는 무시한다. query 를 비우면 기관 전체 목록(화면 CRM › 기관과 같다).",
+    inputSchema: { type: "object", properties: { query: { type: "string", description: "기관 이름 · 코드 일부. 비우면 전체 목록" } } },
   },
   {
     name: "list_products",
@@ -1623,7 +1623,12 @@ export async function runTool(
 
     case "find_org": {
       const q = str(args.query)
-      if (!q) return { error: "query 가 비어 있습니다." }
+      if (!q) {
+        // 전체 목록 — 화면 CRM › 기관(app/api/crm/orgs GET)과 같은 기관 · 담당자
+        const all = await prisma.crmOrg.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { contacts: true, quotes: true } } } })
+        if (all.length === 0) return { text: "기관이 없습니다." }
+        return { text: [`기관 ${all.length}곳 — 자세히는 query 에 이름이나 코드`, ...all.map((o) => `- ${o.name} (${o.code} · ${o.type}) · 담당자 ${o._count.contacts} · 견적 ${o._count.quotes} · org_id=${o.id}`)].join("\n") }
+      }
       // 띄어쓰기 · 법인 표기 · 이름 일부가 달라도 찾는다(lib/crm-sample-rules rankOrgs) — contains 한 번으로는 「(주)」 하나에 놓쳤다
       const ranked = await findOrgsLoose(q)
       const order = new Map(ranked.map((r, i) => [r.org.id, i]))
@@ -1639,8 +1644,8 @@ export async function runTool(
       if (orgs.length === 0) return { text: `'${q}' 에 맞는 기관이 없습니다. 샘플 전달 등을 적으려면 record_sample — 없는 기관은 사용자에게 새로 만들지 물은 뒤 create_org=true.` }
       const out: string[] = []
       for (const o of orgs) {
-        out.push(`# ${o.name} (${o.code} · ${o.type})${o.address ? ` · ${o.address}` : ""}${o.note ? `\n${o.note}` : ""}`)
-        if (o.contacts.length) out.push("담당자:", ...o.contacts.map((c) => `- ${c.name}${c.title ? ` ${c.title}` : ""}${c.email ? ` · ${c.email}` : ""}${c.phone ? ` · ${c.phone}` : ""}`))
+        out.push(`# ${o.name} (${o.code} · ${o.type}) · org_id=${o.id}${o.address ? ` · ${o.address}` : ""}${o.note ? `\n${o.note}` : ""}`)
+        if (o.contacts.length) out.push("담당자:", ...o.contacts.map((c) => `- ${c.name}${c.title ? ` ${c.title}` : ""}${c.email ? ` · ${c.email}` : ""}${c.phone ? ` · ${c.phone}` : ""} · contact_id=${c.id}`))
         if (o.quotes.length) {
           out.push(`견적 ${o.quotes.length}건:`, ...o.quotes.map((qt) => {
             const t = quoteTotals(qt.items, qt.discountAmount, qt.vatRate)
@@ -1648,7 +1653,7 @@ export async function runTool(
           }))
         }
         if (o.sampleRequests.length) out.push(`샘플요청 ${o.sampleRequests.length}건:`, ...o.sampleRequests.map((s) => `- ${s.code} ${kst(s.requestedAt)}${s.product ? ` · ${s.product.name}` : ""} · ${s.status === "SENT" ? "발송완료" : "미발송"}`))
-        if (o.shipments.length) out.push(`출고 (최근 ${o.shipments.length}):`, ...o.shipments.map((s) => `- ${s.code} ${kst(s.shippedAt)} · ${s.product.name} ${s.quantity}개 · ${s.kind}`))
+        if (o.shipments.length) out.push(`출고 (최근 ${o.shipments.length}):`, ...o.shipments.map((s) => `- ${s.code} ${kst(s.shippedAt)} · ${s.product.name} ${s.quantity}개 · ${s.kind} · ${s.status} · shipment_id=${s.id}`))
         out.push("")
       }
       return { text: out.join("\n").trim() }

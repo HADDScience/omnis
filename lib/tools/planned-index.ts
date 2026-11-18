@@ -3,14 +3,17 @@ import type { Caller } from "@/lib/omnis-mcp"
 import type { Planner } from "./planned"
 import { WORK_READ_NAMES, type WorkReadName } from "./defs-work"
 import { runWorkRead, WORK_PLANNERS } from "./plan-work"
+import { CRM_MORE_READ_NAMES, type CrmMoreReadName } from "./defs-crm"
+import { CRM_MORE_PLANNERS, runCrmMoreRead } from "./plan-crm"
 
 type Reader = (args: Record<string, unknown>, caller: Caller) => Promise<{ text: string } | { error: string }>
 
-const PLANNERS: Record<string, Planner> = { ...WORK_PLANNERS }
+const PLANNERS: Record<string, Planner> = { ...WORK_PLANNERS, ...CRM_MORE_PLANNERS }
 
-const READERS: Record<string, Reader> = Object.fromEntries(
-  WORK_READ_NAMES.map((n) => [n, (args: Record<string, unknown>, caller: Caller) => runWorkRead(n as WorkReadName, args, caller)]),
-)
+const READERS: Record<string, Reader> = Object.fromEntries([
+  ...WORK_READ_NAMES.map((n) => [n, (args: Record<string, unknown>, caller: Caller) => runWorkRead(n as WorkReadName, args, caller)] as const),
+  ...CRM_MORE_READ_NAMES.map((n) => [n, (args: Record<string, unknown>) => runCrmMoreRead(n as CrmMoreReadName, args)] as const),
+])
 
 /** 계획을 먼저 세우는 쓰기 도구면 그 계획 함수 */
 export const plannerFor = (name: string): Planner | undefined => PLANNERS[name]
