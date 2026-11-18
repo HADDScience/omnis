@@ -6,10 +6,12 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
-import { ROUTE_COVERAGE } from "./route-coverage"
+import { ROUTE_COVERAGE, type Coverage } from "./route-coverage"
 import { TOOL_POLICY } from "./registry"
 
 const API = join(process.cwd(), "app/api")
+/** readonly 배열은 Array.isArray 로 좁혀지지 않는다 */
+const isTools = (c: Coverage): c is Extract<Coverage, readonly string[]> => Array.isArray(c)
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const
 const EXPORT = /^export (?:async )?function (GET|POST|PUT|PATCH|DELETE)\b|^export const (GET|POST|PUT|PATCH|DELETE)\b/gm
 
@@ -43,7 +45,7 @@ test("표에만 있고 코드에 없는 줄이 없다", () => {
 
 test("도구 줄은 있는 도구만, 시스템 · 나중 줄은 이유가 있다", () => {
   for (const [key, c] of Object.entries(ROUTE_COVERAGE)) {
-    if (Array.isArray(c)) {
+    if (isTools(c)) {
       assert.ok(c.length > 0, `${key}: 도구가 비었다`)
       for (const t of c) assert.ok(t in TOOL_POLICY, `${key}: 없는 도구 ${t}`)
     } else if ("system" in c) {
@@ -55,7 +57,7 @@ test("도구 줄은 있는 도구만, 시스템 · 나중 줄은 이유가 있�
 })
 
 test("「나중」 은 늘지 않는다 — 도구로 메우면 줄인다", () => {
-  const later = Object.entries(ROUTE_COVERAGE).filter(([, c]) => !Array.isArray(c) && "later" in c).map(([k]) => k)
+  const later = Object.entries(ROUTE_COVERAGE).filter(([, c]) => !isTools(c) && "later" in c).map(([k]) => k)
   // 2026-11-18(#248): 채팅 글 고치기 · 지우기(#242 머지 뒤), 지식재산권 대장 전체 칸, 지식재산권 구성원 2
   assert.ok(later.length <= 5, `「나중」 이 늘었다(${later.length}): ${later.join(", ")}`)
 })

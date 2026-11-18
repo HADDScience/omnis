@@ -19,7 +19,7 @@ function table(cwd) {
 }
 
 /** @type {import("eslint").Rule.RuleModule} */
-export default {
+const routeToolCoverage = {
   meta: {
     type: "problem",
     docs: { description: "API 라우트 메서드마다 AI 도구 표(lib/tools/route-coverage.ts)에 줄이 있어야 한다" },
@@ -50,3 +50,5 @@ export default {
     }
   },
 }
+
+export default routeToolCoverage
