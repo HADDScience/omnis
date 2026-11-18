@@ -33,3 +33,14 @@ test("관리자만인 읽기 — 일반 구성원에게는 거절", async () => 
     assert.ok("error" in r && r.error.includes("관리자만"), name)
   }
 })
+
+test("지식재산권 — 구성원이 아니면 계획이 막힌다", async () => {
+  const { IP_MORE_PLANNERS, runIpMoreRead } = await import("./plan-ip")
+  for (const [name, planner] of Object.entries(IP_MORE_PLANNERS)) {
+    const p = await planner({ id: "x", case: "TM-01", todo: "x", date: "2026-11-18", dir: "받음", subject: "s", body: "b", action: "turn" }, member)
+    assert.ok(p.problem?.includes("지식재산권"), `${name}: ${p.problem}`)
+    assert.equal(p.run, undefined, name)
+  }
+  const r = await runIpMoreRead("ip_records", { what: "flags" }, member)
+  assert.ok("error" in r)
+})

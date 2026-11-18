@@ -173,6 +173,13 @@ export const TOOL_POLICY = {
   set_feature_status: PW,
   send_feedback: PW,
 
+  // ─── 묶음 5(#248) 지식재산권 — lib/tools/defs-ip.ts. 지식재산권 화면에 들어가는 사람만(실행이 caller.ip 를 본다) ───
+  ip_records: R_NO_ASK("질문 경로는 지식재산권을 ip_overview 한 장으로 본다"),
+  ip_save_communication: PW,
+  ip_save_action: PW,
+  ip_progress_edit: PW,
+  ip_image_edit: PW,
+
   // ─── MCP 에만 ───
   ask_omnis: { mcp: true, agent: false, ask: false, why: "앱 AI · 질문 경로가 곧 옴니스 — 같은 AI 를 다시 부르지 않는다" },
   create_upload_link: { mcp: true, agent: false, ask: false, why: "셸(curl)로 올리는 링크. 앱에서는 입력창에 파일을 붙인다. 링크가 곧 사용자 권한이라 대화 기록에 남기지 않는다" },
