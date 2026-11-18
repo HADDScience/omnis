@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { apiError, parseJson, writeActivity } from "@/lib/api"
+import { apiError, parseJson } from "@/lib/api"
+import { mergeProjects } from "@/lib/project-merge"
 
 interface MergeBody {
   sourceId?: string
@@ -33,54 +33,7 @@ export async function POST(req: NextRequest) {
   if (!sourceId || !targetId) {
     return apiError(400, "sourceId, targetId 필수")
   }
-  if (sourceId === targetId) {
-    return apiError(400, "같은 프로젝트끼리는 합칠 수 없습니다")
-  }
-
-  const result = await prisma.$transaction(async (tx) => {
-    // 두 프로젝트를 항상 같은 순서로 잠근다.
-    // A→B 와 B→A 가 동시에 들어올 때 서로의 잠금을 기다리며 교착되는 것을 막는다.
-    const [first, second] = [sourceId, targetId].sort()
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`project-merge:${first}`}))`
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`project-merge:${second}`}))`
-
-    const [source, target] = await Promise.all([
-      tx.project.findUnique({ where: { id: sourceId }, select: { id: true, name: true, archived: true } }),
-      tx.project.findUnique({ where: { id: targetId }, select: { id: true, name: true, archived: true } }),
-    ])
-
-    if (!source || !target) return { ok: false as const, reason: "notFound" as const }
-    if (source.archived) return { ok: false as const, reason: "alreadyArchived" as const }
-    if (target.archived) return { ok: false as const, reason: "targetArchived" as const }
-
-    const moved = await tx.task.updateMany({
-      where: { projectId: sourceId },
-      data: { projectId: targetId },
-    })
-    await tx.project.update({ where: { id: sourceId }, data: { archived: true } })
-
-    return {
-      ok: true as const,
-      moved: moved.count,
-      sourceName: source.name,
-      targetName: target.name,
-    }
-  })
-
-  if (!result.ok) {
-    if (result.reason === "notFound") return apiError(404, "프로젝트를 찾을 수 없습니다")
-    if (result.reason === "alreadyArchived") return apiError(409, "이미 보관된 프로젝트입니다")
-    return apiError(409, "보관된 프로젝트로는 합칠 수 없습니다")
-  }
-
-  await writeActivity({
-    userId: session.user.id,
-    action: "project.merged",
-    entity: "PROJECT",
-    entityId: targetId,
-    title: `프로젝트 병합: ${result.sourceName} → ${result.targetName}`,
-    metadata: { sourceId, targetId, movedTasks: result.moved },
-  })
-
+  const result = await mergeProjects(sourceId, targetId, session.user.id)
+  if (!result.ok) return apiError(result.status, result.error)
   return NextResponse.json(result)
 }

@@ -236,6 +236,10 @@ export async function buildPreview(name: string, args: Record<string, unknown>, 
       if (s(args.deadline)) changes.push({ label: "마감", before: null, after: s(args.deadline) })
       if (s(args.priority)) changes.push({ label: "우선순위", before: null, after: PRIORITY_LABELS[s(args.priority)] ?? s(args.priority) })
       if (s(args.project)) changes.push({ label: "프로젝트", before: null, after: s(args.project) })
+      if (s(args.product)) {
+        const known = await prisma.product.findUnique({ where: { name: s(args.product) }, select: { id: true } })
+        changes.push({ label: "제품", before: null, after: known ? s(args.product) : `${s(args.product)} (새 제품으로 만듦)` })
+      }
       if (list(args.checklist).length) changes.push({ label: "체크리스트", before: null, after: list(args.checklist).map((c) => `· ${c}`).join("\n") })
       if (s(args.instruction)) changes.push({ label: "지시 원문", before: null, after: clip(s(args.instruction)) })
       return {
@@ -280,14 +284,16 @@ export async function buildPreview(name: string, args: Record<string, unknown>, 
     // fallthrough — 업무방 글
     case "update_task":
     case "update_checklist": {
-      const found = await findTask(s(args.task))
+      const found = await findTask(s(args.task), { includeArchived: name === "update_task" && args.archived === false })
       if ("error" in found) return { title: "업무 고치기", target: s(args.task) || "(업무 없음)", changes: [], risk: "", problem: found.error }
       const t = await prisma.task.findUniqueOrThrow({
         where: { id: found.id },
         include: {
           project: { select: { name: true } },
+          product: { select: { name: true } },
+          instructor: { select: { name: true } },
           assignees: { select: { user: { select: { name: true } } } },
-          checklists: { orderBy: { createdAt: "asc" }, select: { name: true, done: true } },
+          checklists: { orderBy: { createdAt: "asc" }, select: { name: true, done: true, memo: true } },
         },
       })
       const target = `#${t.slug} ${t.name}`
@@ -312,7 +318,9 @@ export async function buildPreview(name: string, args: Record<string, unknown>, 
         if (args.project !== undefined) changes.push({ label: "프로젝트", before: t.project?.name ?? "없음", after: s(args.project) || "없음(뺌)" })
         if (args.background !== undefined) changes.push({ label: "배경", before: clip(t.background ?? "") || "없음", after: clip(s(args.background)) || "없음" })
         if (args.expected_result !== undefined) changes.push({ label: "기대 결과", before: clip(t.expectedResult ?? "") || "없음", after: clip(s(args.expected_result)) || "없음" })
-        if (args.archived !== undefined) changes.push({ label: "보관", before: "목록에 보임", after: args.archived === true ? "보관(목록에서 사라짐)" : "목록에 보임" })
+        if (args.product !== undefined) changes.push({ label: "제품", before: t.product?.name ?? "없음", after: s(args.product) || "없음(뺌)" })
+        if (args.instructor !== undefined) changes.push({ label: "지시자", before: t.instructor?.name ?? "없음", after: s(args.instructor) })
+        if (args.archived !== undefined) changes.push({ label: "보관", before: t.archived ? "보관됨" : "목록에 보임", after: args.archived === true ? "보관(목록에서 사라짐)" : "목록에 보임" })
         return {
           title: "업무 고치기",
           target,
@@ -333,6 +341,11 @@ export async function buildPreview(name: string, args: Record<string, unknown>, 
       for (const a of list(args.add)) changes.push({ label: "추가", before: null, after: a })
       for (const r of list(args.check)) changes.push({ label: "체크", before: `[ ] ${ref(r)}`, after: `[x] ${ref(r)}` })
       for (const r of list(args.uncheck)) changes.push({ label: "체크 풂", before: `[x] ${ref(r)}`, after: `[ ] ${ref(r)}` })
+      for (const e of edits(args.rename)) changes.push({ label: "이름 바꿈", before: ref(e.item), after: e.value })
+      for (const e of edits(args.memo)) {
+        const it = /^\d+$/.test(e.item) ? items[Number(e.item) - 1] : items.find((c) => c.name === e.item || c.name.includes(e.item))
+        changes.push({ label: `메모 · ${ref(e.item)}`, before: it?.memo || "없음", after: e.value || "없음(지움)" })
+      }
       return {
         title: "체크리스트 고치기",
         target: `${target} · 지금 ${items.filter((c) => c.done).length}/${items.length}`,
@@ -399,6 +412,15 @@ export async function buildPreview(name: string, args: Record<string, unknown>, 
   return { title: name, target: "", changes: [], risk: "", problem: `열려 있지 않은 쓰기 도구입니다: ${name}` }
 }
 
+/** update_checklist 의 rename · memo — [{ item, value }] */
+function edits(v: unknown): { item: string; value: string }[] {
+  if (!Array.isArray(v)) return []
+  return v.flatMap((x) => {
+    const o = x as { item?: unknown; value?: unknown }
+    return typeof o?.item === "string" && typeof o.value === "string" ? [{ item: o.item.trim(), value: o.value.trim() }] : []
+  })
+}
+
 /** 입력 칸을 카드 줄로 — 주어진 칸만, 정해 둔 순서와 이름으로 */
 function argRows(args: Record<string, unknown>, labels: [string, string][]): PreviewChange[] {
   return labels
@@ -411,6 +433,18 @@ const RESPONSE_LABEL: Record<string, string> = { accept: "업무 수락", confir
 /** MCP 와 맞춰 연 쓰기(2026-11-10) — 되돌리기 어려운 것이라 따라오는 일을 카드에 적는다 */
 async function buildMorePreview(name: string, args: Record<string, unknown>, ctx: { userId: string }): Promise<WritePreview | null> {
   const { findTask } = await import("@/lib/omnis-mcp")
+  // 묶음별 쓰기(#248) — MCP 미리보기와 같은 계획이 카드가 된다. 권한도 계획이 본다(요청한 사람의 권한)
+  const { plannerFor } = await import("@/lib/tools/planned-index")
+  const planner = plannerFor(name)
+  if (planner) {
+    const p = await planner(args, await callerFor(ctx.userId))
+    return {
+      title: p.title, target: p.target, changes: p.changes, risk: p.risk,
+      ...(p.warning ? { warning: p.warning } : {}),
+      ...(p.problem ? { problem: p.problem } : !p.run ? { problem: "실행할 수 없는 계획입니다" } : {}),
+      ...(p.confirmLabel ? { confirmLabel: p.confirmLabel } : {}),
+    }
+  }
   // CRM 고치기(샘플 · 기관 · 재고 · 생산) — MCP 미리보기와 같은 계획이 카드가 된다(전 → 뒤 · 재고 변화 · 경고)
   const { isCrmWriteTool } = await import("@/lib/crm-write-rules")
   if (isCrmWriteTool(name)) {

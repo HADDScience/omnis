@@ -100,9 +100,14 @@ const ADDED_WRITE = [
   "create_quote", "update_quote", "delete_quote", "record_shipment", "record_payment",
 ]
 
+// #248 묶음 1 — 업무 · 프로젝트 · 채팅 방 · 알림 · 주간보고. 방 서랍은 질문 경로에 열지 않는다(단톡 · 1:1)
+const B1_READ = ["list_task_products", "list_activity"]
+const B1_READ_NO_ASK = ["list_room_files"]
+const B1_WRITE = ["create_project", "merge_projects", "manage_room", "manage_notifications", "set_notification_prefs", "delete_weekly_report"]
+
 test("재설계 전과 노출이 같다(새 도구만 더함) — 앱 AI 읽기 · 쓰기, 질문 경로 읽기, MCP 전용", () => {
-  assert.deepEqual(sorted(AGENT_READ_TOOLS), sorted([...BEFORE_AGENT_READ, ...ADDED_READ]))
-  assert.deepEqual(sorted(AGENT_WRITE_TOOLS), sorted([...BEFORE_AGENT_WRITE, ...ADDED_WRITE]))
-  assert.deepEqual(sorted(ROUTE_READ_TOOLS), sorted([...BEFORE_ROUTE_READ, ...ADDED_READ]))
+  assert.deepEqual(sorted(AGENT_READ_TOOLS), sorted([...BEFORE_AGENT_READ, ...ADDED_READ, ...B1_READ, ...B1_READ_NO_ASK]))
+  assert.deepEqual(sorted(AGENT_WRITE_TOOLS), sorted([...BEFORE_AGENT_WRITE, ...ADDED_WRITE, ...B1_WRITE]))
+  assert.deepEqual(sorted(ROUTE_READ_TOOLS), sorted([...BEFORE_ROUTE_READ, ...ADDED_READ, ...B1_READ]))
   assert.deepEqual(sorted(Object.keys(AGENT_EXCLUDED)), ["ask_omnis", "create_upload_link"])
 })
