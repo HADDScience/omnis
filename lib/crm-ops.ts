@@ -5,10 +5,11 @@
 import { z } from "zod"
 import { prisma } from "@/lib/db"
 import { CrmQuoteStatus, CrmSampleStatus, CrmShipmentKind, CrmShipmentStatus, Prisma } from "@/generated/prisma"
-import { billingOrgProblem, gramsForQuantity, nextCode, nextDatedCode, orgCreateSchema, orgUpdateSchema, quoteCreateSchema, quoteTotals } from "@/lib/crm"
+import { billingOrgProblem, contactCreateSchema, gramsForQuantity, nextCode, nextDatedCode, orgCreateSchema, orgUpdateSchema, quoteCreateSchema, quoteTotals } from "@/lib/crm"
 import { createWithUniqueCode } from "@/lib/crm-server"
 import { createNotification } from "@/lib/notifications"
-import { receivableChains } from "@/lib/crm-receivables"
+import { receivableChains, SETTLE_NOTE } from "@/lib/crm-receivables"
+import { inquiryAcceptSchema, inquiryRejectSchema } from "@/lib/website-inquiry"
 import { writeActivity } from "@/lib/api"
 
 export type OpResult<T> =
@@ -489,4 +490,177 @@ export async function createPayment(input: unknown, userId: string): Promise<OpR
     metadata: { paymentId: payment.id, amountKrw },
   })
   return { ok: true, value: { id: payment.id, remaining: chain ? chain.remaining - amountKrw : null } }
+}
+
+// ─── 담당자 · 입금 지우기 · 세금계산서 · 홈페이지 문의 (#248) ───────────────
+// 아래도 라우트 안에 있던 것을 그대로 옮겼다 — 화면(app/api/crm/*)과 도구(lib/tools/plan-crm.ts)가 같이 부른다.
+
+/** 기관에 담당자 한 명 */
+export async function createContact(input: unknown): Promise<OpResult<Prisma.CrmContactGetPayload<object>>> {
+  const parsed = contactCreateSchema.safeParse(input)
+  if (!parsed.success) return fail(firstIssue(parsed.error))
+  const { orgId, ...fields } = parsed.data
+  const org = await prisma.crmOrg.findUnique({ where: { id: orgId } })
+  if (!org) return fail("기관을 찾을 수 없습니다", 404)
+  const contact = await createWithUniqueCode(async () => {
+    const codes = (await prisma.crmContact.findMany({ select: { code: true } })).map((c) => c.code)
+    return prisma.crmContact.create({ data: { ...fields, code: nextCode("CT", codes), org: { connect: { id: orgId } } } })
+  })
+  return { ok: true, value: contact }
+}
+
+/** 잘못 적은 입금 한 줄 지우기 — 누가 지웠는지 활동 기록에 남는다 */
+export async function deletePayment(paymentId: string, userId: string): Promise<OpResult<{ invoiceId: string; amount: number }>> {
+  const p = await prisma.crmPayment.findUnique({ where: { id: paymentId }, include: { invoice: { select: { buyerName: true, supplierName: true, direction: true } } } })
+  if (!p) return fail("없는 기록입니다", 404)
+  await prisma.crmPayment.delete({ where: { id: paymentId } })
+  await writeActivity({
+    userId,
+    action: "crm.payment.deleted",
+    entity: "TAX_INVOICE",
+    entityId: p.invoiceId,
+    title: `입금 기록 삭제: ${p.invoice.direction === "SALE" ? p.invoice.buyerName : p.invoice.supplierName} ${Number(p.amountKrw).toLocaleString("ko-KR")}원`,
+    metadata: { paidOn: p.paidOn.toISOString().slice(0, 10) },
+  })
+  return { ok: true, value: { invoiceId: p.invoiceId, amount: Number(p.amountKrw) } }
+}
+
+/**
+ * 입금 기록을 쓰기 전에 이미 받은 매출 세금계산서를 한 번에 「받음」 으로(2026-09-17).
+ * 입금일을 지어 넣지 않는다: 발행일로 두고 메모에 「실제 입금일 모름」(SETTLE_NOTE)을 남긴다. 지우면 되돌아간다.
+ */
+export async function settlePayments(invoiceIds: string[], userId: string): Promise<OpResult<{ settled: number; total: number }>> {
+  if (invoiceIds.length === 0 || invoiceIds.length > 500) return fail("고른 세금계산서가 없습니다")
+  const want = new Set(invoiceIds)
+  const chains = (await receivableChains("SALE")).filter((c) => want.has(c.invoiceId) && c.remaining > 0)
+  await prisma.crmPayment.createMany({
+    data: chains.map((c) => ({ invoiceId: c.invoiceId, paidOn: new Date(`${c.issuedOn}T00:00:00Z`), amountKrw: BigInt(c.remaining), note: SETTLE_NOTE, createdById: userId })),
+  })
+  const total = chains.reduce((a, c) => a + c.remaining, 0)
+  await writeActivity({
+    userId,
+    action: "crm.payment.settled",
+    entity: "TAX_INVOICE",
+    entityId: null,
+    title: `시작 전 정리: ${chains.length}건 받음으로 표시 · ${total.toLocaleString("ko-KR")}원`,
+    metadata: { invoiceIds: chains.map((c) => c.invoiceId) },
+  })
+  return { ok: true, value: { settled: chains.length, total } }
+}
+
+/**
+ * 세금계산서를 견적에 잇거나(quoteId) 끊는다(null) — 2026-09-17.
+ * 대학은 견적은 학과로, 세금계산서는 산학협력단으로 나가 자동으로 못 잇는다. 사람이 한 번 눌러 잇는다.
+ */
+export async function linkTaxInvoice(invoiceId: string, quoteId: string | null, userId: string): Promise<OpResult<{ quoteCode: string | null }>> {
+  const inv = await prisma.taxInvoice.findUnique({ where: { id: invoiceId }, select: { id: true, issuedOn: true, buyerName: true, direction: true } })
+  if (!inv) return fail("세금계산서를 찾을 수 없습니다", 404)
+  if (inv.direction !== "SALE" && quoteId) return fail("매입 세금계산서는 견적에 잇지 않습니다")
+  const quote = quoteId ? await prisma.crmQuote.findUnique({ where: { id: quoteId }, select: { id: true, code: true } }) : null
+  if (quoteId && !quote) return fail("견적을 찾을 수 없습니다", 404)
+  await prisma.taxInvoice.update({ where: { id: invoiceId }, data: { quoteId: quote?.id ?? null } })
+  if (quote) await prisma.crmQuote.updateMany({ where: { id: quote.id, taxInvoicedAt: null }, data: { taxInvoicedAt: inv.issuedOn } })
+  await writeActivity({
+    userId,
+    action: "crm.invoice.linked",
+    entity: "TAX_INVOICE",
+    entityId: invoiceId,
+    title: quote ? `세금계산서 ↔ 견적 잇기: ${inv.buyerName} · ${quote.code}` : `세금계산서 견적 연결 끊기: ${inv.buyerName}`,
+  })
+  return { ok: true, value: { quoteCode: quote?.code ?? null } }
+}
+
+/**
+ * 세금계산서 지우기(2026-10-29) — 잘못 올렸거나 취소 뒤 새로 발행한 경우.
+ * NAS 원본 PDF 는 지우지 않는다(증빙 · 공용 저장소). 입금 기록은 스키마대로 함께 지워진다.
+ */
+export async function deleteTaxInvoice(invoiceId: string, userId: string): Promise<OpResult<{ payments: number }>> {
+  const inv = await prisma.taxInvoice.findUnique({
+    where: { id: invoiceId },
+    select: {
+      approvalNo: true, direction: true, issuedOn: true, buyerName: true, supplierName: true, totalKrw: true, quoteId: true, objectKey: true,
+      _count: { select: { payments: true } },
+    },
+  })
+  if (!inv) return fail("세금계산서를 찾을 수 없습니다", 404)
+  await prisma.$transaction(async (tx) => {
+    await tx.taxInvoice.delete({ where: { id: invoiceId } })
+    if (inv.quoteId && !(await tx.taxInvoice.count({ where: { quoteId: inv.quoteId } }))) {
+      await tx.crmQuote.update({ where: { id: inv.quoteId }, data: { taxInvoicedAt: null } })
+    }
+  })
+  const counter = inv.direction === "SALE" ? inv.buyerName : inv.supplierName
+  await writeActivity({
+    userId,
+    action: "crm.invoice.deleted",
+    entity: "TAX_INVOICE",
+    entityId: invoiceId,
+    title: `세금계산서 삭제: ${counter} ${Number(inv.totalKrw).toLocaleString("ko-KR")}원`,
+    metadata: { approvalNo: inv.approvalNo, issuedOn: inv.issuedOn.toISOString().slice(0, 10), payments: inv._count.payments, objectKey: inv.objectKey },
+  })
+  return { ok: true, value: { payments: inv._count.payments } }
+}
+
+/** 홈페이지 문의 반려 · 스팸 — 문의 상태만 바꾸고 CRM 은 건드리지 않는다 */
+export async function rejectInquiry(inquiryId: string, userId: string, input: unknown): Promise<OpResult<{ status: string }>> {
+  const parsed = inquiryRejectSchema.safeParse(input)
+  if (!parsed.success) return fail(firstIssue(parsed.error))
+  const claimed = await prisma.websiteInquiry.updateMany({
+    where: { id: inquiryId, status: "NEW" },
+    data: { status: parsed.data.status, reviewNote: parsed.data.reviewNote ?? null, reviewedById: userId, reviewedAt: new Date() },
+  })
+  if (claimed.count === 0) return fail("이미 처리된 문의입니다", 409)
+  return { ok: true, value: { status: parsed.data.status } }
+}
+
+/** 홈페이지 문의 승인 — 기관(과 담당자)에 잇고, 고른 대로 빈 견적이나 샘플요청을 만든다 */
+export async function acceptInquiry(inquiryId: string, userId: string, input: unknown): Promise<OpResult<{
+  outcome: string; orgId: string; contactId: string | null; quoteId: string | null; sampleId: string | null; code: string | null
+}>> {
+  const parsed = inquiryAcceptSchema.safeParse(input)
+  if (!parsed.success) return fail(firstIssue(parsed.error))
+  const { orgId, contactId, outcome, note } = parsed.data
+  const org = await prisma.crmOrg.findUnique({ where: { id: orgId }, select: { id: true } })
+  if (!org) return fail("기관을 찾을 수 없습니다", 404)
+  if (contactId) {
+    const c = await prisma.crmContact.findUnique({ where: { id: contactId }, select: { orgId: true } })
+    if (!c || c.orgId !== orgId) return fail("담당자가 이 기관 소속이 아닙니다")
+  }
+  const result = await createWithUniqueCode(() =>
+    prisma.$transaction(async (tx) => {
+      const claimed = await tx.websiteInquiry.updateMany({
+        where: { id: inquiryId, status: "NEW" },
+        data: { status: "ACCEPTED", reviewNote: note ?? null, reviewedById: userId, reviewedAt: new Date() },
+      })
+      if (claimed.count === 0) return { conflict: true as const }
+      const inquiry = await tx.websiteInquiry.findUniqueOrThrow({ where: { id: inquiryId } })
+      const now = new Date()
+      const fromInquiry = `홈페이지 문의 (${inquiry.id})\n${inquiry.message}`.slice(0, 2000)
+      let quoteId: string | null = null
+      let sampleId: string | null = null
+      let code: string | null = null
+      if (outcome === "quote") {
+        const codes = (await tx.crmQuote.findMany({ select: { code: true } })).map((q) => q.code)
+        const quote = await tx.crmQuote.create({ data: { code: nextDatedCode(now, codes), quotedAt: now, orgId, contactId: contactId ?? null, status: "DRAFT", note: fromInquiry } })
+        quoteId = quote.id
+        code = quote.code
+      } else if (outcome === "sample") {
+        const codes = (await tx.crmSampleRequest.findMany({ select: { code: true } })).map((r) => r.code)
+        const sample = await tx.crmSampleRequest.create({
+          data: {
+            code: nextDatedCode(now, codes), requestedAt: now, orgId, contactId: contactId ?? null,
+            request: inquiry.message.slice(0, 2000), referral: "홈페이지 문의", note: `홈페이지 문의 (${inquiry.id})`,
+          },
+        })
+        sampleId = sample.id
+        code = sample.code
+      }
+      await tx.websiteInquiry.update({ where: { id: inquiryId }, data: { orgId, contactId: contactId ?? null, quoteId, sampleId } })
+      return { conflict: false as const, outcome, orgId, contactId: contactId ?? null, quoteId, sampleId, code }
+    }),
+  )
+  if (result.conflict) return fail("이미 처리된 문의입니다", 409)
+  const { conflict: _c, ...value } = result
+  void _c
+  return { ok: true, value }
 }

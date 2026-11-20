@@ -190,7 +190,7 @@ export const CRM_WRITE_TOOLS = [
   {
     name: "update_quote",
     description:
-      "CRM 견적의 상태 · 비고를 고친다(화면과 같다 — 품목을 바꾸려면 지우고 새로 만든다). 완료(DONE)로 바꾸고 세금계산서가 없으면 재무 담당에게 발행 요청 알림이 간다. " +
+      "CRM 견적의 상태 · 비고 · 세금계산서 발행일을 고친다(화면과 같다 — 품목을 바꾸려면 지우고 새로 만든다). 완료(DONE)로 바꾸고 세금계산서가 없으면 재무 담당에게 발행 요청 알림이 간다. " +
       "quote_id 는 list_quotes 로 찾는다. " + PREVIEW_RULE,
     inputSchema: {
       type: "object",
@@ -198,6 +198,7 @@ export const CRM_WRITE_TOOLS = [
         quote_id: { type: "string", description: "list_quotes 의 quote_id(또는 견적 코드)" },
         status: { type: "string", enum: ["DRAFT", "SENT", "DONE", "CANCELLED"], description: "작성중 · 발송 · 완료 · 취소" },
         note: { type: "string", description: "비고" },
+        tax_invoiced_at: { type: "string", description: "세금계산서 발행일 YYYY-MM-DD. 빈 문자열이면 지운다(화면 견적 상세와 같다)" },
         confirm: CONFIRM,
       },
       required: ["quote_id"],
@@ -321,6 +322,8 @@ export interface CrmQuoteView {
   items: { productId: string; label: string; quantity: number; unitPrice: number }[]
   shipments: number
   taxInvoices: number
+  /** 세금계산서 발행일 YYYY-MM-DD(KST) — 없으면 null */
+  taxInvoicedAt?: string | null
 }
 
 export interface CrmReceivableView {
@@ -361,7 +364,7 @@ export type CrmOp =
   | { kind: "stockMove"; input: { movedAt: string; productId: string; direction: "IN" | "OUT"; quantity: number; note: string | null } }
   | { kind: "production"; input: { producedAt: string; productId: string; materialId: string; quantity: number; materialGrams?: number; note: string | null } }
   | { kind: "createQuote"; input: { quotedAt: string; orgId: string; discountAmount: number; status: "DRAFT" | "SENT"; note: string | null; items: { productId: string; quantity: number; unitPrice: number }[] } }
-  | { kind: "updateQuote"; id: string; input: { status?: string; note?: string | null } }
+  | { kind: "updateQuote"; id: string; input: { status?: string; note?: string | null; taxInvoicedAt?: string | null } }
   | { kind: "deleteQuote"; id: string }
   | { kind: "shipment"; input: { shippedAt: string; kind: string; orgId: string; productId: string; quantity: number; status: string; quoteId: string | null; note: string | null } }
   | { kind: "payment"; input: { invoiceId: string; paidOn: string; amountKrw: number; note: string | null } }
@@ -813,7 +816,7 @@ async function planUpdateQuote(args: Record<string, unknown>, port: CrmPort): Pr
   if (!q) return fail(T, ref, `'${ref}' 견적이 없습니다 — list_quotes 로 quote_id 를 확인하세요.`)
   const target = quoteLine(q)
   const changes: CrmChange[] = []
-  const input: { status?: string; note?: string | null } = {}
+  const input: { status?: string; note?: string | null; taxInvoicedAt?: string | null } = {}
   if (has(args, "status")) {
     const st = str(args.status).toUpperCase()
     if (!(st in QUOTE_STATUS_LABEL)) return fail(T, target, "status 는 DRAFT · SENT · DONE · CANCELLED 중 하나입니다.")
@@ -823,7 +826,15 @@ async function planUpdateQuote(args: Record<string, unknown>, port: CrmPort): Pr
     const v = str(args.note).slice(0, 2000)
     if (v !== (q.note ?? "")) { input.note = v || null; changes.push({ label: "비고", before: q.note || "(없음)", after: v || "(비움)" }) }
   }
-  if (changes.length === 0) return fail(T, target, "바뀌는 것이 없습니다 — status · note 를 주세요(품목은 지우고 새로 만듭니다).")
+  if (has(args, "tax_invoiced_at")) {
+    const raw = str(args.tax_invoiced_at)
+    if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return fail(T, target, "tax_invoiced_at 은 YYYY-MM-DD 이거나 빈 문자열(지우기)입니다.")
+    if (raw !== (q.taxInvoicedAt ?? "")) {
+      input.taxInvoicedAt = raw ? `${raw}T00:00:00Z` : null
+      changes.push({ label: "세금계산서 발행일", before: q.taxInvoicedAt || "(없음)", after: raw || "(지움)" })
+    }
+  }
+  if (changes.length === 0) return fail(T, target, "바뀌는 것이 없습니다 — status · note · tax_invoiced_at 을 주세요(품목은 지우고 새로 만듭니다).")
   const invoiceAsk = input.status === "DONE" && q.taxInvoices === 0
   return {
     title: T, target, changes,

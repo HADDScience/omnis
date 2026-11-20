@@ -104,10 +104,16 @@ const ADDED_WRITE = [
 const B1_READ = ["list_task_products", "list_activity"]
 const B1_READ_NO_ASK = ["list_room_files"]
 const B1_WRITE = ["create_project", "merge_projects", "manage_room", "manage_notifications", "set_notification_prefs", "delete_weekly_report"]
+// #248 묶음 2 — CRM 나머지
+const B2_READ = ["list_stock_moves", "list_payments", "list_inquiries"]
+const B2_WRITE = [
+  "update_shipment", "delete_shipment", "delete_stock_move", "delete_payment", "settle_payments",
+  "create_contact", "decide_inquiry", "link_tax_invoice", "delete_tax_invoice", "import_tax_invoice",
+]
 
 test("재설계 전과 노출이 같다(새 도구만 더함) — 앱 AI 읽기 · 쓰기, 질문 경로 읽기, MCP 전용", () => {
-  assert.deepEqual(sorted(AGENT_READ_TOOLS), sorted([...BEFORE_AGENT_READ, ...ADDED_READ, ...B1_READ, ...B1_READ_NO_ASK]))
-  assert.deepEqual(sorted(AGENT_WRITE_TOOLS), sorted([...BEFORE_AGENT_WRITE, ...ADDED_WRITE, ...B1_WRITE]))
-  assert.deepEqual(sorted(ROUTE_READ_TOOLS), sorted([...BEFORE_ROUTE_READ, ...ADDED_READ, ...B1_READ]))
+  assert.deepEqual(sorted(AGENT_READ_TOOLS), sorted([...BEFORE_AGENT_READ, ...ADDED_READ, ...B1_READ, ...B1_READ_NO_ASK, ...B2_READ]))
+  assert.deepEqual(sorted(AGENT_WRITE_TOOLS), sorted([...BEFORE_AGENT_WRITE, ...ADDED_WRITE, ...B1_WRITE, ...B2_WRITE]))
+  assert.deepEqual(sorted(ROUTE_READ_TOOLS), sorted([...BEFORE_ROUTE_READ, ...ADDED_READ, ...B1_READ, ...B2_READ]))
   assert.deepEqual(sorted(Object.keys(AGENT_EXCLUDED)), ["ask_omnis", "create_upload_link"])
 })

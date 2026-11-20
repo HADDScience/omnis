@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { writeActivity } from "@/lib/api"
 import { MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { quoteTotals } from "@/lib/crm"
-import { readInvoice, type ParsedInvoice } from "@/lib/tax-invoice"
-import { looksLikeHometaxExcel, readHometaxExcel } from "@/lib/hometax-excel"
-import {
-  INVOICE_MIME_EXT,
-  InvoiceSaveError,
-  loadOrgsForMatching,
-  planInvoice,
-  saveBlockers,
-  saveInvoice,
-  type InvoiceDecisions,
-} from "@/lib/tax-invoice-save"
+import { loadOrgsForMatching, planInvoice, saveBlockers } from "@/lib/tax-invoice-save"
+import { ImportUserError, importInvoices, readInvoiceSource, type ImportDecisions } from "@/lib/tax-invoice-import"
 import { demoStorageBlocked } from "@/lib/demo"
 
 export const runtime = "nodejs"
@@ -28,26 +18,6 @@ export const maxDuration = 60
  *
  * 브라우저가 보낸 판독값은 믿지 않는다. 답(decisions)만 받는다.
  */
-type Decisions = Record<string, InvoiceDecisions & { skip?: boolean; acceptVision?: boolean }>
-
-async function readFile(file: File, userId: string): Promise<{ invoices: ParsedInvoice[]; source: "excel" | "pdf"; mimeType: string; buffer: Buffer }> {
-  const buffer = Buffer.from(await file.arrayBuffer())
-  if (looksLikeHometaxExcel(file.name)) {
-    const r = readHometaxExcel(new Uint8Array(buffer))
-    return { invoices: r.invoices, source: "excel", mimeType: file.type, buffer }
-  }
-  const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "")
-  if (!INVOICE_MIME_EXT[mimeType]) throw new UserError("홈택스 목록 엑셀(.xls · .xlsx) 이나 세금계산서 PDF · 사진만 올릴 수 있습니다", 415)
-  const invoice = await readInvoice(new Uint8Array(buffer), mimeType, { userId, allowVision: true })
-  return { invoices: [invoice], source: "pdf", mimeType, buffer }
-}
-
-class UserError extends Error {
-  constructor(message: string, readonly status = 422) {
-    super(message)
-  }
-}
-
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "인증 필요" }, { status: 401 })
@@ -66,9 +36,9 @@ export async function POST(req: NextRequest) {
 
   let read
   try {
-    read = await readFile(file, userId)
+    read = await readInvoiceSource(Buffer.from(await file.arrayBuffer()), file.name, file.type, userId)
   } catch (err) {
-    if (err instanceof UserError) return NextResponse.json({ error: err.message }, { status: err.status })
+    if (err instanceof ImportUserError) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("[crm/invoices/import] 판독 실패", { name: file.name, err })
     return NextResponse.json({ error: "읽지 못했습니다. 홈택스에서 받은 엑셀이나 PDF 인지 확인해 주세요" }, { status: 422 })
   }
@@ -101,53 +71,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ source: read.source, fileName: file.name, rows })
   }
 
-  let decisions: Decisions = {}
+  let decisions: ImportDecisions = {}
   try {
     decisions = JSON.parse(String(form?.get("decisions") ?? "{}"))
   } catch {
     return NextResponse.json({ error: "답을 읽지 못했습니다" }, { status: 400 })
   }
 
-  const results: { approvalNo: string | null; status: "saved" | "attached" | "skipped" | "failed"; message?: string }[] = []
-  for (const invoice of read.invoices) {
-    const d = (invoice.approvalNo && decisions[invoice.approvalNo]) || {}
-    if (d.skip) {
-      results.push({ approvalNo: invoice.approvalNo, status: "skipped" })
-      continue
-    }
-    if (invoice.readBy === "vision" && !d.acceptVision) {
-      results.push({ approvalNo: invoice.approvalNo, status: "failed", message: "AI 가 읽은 것은 원본과 대조했다고 표시해야 저장합니다" })
-      continue
-    }
-    try {
-      const plan = await planInvoice(invoice, orgs, { hasFile })
-      const saved = await saveInvoice(
-        invoice,
-        plan,
-        hasFile ? { data: read.buffer, mimeType: read.mimeType, fileName: file.name } : null,
-        userId,
-        d
-      )
-      results.push({ approvalNo: invoice.approvalNo, status: saved.attached ? "attached" : "saved" })
-      if (saved.createdOrg) orgs.push({ ...saved.createdOrg, bizRegNo: plan.counterBizNo, quotes: [] })
-    } catch (err) {
-      if (err instanceof InvoiceSaveError) {
-        results.push({ approvalNo: invoice.approvalNo, status: "failed", message: err.message })
-        continue
-      }
-      console.error("[crm/invoices/import] 저장 실패", { approvalNo: invoice.approvalNo, err })
-      results.push({ approvalNo: invoice.approvalNo, status: "failed", message: "저장하지 못했습니다" })
-    }
-  }
-
-  const count = (s: string) => results.filter((r) => r.status === s).length
-  await writeActivity({
-    userId,
-    action: "crm.invoice.imported",
-    entity: "TAX_INVOICE",
-    entityId: null,
-    title: `세금계산서 가져오기: ${file.name} · 저장 ${count("saved")} · PDF 붙임 ${count("attached")} · 건너뜀 ${count("skipped")} · 실패 ${count("failed")}`,
-    metadata: { source: read.source, results },
-  })
+  // 저장 · 활동 기록은 lib/tax-invoice-import.ts importInvoices(도구 import_tax_invoice 와 같다)
+  const results = await importInvoices(read, file.name, decisions, userId)
   return NextResponse.json({ results })
 }
