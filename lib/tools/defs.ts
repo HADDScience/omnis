@@ -3,5 +3,6 @@ import { WORK_TOOLS } from "./defs-work"
 import { CRM_MORE_TOOLS } from "./defs-crm"
 import { CARD_TOOLS } from "./defs-cards"
 import { ADMIN_TOOLS } from "./defs-admin"
+import { IP_MORE_TOOLS } from "./defs-ip"
 
-export const EXTRA_TOOLS = [...WORK_TOOLS, ...CRM_MORE_TOOLS, ...CARD_TOOLS, ...ADMIN_TOOLS] as const
+export const EXTRA_TOOLS = [...WORK_TOOLS, ...CRM_MORE_TOOLS, ...CARD_TOOLS, ...ADMIN_TOOLS, ...IP_MORE_TOOLS] as const
