@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { prisma } from "@/lib/db"
-import { apiError, parseJson, writeActivity } from "@/lib/api"
-import { CompanyProfileSchema, PROFILE_FIELD_LABEL, type CompanyProfileInput } from "@/lib/schemas/company"
-import { isAdminSession, profileData, sameValue } from "@/lib/company-edit"
+import { apiError, parseJson } from "@/lib/api"
+import { isAdminSession } from "@/lib/company-edit"
+import { saveCompanyProfile } from "@/lib/company-ops"
 
 export const runtime = "nodejs"
 
@@ -16,22 +15,8 @@ export async function PATCH(req: NextRequest) {
   if (!session?.user?.id) return apiError(401, "인증 필요")
   if (!isAdminSession(session)) return apiError(403, "관리자만 회사 정보를 고칠 수 있습니다")
 
-  const parsed = CompanyProfileSchema.safeParse(await parseJson(req))
-  if (!parsed.success) return apiError(400, parsed.error.issues[0]?.message ?? "잘못된 입력")
-
-  const data = { ...profileData(parsed.data), updatedById: session.user.id }
-  const before = await prisma.companyProfile.findUnique({ where: { id: "hadd" } })
-  await prisma.companyProfile.upsert({ where: { id: "hadd" }, create: { id: "hadd", ...data }, update: data })
-
-  const keys = Object.keys(PROFILE_FIELD_LABEL) as (keyof CompanyProfileInput)[]
-  const changed = before ? keys.filter((k) => !sameValue(before[k], data[k])) : keys.filter((k) => data[k] !== null)
-  await writeActivity({
-    userId: session.user.id,
-    action: before ? "company.profile.updated" : "company.profile.created",
-    entity: "COMPANY_PROFILE",
-    entityId: "hadd",
-    title: `회사 정보 ${before ? "수정" : "입력"}: ${changed.map((k) => PROFILE_FIELD_LABEL[k]).join(", ") || "바뀐 칸 없음"}`,
-    metadata: { changed },
-  })
-  return NextResponse.json({ ok: true, changed })
+  // 규칙은 lib/company-ops.ts saveCompanyProfile(도구 update_company_profile 와 같다)
+  const r = await saveCompanyProfile(session.user.id, await parseJson(req))
+  if (!r.ok) return apiError(r.status, r.error)
+  return NextResponse.json({ ok: true, changed: r.value.changed })
 }

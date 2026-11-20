@@ -161,6 +161,18 @@ export const TOOL_POLICY = {
   decide_card_proposal: PW,
   manage_bookmarks: PW,
 
+  // ─── 묶음 4(#248) 회사 · 캘린더 · 관리 설정 — lib/tools/defs-admin.ts. 관리자만인 것은 실행이 caller.role 을 본다 ───
+  ai_budget: R_NO_ASK("관리자만 보는 설정 — 질문 경로의 답은 여러 사람이 볼 수 있는 자리에 붙는다"),
+  list_feature_requests: R_NO_ASK("관리자만 보는 요청 목록(요청한 사람 이름 · 원문) — 질문 경로의 답은 여러 사람이 볼 수 있는 자리에 붙는다"),
+  ai_survey_results: R_NO_ASK("관리자만 보는 설문 합계 — 질문 경로의 답은 여러 사람이 볼 수 있는 자리에 붙는다"),
+  update_company_profile: PW,
+  save_company_year: PW,
+  delete_company_year: PW,
+  set_calendar_audience: PW,
+  set_ai_budget: PW,
+  set_feature_status: PW,
+  send_feedback: PW,
+
   // ─── MCP 에만 ───
   ask_omnis: { mcp: true, agent: false, ask: false, why: "앱 AI · 질문 경로가 곧 옴니스 — 같은 AI 를 다시 부르지 않는다" },
   create_upload_link: { mcp: true, agent: false, ask: false, why: "셸(curl)로 올리는 링크. 앱에서는 입력창에 파일을 붙인다. 링크가 곧 사용자 권한이라 대화 기록에 남기지 않는다" },
