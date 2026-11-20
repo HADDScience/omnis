@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { demoStorageBlocked } from "@/lib/demo"
-import { normalizeNasPath, statNasFile, mimeTypeFromName } from "@/lib/nas"
-import { nasLinkPath } from "@/lib/file-source"
+import { linkNasFile } from "@/lib/nas-link"
 
 export const runtime = "nodejs"
 
-/** File.size 는 Int(32비트)다. 표시용이라 넘치면 상한으로 적는다. */
-const INT_MAX = 2_147_483_647
 
 /**
  * NAS 에 이미 있는 파일을 첨부로 잇는다 — 올리지 않는다(2026-09-17).
@@ -26,29 +22,8 @@ export async function POST(req: NextRequest) {
   if (blocked) return blocked
 
   const body = await req.json().catch(() => null)
-  const path = typeof body?.path === "string" ? normalizeNasPath(body.path) : null
-  if (!path) {
-    return NextResponse.json({ error: "HADD Science 공유폴더 안의 경로만 연결할 수 있습니다" }, { status: 400 })
-  }
-
-  // scope=private — 옴니스 1:1 · 사람끼리 방에 붙일 연결(POST /api/files 와 같은 뜻)
-  const isPrivate = body?.scope === "private"
-
-  const entry = await statNasFile(path)
-  if (!entry) {
-    return NextResponse.json({ error: `시놀로지에서 파일을 찾지 못했습니다 — ${path}` }, { status: 404 })
-  }
-
-  const record = await prisma.file.create({
-    data: {
-      name: entry.name,
-      path: nasLinkPath(path),
-      size: Math.min(entry.size ?? 0, INT_MAX),
-      // 말풍선이 이 값으로 이미지 미리보기를 그린다
-      mimeType: mimeTypeFromName(entry.name)?.split(";")[0] ?? "application/octet-stream",
-      privateToUserId: isPrivate ? session.user.id : null,
-    },
-  })
-
-  return NextResponse.json(record, { status: 201 })
+  // 규칙은 lib/nas-link.ts linkNasFile(도구 link_nas_file 와 같다)
+  const r = await linkNasFile(session.user.id, typeof body?.path === "string" ? body.path : "", body?.scope === "private")
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status })
+  return NextResponse.json(r.file, { status: 201 })
 }
