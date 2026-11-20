@@ -173,6 +173,11 @@ feat/{주제} ──커밋──푸시──┐                    ┌─→ 프
 - **자동 배포에 게이트가 없다.** Vercel 은 `pnpm run build` 만 돌린다 — lint 와 e2e 는
   돌지 않고, `main` 은 브랜치 보호가 없어 곧장 푸시할 수 있다. 그래서 푸시 전에
   품질 게이트를 사람이 돌린다(위 "품질 게이트")
+- **CI(`.github/workflows/ci.yml`) 는 머지 판단용이다** — `verify`(tsc · eslint · 단위) 와 `e2e`(네 조각을 모아 판정).
+  `e2e` 는 [`tests/e2e-known-failures.json`](tests/e2e-known-failures.json) 의 알려진 실패를 빼고 센다 — 고치면 거기서 지운다.
+  **급한 수정**은 브랜치를 `hotfix/…` 로 하거나 PR 에 `hotfix` 라벨을 단다. PR 에서는 `verify` 만 돌고(약 2분),
+  e2e 는 머지 뒤 main 에서 전체가 돈다. 거기서 새 실패가 나오면 「main e2e 새 실패」 이슈가 열린다.
+  문서만 바꾼 PR(`mydocs/` · `docs/` · 최상위 `*.md`)도 e2e 를 건너뛴다
 - **마이그레이션은 운영 배포에 딸려 오지 않는다.** 운영(`omnis-hadd`) 빌드는 `prisma generate && next build` 다.
   스키마를 바꿨으면 **운영 DB 에 `prisma migrate deploy`(`pnpm run db:deploy`) 를 먼저 적용하고, 그 다음 머지한다** —
   새 표를 읽는 코드가 먼저 나가면 화면이 없는 표를 읽다 오류가 난다
