@@ -1,34 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { prisma } from "@/lib/db"
-import { apiError, writeActivity } from "@/lib/api"
+import { apiError } from "@/lib/api"
+import { removeBookmark } from "@/lib/omnis-card-ops"
 
 interface Props {
   params: Promise<{ id: string }>
 }
 
+/** 즐겨찾기 빼기 — 즐겨찾기 ID 또는 카드 ID, 내 것만(lib/omnis-card-ops.ts) */
 export async function DELETE(_req: NextRequest, { params }: Props) {
   const session = await auth()
   if (!session?.user?.id) return apiError(401, "인증 필요")
-
   const { id } = await params
-  const bookmark = await prisma.bookmark.findFirst({
-    where: {
-      userId: session.user.id,
-      OR: [{ id }, { cardId: id }],
-    },
-    include: { card: { select: { id: true, title: true } } },
-  })
-  if (!bookmark) return apiError(404, "즐겨찾기 없음")
-
-  await prisma.bookmark.delete({ where: { id: bookmark.id } })
-  await writeActivity({
-    userId: session.user.id,
-    action: "bookmark.deleted",
-    entity: "OMNIS_CARD",
-    entityId: bookmark.card.id,
-    title: `즐겨찾기 제거: ${bookmark.card.title}`,
-  })
-
+  const r = await removeBookmark(session.user.id, id)
+  if (!r.ok) return apiError(r.status, r.error)
   return NextResponse.json({ success: true })
 }

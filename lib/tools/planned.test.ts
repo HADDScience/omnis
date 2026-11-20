@@ -9,6 +9,7 @@ import { TOOL_POLICY } from "./registry"
 import { EXTRA_TOOLS } from "./defs"
 import { WORK_READ_NAMES } from "./defs-work"
 import { CRM_MORE_READ_NAMES } from "./defs-crm"
+import { CARD_READ_NAMES } from "./defs-cards"
 
 const caller: Caller = { userId: "u1", name: "시험 사용자", role: "MEMBER", ip: null }
 
@@ -52,7 +53,7 @@ test("planText — 전 → 뒤, 새 줄은 뒤만, 경고", () => {
 })
 
 test("묶음 쓰기 도구는 모두 confirm 칸이 있고 레지스트리에서 confirm: param 이다", () => {
-  const reads = new Set<string>([...WORK_READ_NAMES, ...CRM_MORE_READ_NAMES])
+  const reads = new Set<string>([...WORK_READ_NAMES, ...CRM_MORE_READ_NAMES, ...CARD_READ_NAMES])
   for (const t of EXTRA_TOOLS) {
     const p = (TOOL_POLICY as Record<string, { confirm?: string; agent: unknown; ask: unknown }>)[t.name]
     assert.ok(p, `${t.name} 레지스트리`)

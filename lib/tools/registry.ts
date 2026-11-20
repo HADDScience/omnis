@@ -150,6 +150,17 @@ export const TOOL_POLICY = {
   delete_tax_invoice: PW,
   import_tax_invoice: PW,
 
+  // ─── 묶음 3(#248) 지식 카드 — lib/tools/defs-cards.ts ───
+  omnis_card_history: R,
+  list_card_proposals: R,
+  list_bookmarks: R,
+  list_my_questions: R_NO_ASK("질문 경로의 답은 여러 사람이 볼 수 있는 자리에 붙어, 한 사람의 질문 기록은 다루지 않는다"),
+  delete_omnis_card: PW,
+  manage_omnis_category: PW,
+  restore_omnis_card: PW,
+  decide_card_proposal: PW,
+  manage_bookmarks: PW,
+
   // ─── MCP 에만 ───
   ask_omnis: { mcp: true, agent: false, ask: false, why: "앱 AI · 질문 경로가 곧 옴니스 — 같은 AI 를 다시 부르지 않는다" },
   create_upload_link: { mcp: true, agent: false, ask: false, why: "셸(curl)로 올리는 링크. 앱에서는 입력창에 파일을 붙인다. 링크가 곧 사용자 권한이라 대화 기록에 남기지 않는다" },
