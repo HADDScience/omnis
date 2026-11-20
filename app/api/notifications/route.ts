@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { NotificationPatchSchema } from "@/lib/schemas/notification"
 import { respondToAction } from "@/lib/notifications"
+import { deleteNotifications, markNotificationsRead } from "@/lib/notification-manage"
 
 export async function GET() {
   const session = await auth()
@@ -41,26 +42,17 @@ export async function PATCH(req: NextRequest) {
   const body = parsed.data
 
   if ("readAll" in body) {
-    await prisma.notification.updateMany({
-      where: { userId: session.user.id, read: false },
-      data: { read: true },
-    })
+    await markNotificationsRead(session.user.id, { all: true })
     return NextResponse.json({ ok: true })
   }
 
   if ("response" in body) {
-    // 알맹이는 lib/notifications 에 있다 — MCP(respond_notification)도 같은 함수를 부른다.
     const r = await respondToAction(session.user.id, session.user.name ?? "담당자", body.id, body.response)
     return "error" in r ? NextResponse.json({ error: r.error }, { status: r.code }) : NextResponse.json(r)
   }
 
-  const result = await prisma.notification.updateMany({
-    where: { id: body.id, userId: session.user.id },
-    data: { read: true },
-  })
-  if (result.count === 0) {
-    return NextResponse.json({ error: "알림 없음" }, { status: 404 })
-  }
+  const result = await markNotificationsRead(session.user.id, { id: body.id })
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
   return NextResponse.json({ ok: true })
 }
 
@@ -75,28 +67,10 @@ export async function DELETE(req: NextRequest) {
   const deleteAll = searchParams.get("all")
 
   // 미해결 액션 알림은 지울 수 없다 — 지워서 없애는 길을 열어두면 잔상이 성립하지 않는다.
-  const keepPending = { OR: [{ actionType: null }, { resolvedAt: { not: null } }] }
-
-  if (deleteAll) {
-    await prisma.notification.deleteMany({
-      where: { userId: session.user.id, ...keepPending },
-    })
-    return NextResponse.json({ ok: true })
-  }
-
-  if (id) {
-    const result = await prisma.notification.deleteMany({
-      where: { id, userId: session.user.id, ...keepPending },
-    })
-    if (result.count === 0) {
-      const exists = await prisma.notification.findFirst({
-        where: { id, userId: session.user.id },
-        select: { id: true },
-      })
-      return exists
-        ? NextResponse.json({ error: "응답이 필요한 알림은 삭제할 수 없습니다" }, { status: 409 })
-        : NextResponse.json({ error: "알림 없음" }, { status: 404 })
-    }
+  // 지우는 규칙(응답 대기는 남긴다)은 lib/notification-manage.ts — 도구 manage_notifications 와 같다
+  if (deleteAll || id) {
+    const r = await deleteNotifications(session.user.id, deleteAll ? { all: true } : { id: id! })
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status })
     return NextResponse.json({ ok: true })
   }
 

@@ -50,6 +50,8 @@ const R_NO_ASK = (why: string) => ({ mcp: true, agent: "read", ask: false, why }
 const W = { mcp: true, agent: "write", ask: false, confirm: "card" } as const satisfies ToolPolicy
 /** CRM 쓰기 — confirm 으로 확인한다: MCP 는 confirm=true 일 때만 쓰고, 앱 AI 는 확인 카드, 질문 경로는 미리보기만 */
 const CRM_W = { mcp: true, agent: "write", ask: "preview", confirm: "param", agentDropProps: ["confirm"] } as const satisfies ToolPolicy
+/** 계획을 먼저 세우는 쓰기(#248, lib/tools/planned.ts) — CRM 쓰기와 같은 확인: MCP confirm=true · 앱 AI 확인 카드 · 질문 경로 미리보기 */
+const PW = CRM_W
 
 export const TOOL_POLICY = {
   // ─── MCP · 앱 AI · 질문 경로 공통 읽기 ───
@@ -121,6 +123,17 @@ export const TOOL_POLICY = {
   delete_quote: CRM_W,
   record_shipment: CRM_W,
   record_payment: CRM_W,
+
+  // ─── 묶음 1(#248) 업무 · 프로젝트 · 채팅 방 · 알림 · 주간보고 — lib/tools/defs-work.ts ───
+  list_task_products: R,
+  list_activity: R,
+  list_room_files: R_NO_ASK("질문 경로의 답은 여러 사람이 볼 수 있는 자리에 붙어, 단톡 · 1:1 방 서랍은 다루지 않는다"),
+  create_project: PW,
+  merge_projects: PW,
+  manage_room: PW,
+  manage_notifications: PW,
+  set_notification_prefs: PW,
+  delete_weekly_report: PW,
 
   // ─── MCP 에만 ───
   ask_omnis: { mcp: true, agent: false, ask: false, why: "앱 AI · 질문 경로가 곧 옴니스 — 같은 AI 를 다시 부르지 않는다" },

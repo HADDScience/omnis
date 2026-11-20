@@ -47,12 +47,16 @@ import { TOOL_POLICY } from "@/lib/tools/registry"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
 import { findOrgsLoose, productListText, recordSampleDelivery } from "@/lib/crm-sample-server"
 import { CRM_WRITE_TOOLS, isCrmWriteTool } from "@/lib/crm-write-rules"
+import { EXTRA_TOOLS } from "@/lib/tools/defs"
+import { plannerFor, readerFor } from "@/lib/tools/planned-index"
+import { runPlanned } from "@/lib/tools/planned"
 import { quoteListText, receivableListText, runCrmWrite, sampleListText } from "@/lib/crm-write-tools"
 import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
 import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
 import { recordTaskEvents } from "@/lib/task-events"
+import { findOrCreateProduct } from "@/lib/project-resolve"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { assignmentTargets } from "@/lib/notify-rules"
 import * as XLSX from "xlsx"
@@ -215,6 +219,7 @@ export const OMNIS_TOOLS = [
         room: { type: "string", description: "보낼 방 — 방 ID 또는 이름 일부(list_rooms), 「나와의 대화」 는 \"me\". 생략하면 전사방." },
         task: { type: "string", description: "업무 슬러그·ID·이름 일부. 전사방에서만 — room 과 함께 쓰지 않는다. 생략하면 스레드 없이 전체 채팅에." },
         files: { type: "array", items: { type: "string" }, description: "첨부할 파일 ID. upload_file·create_upload_link 로 받은 것. 단톡방 · 1:1 · 나와의 대화에 붙일 파일은 올릴 때 같은 room 을 줘야 한다" },
+        reply_to: { type: "string", description: "답장할 글 ID(list_chat 의 「글 …」). 같은 방의 글에만 답장한다 — 화면의 답장과 같다" },
       },
       required: ["content"],
     },
@@ -307,6 +312,7 @@ export const OMNIS_TOOLS = [
       "상태를 DONE 으로 바꾸면 떠 있는 완료 확인 알림이 거둬진다. 담당자 확인을 거치려면 post_message 로 보고하는 편이 낫다.",
       "마감은 사용자가 말한 날짜만. 빈 문자열이면 마감을 지운다. project 는 기존 프로젝트 이름(list_projects), 빈 문자열이면 프로젝트에서 뺀다.",
       "assignees 를 주면 담당자를 그 목록으로 통째로 바꾼다(정식 이름 — list_members).",
+      "product 는 업무용 제품 이름(list_task_products), instructor 는 지시자 정식 이름.",
     ].join(" "),
     inputSchema: {
       type: "object",
@@ -320,7 +326,9 @@ export const OMNIS_TOOLS = [
         expected_result: { type: "string" },
         project: { type: "string", description: "기존 프로젝트 이름 (일부도 됨). 빈 문자열이면 뺀다" },
         assignees: { type: "array", items: { type: "string" }, description: "담당자 정식 이름들 — 주면 담당자 전체를 이 목록으로 바꾼다" },
-        archived: { type: "boolean", description: "true 면 보관(목록에서 사라진다)" },
+        archived: { type: "boolean", description: "true 면 보관(목록에서 사라진다). false 면 보관된 업무를 다시 꺼낸다" },
+        product: { type: "string", description: "제품 이름(list_task_products). 빈 문자열이면 뺀다" },
+        instructor: { type: "string", description: "지시자 정식 이름(list_members)" },
       },
       required: ["task"],
     },
@@ -329,7 +337,8 @@ export const OMNIS_TOOLS = [
     name: "update_checklist",
     description: [
       "업무 체크리스트를 고친다. 항목은 번호(get_task 에 보이는 1부터) 또는 이름(일부)으로 가리킨다.",
-      "순서: remove → add → check → uncheck. 번호는 고치기 전 목록 기준이다.",
+      "순서: remove → add → check → uncheck → rename → memo. 번호는 고치기 전 목록 기준이다.",
+      "rename 은 항목 이름을, memo 는 항목 메모를 바꾼다 — 화면 체크리스트에서 고치는 것과 같다. memo 를 빈 글로 주면 메모를 지운다.",
       "모두 체크해도 업무 상태는 바뀌지 않는다 — 완료는 담당자 확인(respond_notification)이나 update_task 로.",
     ].join(" "),
     inputSchema: {
@@ -340,6 +349,14 @@ export const OMNIS_TOOLS = [
         check: { type: "array", items: { type: "string" }, description: "체크할 항목 (번호 또는 이름)" },
         uncheck: { type: "array", items: { type: "string" }, description: "체크를 풀 항목" },
         remove: { type: "array", items: { type: "string" }, description: "지울 항목" },
+        rename: {
+          type: "array", description: "이름 바꿀 항목 — { item: 번호 또는 이름, value: 새 이름 }",
+          items: { type: "object", properties: { item: { type: "string" }, value: { type: "string" } }, required: ["item", "value"] },
+        },
+        memo: {
+          type: "array", description: "메모 고칠 항목 — { item: 번호 또는 이름, value: 메모(빈 글이면 지움) }",
+          items: { type: "object", properties: { item: { type: "string" }, value: { type: "string" } }, required: ["item", "value"] },
+        },
       },
       required: ["task"],
     },
@@ -363,6 +380,7 @@ export const OMNIS_TOOLS = [
         deadline: { type: "string", description: "YYYY-MM-DD (KST). 명시된 경우만" },
         priority: { type: "string", enum: ["LOW", "NORMAL", "HIGH"] },
         project: { type: "string", description: "기존 프로젝트 이름 (일부도 됨)" },
+        product: { type: "string", description: "업무용 제품 이름(list_task_products). 없는 이름이면 화면처럼 새 제품으로 만든다" },
       },
       required: ["name", "assignees"],
     },
@@ -428,6 +446,8 @@ export const OMNIS_TOOLS = [
   },
   // CRM 고치기(샘플 · 기관 · 재고 · 생산) — 정의 · 계획은 lib/crm-write-rules.ts, 쓰기는 화면 API 와 같은 lib/crm-ops.ts
   ...CRM_WRITE_TOOLS,
+  // 묶음별 도구(#248) — 화면에서 되는 일은 AI 로도. 정의 lib/tools/defs-*.ts, 실행 lib/tools/plan-*.ts
+  ...EXTRA_TOOLS,
   {
     name: "list_omnis_cards",
     description: "사내 지식 카드(옴니스) 목록. 분류·제목·태그로 거른다. 본문은 get_omnis_card.",
@@ -698,16 +718,18 @@ function taskLine(t: TaskRow): string {
  * 업무 찾기 — ID → 슬러그 → 이름 일부(최근 것 우선).
  * 이름으로 여럿이 걸리고 정확히 같은 이름이 없으면 고르지 않고 후보를 돌려준다.
  */
-export async function findTask(ref: string): Promise<{ id: string } | { error: string }> {
+export async function findTask(ref: string, opts: { includeArchived?: boolean } = {}): Promise<{ id: string } | { error: string }> {
   const key = ref.replace(/^#/, "").trim()
   if (!key) return { error: "task 가 비어 있습니다." }
+  // 보관 풀기(update_task archived=false)는 보관된 업무도 찾아야 한다 — 화면 PATCH 는 보관 업무도 고친다
+  const archived = opts.includeArchived ? {} : { archived: false }
   const direct = await prisma.task.findFirst({
-    where: { OR: [{ id: key }, { slug: key }], archived: false },
+    where: { OR: [{ id: key }, { slug: key }], ...archived },
     select: { id: true },
   })
   if (direct) return direct
   const hits = await prisma.task.findMany({
-    where: { archived: false, name: { contains: key, mode: "insensitive" } },
+    where: { ...archived, name: { contains: key, mode: "insensitive" } },
     select: { id: true, name: true, slug: true, status: true, createdAt: true },
     orderBy: { createdAt: "desc" },
     take: 10,
@@ -931,7 +953,7 @@ async function listRoomChat(args: Record<string, unknown>, caller: Caller): Prom
       `${head}`,
       `글 ${r.messages.length}건 (오래된 것부터)`,
       ...r.messages.map((m) =>
-        `[${kst(m.createdAt, true)}] ${m.author}${m.taskSlug ? ` · #${m.taskSlug}` : ""}: ` +
+        `[${kst(m.createdAt, true)} · 글 ${m.id}] ${m.author}${m.taskSlug ? ` · #${m.taskSlug}` : ""}: ` +
         `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
         `${m.files.length ? ` [첨부: ${m.files.map((f) => `${f.name} (${f.id})`).join(", ")}]` : m.missing ? ` ${missingAttachmentToolNote(m.missing)}` : ""}`
       ),
@@ -964,12 +986,16 @@ async function fileScopeFor(ref: string, caller: Caller): Promise<{ isPrivate: b
  * 단톡방 · 1:1 · 나와의 대화에 글 — 화면 라우트(app/api/chat/messages POST 의 DM · GROUP 갈래)와 같은 함수를 지난다:
  * 참여자 확인(loadPeopleRoom) → 첨부 확인 · 저장 · 방 목록 시각(postPeopleMessage) → 채팅 푸시 · 멘션 알림 → @옴니스 호출.
  */
-async function postToPeopleRoom(roomId: string, content: string, fileIds: string[], caller: Caller): Promise<ToolResult> {
+async function postToPeopleRoom(roomId: string, content: string, fileIds: string[], caller: Caller, replyToId: string | null = null): Promise<ToolResult> {
   // 참여자가 아니면 없는 방과 같은 답 — 방이 있다는 것도 새지 않게
   const room = await loadPeopleRoom(roomId, caller.userId)
   if (!room) return { error: "방을 찾을 수 없거나 내가 참여자가 아닌 방입니다. list_rooms 로 확인하세요." }
   if (content.length > PEOPLE_MESSAGE_MAX) return { error: `단톡방 · 1:1 글은 ${PEOPLE_MESSAGE_MAX}자까지입니다 (지금 ${content.length}자).` }
-  const posted = await postPeopleMessage({ id: caller.userId, name: caller.name }, room, { content, fileIds: fileIds.length ? fileIds : undefined })
+  // 답장 — 같은 방의 지우지 않은 글만(postPeopleMessage 도 같은 방만 받는다 — 여기서는 못 찾으면 조용히 빼지 않고 알린다)
+  if (replyToId && !(await prisma.chatMessage.findFirst({ where: { id: replyToId, roomId: room.id, deletedAt: null }, select: { id: true } }))) {
+    return { error: "reply_to 글을 이 방에서 찾지 못했습니다 — list_chat(view=room) 의 글 ID 를 넣으세요." }
+  }
+  const posted = await postPeopleMessage({ id: caller.userId, name: caller.name }, room, { content, replyToId, fileIds: fileIds.length ? fileIds : undefined })
   if (!posted.ok) {
     if (posted.status === 404 && fileIds.length) {
       return { error: `${posted.error} — 단톡방 · 1:1 · 나와의 대화에 붙일 파일은 upload_file · create_upload_link 에 같은 room 을 주고 올려야 합니다.` }
@@ -1003,6 +1029,12 @@ export async function runTool(
       userId: caller.ip.userId, email: caller.ip.email, displayName: caller.ip.displayName, role: caller.ip.role,
     })
   }
+
+  // 묶음별 도구(#248) — 쓰기는 계획 → confirm=true 일 때만 실행(lib/tools/planned.ts), 읽기는 그대로
+  const planner = plannerFor(name)
+  if (planner) return runPlanned(planner, args, caller)
+  const reader = readerFor(name)
+  if (reader) return reader(args, caller)
 
   switch (name) {
     case "ask_omnis": {
@@ -1150,7 +1182,7 @@ export async function runTool(
           if (str(args.task)) return { error: "task(업무 스레드)는 전사방 글에만 씁니다. 단톡방 · 1:1 · 나와의 대화에 보낼 때는 task 를 빼세요." }
           const ids = Array.isArray(args.files) ? [...new Set(args.files.map(String).map((x) => x.trim()).filter(Boolean))] : []
           const roomId = target.kind === "self" ? (target.room?.id ?? (await openSelfRoom({ id: caller.userId })).roomId) : target.kind === "room" ? target.room.id : ""
-          return postToPeopleRoom(roomId, content, ids, caller)
+          return postToPeopleRoom(roomId, content, ids, caller, str(args.reply_to) || null)
         }
       }
       let taskId: string | undefined
@@ -1174,8 +1206,13 @@ export async function runTool(
       }
       // #슬러그가 본문에 이미 있으면 그대로, 없으면 앞에 붙인다 — 화면에서 쓰는 것과 같은 모양.
       const body = slug && !/#[a-z0-9가-힣_-]+/i.test(content) ? `#${slug} ${content}` : content
+      // 답장 — 전사방의 지우지 않은 글만(화면 답장과 같은 방). 업무 스레드 글에 답할 때는 그 업무를 함께 준다
+      const replyToId = str(args.reply_to) || null
+      if (replyToId && !(await prisma.chatMessage.findFirst({ where: { id: replyToId, roomId: "default-room", deletedAt: null }, select: { id: true } }))) {
+        return { error: "reply_to 글을 전사방에서 찾지 못했습니다 — list_chat 의 글 ID 를 넣으세요." }
+      }
       const { message, taskUpdate } = await postChatMessage({
-        user: { id: caller.userId, name: caller.name }, roomId: "default-room", content: body, taskId,
+        user: { id: caller.userId, name: caller.name }, roomId: "default-room", content: body, taskId, replyToId,
         fileIds: fileIds.length ? fileIds : undefined,
       })
       const out = [`올렸습니다 (${kst(message?.createdAt ?? new Date(), true)} · ${caller.name}).`]
@@ -1301,6 +1338,9 @@ export async function runTool(
       const out = [`응답 대기 ${pending.length}건`]
       for (const n of pending) out.push(line(n), `  ${ACTION_HINT[n.actionType ?? ""] ?? n.actionType}`)
       out.push("", `최근 알림 ${recent.length}건`, ...recent.map(line))
+      // 기기 알림(푸시) 켜기 · 끄기 — 화면 마이 › 기기 알림과 같은 값(lib/notification-manage.ts)
+      const { notificationPrefsLine } = await import("@/lib/tools/plan-work")
+      out.push("", await notificationPrefsLine(caller.userId), "읽음 · 지우기는 manage_notifications.")
       return { text: out.join("\n") }
     }
 
@@ -1333,7 +1373,7 @@ export async function runTool(
     }
 
     case "update_task": {
-      const found = await findTask(str(args.task))
+      const found = await findTask(str(args.task), { includeArchived: args.archived === false })
       if ("error" in found) return found
       const input: UpdateTaskInput = {}
       if (args.status !== undefined) {
@@ -1377,6 +1417,22 @@ export async function runTool(
         if (missing.length) return { error: `모르거나 재직 중이 아닌 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
         input.assigneeIds = ids
       }
+      if (args.product !== undefined) {
+        const q = str(args.product)
+        if (!q) input.productId = null
+        else {
+          const ps = await prisma.product.findMany({ where: { name: { contains: q, mode: "insensitive" } }, select: { id: true, name: true }, take: 10 })
+          const exact = ps.find((p) => p.name === q)
+          if (ps.length === 0) return { error: `'${q}' 제품이 없습니다. list_task_products 로 확인하세요.` }
+          if (ps.length > 1 && !exact) return { error: `제품이 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}` }
+          input.productId = (exact ?? ps[0]).id
+        }
+      }
+      if (args.instructor !== undefined) {
+        const { ids, missing } = await findUsers([str(args.instructor)])
+        if (missing.length || ids.length !== 1) return { error: `모르거나 재직 중이 아닌 이름: ${str(args.instructor)}. list_members 로 확인하세요.` }
+        input.instructorId = ids[0]
+      }
       if (Object.keys(input).length === 0) return { error: "바꿀 필드를 하나 이상 주세요." }
 
       const r = await updateTask(found.id, caller.userId, input, "mcp")
@@ -1397,8 +1453,14 @@ export async function runTool(
       if ("error" in found) return found
       const listArg = (k: string) => (Array.isArray(args[k]) ? (args[k] as unknown[]).map(String).map((s) => s.trim()).filter(Boolean) : [])
       const [add, check, uncheck, remove] = ["add", "check", "uncheck", "remove"].map(listArg)
-      if (add.length + check.length + uncheck.length + remove.length === 0) {
-        return { error: "add · check · uncheck · remove 중 하나 이상 주세요." }
+      const editArg = (k: string) => (Array.isArray(args[k]) ? (args[k] as unknown[]) : []).flatMap((x) => {
+        const o = x as { item?: unknown; value?: unknown }
+        return typeof o?.item === "string" && typeof o.value === "string" && o.item.trim() ? [{ item: o.item.trim(), value: o.value.trim() }] : []
+      })
+      const [renames, memos] = [editArg("rename"), editArg("memo")]
+      if (renames.some((r) => !r.value)) return { error: "rename 의 value(새 이름)를 비울 수는 없습니다." }
+      if (add.length + check.length + uncheck.length + remove.length + renames.length + memos.length === 0) {
+        return { error: "add · check · uncheck · remove · rename · memo 중 하나 이상 주세요." }
       }
 
       type Item = { id: string; name: string; done: boolean }
@@ -1418,7 +1480,7 @@ export async function runTool(
       const removeItems = remove.map((r) => resolveRef(r, items))
       const removedIds = new Set(removeItems.flatMap((x) => (typeof x === "string" ? [] : [x.id])))
       const planned = [...items, ...add.map((name, i) => ({ id: `new:${i}`, name, done: false }))].filter((c) => !removedIds.has(c.id))
-      const toggles = [...check, ...uncheck].map((r) => {
+      const toggles = [...check, ...uncheck, ...renames.map((e) => e.item), ...memos.map((e) => e.item)].map((r) => {
         const x = resolveRef(r, planned)
         return typeof x !== "string" && removedIds.has(x.id) ? `'${r}'(지울 항목)` : x
       })
@@ -1433,6 +1495,9 @@ export async function runTool(
       for (const [refs, done] of [[check, true], [uncheck, false]] as const) {
         for (const ref of refs) await updateChecklistItem((resolveRef(ref, pool) as Item).id, { done }, caller.userId, "mcp")
       }
+      // 이름 · 메모 — 화면과 같은 updateChecklistItem(name · memo). 번호는 고치기 전 목록 기준이라 바꾼 이름에 흔들리지 않는다
+      for (const e of renames) await updateChecklistItem((resolveRef(e.item, pool) as Item).id, { name: e.value }, caller.userId, "mcp")
+      for (const e of memos) await updateChecklistItem((resolveRef(e.item, pool) as Item).id, { memo: e.value }, caller.userId, "mcp")
 
       const after = await prisma.checklist.findMany({
         where: { taskId: found.id }, orderBy: { createdAt: "asc" }, select: { name: true, done: true },
@@ -1464,6 +1529,10 @@ export async function runTool(
         if (ps.length > 1 && !exact) return { error: `프로젝트가 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}` }
         projectId = (exact ?? ps[0]).id
       }
+      // 제품 — 화면(app/api/tasks POST)과 같은 findOrCreateProduct(같은 이름이면 있는 것)
+      const productId = str(args.product)
+        ? (await prisma.$transaction((tx) => findOrCreateProduct(tx, str(args.product)))).product.id
+        : null
       const deadline = /^\d{4}-\d{2}-\d{2}$/.test(str(args.deadline)) ? new Date(`${str(args.deadline)}T23:59:59+09:00`) : null
       const priority = ["LOW", "NORMAL", "HIGH"].includes(str(args.priority)) ? (str(args.priority) as "LOW" | "NORMAL" | "HIGH") : "NORMAL"
       const items = Array.isArray(args.checklist) ? args.checklist.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 8) : []
@@ -1476,7 +1545,7 @@ export async function runTool(
         try {
           task = await prisma.task.create({
             data: {
-              name: taskName.slice(0, 120), slug, instructorId: caller.userId, projectId, priority, deadline,
+              name: taskName.slice(0, 120), slug, instructorId: caller.userId, projectId, productId, priority, deadline,
               background: str(args.background) || null,
               assignees: { create: assigneeIds.map((userId) => ({ userId })) },
               checklists: { create: items.map((n) => ({ name: n })) },
@@ -1789,7 +1858,7 @@ export async function runTool(
         text: [
           `채팅 ${r.messages.length}건 (오래된 것부터)`,
           ...r.messages.map((m) =>
-            `[${kst(m.createdAt, true)}] ${m.author.name}${m.task ? ` · #${m.task.slug}` : ""}: ` +
+            `[${kst(m.createdAt, true)} · 글 ${m.id}] ${m.author.name}${m.task ? ` · #${m.task.slug}` : ""}: ` +
             `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
             `${m.files.length ? ` [첨부: ${m.files.map((f) => f.name).join(", ")}]` : ""}`
           ),

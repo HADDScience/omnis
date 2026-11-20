@@ -1,0 +1,18 @@
+// 묶음별 실행을 한데 모은다(#248) — lib/omnis-mcp.ts runTool · 앱 AI 확인 카드(lib/agent/tools.ts)가 여기서 찾는다.
+import type { Caller } from "@/lib/omnis-mcp"
+import type { Planner } from "./planned"
+import { WORK_READ_NAMES, type WorkReadName } from "./defs-work"
+import { runWorkRead, WORK_PLANNERS } from "./plan-work"
+
+type Reader = (args: Record<string, unknown>, caller: Caller) => Promise<{ text: string } | { error: string }>
+
+const PLANNERS: Record<string, Planner> = { ...WORK_PLANNERS }
+
+const READERS: Record<string, Reader> = Object.fromEntries(
+  WORK_READ_NAMES.map((n) => [n, (args: Record<string, unknown>, caller: Caller) => runWorkRead(n as WorkReadName, args, caller)]),
+)
+
+/** 계획을 먼저 세우는 쓰기 도구면 그 계획 함수 */
+export const plannerFor = (name: string): Planner | undefined => PLANNERS[name]
+/** 묶음 읽기 도구면 그 실행 함수 */
+export const readerFor = (name: string): Reader | undefined => READERS[name]

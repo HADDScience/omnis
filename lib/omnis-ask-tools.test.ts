@@ -13,6 +13,8 @@ const WRITE_TOOLS = [
   // CRM 고치기 — 질문 경로에는 미리보기로만(ROUTE_PREVIEW_TOOLS) 열린다
   "update_sample", "delete_sample", "create_org", "update_org", "record_stock", "record_production",
   "create_quote", "update_quote", "delete_quote", "record_shipment", "record_payment",
+  // #248 묶음 1 — 질문 경로에는 미리보기로만
+  "create_project", "merge_projects", "manage_room", "manage_notifications", "set_notification_prefs", "delete_weekly_report",
 ]
 
 test("질문 경로에 쓰기 도구가 없다", () => {
@@ -34,7 +36,8 @@ test("웍스 일정 읽기(list_calendar)는 질문 경로 · 에이전트 읽�
 
 test("MCP 의 도구는 읽기 목록이나 쓰기 목록 중 하나에 있다 — 새 도구가 생기면 어느 쪽인지 정해야 한다", () => {
   // list_rooms — 읽기지만 질문 경로에는 열지 않는다(아래 방 보기 시험)
-  const known = new Set<string>([...ROUTE_READ_TOOLS, ...WRITE_TOOLS, "search_knowledge", "list_rooms"])
+  // list_room_files — 방 서랍도 같은 까닭으로 질문 경로 밖
+  const known = new Set<string>([...ROUTE_READ_TOOLS, ...WRITE_TOOLS, "search_knowledge", "list_rooms", "list_room_files"])
   // (list_samples 는 읽기 — ROUTE_READ_TOOLS 에 있다)
   for (const t of OMNIS_TOOLS) assert.ok(known.has(t.name), t.name)
 })
