@@ -5,7 +5,7 @@
  * - 홈페이지 계약(~/work/omnis-reports/omnis-hr-api-contract-261124.md)대로 열고 · 올리고 · 확정하면 지원서함에 뜬다
  * - 관리자라도 채용 담당이 아니면 목록 · 상세 · 파일이 모두 막힌다(거부되어야 하는 경우)
  * - 관리자가 운영 탭에서 담당을 고르면 그 사람(구성원이어도)이 마이 입구 · 목록 · 상세 · 파일을 본다
- * - 내려받은 파일이 올린 파일과 같다
+ * - 내려받은 파일이 올린 파일과 같다(이력서 9MB · 포트폴리오 12MB — 포트폴리오는 이력서 상한 10MB 를 넘어도 받는다)
  * - 홈페이지가 보낸 「관심 있는 일」 이 목록 · 상세에 라벨로 보인다
  *
  * 가짜 NAS(scripts/e2e-fake-nas.mjs)와 지원서 비밀(WEBSITE_CAREER_SECRET · WEBSITE_CAREER_UPLOAD_KEY)이 있을 때만 돈다 — CI 는 둘 다 넣는다.
@@ -29,6 +29,8 @@ test.describe("채용 지원서함 @hr", () => {
   const prisma = new PrismaClient()
   // 9MB — 조각 셋(4,000,000 · 4,000,000 · 나머지)
   const pdf = Buffer.concat([Buffer.from("%PDF-1.4\n% e2e\n"), Buffer.alloc(9_000_000, 7), Buffer.from("\n%%EOF\n")])
+  // 12MB 포트폴리오 — 이력서 상한(10MB)은 넘고 포트폴리오 상한(30MB) 안이다. 조각 넷
+  const portfolio = Buffer.concat([Buffer.from("%PDF-1.4\n% portfolio\n"), Buffer.alloc(12_000_000, 9)])
   const email = `hr-e2e-${Date.now()}@example.com`
   let id = ""
   let code = ""
@@ -64,14 +66,15 @@ test.describe("채용 지원서함 @hr", () => {
         consent: true,
         consentVersion: "career-consent-e2e",
         resume: { name: "이력서.pdf", size: pdf.length, type: "application/pdf" },
-        portfolioFile: null,
+        portfolioFile: { name: "포트폴리오.pdf", size: portfolio.length, type: "application/pdf" },
       },
     })
     expect(open.status()).toBe(201)
     const body = (await open.json()) as { id: string; uploads: { url: string; ticket: string; partBytes: number; parts: number }[] }
     id = body.id
-    const [slip] = body.uploads
+    const [slip, pfSlip] = body.uploads
     expect(slip.parts).toBe(3)
+    expect(pfSlip.parts).toBe(4)
 
     const path = new URL(slip.url).pathname
     // 거부 — 차례를 건너뛴 조각
@@ -82,6 +85,14 @@ test.describe("채용 지원서함 @hr", () => {
         data: pdf.subarray(n * slip.partBytes, Math.min(pdf.length, (n + 1) * slip.partBytes)),
       })
       expect(res.status(), `조각 ${n}`).toBe(204)
+    }
+    const pfPath = new URL(pfSlip.url).pathname
+    for (let n = 0; n < pfSlip.parts; n++) {
+      const res = await api.put(`${pfPath}?part=${n}`, {
+        headers: { authorization: `Ticket ${pfSlip.ticket}`, "content-type": "application/octet-stream" },
+        data: portfolio.subarray(n * pfSlip.partBytes, Math.min(portfolio.length, (n + 1) * pfSlip.partBytes)),
+      })
+      expect(res.status(), `포트폴리오 조각 ${n}`).toBe(204)
     }
     const done = await api.post(`/api/website/applications/${id}/complete`, { headers: auth })
     expect(done.status()).toBe(201)
@@ -140,6 +151,9 @@ test.describe("채용 지원서함 @hr", () => {
     const file = await download
     expect(file.suggestedFilename()).toBe(`${code}_이력서.pdf`)
     expect(md5(readFileSync((await file.path())!))).toBe(md5(pdf))
+    const pfDownload = page.waitForEvent("download")
+    await page.locator('[data-hr-file="portfolio"]').click()
+    expect(md5(readFileSync((await (await pfDownload).path())!))).toBe(md5(portfolio))
 
     const logs = await prisma.activityLog.findMany({ where: { entityId: id }, select: { action: true } })
     expect(logs.map((l) => l.action).sort()).toEqual(expect.arrayContaining(["hr.application.file_downloaded", "hr.application.viewed"]))

@@ -25,6 +25,7 @@ import {
   partProblem,
   partRange,
   signTicket,
+  slotMaxBytes,
   slotParam,
   verifyTicket,
   type SlotParam,
@@ -160,6 +161,8 @@ export async function receivePart(input: {
   if (!file || Date.now() - file.application.createdAt.getTime() > RECEIVING_TTL_MS) return { status: 404, body: { error: "not_found" } }
   if (file.application.stage !== "RECEIVING") return { status: 409, body: { error: "not_receiving" } }
   if (t.size !== file.size) return { status: 401, body: { error: "bad_ticket" } }
+  // 열 때 검사를 지난 크기지만, 칸 상한을 여기서도 본다 — 상한을 바꾸기 전에 열린 지원서 · 손으로 고친 행이 와도 넘지 않게
+  if (file.size > slotMaxBytes(input.slot)) return { status: 400, body: { error: "bad_part", detail: "파일이 칸 상한보다 큽니다" } }
 
   const problem = partProblem({ part: input.part, bodyBytes: input.body.length, size: file.size, receivedBytes: file.receivedBytes })
   if (problem) return { status: 400, body: { error: "bad_part", detail: problem } }
