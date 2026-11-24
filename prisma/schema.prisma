@@ -1417,6 +1417,8 @@ model StaffProfile {
   updatedAt   DateTime         @updatedAt
 
   assets StaffAsset[]
+  /// 채용 지원서에서 입사 처리로 온 사람(3단계 — mydocs/plans/2026-11-24-hr-intake.md)
+  application JobApplication?
 }
 
 enum StaffAssetKind {
@@ -2146,6 +2148,7 @@ model FeatureRequestEntry {
 ///   ai_budget                       lib/ai-budget.ts BudgetSettings(사람별 하루 · 회사 월 상한 · 사람별 예외)
 ///   feature_request_recipients      lib/feature-requests.ts — 기능 요청 · 비용 알림 받는 사람
 ///   ai_budget_alert:YYYY-MM:80|100  월 상한 알림을 보낸 표시(같은 달 같은 단계는 한 번)
+///   hr_reviewers                    lib/hr/reviewers.ts — 채용 지원서를 보는 사람({ userIds })
 /// mydocs/plans/2026-11-10-ai-budget.md
 model AppSetting {
   key         String   @id
@@ -2153,4 +2156,112 @@ model AppSetting {
   updatedById String?
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
+}
+
+// ─── 채용(HR) — mydocs/plans/2026-11-24-hr-intake.md ─────────────────
+
+enum JobApplicationStage {
+  /// 파일을 올리는 중 — 지원서함에 보이지 않는다. 24시간 안에 접수되지 않으면 cron/daily 가 지운다
+  RECEIVING
+  RECEIVED
+  SCREENING
+  INTERVIEW
+  OFFERED
+  REJECTED
+  WITHDRAWN
+  HIRED
+}
+
+enum JobApplicationFileSlot {
+  RESUME
+  PORTFOLIO
+}
+
+/// 홈페이지 채용 지원서(POST /api/website/applications). 공고는 홈페이지 content 에 있어 slug · 제목 사본만 둔다.
+/// 개인정보다 — 채용 담당(AppSetting hr_reviewers)만 연다. 열람 · 내려받기는 ActivityLog 에 남긴다.
+/// purgeAfter 가 지나면 cron/daily 가 개인정보 칸 · 파일 · 메모를 지우고 purgedAt 을 찍는다(행은 집계용으로 남긴다).
+/// 그래서 지원자가 쓴 칸은 모두 비울 수 있게(String?) 둔다.
+model JobApplication {
+  id       String              @id @default(uuid())
+  /// 접수 번호 APP261124-001 — 접수(complete) 때 매긴다. 그 전에는 비어 있다
+  code     String?             @unique
+  jobSlug  String
+  jobTitle String
+  lang     String              @default("ko")
+  stage    JobApplicationStage @default(RECEIVING)
+
+  name         String?
+  department   String?
+  studentId    String?
+  /// 공고마다 학년 · 경력 등 — 글자로 둔다
+  grade        String?
+  graduation   String?
+  phone        String?
+  email        String?
+  portfolioUrl String?
+  /// 「관심 있는 일」 — 공고의 tracks value(ai-bio · dev · grants …). 선택이라 비어 있어도 된다. 라벨은 lib/hr/rules.ts INTEREST_LABEL
+  interests    String[]            @default([])
+  motivation   String?
+
+  consentAt      DateTime?
+  /// 지원자가 본 동의 안내문의 판(홈페이지가 보낸다)
+  consentVersion String?
+  ip             String?
+  userAgent      String?
+  receivedAt     DateTime?
+
+  decidedAt        DateTime?
+  /// 「선발 종료」 — 채용 담당이 공고 단위로 누른다. purgeAfter = 이 시각 + 6개월
+  selectionEndedAt DateTime?
+  /// 비어 있으면 접수 12개월 뒤(안전장치) — lib/hr/rules.ts purgeDeadline
+  purgeAfter       DateTime?
+  purgedAt         DateTime?
+  staffProfileId   String?       @unique
+  staffProfile     StaffProfile? @relation(fields: [staffProfileId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  files  JobApplicationFile[]
+  events JobApplicationEvent[]
+
+  @@index([jobSlug, stage])
+  @@index([purgeAfter])
+  @@index([email, createdAt])
+}
+
+/// 지원서 파일. 실물은 NAS 의 채용 전용 폴더(career/{applicationId}/{slot}.pdf). 채팅 첨부(File)와 섞지 않는다 —
+/// File 은 읽는 길이 넓어 볼 사람을 좁힐 수 없다.
+model JobApplicationFile {
+  id            String                 @id @default(uuid())
+  applicationId String
+  application   JobApplication         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  slot          JobApplicationFileSlot
+  objectKey     String
+  /// 지원자가 올린 파일 이름 — 파기 때 비운다(이름에 지원자 이름이 들어가곤 한다)
+  fileName      String?
+  /// 지원자가 알린 크기. 접수 때 NAS 의 크기와 대조한다
+  size          Int
+  receivedBytes Int                    @default(0)
+  mimeType      String                 @default("application/pdf")
+  uploadedAt    DateTime?
+  /// 파기로 NAS 에서 지운 시각
+  deletedAt     DateTime?
+
+  @@unique([applicationId, slot])
+}
+
+/// 단계 이력 · 메모 — 누가 언제 무엇을 바꿨는지. note 는 개인정보가 들어가므로 파기 때 비운다
+model JobApplicationEvent {
+  id            String               @id @default(uuid())
+  applicationId String
+  application   JobApplication       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  /// User.id. 시스템(접수 · 파기)은 null
+  actorId       String?
+  fromStage     JobApplicationStage?
+  toStage       JobApplicationStage?
+  note          String?
+  createdAt     DateTime             @default(now())
+
+  @@index([applicationId, createdAt])
 }

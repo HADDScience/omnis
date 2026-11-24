@@ -43,6 +43,9 @@ const env = {
   OMNIS_AGENT_APPROVAL_SECRET: local.OMNIS_AGENT_APPROVAL_SECRET ?? "e2e-only-agent-approval-secret-not-real",
   // AI 활용 설문은 허용한 계정에만 열린다 — 시험은 전원에게 열고 돈다(CI 와 같다)
   AI_SURVEY_ALLOW_USER_IDS: "*",
+  // 채용 지원서 입구 — CI 와 같은 시험 자리값(tests/feature/hr-applications.spec.ts)
+  WEBSITE_CAREER_SECRET: "ci-only-career-secret",
+  WEBSITE_CAREER_UPLOAD_KEY: "ci-only-career-upload-key",
   BASE_URL: `http://localhost:${port}`,
 }
 let server

@@ -24,6 +24,8 @@ const PUBLIC = "바깥(홈페이지 서버 · MCP 클라이언트 · 방문자)�
 const LEGACY = "폐기된 기능(#12) — 화면 · AI 모두 쓰지 않는다"
 const AIHELP = "화면 안에서 AI 를 부르는 보조 입구(초안 구조화 · 번역 · 설문 진행) — AI 가 다시 AI 를 부르지 않는다"
 const NOSCREEN = "API 만 있고 화면이 부르지 않는다(옛 hadd-ip 입구) — 화면에 없는 기능은 도구로 만들지 않는다(#248)"
+const HRFILE = "채용 지원서 파일(이력서 · 포트폴리오) — 개인정보라 AI 에 보내지 않는다(결정 D8). 목록 · 단계 · 이름은 list_applications"
+const HRACCESS = "채용 지원서를 볼 사람(채용 담당) — 개인정보 열람 권한이라 관리자가 화면에서 정하고, AI 가 바꾸지 않는다"
 const STAFFASSET = "서명 · 직인 원본 이미지 — 관리자 화면에서만 다룬다. 도구로 열지는 사용자 판단 대기(#248 보고서)"
 
 export const ROUTE_COVERAGE: Record<string, Coverage> = {
@@ -146,6 +148,9 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "files POST": ["upload_file", "create_upload_link"],
   "gemini-usage GET": system(TELEMETRY),
   "health GET": system(CRON),
+  "hr/applications/[id]/files/[slot] GET": system(HRFILE),
+  "hr/reviewers GET": system(HRACCESS),
+  "hr/reviewers PUT": system(HRACCESS),
   "ip-mcp/[[...path]] GET": system(PUBLIC),
   "ip-mcp/[[...path]] POST": system(PUBLIC),
   "ip/actions POST": ["ip_save_action"],
@@ -249,6 +254,9 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "website/column/keywords/[id] POST": ["column_keyword_action"],
   "website/column/keywords GET": ["list_column_keywords"],
   "website/column/keywords POST": ["collect_column_keywords"],
+  "website/applications POST": system(PUBLIC),
+  "website/applications/[id]/complete POST": system(PUBLIC),
+  "website/applications/[id]/files/[slot] PUT": system(PUBLIC),
   "website/inquiries POST": system(PUBLIC),
   "website/media/[postId]/[name] GET": system(PUBLIC),
   "website/media POST": ["upload_website_media"],

@@ -12,6 +12,9 @@ import { SaveBudgetSchema } from "@/lib/schemas/ai-budget"
 import { FEATURE_STATUS_LABEL, changeFeatureStatus, featureForReply, isFeatureStatus, listFeatureRequests, parseDoneNotice, submitFeatureRequest } from "@/lib/feature-requests"
 import { feedbackReply, feedbackRequest } from "@/lib/feedback"
 import { canSeeSurveyResults, loadSurveyResults } from "@/lib/ai-survey/results"
+import { isHrReviewer } from "@/lib/hr/reviewers"
+import { applicationCounts, listApplications } from "@/lib/hr/queries"
+import { STAGE_LABEL, interestLabel, type Stage } from "@/lib/hr/rules"
 import { blocked, clip, has, kstDate, str, type Planner } from "./planned"
 import type { AdminReadName, AdminWriteName } from "./defs-admin"
 
@@ -71,6 +74,30 @@ export async function runAdminRead(name: AdminReadName, args: Record<string, unk
       if (!canSeeSurveyResults(caller.role)) return { error: ADMIN_ONLY }
       const r = await loadSurveyResults()
       return { text: `AI 활용 설문 합계(이름 · 사람별 원문 없음)\n${JSON.stringify({ summary: r.summary, latency: r.latency, sources: r.sources, cost: r.cost }, null, 1)}` }
+    }
+    case "list_applications": {
+      // 화면과 같은 권한 — 채용 담당만. 연락처 · 동기 · 파일은 싣지 않는다(결정 D8)
+      if (!(await isHrReviewer(caller.userId))) return { error: "채용 담당만 볼 수 있습니다 — 관리자 › 운영 › 채용 담당에 든 사람에게만 열린 일입니다." }
+      const stageArg = str(args.stage).toUpperCase()
+      const stage = stageArg && stageArg !== "RECEIVING" && stageArg in STAGE_LABEL ? (stageArg as Stage) : undefined
+      const job = str(args.job) || undefined
+      const [counts, rows] = await Promise.all([applicationCounts(), listApplications({ jobSlug: job, stage, take: 100 })])
+      if (rows.length === 0 && counts.length === 0) return { text: "접수된 지원서가 없습니다." }
+      const byJob = new Map<string, { title: string; parts: string[] }>()
+      for (const c of counts) {
+        const j = byJob.get(c.jobSlug) ?? { title: c.jobTitle, parts: [] }
+        j.parts.push(`${STAGE_LABEL[c.stage]} ${c.count}`)
+        byJob.set(c.jobSlug, j)
+      }
+      return {
+        text: [
+          "공고별 건수",
+          ...[...byJob.entries()].map(([slug, j]) => `- ${j.title} (${slug}): ${j.parts.join(" · ")}`),
+          "",
+          `지원서 ${rows.length}건${job || stage ? " (좁힌 결과)" : ""}`,
+          ...rows.map((r) => `- ${r.code ?? "-"} · ${STAGE_LABEL[r.stage]} · ${r.purgedAt ? "(파기됨)" : `${r.name ?? "-"} · ${r.department ?? "-"} · ${r.grade ?? "-"}학년${r.interests.length ? ` · 관심: ${r.interests.map(interestLabel).join(", ")}` : ""}`} · 접수 ${r.receivedAt ? kstDate(r.receivedAt) : "-"} · ${r.jobTitle}`),
+        ].join("\n"),
+      }
     }
   }
 }

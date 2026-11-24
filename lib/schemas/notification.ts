@@ -72,6 +72,9 @@ export function notificationHref(type: string, entityId: string | null): string 
   // 옴니스 대화를 공유 · 인계받았다 — 그 세션을 연다(공유가 풀렸으면 404 다, lib/omnis-session-share.ts)
   if (type === "chat_omnis_shared") return `/chat/${entityId}`
   if (type === "crm_invoice_request") return `/crm/invoices/new?quote=${entityId}`
+  // 새 채용 지원서 — 그 지원서(채용 담당만 열린다, lib/hr/intake.ts). 담당이 없다는 알림은 담당을 고르는 곳으로
+  if (type === "job_application") return `/hr/applications/${entityId}`
+  if (type === "job_application_unassigned") return "/admin/operations#hr-reviewers"
   // 앱 AI 기능 요청 — 관리 화면(lib/feature-requests.ts FEATURE_ADMIN_PATH)
   if (type === "feature_request") return "/settings/feature-requests"
   // 요청한 기능이 생겼다 — 관리자가 적은 써 볼 곳(entityId `<요청 id>:<경로>`, lib/feature-requests-shared.ts)

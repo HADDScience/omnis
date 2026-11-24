@@ -22,6 +22,8 @@ import { appUpdates } from "@/lib/app-info"
 import { FeedbackDialog } from "@/components/settings/feedback-dialog"
 import { passwordNoticeFor } from "@/lib/password-state"
 import Link from "next/link"
+import { prisma } from "@/lib/db"
+import { isHrReviewer } from "@/lib/hr/reviewers"
 
 export const dynamic = "force-dynamic"
 
@@ -54,6 +56,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const version = currentAppVersion()
   const updates = appUpdates()
   const survey = user?.id && surveyAllowed(user.id) ? await surveyEntryFor(user.id) : null
+  // 채용 담당에게만 지원서함 입구 — 담당이 아니면 있다는 것도 보이지 않는다(lib/hr/reviewers.ts)
+  const hrNew = (await isHrReviewer(user?.id)) ? await prisma.jobApplication.count({ where: { stage: "RECEIVED", purgedAt: null } }) : null
 
   return (
     <>
@@ -94,6 +98,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <HugeiconsIcon icon={Alert02Icon} size={15} className="shrink-0" aria-hidden />
             <span className="min-w-0 flex-1">관리자가 정해 준 임시 비밀번호를 쓰고 있습니다. 본인만 아는 비밀번호로 바꾸세요.</span>
             <span className="shrink-0 font-medium underline underline-offset-4">바꾸기</span>
+          </Link>
+        )}
+
+        {hrNew !== null && (
+          <Link
+            href="/hr/applications"
+            data-hr-entry
+            className="glass touch-target flex items-center justify-between rounded-2xl px-4 py-3 text-sm transition-colors hover:bg-muted/40"
+          >
+            <span>
+              <span className="font-semibold">채용 지원서함</span>
+              <span className="ml-2 text-[12.5px] text-muted-foreground">{hrNew > 0 ? `새로 접수 ${hrNew}건` : "새 지원서 없음"}</span>
+            </span>
+            <HugeiconsIcon icon={ArrowRight01Icon} size={16} className="shrink-0 text-muted-foreground" aria-hidden />
           </Link>
         )}
 

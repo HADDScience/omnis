@@ -8,6 +8,7 @@ import { runDailyKpis } from "@/lib/kpi"
 import { syncWorksCalendars } from "@/lib/caldav/sync"
 import { purgeUiEvents } from "@/lib/ui-metrics/server"
 import { largeUploadEnabled, runTransferUpkeep } from "@/lib/large-upload/server"
+import { runHrUpkeep } from "@/lib/hr/upkeep"
 
 /**
  * 하루 한 번 도는 일을 모두 여기서 차례로 한다 (`vercel.json` 의 crons 는 이것 하나).
@@ -93,6 +94,15 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("[cron/daily] 사용 기록 정리 실패", e)
     out.uiEvents = { ok: false }
+  }
+
+  try {
+    // 채용 지원서 — 접수 안 된 것(24시간) 정리, 보관 기한(선발 종료 + 6개월 · 늦어도 접수 + 12개월) 지난 것 파기.
+    // 지울 것이 없으면 질의 두 번이다. NAS 가 안 닿으면 그 건은 다음 날 다시 집는다(lib/hr/upkeep.ts)
+    out.hr = { ok: true, ...(await runHrUpkeep()) }
+  } catch (e) {
+    console.error("[cron/daily] 채용 지원서 정리 실패", e)
+    out.hr = { ok: false }
   }
 
   if (largeUploadEnabled()) {

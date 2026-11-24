@@ -165,6 +165,7 @@ export const TOOL_POLICY = {
   ai_budget: R_NO_ASK("관리자만 보는 설정 — 질문 경로의 답은 여러 사람이 볼 수 있는 자리에 붙는다"),
   list_feature_requests: R_NO_ASK("관리자만 보는 요청 목록(요청한 사람 이름 · 원문) — 질문 경로의 답은 여러 사람이 볼 수 있는 자리에 붙는다"),
   ai_survey_results: R_NO_ASK("관리자만 보는 설문 합계 — 질문 경로의 답은 여러 사람이 볼 수 있는 자리에 붙는다"),
+  list_applications: R_NO_ASK("채용 담당만 보는 지원자 이름 — 질문 경로의 답은 여러 사람이 볼 수 있는 자리에 붙는다"),
   update_company_profile: PW,
   save_company_year: PW,
   delete_company_year: PW,

@@ -30,7 +30,15 @@ const server = createServer({ key, cert }, (req, res) => {
   req.on("data", (c) => chunks.push(c))
   req.on("end", () => {
     const stored = files.get(path)
-    if (req.method === "PUT") {
+    const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(req.headers["content-range"] ?? "")
+    if (req.method === "PUT" && range) {
+      // 이어 쓰기(lib/storage putRangeAt) — 시놀로지처럼 첫 조각에서 전체 크기 파일을 만들고 그 범위만 채운다
+      const total = Number(range[3])
+      const buf = stored && stored.length === total ? stored : Buffer.alloc(total)
+      Buffer.concat(chunks).copy(buf, Number(range[1]))
+      files.set(path, buf)
+      res.writeHead(stored ? 204 : 201).end()
+    } else if (req.method === "PUT") {
       files.set(path, Buffer.concat(chunks))
       res.writeHead(201).end()
     } else if (req.method === "MKCOL") {
