@@ -3,6 +3,8 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
   APPLICATION_FILE_MAX_BYTES,
+  PORTFOLIO_FILE_MAX_BYTES,
+  slotMaxBytes,
   PART_BYTES,
   addMonths,
   interestLabel,
@@ -150,4 +152,20 @@ test("관심 있는 일 — 모양이 틀리거나 너무 많으면 거절한다
     assert.equal(r.success, false, JSON.stringify(interests))
     if (!r.success) assert.ok(r.error.issues.some((i) => i.path[0] === "interests"))
   }
+})
+
+test("파일 상한 — 이력서 10MB, 포트폴리오 30MB(30MB 면 조각 8개)", () => {
+  assert.equal(APPLICATION_FILE_MAX_BYTES, 10 * 1024 * 1024)
+  assert.equal(PORTFOLIO_FILE_MAX_BYTES, 30 * 1024 * 1024)
+  assert.equal(slotMaxBytes("resume"), APPLICATION_FILE_MAX_BYTES)
+  assert.equal(slotMaxBytes("portfolio"), PORTFOLIO_FILE_MAX_BYTES)
+  assert.equal(partCount(PORTFOLIO_FILE_MAX_BYTES), 8)
+  const pdf = (size: number) => ({ name: "포트폴리오.pdf", size, type: "application/pdf" })
+  assert.equal(applicationIntakeSchema.safeParse({ ...valid, portfolioFile: pdf(PORTFOLIO_FILE_MAX_BYTES) }).success, true, "포트폴리오 30MB")
+  assert.equal(applicationIntakeSchema.safeParse({ ...valid, portfolioFile: pdf(20 * 1024 * 1024) }).success, true, "포트폴리오 20MB")
+  // 거부
+  const over = applicationIntakeSchema.safeParse({ ...valid, portfolioFile: pdf(PORTFOLIO_FILE_MAX_BYTES + 1) })
+  assert.equal(over.success, false, "포트폴리오 30MB 초과")
+  if (!over.success) assert.ok(over.error.issues.some((i) => i.path[0] === "portfolioFile"))
+  assert.equal(applicationIntakeSchema.safeParse({ ...valid, resume: { ...pdf(20 * 1024 * 1024), name: "이력서.pdf" } }).success, false, "이력서는 10MB 그대로")
 })

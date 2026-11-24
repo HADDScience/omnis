@@ -6,8 +6,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { z } from "zod"
 
-/** 이력서 · 포트폴리오 한 개의 상한 — 홈페이지 APPLICATION_FILE_MAX_BYTES 와 같다 */
+/** 이력서 한 개의 상한 — 홈페이지 lib/career-application.ts 와 같다 */
 export const APPLICATION_FILE_MAX_BYTES = 10 * 1024 * 1024
+/** 포트폴리오 한 개의 상한 — 작업지시자 결정(2026-11-24) 10MB → 30MB. 이력서는 10MB 그대로. 30MB 면 조각 8개 */
+export const PORTFOLIO_FILE_MAX_BYTES = 30 * 1024 * 1024
 /** 조각 하나 — Vercel 함수 본문 한도(4.5MB)보다 넉넉히 작게. 10MB 면 3조각 */
 export const PART_BYTES = 4_000_000
 /** 조각 티켓 유효 시간 */
@@ -29,6 +31,8 @@ export const SLOT_DB = { resume: "RESUME", portfolio: "PORTFOLIO" } as const
 export type SlotDb = (typeof SLOT_DB)[SlotParam]
 export const SLOT_LABEL: Record<SlotDb, string> = { RESUME: "이력서", PORTFOLIO: "포트폴리오" }
 export const slotParam = (db: SlotDb): SlotParam => (db === "RESUME" ? "resume" : "portfolio")
+/** 칸마다 파일 상한 — 열 때(검사)와 조각을 받을 때(intake.receivePart) 같은 값을 본다 */
+export const slotMaxBytes = (slot: SlotParam) => (slot === "resume" ? APPLICATION_FILE_MAX_BYTES : PORTFOLIO_FILE_MAX_BYTES)
 export const parseSlot = (v: string): SlotParam | null => ((SLOTS as readonly string[]).includes(v) ? (v as SlotParam) : null)
 
 export const STAGE_LABEL = {
@@ -61,11 +65,12 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE = /^[0-9+\-\s()]{9,30}$/
 
 const text = (max: number) => z.string().trim().min(1, "필수").max(max, `${max}자 이하`)
-const fileMeta = z.object({
-  name: z.string().trim().min(1).max(255).refine((n) => n.toLowerCase().endsWith(".pdf"), "PDF 파일(.pdf)만"),
-  size: z.number().int().min(1).max(APPLICATION_FILE_MAX_BYTES, "10MB 이하"),
-  type: z.string().max(100).optional().default(""),
-})
+const fileMeta = (maxBytes: number) =>
+  z.object({
+    name: z.string().trim().min(1).max(255).refine((n) => n.toLowerCase().endsWith(".pdf"), "PDF 파일(.pdf)만"),
+    size: z.number().int().min(1).max(maxBytes, `${maxBytes / 1024 / 1024}MB 이하`),
+    type: z.string().max(100).optional().default(""),
+  })
 const httpUrl = z.string().trim().max(500).refine((v) => {
   if (v === "") return true
   try {
@@ -97,8 +102,8 @@ export const applicationIntakeSchema = z.object({
   motivation: text(1500),
   consent: z.literal(true, { message: "동의가 필요합니다" }),
   consentVersion: text(100),
-  resume: fileMeta,
-  portfolioFile: fileMeta.nullable().optional().default(null),
+  resume: fileMeta(APPLICATION_FILE_MAX_BYTES),
+  portfolioFile: fileMeta(PORTFOLIO_FILE_MAX_BYTES).nullable().optional().default(null),
   ip: z.string().trim().max(100).nullable().optional(),
   userAgent: z.string().trim().max(500).nullable().optional(),
 })
