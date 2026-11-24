@@ -227,8 +227,12 @@ export function deleteObject(key: string): Promise<void> {
  * 파일의 한 범위를 쓴다. 같은 범위를 다시 보내도 결과가 같아 재시도가 안전하다.
  * 상태 코드를 그대로 돌려준다 — 507(디스크 가득 참)은 복사 쪽이 다르게 다룬다.
  */
-export async function putObjectRange(key: string, body: Buffer, start: number, total: number): Promise<number> {
-  const absolutePath = absolutePathFor(key)
+export function putObjectRange(key: string, body: Buffer, start: number, total: number): Promise<number> {
+  return putRangeAt(absolutePathFor(key), body, start, total)
+}
+
+/** putObjectRange 의 절대 경로판 — 첨부 폴더 밖(채용 지원서처럼 권한이 좁은 폴더)에 쓴다 */
+export async function putRangeAt(absolutePath: string, body: Buffer, start: number, total: number): Promise<number> {
   const headers = { "Content-Range": `bytes ${start}-${start + body.length - 1}/${total}` }
   const put = () => retryOnDrop(() => dav("PUT", davUrl(absolutePath), body, "application/octet-stream", headers))
   let res = await put()
@@ -247,8 +251,13 @@ export function getObjectRange(key: string, start: number, length: number): Prom
 }
 
 /** 저장된 크기. 없으면 null */
-export async function statObjectSize(key: string): Promise<number | null> {
-  const res = await dav("PROPFIND", davUrl(absolutePathFor(key)), undefined, undefined, { Depth: "0" })
+export function statObjectSize(key: string): Promise<number | null> {
+  return statSizeAt(absolutePathFor(key))
+}
+
+/** statObjectSize 의 절대 경로판 */
+export async function statSizeAt(absolutePath: string): Promise<number | null> {
+  const res = await dav("PROPFIND", davUrl(absolutePath), undefined, undefined, { Depth: "0" })
   if (res.status === 404) {
     drain(res)
     return null

@@ -22,6 +22,21 @@ export const ADMIN_TOOLS = [
     description: "AI 활용 설문 합계 — 관리자만. 이름 · 사람별 원문은 없다(화면과 같다).",
     inputSchema: { type: "object", properties: {} },
   },
+  {
+    name: "list_applications",
+    description: [
+      "홈페이지 채용 지원서함 — 채용 담당만(관리자라도 담당이 아니면 거절). 화면 채용 › 지원서함과 같은 목록이다.",
+      "공고별 · 단계별 건수와 지원서마다 접수 번호 · 공고 · 단계 · 이름 · 학과 · 학년 · 접수일을 준다.",
+      "연락처 · 이메일 · 지원 동기 · 이력서 파일은 주지 않는다 — 화면에서 본다.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        job: { type: "string", description: "공고 slug 로 좁히기(선택)" },
+        stage: { type: "string", enum: ["RECEIVED", "SCREENING", "INTERVIEW", "OFFERED", "REJECTED", "WITHDRAWN", "HIRED"], description: "단계로 좁히기(선택)" },
+      },
+    },
+  },
 
   // ─── 쓰기(계획 → 확인) ───
   {
@@ -122,6 +137,6 @@ export const ADMIN_TOOLS = [
   },
 ] as const
 
-export const ADMIN_READ_NAMES = ["ai_budget", "list_feature_requests", "ai_survey_results"] as const
+export const ADMIN_READ_NAMES = ["ai_budget", "list_feature_requests", "ai_survey_results", "list_applications"] as const
 export type AdminReadName = (typeof ADMIN_READ_NAMES)[number]
 export type AdminWriteName = Exclude<(typeof ADMIN_TOOLS)[number]["name"], AdminReadName>

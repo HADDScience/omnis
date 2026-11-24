@@ -109,7 +109,8 @@ const B3_READ = ["omnis_card_history", "list_card_proposals", "list_bookmarks"]
 const B3_READ_NO_ASK = ["list_my_questions"]
 const B3_WRITE = ["delete_omnis_card", "manage_omnis_category", "restore_omnis_card", "decide_card_proposal", "manage_bookmarks"]
 // #248 묶음 4 — 회사 · 캘린더 · 관리 설정. 관리자만 보는 읽기는 질문 경로 밖
-const B4_READ_NO_ASK = ["ai_budget", "list_feature_requests", "ai_survey_results"]
+// 채용 지원서함(HR 1단계)도 같은 자리 — 채용 담당만 보는 이름이라 질문 경로 밖
+const B4_READ_NO_ASK = ["ai_budget", "list_feature_requests", "ai_survey_results", "list_applications"]
 const B4_WRITE = ["update_company_profile", "save_company_year", "delete_company_year", "set_calendar_audience", "set_ai_budget", "set_feature_status", "send_feedback"]
 // #248 묶음 5 — 지식재산권. 읽기는 질문 경로 밖(ip_overview 한 장)
 const B5_READ_NO_ASK = ["ip_records"]

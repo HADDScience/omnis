@@ -97,6 +97,7 @@ test("파일을 흘려보내는 라우트는 전부 이 헤더를 쓴다 — 새
     "app/api/company/staff-assets/[assetId]/route.ts",
     "app/api/crm/invoices/[invoiceId]/file/route.ts",
     "app/api/files/[fileId]/raw/route.ts",
+    "app/api/hr/applications/[id]/files/[slot]/route.ts",
     "app/api/ip-mcp/[[...path]]/route.ts",
     "app/api/nas/route.ts",
     "app/api/website/media/[postId]/[name]/route.ts",

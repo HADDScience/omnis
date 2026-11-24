@@ -38,7 +38,7 @@ export function safeReturnPath(raw: string | null | undefined): string | null {
  * 로그인해야 보이는 화면 — app/(main) 아래 최상위 경로와 비밀번호 바꾸기.
  * app/(main) 에 새 폴더를 만들면 여기에도 넣는다(시험이 폴더 목록과 맞춰 본다).
  */
-export const PROTECTED_PREFIXES = ["/calendar", "/chat", "/crm", "/dashboard", "/ip", "/nas", "/omnis", "/reports", "/settings", "/tasks", "/account", "/admin"] as const
+export const PROTECTED_PREFIXES = ["/calendar", "/chat", "/crm", "/dashboard", "/ip", "/nas", "/omnis", "/reports", "/settings", "/tasks", "/account", "/admin", "/hr"] as const
 
 /** basePath 를 뺀 경로 */
 export function needsLogin(pathname: string): boolean {

@@ -4,6 +4,11 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 
 import { FeatureRequestsSection } from "@/components/admin/feature-requests-section"
+import { HrReviewersForm } from "@/components/hr/reviewers-form"
+import { prisma } from "@/lib/db"
+import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
+import { SYSTEM_USER_ID } from "@/lib/system-user"
+import { configuredReviewerIds } from "@/lib/hr/reviewers"
 import { requireAdminPage } from "@/lib/admin-access-server"
 import { loadSurveyCounts } from "@/lib/admin-users-server"
 import { surveyAllowed } from "@/lib/ai-survey/access"
@@ -23,7 +28,11 @@ const KNOWLEDGE_LINKS = [
 /** 운영 — 온보딩(사용자 탭 링크) · 기능 요청 · 설문 현황(응답 수만) */
 export default async function AdminOperationsPage() {
   const adminId = await requireAdminPage()
-  const survey = await loadSurveyCounts()
+  const [survey, reviewers, people] = await Promise.all([
+    loadSurveyCounts(),
+    configuredReviewerIds(),
+    prisma.user.findMany({ where: { id: { not: SYSTEM_USER_ID }, ...ACTIVE_MEMBER_WHERE }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ])
   const surveyOpen = surveyAllowed(adminId)
 
   return (
@@ -60,6 +69,19 @@ export default async function AdminOperationsPage() {
           ))}
         </dl>
         <p className="mt-2 text-[12px] text-muted-foreground">응답 수만 보입니다. 사람별 응답은 관리자에게도 보이지 않습니다.</p>
+      </section>
+
+      <section id="hr-reviewers" aria-labelledby="admin-hr-title" className={SECTION} data-admin-hr-reviewers>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="admin-hr-title" className="text-base font-semibold">채용 담당</h2>
+          <Link href="/hr/applications" className="touch-target inline-flex items-center text-[12.5px] underline underline-offset-4">
+            지원서함
+          </Link>
+        </div>
+        <p className="mt-1 mb-3 text-[12.5px] text-muted-foreground">
+          홈페이지 채용 지원서(이력서 · 연락처)를 볼 사람입니다. 관리자라도 여기서 고르지 않으면 볼 수 없고, 아무도 고르지 않으면 아무도 볼 수 없습니다. 바꾼 일은 기록 탭에 남습니다.
+        </p>
+        <HrReviewersForm initial={reviewers} people={people} />
       </section>
 
       <section aria-labelledby="admin-feature-title" className={SECTION} data-admin-feature-requests>
