@@ -8,7 +8,7 @@ export const hrMailClaimKey = (applicationId: string) => `hr_mail:${applicationI
 export async function dispatchApplicationMails(applicationId: string, env: Record<string, string | undefined> = process.env): Promise<MailOutcome> {
   const config = hrSmtpConfig(env)
   if (!config) {
-    console.log("[hr-mail] HR_SMTP_USER · HR_SMTP_PASSWORD 가 없어 메일을 건너뛴다", applicationId)
+    console.log("[hr-mail] HR_SMTP_* · WORKS_SMTP_* 모두 없어 메일을 건너뛴다", applicationId)
     return { skipped: "unconfigured" }
   }
   const a = await prisma.jobApplication.findUnique({
@@ -28,6 +28,6 @@ export async function dispatchApplicationMails(applicationId: string, env: Recor
       omnisOrigin: env.PUBLIC_URL?.replace(/\/+$/, "") || "https://omnis.haddscience.com",
     },
   )
-  console.log("[hr-mail]", a.code, JSON.stringify(out))
+  console.log("[hr-mail]", a.code, config.source, JSON.stringify(out))
   return out
 }
