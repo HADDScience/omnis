@@ -23,6 +23,7 @@ import { findVisibleFile } from "@/lib/file-access-server"
 import { Readable } from "node:stream"
 import { fileResponseHeaders } from "@/lib/file-serving"
 import { completeLargeViaLink, openLargeViaLink } from "@/lib/mcp-large-upload"
+import { matchRedirectUri } from "@/lib/oauth-redirect"
 
 /**
  * hadd-omnis — 원격 MCP 서버 (Streamable HTTP) + OAuth 2.1 인가 서버.
@@ -171,7 +172,8 @@ async function registerClient(req: NextRequest) {
 async function authorize(req: NextRequest) {
   const url = new URL(req.url)
   const clientId = url.searchParams.get("client_id") ?? ""
-  const redirectUri = url.searchParams.get("redirect_uri") ?? ""
+  // NextRequest 가 쿼리의 127.0.0.1 을 localhost 로 바꿔 넘긴다 — 비교와 되돌릴 주소는 lib/oauth-redirect.
+  const requestedRedirect = url.searchParams.get("redirect_uri") ?? ""
   const challenge = url.searchParams.get("code_challenge") ?? ""
   const method = url.searchParams.get("code_challenge_method") ?? ""
   const state = url.searchParams.get("state")
@@ -184,7 +186,8 @@ async function authorize(req: NextRequest) {
   // 클라이언트나 redirect_uri 가 수상하면 그쪽으로 되돌려 보내지 않는다.
   // 공격자가 지정한 주소로 오류를 흘리면 그것이 곧 통로가 된다.
   if (!client) return new NextResponse("알 수 없는 client_id 입니다.", { status: 400 })
-  if (!client.redirect_uris.includes(redirectUri)) {
+  const redirectUri = matchRedirectUri(client.redirect_uris, requestedRedirect)
+  if (!redirectUri) {
     return new NextResponse("등록되지 않은 redirect_uri 입니다.", { status: 400 })
   }
   if (method !== "S256" || !challenge) {
@@ -249,7 +252,8 @@ async function issueToken(req: NextRequest) {
         400
       )
     }
-    if (form.get("redirect_uri") !== row.redirect_uri) {
+    // 인가 때 저장한 주소(등록된 호스트 + 요청 포트)와 같은 규칙으로 맞춰 본다.
+    if (!matchRedirectUri([row.redirect_uri], form.get("redirect_uri") ?? "")) {
       return json(
         { error: "invalid_grant", error_description: "redirect_uri 가 다릅니다." },
         400
