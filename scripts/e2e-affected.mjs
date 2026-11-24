@@ -39,6 +39,8 @@ const AREAS = [
   [/^app\/\(auth\)\/|^app\/(sso)\/|^app\/api\/(auth|sso|users|account)\//, ["@auth"]],
   [/^components\/onboarding\/|^app\/api\/onboarding\//, ["@onboarding"]],
   [/^app\/api\/search\//, ["@chat"]],
+  // 채용 지원서함(HR 1단계)
+  [/^app\/\(main\)\/hr\/|^components\/hr\/|^app\/api\/(hr|website\/applications)\/|^lib\/hr\//, ["@hr"]],
 ]
 
 /**
