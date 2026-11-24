@@ -5,6 +5,8 @@
 import { prisma } from "@/lib/db"
 import { claimOnce } from "@/lib/app-settings"
 import { createNotification } from "@/lib/notifications"
+import { runAfterResponse } from "@/lib/after-response"
+import { dispatchApplicationMails } from "./mail-server"
 import { activeReviewerIds } from "./reviewers"
 import { applicationFileSize, putApplicationPart } from "./storage"
 import {
@@ -242,6 +244,10 @@ export async function completeApplication(applicationId: string, now = new Date(
     prisma.jobApplicationEvent.create({ data: { applicationId: app.id, fromStage: "RECEIVING", toStage: "RECEIVED" } }),
   ])
   console.log("[hr] 지원서 접수", app.id, code)
+
+  // 접수 확인 메일(지원자) · 회사 사본(info@) — 응답 뒤에 보낸다. 메일이 늦거나 실패해도 접수(201)는 막지 않는다.
+  // 여기는 RECEIVING → RECEIVED 로 바꾼 요청 하나만 온다(위 updateMany). 중복 complete 는 위에서 200 duplicate 로 끝난다
+  runAfterResponse("hr-mail", () => dispatchApplicationMails(app.id))
 
   // 알림이 실패해도 접수는 성공이다 — 지원서함에 RECEIVED 로 남는다(문의함과 같다)
   try {

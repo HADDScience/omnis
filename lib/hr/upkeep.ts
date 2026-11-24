@@ -9,6 +9,7 @@
 import { prisma } from "@/lib/db"
 import { writeActivity } from "@/lib/api"
 import { deleteApplicationFiles } from "./storage"
+import { hrMailClaimKey } from "./mail-server"
 import { PURGED_FIELDS, RECEIVING_TTL_MS } from "./rules"
 
 export interface HrUpkeepResult {
@@ -31,6 +32,7 @@ export async function purgeApplication(id: string, why: string, actorId: string 
     prisma.jobApplicationEvent.updateMany({ where: { applicationId: id }, data: { note: null } }),
     prisma.jobApplicationEvent.create({ data: { applicationId: id, actorId, note: why } }),
     prisma.notification.deleteMany({ where: { entityId: id, type: "job_application" } }),
+    prisma.appSetting.deleteMany({ where: { key: hrMailClaimKey(id) } }),
   ])
   await writeActivity({ userId: actorId, action: "purged", entity: "job_application", entityId: id, title: `지원서 파기 ${app.code ?? ""}`.trim(), metadata: { why } })
   return true
