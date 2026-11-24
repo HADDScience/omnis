@@ -73,10 +73,36 @@ test("설정 — 계정 · 비밀번호가 없으면 건너뛰고, 운영에서�
   assert.deepEqual(local && { host: local.host, port: local.port, insecure: local.insecure }, { host: "127.0.0.1", port: 2525, insecure: true })
   const prod = hrSmtpConfig({ VERCEL_ENV: "production", HR_SMTP_USER: "a@b", HR_SMTP_PASSWORD: "x", HR_SMTP_HOST: "127.0.0.1", HR_SMTP_PORT: "2525", HR_SMTP_INSECURE: "1" })
   assert.deepEqual(prod && { host: prod.host, port: prod.port, insecure: prod.insecure }, { host: "smtp.worksmobile.com", port: 587, insecure: false })
-  assert.equal(hrFromHeader("jwoochang@haddscience.com"), '"하드사이언스 정우창" <jwoochang@haddscience.com>')
+  assert.equal(hrFromHeader({ from: "jwoochang@haddscience.com", fromName: "하드사이언스 정우창" }), '"하드사이언스 정우창" <jwoochang@haddscience.com>')
 })
 
-const cfg: HrSmtpConfig = { user: "sender@example.com", pass: "x", host: "h", port: 587, insecure: false }
+const WORKS = { WORKS_SMTP_USER: "login-sender@haddscience.com", WORKS_SMTP_PASS: "works-pass", WORKS_SMTP_FROM: '"옴니스" <login-sender@haddscience.com>' }
+const pick = (c: ReturnType<typeof hrSmtpConfig>) => c && { source: c.source, user: c.user, pass: c.pass, from: c.from, fromName: c.fromName }
+
+test("계정 — HR_* 가 둘 다 있으면 그쪽, From 도 HR_SMTP_USER", () => {
+  assert.deepEqual(pick(hrSmtpConfig({ ...WORKS, HR_SMTP_USER: "jwoochang@haddscience.com", HR_SMTP_PASSWORD: "hr-pass" })), {
+    source: "hr", user: "jwoochang@haddscience.com", pass: "hr-pass", from: "jwoochang@haddscience.com", fromName: "하드사이언스 정우창",
+  })
+})
+
+test("계정 — HR_SMTP_USER 만 있고 PASSWORD 가 없으면(지금 운영) 로그인 코드 메일 계정을 이어받고 From 은 WORKS_SMTP_FROM 주소", () => {
+  const c = pick(hrSmtpConfig({ ...WORKS, HR_SMTP_USER: "jwoochang@haddscience.com", VERCEL_ENV: "production" }))
+  assert.deepEqual(c, { source: "works", user: "login-sender@haddscience.com", pass: "works-pass", from: "login-sender@haddscience.com", fromName: "하드사이언스" })
+  // 거부 — HR_SMTP_USER 를 From 으로 섞지 않는다(웍스는 인증 계정과 다른 발신 주소를 거부할 수 있다)
+  assert.notEqual(c?.from, "jwoochang@haddscience.com")
+})
+
+test("계정 — HR_* 가 둘 다 없거나 PASSWORD 만 있어도 이어받고, WORKS_* 가 하나라도 빠지면 건너뛴다", () => {
+  assert.equal(pick(hrSmtpConfig(WORKS))?.source, "works")
+  assert.equal(pick(hrSmtpConfig({ ...WORKS, HR_SMTP_PASSWORD: "hr-pass" }))?.source, "works")
+  assert.equal(hrSmtpConfig({ ...WORKS, WORKS_SMTP_FROM: undefined }), null)
+  assert.equal(hrSmtpConfig({ ...WORKS, WORKS_SMTP_PASS: "" }), null)
+  assert.equal(hrSmtpConfig({ HR_SMTP_USER: "jwoochang@haddscience.com" }), null)
+  // From 이 주소만 적혀 있어도 그대로
+  assert.equal(hrSmtpConfig({ ...WORKS, WORKS_SMTP_FROM: "login-sender@haddscience.com" })?.from, "login-sender@haddscience.com")
+})
+
+const cfg: HrSmtpConfig = { user: "sender@example.com", pass: "x", from: "sender@example.com", fromName: "하드사이언스 정우창", source: "hr", host: "h", port: 587, insecure: false }
 function fakeDeps(over: Partial<MailDeps> = {}) {
   const sent: string[] = []
   const notes: string[] = []
