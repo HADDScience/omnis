@@ -61,7 +61,7 @@ export default async function HrApplicationPage({ params }: Props) {
     ["연락처", app.phone],
     ["이메일", app.email],
     ["포트폴리오 링크", app.portfolioUrl],
-    ["관심 있는 일", app.interests.length ? app.interests.map(interestLabel).join(" · ") : null],
+    ["관심 있는 일", app.interests.length ? app.interests.map((v) => interestLabel(v)).join(" · ") : null],
   ]
 
   return (

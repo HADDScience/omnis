@@ -95,7 +95,7 @@ export async function runAdminRead(name: AdminReadName, args: Record<string, unk
           ...[...byJob.entries()].map(([slug, j]) => `- ${j.title} (${slug}): ${j.parts.join(" · ")}`),
           "",
           `지원서 ${rows.length}건${job || stage ? " (좁힌 결과)" : ""}`,
-          ...rows.map((r) => `- ${r.code ?? "-"} · ${STAGE_LABEL[r.stage]} · ${r.purgedAt ? "(파기됨)" : `${r.name ?? "-"} · ${r.department ?? "-"} · ${r.grade ?? "-"}학년${r.interests.length ? ` · 관심: ${r.interests.map(interestLabel).join(", ")}` : ""}`} · 접수 ${r.receivedAt ? kstDate(r.receivedAt) : "-"} · ${r.jobTitle}`),
+          ...rows.map((r) => `- ${r.code ?? "-"} · ${STAGE_LABEL[r.stage]} · ${r.purgedAt ? "(파기됨)" : `${r.name ?? "-"} · ${r.department ?? "-"} · ${r.grade ?? "-"}학년${r.interests.length ? ` · 관심: ${r.interests.map((v) => interestLabel(v)).join(", ")}` : ""}`} · 접수 ${r.receivedAt ? kstDate(r.receivedAt) : "-"} · ${r.jobTitle}`),
         ].join("\n"),
       }
     }

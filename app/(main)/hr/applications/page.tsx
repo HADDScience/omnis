@@ -82,7 +82,7 @@ export default async function HrApplicationsPage() {
                         </span>
                         {!r.purgedAt && r.interests.length > 0 && (
                           <span className="truncate text-[12px] text-muted-foreground" data-hr-interests>
-                            관심: {r.interests.map(interestLabel).join(" · ")}
+                            관심: {r.interests.map((v) => interestLabel(v)).join(" · ")}
                           </span>
                         )}
                       </span>

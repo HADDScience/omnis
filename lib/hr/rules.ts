@@ -56,7 +56,13 @@ export const INTEREST_LABEL: Record<string, string> = {
   dev: "사내 업무 시스템(옴니스) · 홈페이지 개발",
   grants: "국가과제 · TIPS 같은 지원 서류 작성",
 }
-export const interestLabel = (v: string) => INTEREST_LABEL[v] ?? v
+/** 영문 지원서용 — 홈페이지 content/en.ts 의 tracks 라벨과 같다 */
+export const INTEREST_LABEL_EN: Record<string, string> = {
+  "ai-bio": "AI-driven bio research",
+  dev: "Developing our internal work system (Omnis) and website",
+  grants: "Writing applications for national R&D programs and TIPS",
+}
+export const interestLabel = (v: string, lang: "ko" | "en" = "ko") => (lang === "en" ? INTEREST_LABEL_EN[v] : INTEREST_LABEL[v]) ?? v
 export const MAX_INTERESTS = 10
 
 // ─── 검사 ───
