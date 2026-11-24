@@ -26,7 +26,7 @@ export async function purgeApplication(id: string, why: string, actorId: string 
   if (!app || app.purgedAt) return false
   await deleteApplicationFiles(app.id, app.files.map((f) => f.objectKey))
   await prisma.$transaction([
-    prisma.jobApplication.update({ where: { id }, data: { ...PURGED_FIELDS, purgedAt: now } }),
+    prisma.jobApplication.update({ where: { id }, data: { ...PURGED_FIELDS, interests: [], purgedAt: now } }),
     prisma.jobApplicationFile.updateMany({ where: { applicationId: id }, data: { fileName: null, deletedAt: now } }),
     prisma.jobApplicationEvent.updateMany({ where: { applicationId: id }, data: { note: null } }),
     prisma.jobApplicationEvent.create({ data: { applicationId: id, actorId, note: why } }),

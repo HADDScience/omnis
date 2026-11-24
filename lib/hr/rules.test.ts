@@ -5,6 +5,7 @@ import {
   APPLICATION_FILE_MAX_BYTES,
   PART_BYTES,
   addMonths,
+  interestLabel,
   allowedOrigins,
   applicationIntakeSchema,
   kstDay,
@@ -131,4 +132,22 @@ test("보관 기한 — 선발 종료 + 6개월, 누르지 않았으면 접수 +
   assert.equal(purgeDeadline({ selectionEndedAt: ended, receivedAt: received, purgeAfter: null })?.toISOString(), "2027-06-03T00:00:00.000Z")
   assert.equal(purgeDeadline({ selectionEndedAt: null, receivedAt: null, purgeAfter: null }), null)
   assert.equal(addMonths(new Date("2026-01-31T00:00:00Z"), 1).toISOString().slice(0, 10), "2026-03-03", "달 끝은 넘친다(보관이 짧아지지 않는 쪽)")
+})
+
+test("관심 있는 일 — 선택이라 없어도 되고, 고른 것은 겹치지 않게 남는다", () => {
+  const none = applicationIntakeSchema.safeParse(valid)
+  assert.equal(none.success && none.data.interests.length, 0)
+  const some = applicationIntakeSchema.safeParse({ ...valid, interests: ["ai-bio", "dev", "dev", "grants"] })
+  assert.equal(some.success, true)
+  if (some.success) assert.deepEqual(some.data.interests, ["ai-bio", "dev", "grants"])
+  assert.equal(interestLabel("ai-bio"), "AI 기반 바이오 연구")
+  assert.equal(interestLabel("new-track"), "new-track", "모르는 갈래는 value 그대로")
+})
+
+test("관심 있는 일 — 모양이 틀리거나 너무 많으면 거절한다", () => {
+  for (const interests of [["AI 바이오"], ["<script>"], "ai-bio", Array.from({ length: 11 }, (_, i) => `t${i}`)]) {
+    const r = applicationIntakeSchema.safeParse({ ...valid, interests })
+    assert.equal(r.success, false, JSON.stringify(interests))
+    if (!r.success) assert.ok(r.error.issues.some((i) => i.path[0] === "interests"))
+  }
 })

@@ -12,6 +12,7 @@ export interface ApplicationRow {
   name: string | null
   department: string | null
   grade: string | null
+  interests: string[]
   receivedAt: Date | null
   purgeAfter: Date | null
   purgedAt: Date | null
@@ -28,7 +29,7 @@ export async function listApplications(opts: { jobSlug?: string; stage?: Stage; 
     orderBy: [{ receivedAt: "desc" }],
     take: opts.take ?? 200,
     select: {
-      id: true, code: true, jobSlug: true, jobTitle: true, stage: true, name: true, department: true, grade: true,
+      id: true, code: true, jobSlug: true, jobTitle: true, stage: true, name: true, department: true, grade: true, interests: true,
       receivedAt: true, purgeAfter: true, purgedAt: true, _count: { select: { files: true } },
     },
   })

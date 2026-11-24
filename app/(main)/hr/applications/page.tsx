@@ -8,7 +8,7 @@ import { NotReviewer } from "@/components/hr/not-reviewer"
 import { auth } from "@/lib/auth"
 import { isHrReviewer } from "@/lib/hr/reviewers"
 import { listApplications, type ApplicationRow } from "@/lib/hr/queries"
-import { STAGE_LABEL } from "@/lib/hr/rules"
+import { STAGE_LABEL, interestLabel } from "@/lib/hr/rules"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "지원서함" }
@@ -80,6 +80,11 @@ export default async function HrApplicationsPage() {
                         <span className="truncate text-[12px] text-muted-foreground">
                           {r.code} {r.purgedAt ? "" : `· ${r.department ?? ""} · ${r.grade ?? ""}학년`}
                         </span>
+                        {!r.purgedAt && r.interests.length > 0 && (
+                          <span className="truncate text-[12px] text-muted-foreground" data-hr-interests>
+                            관심: {r.interests.map(interestLabel).join(" · ")}
+                          </span>
+                        )}
                       </span>
                       <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">{r.receivedAt ? dateFmt.format(r.receivedAt) : ""}</span>
                       <HugeiconsIcon icon={ArrowRight01Icon} size={14} className="shrink-0 text-muted-foreground" aria-hidden />

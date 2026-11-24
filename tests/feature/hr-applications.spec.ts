@@ -6,6 +6,7 @@
  * - 관리자라도 채용 담당이 아니면 목록 · 상세 · 파일이 모두 막힌다(거부되어야 하는 경우)
  * - 관리자가 운영 탭에서 담당을 고르면 그 사람(구성원이어도)이 마이 입구 · 목록 · 상세 · 파일을 본다
  * - 내려받은 파일이 올린 파일과 같다
+ * - 홈페이지가 보낸 「관심 있는 일」 이 목록 · 상세에 라벨로 보인다
  *
  * 가짜 NAS(scripts/e2e-fake-nas.mjs)와 지원서 비밀(WEBSITE_CAREER_SECRET · WEBSITE_CAREER_UPLOAD_KEY)이 있을 때만 돈다 — CI 는 둘 다 넣는다.
  */
@@ -58,6 +59,7 @@ test.describe("채용 지원서함 @hr", () => {
         phone: "010-0000-0000",
         email,
         portfolioUrl: "",
+        interests: ["ai-bio", "grants"],
         motivation: "e2e 시험 지원서입니다.",
         consent: true,
         consentVersion: "career-consent-e2e",
@@ -125,10 +127,13 @@ test.describe("채용 지원서함 @hr", () => {
     await expect(page.locator("[data-hr-entry]")).toBeVisible()
     await page.locator("[data-hr-entry]").click()
     await expect(page).toHaveURL(/\/hr\/applications$/)
+    await expect(page.locator(`[data-hr-application="${code}"] [data-hr-interests]`)).toContainText("AI 기반 바이오 연구")
     await page.locator(`[data-hr-application="${code}"]`).click()
     await expect(page.locator(`[data-hr-application-detail="${code}"]`)).toBeVisible()
     await expect(page.getByText("시험 지원자").first()).toBeVisible()
     await expect(page.getByText(email)).toBeVisible()
+    // 관심 있는 일 — 홈페이지가 보낸 value 가 라벨로 보인다(목록 · 상세)
+    await expect(page.getByText("AI 기반 바이오 연구 · 국가과제 · TIPS 같은 지원 서류 작성")).toBeVisible()
 
     const download = page.waitForEvent("download")
     await page.locator('[data-hr-file="resume"]').click()

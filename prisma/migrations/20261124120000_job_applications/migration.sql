@@ -23,6 +23,7 @@ CREATE TABLE "JobApplication" (
     "phone" TEXT,
     "email" TEXT,
     "portfolioUrl" TEXT,
+    "interests" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "motivation" TEXT,
     "consentAt" TIMESTAMP(3),
     "consentVersion" TEXT,

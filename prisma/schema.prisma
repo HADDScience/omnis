@@ -2199,6 +2199,8 @@ model JobApplication {
   phone        String?
   email        String?
   portfolioUrl String?
+  /// 「관심 있는 일」 — 공고의 tracks value(ai-bio · dev · grants …). 선택이라 비어 있어도 된다. 라벨은 lib/hr/rules.ts INTEREST_LABEL
+  interests    String[]            @default([])
   motivation   String?
 
   consentAt      DateTime?

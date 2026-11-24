@@ -114,6 +114,7 @@ export async function openApplication(raw: unknown, origin: string, now = new Da
         phone: input.phone,
         email,
         portfolioUrl: input.portfolioUrl || null,
+        interests: input.interests,
         motivation: input.motivation,
         consentAt: now,
         consentVersion: input.consentVersion,

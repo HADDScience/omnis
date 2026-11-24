@@ -43,6 +43,18 @@ export const STAGE_LABEL = {
 } as const
 export type Stage = keyof typeof STAGE_LABEL
 
+// ─── 관심 있는 일 ───
+//
+// 홈페이지 공고의 tracks(content/ko.ts career.jobs[].tracks)에서 고른 value. 홈페이지 API 가 그 공고의 tracks 로 먼저 거른다.
+// 갈래는 공고마다 다를 수 있어 여기서는 모양(slug)만 보고, 아는 것은 라벨로 보여 준다(모르는 값은 그대로).
+export const INTEREST_LABEL: Record<string, string> = {
+  "ai-bio": "AI 기반 바이오 연구",
+  dev: "사내 업무 시스템(옴니스) · 홈페이지 개발",
+  grants: "국가과제 · TIPS 같은 지원 서류 작성",
+}
+export const interestLabel = (v: string) => INTEREST_LABEL[v] ?? v
+export const MAX_INTERESTS = 10
+
 // ─── 검사 ───
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -76,6 +88,12 @@ export const applicationIntakeSchema = z.object({
   phone: text(30).regex(PHONE, "연락처 모양"),
   email: text(200).regex(EMAIL, "이메일 모양"),
   portfolioUrl: httpUrl.optional().default(""),
+  interests: z
+    .array(z.string().trim().regex(/^[a-z0-9-]{1,40}$/, "관심 있는 일 value"))
+    .max(MAX_INTERESTS, `${MAX_INTERESTS}개 이하`)
+    .optional()
+    .default([])
+    .transform((v) => [...new Set(v)]),
   motivation: text(1500),
   consent: z.literal(true, { message: "동의가 필요합니다" }),
   consentVersion: text(100),
@@ -203,7 +221,7 @@ export function purgeDeadline(a: { selectionEndedAt: Date | null; receivedAt: Da
   return null
 }
 
-/** 파기 때 비우는 지원서 칸 — 행은 집계(공고 · 단계 · 시각 · 번호)로 남긴다 */
+/** 파기 때 비우는 지원서 칸 — 행은 집계(공고 · 단계 · 시각 · 번호)로 남긴다. 배열 칸 interests 는 upkeep 이 [] 로 비운다 */
 export const PURGED_FIELDS = {
   name: null,
   department: null,

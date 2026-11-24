@@ -10,7 +10,7 @@ import { writeActivity } from "@/lib/api"
 import { apiUrl } from "@/lib/base-path"
 import { isHrReviewer } from "@/lib/hr/reviewers"
 import { getApplication } from "@/lib/hr/queries"
-import { SLOT_LABEL, STAGE_LABEL, purgeDeadline, slotParam } from "@/lib/hr/rules"
+import { SLOT_LABEL, STAGE_LABEL, interestLabel, purgeDeadline, slotParam } from "@/lib/hr/rules"
 
 export const metadata: Metadata = { title: "지원서" }
 export const dynamic = "force-dynamic"
@@ -61,6 +61,7 @@ export default async function HrApplicationPage({ params }: Props) {
     ["연락처", app.phone],
     ["이메일", app.email],
     ["포트폴리오 링크", app.portfolioUrl],
+    ["관심 있는 일", app.interests.length ? app.interests.map(interestLabel).join(" · ") : null],
   ]
 
   return (
