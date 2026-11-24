@@ -140,7 +140,7 @@ export default async function HrApplicationPage({ params }: Props) {
           <ul className="flex flex-col gap-1.5 text-[13px]">
             {app.events.map((e) => (
               <li key={e.id} className="flex flex-wrap gap-x-2">
-                <span className="w-[9.5rem] shrink-0 text-muted-foreground tabular-nums">{dateTime.format(e.createdAt)}</span>
+                <span className="shrink-0 whitespace-nowrap text-muted-foreground tabular-nums">{dateTime.format(e.createdAt)}</span>
                 <span>{e.toStage ? STAGE_LABEL[e.toStage] : ""}{e.note ? ` ${e.note}` : ""}</span>
               </li>
             ))}
