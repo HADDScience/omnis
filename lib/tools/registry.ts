@@ -82,6 +82,12 @@ export const TOOL_POLICY = {
   company_profile: R,
   list_company_records: R,
   list_certifications: R,
+  // 국가과제(2026-11-25) — 우리 결정 · 과제 후보 읽기, 인증 · 결정 고치기 · 후보 올리기
+  list_grant_decisions: R,
+  search_grant_notices: R,
+  update_certification: PW,
+  update_grant_decision: PW,
+  add_grant_decision: PW,
   list_record_proposals: R,
   list_tax_invoices: R,
   list_staff: R,

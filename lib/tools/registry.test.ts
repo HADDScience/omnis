@@ -290,6 +290,13 @@ const B7_READ_NO_ASK = ["list_files"]
 const B7_WRITE = ["link_nas_file"]
 // 2026-11-25 인증 · 가점 — 세 경로 모두에 연다
 const CERT_READ = ["list_certifications"]
+// 2026-11-25 국가과제 — 읽기는 세 경로, 쓰기는 앱 AI 확인 카드 · 질문 경로 미리보기 · MCP confirm
+const GRANT_READ = ["list_grant_decisions", "search_grant_notices"]
+const GRANT_WRITE = [
+  "update_certification",
+  "update_grant_decision",
+  "add_grant_decision",
+]
 // #248 묶음 2 — CRM 나머지
 const B2_READ = ["list_stock_moves", "list_payments", "list_inquiries"]
 const B2_WRITE = [
@@ -320,6 +327,7 @@ test("재설계 전과 노출이 같다(새 도구만 더함) — 앱 AI 읽기 
       ...B7_READ,
       ...B7_READ_NO_ASK,
       ...CERT_READ,
+      ...GRANT_READ,
     ])
   )
   assert.deepEqual(
@@ -334,6 +342,7 @@ test("재설계 전과 노출이 같다(새 도구만 더함) — 앱 AI 읽기 
       ...B5_WRITE,
       ...B6_WRITE,
       ...B7_WRITE,
+      ...GRANT_WRITE,
     ])
   )
   assert.deepEqual(
@@ -347,6 +356,7 @@ test("재설계 전과 노출이 같다(새 도구만 더함) — 앱 AI 읽기 
       ...B6_READ,
       ...B7_READ,
       ...CERT_READ,
+      ...GRANT_READ,
     ])
   )
   assert.deepEqual(sorted(Object.keys(AGENT_EXCLUDED)), [

@@ -23,6 +23,8 @@ const WRITE_TOOLS = [
   "save_website_post", "delete_website_post", "arrange_website_posts", "upload_website_media",
   "collect_column_keywords", "column_keyword_action", "create_column_draft", "update_column_draft", "column_draft_action",
   "link_nas_file",
+  // 국가과제(2026-11-25) — 질문 경로에는 미리보기로만
+  "update_certification", "update_grant_decision", "add_grant_decision",
 ]
 
 test("질문 경로에 쓰기 도구가 없다", () => {
