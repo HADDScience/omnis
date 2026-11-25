@@ -2,8 +2,18 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { Badge } from "@/components/ui/badge"
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
-import { CompanyProfileDialog, CompanyYearDialog } from "@/components/company/company-editors"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty"
+import {
+  CompanyProfileDialog,
+  CompanyYearDialog,
+} from "@/components/company/company-editors"
+import { CertSection } from "@/components/company/cert-section"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { won } from "@/lib/crm"
@@ -15,8 +25,10 @@ import type { CompanyProfile, CompanyYear } from "@/generated/prisma/client"
 export const metadata: Metadata = { title: "회사 정보 · HADD DB" }
 export const dynamic = "force-dynamic"
 
-const money = (v: bigint | number | null | undefined) => (v === null || v === undefined ? "—" : won(Number(v)))
-const moneyText = (v: bigint | null) => (v === null ? "" : Number(v).toLocaleString("ko-KR"))
+const money = (v: bigint | number | null | undefined) =>
+  v === null || v === undefined ? "—" : won(Number(v))
+const moneyText = (v: bigint | null) =>
+  v === null ? "" : Number(v).toLocaleString("ko-KR")
 
 /** 편집 창에 넘길 글자 모양 — BigInt · Date 는 클라이언트로 그대로 못 넘긴다 */
 function profileForm(p: CompanyProfile | null): ProfileForm {
@@ -67,14 +79,24 @@ function yearForm(y: CompanyYear): YearForm {
  */
 export default async function CompanyPage() {
   const isAdmin = isAdminSession(await auth())
-  const [profile, years] = await Promise.all([
+  const [profile, years, certs] = await Promise.all([
     prisma.companyProfile.findUnique({ where: { id: "hadd" } }),
-    prisma.companyYear.findMany({ orderBy: [{ year: "desc" }, { basis: "asc" }] }),
+    prisma.companyYear.findMany({
+      orderBy: [{ year: "desc" }, { basis: "asc" }],
+    }),
+    prisma.companyCertification.findMany({
+      orderBy: [{ priority: "asc" }, { name: "asc" }],
+      include: { record: { select: { title: true, startsOn: true } } },
+    }),
   ])
 
-  const confirmed = years.filter((y) => y.basis === "CONFIRMED").map((y) => y.year)
+  const confirmed = years
+    .filter((y) => y.basis === "CONFIRMED")
+    .map((y) => y.year)
   const thisYear = new Date().getUTCFullYear()
-  const provisionalYears = [thisYear, thisYear - 1].filter((y) => !confirmed.includes(y))
+  const provisionalYears = [thisYear, thisYear - 1].filter(
+    (y) => !confirmed.includes(y)
+  )
   const [provisional, reconcile] = await Promise.all([
     Promise.all(provisionalYears.map(invoiceRevenue)),
     Promise.all(confirmed.map(invoiceRevenue)),
@@ -99,26 +121,36 @@ export default async function CompanyPage() {
   const rows: Row[] = [
     ...years.map((y) => {
       const inv = reconcile.find((r) => r.year === y.year)
-      const diff = y.basis === "CONFIRMED" && inv && inv.invoices > 0 && y.revenueKrw !== null ? Number(y.revenueKrw) - inv.total : null
+      const diff =
+        y.basis === "CONFIRMED" &&
+        inv &&
+        inv.invoices > 0 &&
+        y.revenueKrw !== null
+          ? Number(y.revenueKrw) - inv.total
+          : null
       return {
         key: y.id,
         year: y.year,
         basis: y.basis,
         revenue: y.revenueKrw === null ? null : Number(y.revenueKrw),
-        product: y.revenueProductKrw === null ? null : Number(y.revenueProductKrw),
-        service: y.revenueServiceKrw === null ? null : Number(y.revenueServiceKrw),
+        product:
+          y.revenueProductKrw === null ? null : Number(y.revenueProductKrw),
+        service:
+          y.revenueServiceKrw === null ? null : Number(y.revenueServiceKrw),
         assets: y.assetsKrw,
         liabilities: y.liabilitiesKrw,
         equity: y.equityKrw,
         netIncome: y.netIncomeKrw,
         headcount: y.headcount,
-        remark: [
-          y.accountLabel && `결산서 매출 계정: ${y.accountLabel}`,
-          diff !== null && `세금계산서 ${inv!.invoices}장 합과 차이 ${diff.toLocaleString("ko-KR")}원`,
-          y.note,
-        ]
-          .filter(Boolean)
-          .join(" · ") || null,
+        remark:
+          [
+            y.accountLabel && `결산서 매출 계정: ${y.accountLabel}`,
+            diff !== null &&
+              `세금계산서 ${inv!.invoices}장 합과 차이 ${diff.toLocaleString("ko-KR")}원`,
+            y.note,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
         editable: yearForm(y),
       }
     }),
@@ -139,15 +171,33 @@ export default async function CompanyPage() {
         remark: `세금계산서 ${p.invoices}장 · ${ymd(p.lastIssuedOn)} 발행분까지 · 결산 전 잠정치`,
         editable: null,
       })),
-  ].sort((a, b) => b.year - a.year || ["CONFIRMED", "PROVISIONAL", "PLANNED"].indexOf(a.basis) - ["CONFIRMED", "PROVISIONAL", "PLANNED"].indexOf(b.basis))
+  ].sort(
+    (a, b) =>
+      b.year - a.year ||
+      ["CONFIRMED", "PROVISIONAL", "PLANNED"].indexOf(a.basis) -
+        ["CONFIRMED", "PROVISIONAL", "PLANNED"].indexOf(b.basis)
+  )
 
   const fields: [string, string | null][] = profile
     ? [
-        ["상호", `${profile.nameKo}${profile.nameEn ? ` (${profile.nameEn})` : ""}`],
+        [
+          "상호",
+          `${profile.nameKo}${profile.nameEn ? ` (${profile.nameEn})` : ""}`,
+        ],
         ["사업자등록번호", profile.bizRegNo],
         ["사업자 형태", profile.bizType],
-        ...(profile.corpRegNo ? ([["법인등록번호", profile.corpRegNo]] as [string, string][]) : []),
-        ["업종", [profile.industry, profile.industryCode && `(${profile.industryCode})`].filter(Boolean).join(" ") || null],
+        ...(profile.corpRegNo
+          ? ([["법인등록번호", profile.corpRegNo]] as [string, string][])
+          : []),
+        [
+          "업종",
+          [
+            profile.industry,
+            profile.industryCode && `(${profile.industryCode})`,
+          ]
+            .filter(Boolean)
+            .join(" ") || null,
+        ],
         ["설립일", ymd(profile.foundedOn)],
         ["홈페이지", profile.homepage],
         ["본사", profile.hqAddress],
@@ -162,8 +212,12 @@ export default async function CompanyPage() {
       <Header crumbs={["HADD DB", "회사 정보"]} />
       <div className="mx-auto w-full max-w-[1040px] px-4 py-6 sm:px-6">
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <h1 className="text-[18px] font-bold tracking-[-0.02em]">회사 정보</h1>
-          <span className="text-[13px] text-muted-foreground">지원서에 그대로 들어가는 값 · AI 가 고쳐 쓰지 않는다</span>
+          <h1 className="text-[18px] font-bold tracking-[-0.02em]">
+            회사 정보
+          </h1>
+          <span className="text-[13px] text-muted-foreground">
+            지원서에 그대로 들어가는 값 · AI 가 고쳐 쓰지 않는다
+          </span>
           {isAdmin && profile && (
             <span className="ml-auto">
               <CompanyProfileDialog initial={profileForm(profile)} exists />
@@ -175,10 +229,17 @@ export default async function CompanyPage() {
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-xl border bg-card p-4 sm:grid-cols-[140px_1fr]">
             {fields.map(([k, v]) => (
               <div key={k} className="contents">
-                <dt className="text-[12px] text-muted-foreground sm:pt-0.5">{k}</dt>
-                <dd className="break-words text-[13.5px]">
+                <dt className="text-[12px] text-muted-foreground sm:pt-0.5">
+                  {k}
+                </dt>
+                <dd className="text-[13.5px] break-words">
                   {k === "홈페이지" && v ? (
-                    <a href={v} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    <a
+                      href={v}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
                       {v}
                     </a>
                   ) : (
@@ -194,12 +255,16 @@ export default async function CompanyPage() {
               <EmptyTitle>회사 기본정보가 아직 없습니다</EmptyTitle>
               <EmptyDescription>
                 {isAdmin ? "아래 버튼으로 직접 입력하거나 " : ""}
-                <code>scripts/import-company-context.ts --only company</code> 로 옮기면 여기에 보입니다.
+                <code>scripts/import-company-context.ts --only company</code> 로
+                옮기면 여기에 보입니다.
               </EmptyDescription>
             </EmptyHeader>
             {isAdmin && (
               <EmptyContent>
-                <CompanyProfileDialog initial={profileForm(null)} exists={false} />
+                <CompanyProfileDialog
+                  initial={profileForm(null)}
+                  exists={false}
+                />
               </EmptyContent>
             )}
           </Empty>
@@ -211,10 +276,14 @@ export default async function CompanyPage() {
               연도별 재무
             </h2>
             <span className="text-[12px] text-muted-foreground">
-              매출은 공급가액(부가세 제외) · 확정 = 결산서 · 잠정 = 결산 전 세금계산서 합 · 계획 = 예상·추정
+              매출은 공급가액(부가세 제외) · 확정 = 결산서 · 잠정 = 결산 전
+              세금계산서 합 · 계획 = 예상·추정
             </span>
             <span className="ml-auto flex items-center gap-2">
-              <Link href="/crm/invoices" className="text-[12px] text-muted-foreground hover:underline">
+              <Link
+                href="/crm/invoices"
+                className="text-[12px] text-muted-foreground hover:underline"
+              >
                 세금계산서 보기
               </Link>
               {isAdmin && <CompanyYearDialog />}
@@ -225,7 +294,10 @@ export default async function CompanyPage() {
             <Empty className="rounded-xl border border-dashed">
               <EmptyHeader>
                 <EmptyTitle>재무 자료가 없습니다</EmptyTitle>
-                <EmptyDescription>결산서를 이식하거나 CRM 에 세금계산서를 올리면 여기에 쌓입니다.</EmptyDescription>
+                <EmptyDescription>
+                  결산서를 이식하거나 CRM 에 세금계산서를 올리면 여기에
+                  쌓입니다.
+                </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
@@ -233,8 +305,23 @@ export default async function CompanyPage() {
               <table className="w-full min-w-[760px] text-[12.5px]">
                 <thead className="border-b bg-muted/40 text-[11.5px] text-muted-foreground">
                   <tr>
-                    {["연도", "단계", "매출", "제품", "용역", "자산", "부채", "자본", "순이익", "상시근로자"].map((h) => (
-                      <th key={h} scope="col" className={`px-3 py-2 font-medium ${h === "연도" || h === "단계" ? "text-left" : "text-right"}`}>
+                    {[
+                      "연도",
+                      "단계",
+                      "매출",
+                      "제품",
+                      "용역",
+                      "자산",
+                      "부채",
+                      "자본",
+                      "순이익",
+                      "상시근로자",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        scope="col"
+                        className={`px-3 py-2 font-medium ${h === "연도" || h === "단계" ? "text-left" : "text-right"}`}
+                      >
                         {h}
                       </th>
                     ))}
@@ -249,6 +336,8 @@ export default async function CompanyPage() {
             </div>
           )}
         </section>
+
+        <CertSection certs={certs} />
       </div>
     </>
   )
@@ -260,23 +349,46 @@ export default async function CompanyPage() {
           <td className="px-3 pt-2 font-semibold tabular-nums">{r.year}</td>
           <td className="px-3 pt-2">
             <span className="flex items-center gap-1">
-              <Badge variant={r.basis === "CONFIRMED" ? "default" : "outline"}>{BASIS_LABEL[r.basis]}</Badge>
-              {isAdmin && r.editable && <CompanyYearDialog initial={r.editable} />}
+              <Badge variant={r.basis === "CONFIRMED" ? "default" : "outline"}>
+                {BASIS_LABEL[r.basis]}
+              </Badge>
+              {isAdmin && r.editable && (
+                <CompanyYearDialog initial={r.editable} />
+              )}
             </span>
           </td>
-          <td className="px-3 pt-2 text-right font-semibold tabular-nums">{money(r.revenue)}</td>
-          <td className="px-3 pt-2 text-right tabular-nums">{money(r.product)}</td>
-          <td className="px-3 pt-2 text-right tabular-nums">{money(r.service)}</td>
-          <td className="px-3 pt-2 text-right tabular-nums">{money(r.assets)}</td>
-          <td className="px-3 pt-2 text-right tabular-nums">{money(r.liabilities)}</td>
-          <td className="px-3 pt-2 text-right tabular-nums">{money(r.equity)}</td>
-          <td className="px-3 pt-2 text-right tabular-nums">{money(r.netIncome)}</td>
-          <td className="px-3 pt-2 text-right tabular-nums">{r.headcount ?? "—"}</td>
+          <td className="px-3 pt-2 text-right font-semibold tabular-nums">
+            {money(r.revenue)}
+          </td>
+          <td className="px-3 pt-2 text-right tabular-nums">
+            {money(r.product)}
+          </td>
+          <td className="px-3 pt-2 text-right tabular-nums">
+            {money(r.service)}
+          </td>
+          <td className="px-3 pt-2 text-right tabular-nums">
+            {money(r.assets)}
+          </td>
+          <td className="px-3 pt-2 text-right tabular-nums">
+            {money(r.liabilities)}
+          </td>
+          <td className="px-3 pt-2 text-right tabular-nums">
+            {money(r.equity)}
+          </td>
+          <td className="px-3 pt-2 text-right tabular-nums">
+            {money(r.netIncome)}
+          </td>
+          <td className="px-3 pt-2 text-right tabular-nums">
+            {r.headcount ?? "—"}
+          </td>
         </tr>
         {r.remark && (
           <tr className="border-b last:border-b-0">
             <td />
-            <td colSpan={9} className="px-3 pb-2 pt-0.5 text-[11.5px] text-muted-foreground">
+            <td
+              colSpan={9}
+              className="px-3 pt-0.5 pb-2 text-[11.5px] text-muted-foreground"
+            >
               {r.remark}
             </td>
           </tr>
