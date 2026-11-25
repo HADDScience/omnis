@@ -2421,3 +2421,40 @@ model GrantDecisionOwner {
 
   @@id([decisionId, userId])
 }
+
+/// 수집기 공고(대표 공고 · export/v1 notices.json). 판정 · 마감 · 지역으로 「과제 후보」 를 고른다.
+/// 수집기가 정본이라 이식 때마다 통째로 맞춘다 — 사람이 고치는 칸은 두지 않는다(올리면 GrantDecision 이 생긴다)
+model GrantNotice {
+  id           String    @id @default(uuid())
+  /// notice:… / group:… — 수집기 key. GrantDecision.noticeLinks 의 export_key 와 같다
+  externalKey  String    @unique
+  title        String
+  ministry     String?
+  agency       String?
+  url          String?
+  rcptStartAt  DateTime?
+  deadlineAt   DateTime?
+  deadlineRaw  String?
+  /// national · gyeonggi · gyeonggi_other · local · other_region · unknown
+  regionClass  String?
+  regionDetail String[]
+  fields       String[]
+  isRnd        Boolean?
+  /// 해당 · 애매 · 비해당 · 불명 — 개인사업자(지금) 기준과 법인 기준
+  verdictSole  String?
+  verdictCorp  String?
+  /// [{claim, quote}] — 판정 근거
+  reasonsSole  Json?
+  reasonsCorp  Json?
+  /// llm · rules
+  judgedBy     String?
+  firstSeen    DateTime?
+  lastSeen     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([deadlineAt])
+  @@index([verdictSole])
+  @@index([regionClass])
+}
+

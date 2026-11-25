@@ -1,5 +1,5 @@
 /**
- * 인증 · 국가과제 결정 이식 — 수집기 내보내기(export/v1) → CompanyCertification · GrantDecision(+Owner).
+ * 인증 · 국가과제 결정 · 공고 이식 — 수집기 내보내기(export/v1) → CompanyCertification · GrantDecision(+Owner) · GrantNotice.
  *
  *   npx tsx scripts/import-grants.ts            # 건식: 새로 생길 것 · 바뀔 것 · 그대로인 것 건수만
  *   npx tsx scripts/import-grants.ts --apply    # 실제로 쓴다
@@ -14,6 +14,8 @@ import { homedir } from "os"
 import { join } from "path"
 import { prisma } from "@/lib/db"
 import {
+  noticeRow,
+  type NoticeItem,
   certRow,
   decisionRow,
   matchMilestone,
@@ -125,11 +127,47 @@ async function main() {
     }
   }
 
+  // 공고 — 수집기가 정본이라 통째로 맞춘다. 20건씩 나눠 쓴다
+  const notices = read<NoticeItem>("notices.json")
+  const existingNotices = new Set(
+    (await prisma.grantNotice.findMany({ select: { externalKey: true } })).map(
+      (n) => n.externalKey
+    )
+  )
+  const noticeTally = {
+    new: 0,
+    update: 0,
+    byVerdictSole: {} as Record<string, number>,
+  }
+  const rows = notices.items.map(noticeRow)
+  for (const r of rows) {
+    if (existingNotices.has(r.externalKey)) noticeTally.update++
+    else noticeTally.new++
+    const v = r.verdictSole ?? "(없음)"
+    noticeTally.byVerdictSole[v] = (noticeTally.byVerdictSole[v] ?? 0) + 1
+  }
+  if (APPLY) {
+    for (let i = 0; i < rows.length; i += 20) {
+      await Promise.all(
+        rows
+          .slice(i, i + 20)
+          .map((r) =>
+            prisma.grantNotice.upsert({
+              where: { externalKey: r.externalKey },
+              create: r,
+              update: r,
+            })
+          )
+      )
+    }
+  }
+
   const after = APPLY
     ? {
         certs: await prisma.companyCertification.count(),
         decisions: await prisma.grantDecision.count(),
         owners: await prisma.grantDecisionOwner.count(),
+        notices: await prisma.grantNotice.count(),
       }
     : null
   console.log(
@@ -137,10 +175,15 @@ async function main() {
       {
         mode: APPLY ? "apply" : "dry-run",
         dir: DIR,
-        input: { certs: certs.items.length, decisions: decisions.items.length },
+        input: {
+          certs: certs.items.length,
+          decisions: decisions.items.length,
+          notices: notices.items.length,
+        },
         byStatus,
         byStage,
         tally,
+        notices: noticeTally,
         after,
       },
       null,

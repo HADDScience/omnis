@@ -71,3 +71,35 @@ test("연혁 잇기 — 하나만 맞을 때만", () => {
   assert.equal(matchMilestone("벤처기업", recs), "r2")
   assert.equal(matchMilestone("이노비즈", recs), null)
 })
+
+test("공고 — 사람이 읽은 판정이 있으면 그것, 없으면 규칙 판정 · 상세 주소를 먼저", async () => {
+  const { noticeRow } = await import("./grants-import")
+  const base = {
+    key: "notice:x:1",
+    title: "T",
+    members: [
+      { url: "https://a/list", url_kind: "list" },
+      { url: "https://a/detail", url_kind: "detail" },
+    ],
+    deadline_at: "2026-11-26T23:59:59+09:00",
+    index: { region_class: "national", region_detail: ["전국"] },
+    judgements: {
+      rules: { sole: { verdict: "애매" }, corp: { verdict: "해당" } },
+    },
+  }
+  const r = noticeRow(base)
+  assert.equal(r.url, "https://a/detail")
+  assert.equal(r.verdictSole, "애매")
+  assert.equal(r.judgedBy, "rules")
+  assert.equal(r.deadlineAt?.toISOString(), "2026-11-26T14:59:59.000Z")
+  const l = noticeRow({
+    ...base,
+    judgements: {
+      ...base.judgements,
+      llm: { sole: { verdict: "비해당", reasons: [{ claim: "c" }] } },
+    },
+  })
+  assert.equal(l.verdictSole, "비해당")
+  assert.equal(l.judgedBy, "llm")
+  assert.deepEqual(l.reasonsSole, [{ claim: "c", quote: "" }])
+})
