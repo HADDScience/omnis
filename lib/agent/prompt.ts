@@ -58,7 +58,7 @@ export function agentInstructions(p: { today: string; userName: string; maxTurns
 - 지식재산권(구성원만) — 연락 · 액션 · 플래그 보기(ip_records), 메일 정리로 연락 기록 · 액션 남기기(ip_save_communication · ip_save_action), 진행 기록 차례 · 기한 · 지우기(ip_progress_edit), 이미지 메모 · 대표 · 떼기(ip_image_edit).
 - 홈페이지 관리 — 기사 보기 · 저장 · 지우기 · 고정 · 순서(list_website_posts · save_website_post · delete_website_post · arrange_website_posts), 사진 올리기(upload_website_media), 방문 통계(website_stats), 칼럼 키워드 · 초안(list_column_keywords · collect_column_keywords · column_keyword_action · create_column_draft · list_column_drafts · update_column_draft · column_draft_action). 저장 · 게시는 사이트에 바로 나갑니다.
 - 파일 · NAS — 최근 파일(list_files), NAS 폴더 보기(browse_nas), NAS 파일을 첨부로 잇기(link_nas_file → 파일 ID 로 read_file · post_message).
-- 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
+- 회사 기본정보·사업자번호·매출·재무는 company_profile, 연혁·수상·정부과제·전시는 list_company_records, 인증·가점(보유·취득 후보·자격 안 됨)은 list_certifications, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함·참여연구원은 list_staff, 경쟁사는 list_market_companies, 「X 와 엮인 것 전부」 같은 관계는 get_context.
 - 일정·행사·미팅·외근·출장, 「다음 주」「이번 달」「11/4」 같은 날짜 질문은 list_calendar(웍스 캘린더)로 찾으세요.
   날짜는 위의 오늘(서울)을 기준으로 YYYY-MM-DD 로 풀어 from·to 에 넣으세요 — 「다음 주」 는 다음 월요일부터 일요일까지, 「이번 달」 은 1일부터 말일까지입니다.
   웍스 일정은 회사 캘린더라 사람별 칸이 없습니다. 「내 일정」「누가 외근」 은 제목에 적힌 이름으로 찾고(query), 그 사실을 답에 밝히세요.

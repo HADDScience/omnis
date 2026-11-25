@@ -5,8 +5,19 @@
 // 관리자의 도구 결과도 모델 공급자와 외부 MCP 커넥터로 나간다 — 그걸 감수한 결정이다. 서명 · 직인은 여전히 안 싣는다.
 // 설계: mydocs/plans/2026-09-14-company-context.md 「구현 순서 6」
 import { prisma } from "@/lib/db"
-import { BASIS_LABEL, RECORD_KIND_LABEL, invoiceRevenue, periodText, ymd } from "@/lib/company-context"
-import { loadNeighborhood, searchContext, NODE_TYPE_LABEL, type ContextNode } from "@/lib/context-graph"
+import {
+  BASIS_LABEL,
+  RECORD_KIND_LABEL,
+  invoiceRevenue,
+  periodText,
+  ymd,
+} from "@/lib/company-context"
+import {
+  loadNeighborhood,
+  searchContext,
+  NODE_TYPE_LABEL,
+  type ContextNode,
+} from "@/lib/context-graph"
 import { CompanyRecordSchema } from "@/lib/schemas/company"
 import { recordData, recordDedupeKey } from "@/lib/company-edit"
 import { writeActivity } from "@/lib/api"
@@ -22,13 +33,16 @@ import {
 } from "@/lib/record-proposals"
 import type { Prisma, RecordKind } from "@/generated/prisma/client"
 
-const money = (v: bigint | number | null | undefined) => (v === null || v === undefined ? "—" : `${Number(v).toLocaleString("ko-KR")}원`)
+const money = (v: bigint | number | null | undefined) =>
+  v === null || v === undefined ? "—" : `${Number(v).toLocaleString("ko-KR")}원`
 const RECORD_KINDS = Object.keys(RECORD_KIND_LABEL) as RecordKind[]
 
 export async function companyProfileText(): Promise<string> {
   const [p, years] = await Promise.all([
     prisma.companyProfile.findUnique({ where: { id: "hadd" } }),
-    prisma.companyYear.findMany({ orderBy: [{ year: "desc" }, { basis: "asc" }] }),
+    prisma.companyYear.findMany({
+      orderBy: [{ year: "desc" }, { basis: "asc" }],
+    }),
   ])
   const out: string[] = []
   if (p) {
@@ -48,13 +62,21 @@ export async function companyProfileText(): Promise<string> {
     )
   } else out.push("회사 기본정보가 아직 없습니다.", "")
 
-  out.push("# 연도별 재무 — 매출은 공급가액(부가세 제외). 확정 = 결산서 · 잠정 = 결산 전 세금계산서 합 · 계획 = 예상·추정. 단계가 다른 숫자를 더하지 말 것")
-  const confirmed = new Set(years.filter((y) => y.basis === "CONFIRMED").map((y) => y.year))
+  out.push(
+    "# 연도별 재무 — 매출은 공급가액(부가세 제외). 확정 = 결산서 · 잠정 = 결산 전 세금계산서 합 · 계획 = 예상·추정. 단계가 다른 숫자를 더하지 말 것"
+  )
+  const confirmed = new Set(
+    years.filter((y) => y.basis === "CONFIRMED").map((y) => y.year)
+  )
   for (const y of years) {
     const bits = [
       `매출 ${money(y.revenueKrw)}`,
-      y.revenueProductKrw !== null || y.revenueServiceKrw !== null ? `제품 ${money(y.revenueProductKrw)} · 용역 ${money(y.revenueServiceKrw)}` : null,
-      y.assetsKrw !== null ? `자산 ${money(y.assetsKrw)} · 부채 ${money(y.liabilitiesKrw)} · 자본 ${money(y.equityKrw)}` : null,
+      y.revenueProductKrw !== null || y.revenueServiceKrw !== null
+        ? `제품 ${money(y.revenueProductKrw)} · 용역 ${money(y.revenueServiceKrw)}`
+        : null,
+      y.assetsKrw !== null
+        ? `자산 ${money(y.assetsKrw)} · 부채 ${money(y.liabilitiesKrw)} · 자본 ${money(y.equityKrw)}`
+        : null,
       y.netIncomeKrw !== null ? `순이익 ${money(y.netIncomeKrw)}` : null,
       y.headcount !== null ? `상시근로자 ${y.headcount}명` : null,
       y.accountLabel ? `결산서 매출 계정 ${y.accountLabel}` : null,
@@ -63,22 +85,40 @@ export async function companyProfileText(): Promise<string> {
     out.push(`- ${y.year} ${BASIS_LABEL[y.basis]} · ${bits.join(" · ")}`)
   }
   const thisYear = new Date().getUTCFullYear()
-  for (const year of [thisYear, thisYear - 1].filter((x) => !confirmed.has(x))) {
+  for (const year of [thisYear, thisYear - 1].filter(
+    (x) => !confirmed.has(x)
+  )) {
     const r = await invoiceRevenue(year)
     if (r.invoices > 0) {
-      out.push(`- ${year} 잠정 · 매출 ${money(r.total)} · 제품 ${money(r.product)} · 용역 ${money(r.service)} · 세금계산서 ${r.invoices}장, ${ymd(r.lastIssuedOn)} 발행분까지 · 결산 전`)
+      out.push(
+        `- ${year} 잠정 · 매출 ${money(r.total)} · 제품 ${money(r.product)} · 용역 ${money(r.service)} · 세금계산서 ${r.invoices}장, ${ymd(r.lastIssuedOn)} 발행분까지 · 결산 전`
+      )
     }
   }
   return out.join("\n")
 }
 
-export async function companyRecordsText(args: Record<string, unknown>): Promise<string> {
+export async function companyRecordsText(
+  args: Record<string, unknown>
+): Promise<string> {
   const q = typeof args.query === "string" ? args.query.trim() : ""
-  const kind = RECORD_KINDS.includes(args.kind as RecordKind) ? (args.kind as RecordKind) : null
-  const year = Number.isInteger(Number(args.year)) && Number(args.year) > 1990 ? Number(args.year) : null
+  const kind = RECORD_KINDS.includes(args.kind as RecordKind)
+    ? (args.kind as RecordKind)
+    : null
+  const year =
+    Number.isInteger(Number(args.year)) && Number(args.year) > 1990
+      ? Number(args.year)
+      : null
   const where: Prisma.CompanyRecordWhereInput = {
     ...(kind ? { kind } : {}),
-    ...(year ? { startsOn: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } } : {}),
+    ...(year
+      ? {
+          startsOn: {
+            gte: new Date(Date.UTC(year, 0, 1)),
+            lt: new Date(Date.UTC(year + 1, 0, 1)),
+          },
+        }
+      : {}),
     ...(q
       ? {
           OR: [
@@ -91,7 +131,11 @@ export async function companyRecordsText(args: Record<string, unknown>): Promise
       : {}),
   }
   const [rows, total] = await Promise.all([
-    prisma.companyRecord.findMany({ where, orderBy: [{ startsOn: { sort: "desc", nulls: "last" } }], take: 80 }),
+    prisma.companyRecord.findMany({
+      where,
+      orderBy: [{ startsOn: { sort: "desc", nulls: "last" } }],
+      take: 80,
+    }),
     prisma.companyRecord.count({ where }),
   ])
   if (rows.length === 0) return "조건에 맞는 연혁·실적이 없습니다."
@@ -104,9 +148,15 @@ export async function companyRecordsText(args: Record<string, unknown>): Promise
       r.role && `역할 ${r.role}`,
       r.prize,
       r.subject && `과제 ${r.subject}`,
-      r.fundingKrw !== null && Number(r.fundingKrw) > 0 ? `지원금 ${money(r.fundingKrw)}` : null,
-      r.ownCashKrw !== null && Number(r.ownCashKrw) > 0 ? `자부담 현금 ${money(r.ownCashKrw)}` : null,
-      r.ownInKindKrw !== null && Number(r.ownInKindKrw) > 0 ? `자부담 현물 ${money(r.ownInKindKrw)}` : null,
+      r.fundingKrw !== null && Number(r.fundingKrw) > 0
+        ? `지원금 ${money(r.fundingKrw)}`
+        : null,
+      r.ownCashKrw !== null && Number(r.ownCashKrw) > 0
+        ? `자부담 현금 ${money(r.ownCashKrw)}`
+        : null,
+      r.ownInKindKrw !== null && Number(r.ownInKindKrw) > 0
+        ? `자부담 현물 ${money(r.ownInKindKrw)}`
+        : null,
       r.grantNo && `과제번호 ${r.grantNo}`,
       r.venue,
       r.partner && `대리점 ${r.partner}`,
@@ -116,15 +166,30 @@ export async function companyRecordsText(args: Record<string, unknown>): Promise
     // id 를 함께 준다 — 이게 없으면 고칠 줄을 get_context 로 한 건씩 캐야 한다(2026-09-16)
     return `- ${bits.join(" · ")} · id ${r.id}`
   })
-  return [`연혁·실적 ${rows.length}건${total > rows.length ? ` (전체 ${total}건 중 최근 ${rows.length}건 — 조건을 좁혀 다시 부르세요)` : ""}`, ...lines].join("\n")
+  return [
+    `연혁·실적 ${rows.length}건${total > rows.length ? ` (전체 ${total}건 중 최근 ${rows.length}건 — 조건을 좁혀 다시 부르세요)` : ""}`,
+    ...lines,
+  ].join("\n")
 }
 
-export async function taxInvoicesText(args: Record<string, unknown>): Promise<string> {
-  const year = Number.isInteger(Number(args.year)) && Number(args.year) > 1990 ? Number(args.year) : null
+export async function taxInvoicesText(
+  args: Record<string, unknown>
+): Promise<string> {
+  const year =
+    Number.isInteger(Number(args.year)) && Number(args.year) > 1990
+      ? Number(args.year)
+      : null
   const org = typeof args.org === "string" ? args.org.trim() : ""
   const rows = await prisma.taxInvoice.findMany({
     where: {
-      ...(year ? { issuedOn: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } } : {}),
+      ...(year
+        ? {
+            issuedOn: {
+              gte: new Date(Date.UTC(year, 0, 1)),
+              lt: new Date(Date.UTC(year + 1, 0, 1)),
+            },
+          }
+        : {}),
       ...(org
         ? {
             OR: [
@@ -136,11 +201,18 @@ export async function taxInvoicesText(args: Record<string, unknown>): Promise<st
         : {}),
     },
     orderBy: { issuedOn: "desc" },
-    include: { items: { orderBy: { lineNo: "asc" } }, org: { select: { name: true } }, quote: { select: { code: true } } },
+    include: {
+      items: { orderBy: { lineNo: "asc" } },
+      org: { select: { name: true } },
+      quote: { select: { code: true } },
+    },
     take: 100,
   })
   if (rows.length === 0) return "조건에 맞는 세금계산서가 없습니다."
-  const sums = new Map<string, { product: number; service: number; n: number }>()
+  const sums = new Map<
+    string,
+    { product: number; service: number; n: number }
+  >()
   const lines = rows.map((i) => {
     const y = String(i.issuedOn.getUTCFullYear())
     if (i.direction === "SALE") {
@@ -154,17 +226,37 @@ export async function taxInvoicesText(args: Record<string, unknown>): Promise<st
     }
     return `- ${ymd(i.issuedOn)} ${i.direction === "SALE" ? "매출" : "매입"}${i.kind === "수정" ? "(수정)" : ""} · ${i.org?.name ?? (i.direction === "SALE" ? i.buyerName : i.supplierName)} · 공급가액 ${money(i.supplyKrw)} · 합계 ${money(i.totalKrw)} · ${i.items.map((it) => `${it.name}(${it.category})`).join(", ")}${i.quote ? ` · 견적 ${i.quote.code}` : ""}`
   })
-  const summary = [...sums.entries()].map(([y, s]) => `- ${y} 매출 ${s.n}장 · 공급가액 합 ${money(s.product + s.service)} (제품 ${money(s.product)} · 용역 ${money(s.service)})`)
-  return [`세금계산서 ${rows.length}장 — 매출 합은 공급가액(부가세 제외)이며 결산 매출과 몇천 원 다를 수 있다`, ...summary, "", ...lines].join("\n")
+  const summary = [...sums.entries()].map(
+    ([y, s]) =>
+      `- ${y} 매출 ${s.n}장 · 공급가액 합 ${money(s.product + s.service)} (제품 ${money(s.product)} · 용역 ${money(s.service)})`
+  )
+  return [
+    `세금계산서 ${rows.length}장 — 매출 합은 공급가액(부가세 제외)이며 결산 매출과 몇천 원 다를 수 있다`,
+    ...summary,
+    "",
+    ...lines,
+  ].join("\n")
 }
 
 export async function staffText(isAdmin: boolean): Promise<string> {
   const rows = await prisma.staffProfile.findMany({
     orderBy: [{ employment: "asc" }, { name: "asc" }],
     select: {
-      name: true, affiliation: true, position: true, haddRole: true, employment: true, insured: true, duties: true, education: true, major: true, joinedOn: true,
+      name: true,
+      affiliation: true,
+      position: true,
+      haddRole: true,
+      employment: true,
+      insured: true,
+      duties: true,
+      education: true,
+      major: true,
+      joinedOn: true,
       // 관리자가 아니면 읽지도 않는다
-      phone: isAdmin, email: isAdmin, birthDate: isAdmin, ntisNo: isAdmin,
+      phone: isAdmin,
+      email: isAdmin,
+      birthDate: isAdmin,
+      ntisNo: isAdmin,
     },
   })
   const employed = rows.filter((r) => r.employment === "EMPLOYED")
@@ -172,40 +264,55 @@ export async function staffText(isAdmin: boolean): Promise<string> {
   if (employed.length === 0) return "인력 정보가 없습니다."
   return [
     `재직 ${employed.length}명 · 하드사이언스 4대보험 가입 ${employed.filter((r) => r.insured).length}명. ${
-      isAdmin ? "연락처·생년월일·과학기술인번호는 관리자에게만 보이는 개인정보다 — 요청받은 용도에만 쓴다" : "연락처·생년월일·과학기술인번호는 관리자에게만 준다"
+      isAdmin
+        ? "연락처·생년월일·과학기술인번호는 관리자에게만 보이는 개인정보다 — 요청받은 용도에만 쓴다"
+        : "연락처·생년월일·과학기술인번호는 관리자에게만 준다"
     }. 서명·직인은 도구로 주지 않는다`,
-    ...employed.map((r) =>
-      `- ${[
-        r.name,
-        r.affiliation,
-        r.position,
-        r.haddRole && `하드사이언스 ${r.haddRole}`,
-        r.insured ? "4대보험 가입" : "4대보험 미가입(겸직·외부 소속)",
-        r.duties && `담당 ${r.duties}`,
-        [r.education, r.major].filter(Boolean).join(" · ") || null,
-        r.joinedOn && `입사 ${ymd(r.joinedOn)}`,
-        r.birthDate && `생년월일 ${ymd(r.birthDate)}`,
-        r.phone && `휴대폰 ${r.phone}`,
-        r.email && `이메일 ${r.email}`,
-        r.ntisNo && `과학기술인번호 ${r.ntisNo}`,
-      ]
-        .filter(Boolean)
-        .join(" · ")}`
+    ...employed.map(
+      (r) =>
+        `- ${[
+          r.name,
+          r.affiliation,
+          r.position,
+          r.haddRole && `하드사이언스 ${r.haddRole}`,
+          r.insured ? "4대보험 가입" : "4대보험 미가입(겸직·외부 소속)",
+          r.duties && `담당 ${r.duties}`,
+          [r.education, r.major].filter(Boolean).join(" · ") || null,
+          r.joinedOn && `입사 ${ymd(r.joinedOn)}`,
+          r.birthDate && `생년월일 ${ymd(r.birthDate)}`,
+          r.phone && `휴대폰 ${r.phone}`,
+          r.email && `이메일 ${r.email}`,
+          r.ntisNo && `과학기술인번호 ${r.ntisNo}`,
+        ]
+          .filter(Boolean)
+          .join(" · ")}`
     ),
-    former.length ? `비재직 ${former.length}명: ${former.map((r) => `${r.name}(${r.affiliation ?? "소속 미상"})`).join(", ")}` : "",
+    former.length
+      ? `비재직 ${former.length}명: ${former.map((r) => `${r.name}(${r.affiliation ?? "소속 미상"})`).join(", ")}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n")
 }
 
-export async function marketCompaniesText(args: Record<string, unknown>): Promise<string> {
+export async function marketCompaniesText(
+  args: Record<string, unknown>
+): Promise<string> {
   const q = typeof args.query === "string" ? args.query.trim() : ""
   const segment = typeof args.segment === "string" ? args.segment.trim() : ""
   const rows = await prisma.marketCompany.findMany({
     where: {
-      ...(segment ? { segment: { contains: segment, mode: "insensitive" } } : {}),
+      ...(segment
+        ? { segment: { contains: segment, mode: "insensitive" } }
+        : {}),
       ...(q
-        ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { products: { contains: q, mode: "insensitive" } }, { country: { contains: q } }] }
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { products: { contains: q, mode: "insensitive" } },
+              { country: { contains: q } },
+            ],
+          }
         : {}),
     },
     orderBy: [{ segment: "asc" }, { name: "asc" }],
@@ -213,48 +320,75 @@ export async function marketCompaniesText(args: Record<string, unknown>): Promis
   if (rows.length === 0) return "조건에 맞는 시장기업이 없습니다."
   return [
     `시장기업 ${rows.length}곳 — 매출·자본금·업력은 조사 원문 그대로다`,
-    ...rows.map((c) =>
-      `- ${[c.name, c.country, c.segment, c.products && `주력 ${c.products}`, c.ceo && `대표 ${c.ceo}`, c.foundedRaw && `설립 ${c.foundedRaw}`, c.revenueRaw && `매출 ${c.revenueRaw}`, c.animalAlternative ? "동물대체시험법" : null, c.homepage]
-        .filter(Boolean)
-        .join(" · ")}`
+    ...rows.map(
+      (c) =>
+        `- ${[
+          c.name,
+          c.country,
+          c.segment,
+          c.products && `주력 ${c.products}`,
+          c.ceo && `대표 ${c.ceo}`,
+          c.foundedRaw && `설립 ${c.foundedRaw}`,
+          c.revenueRaw && `매출 ${c.revenueRaw}`,
+          c.animalAlternative ? "동물대체시험법" : null,
+          c.homepage,
+        ]
+          .filter(Boolean)
+          .join(" · ")}`
     ),
   ].join("\n")
 }
 
-const nodeLine = (n: ContextNode) => `${NODE_TYPE_LABEL[n.type]} ${n.label}${n.sub ? ` (${n.sub})` : ""} · key ${n.key}`
+const nodeLine = (n: ContextNode) =>
+  `${NODE_TYPE_LABEL[n.type]} ${n.label}${n.sub ? ` (${n.sub})` : ""} · key ${n.key}`
 
-export async function contextText(args: Record<string, unknown>, isAdmin: boolean): Promise<{ text: string } | { error: string }> {
+export async function contextText(
+  args: Record<string, unknown>,
+  isAdmin: boolean
+): Promise<{ text: string } | { error: string }> {
   let key = typeof args.node === "string" ? args.node.trim() : ""
   const q = typeof args.query === "string" ? args.query.trim() : ""
   let others: ContextNode[] = []
   if (!key) {
     if (!q) return { error: "node 또는 query 를 주세요." }
     const hits = await searchContext(q)
-    if (hits.length === 0) return { text: `'${q}' 에 맞는 대상이 없습니다. search_knowledge 로 내용을 찾아보세요.` }
+    if (hits.length === 0)
+      return {
+        text: `'${q}' 에 맞는 대상이 없습니다. search_knowledge 로 내용을 찾아보세요.`,
+      }
     const exact = hits.find((h) => h.label === q)
     key = (exact ?? hits[0]).key
     others = hits.filter((h) => h.key !== key).slice(0, 8)
   }
   const d = await loadNeighborhood(key, { isAdmin })
   if (!d) return { error: `'${key}' 대상을 찾을 수 없거나 볼 수 없습니다.` }
-  const peer = (e: { from: string; to: string }) => d.nodes.find((n) => n.key === (e.from === d.center.key ? e.to : e.from))
+  const peer = (e: { from: string; to: string }) =>
+    d.nodes.find((n) => n.key === (e.from === d.center.key ? e.to : e.from))
   const fk = d.edges.filter((e) => e.kind === "fk")
   const vec = d.edges.filter((e) => e.kind === "vector")
   return {
     text: [
       `# ${nodeLine(d.center)}`,
       `DB 로 이어진 것 ${fk.length}:`,
-      ...fk.map((e) => {
-        const n = peer(e)
-        return n ? `- [${e.label}] ${nodeLine(n)}` : null
-      }).filter(Boolean),
+      ...fk
+        .map((e) => {
+          const n = peer(e)
+          return n ? `- [${e.label}] ${nodeLine(n)}` : null
+        })
+        .filter(Boolean),
       ...d.truncated.map((t) => `(${t})`),
-      vec.length ? `의미상 가까운 것 ${vec.length} (임베딩 유사도 — 추정이지 사실이 아니다):` : "",
-      ...vec.map((e) => {
-        const n = peer(e)
-        return n ? `- ${nodeLine(n)}` : null
-      }).filter(Boolean),
-      others.length ? `\n이름이 비슷한 다른 후보 (필요하면 node 로 다시 부르세요):\n${others.map((n) => `- ${nodeLine(n)}`).join("\n")}` : "",
+      vec.length
+        ? `의미상 가까운 것 ${vec.length} (임베딩 유사도 — 추정이지 사실이 아니다):`
+        : "",
+      ...vec
+        .map((e) => {
+          const n = peer(e)
+          return n ? `- ${nodeLine(n)}` : null
+        })
+        .filter(Boolean),
+      others.length
+        ? `\n이름이 비슷한 다른 후보 (필요하면 node 로 다시 부르세요):\n${others.map((n) => `- ${nodeLine(n)}`).join("\n")}`
+        : "",
     ]
       .filter((l) => l !== "")
       .join("\n"),
@@ -272,10 +406,12 @@ export async function saveCompanyRecordText(
   args: Record<string, unknown>,
   caller: { userId: string; role: "ADMIN" | "MEMBER" }
 ): Promise<{ text: string } | { error: string }> {
-
   const recordId = typeof args.record_id === "string" ? args.record_id : null
-  const before = recordId ? await prisma.companyRecord.findUnique({ where: { id: recordId } }) : null
-  if (recordId && !before) return { error: "없는 연혁입니다 — list_company_records 로 확인하세요" }
+  const before = recordId
+    ? await prisma.companyRecord.findUnique({ where: { id: recordId } })
+    : null
+  if (recordId && !before)
+    return { error: "없는 연혁입니다 — list_company_records 로 확인하세요" }
 
   // 고칠 때는 지금 값을 바탕에 깔고 넘어온 칸만 덮는다. 안 그러면 안 보낸 칸이 비워진다.
   const base: Record<string, unknown> = before
@@ -290,9 +426,12 @@ export async function saveCompanyRecordText(
         note: before.note,
         subject: before.subject,
         role: before.role,
-        fundingKrw: before.fundingKrw === null ? null : String(before.fundingKrw),
-        ownCashKrw: before.ownCashKrw === null ? null : String(before.ownCashKrw),
-        ownInKindKrw: before.ownInKindKrw === null ? null : String(before.ownInKindKrw),
+        fundingKrw:
+          before.fundingKrw === null ? null : String(before.fundingKrw),
+        ownCashKrw:
+          before.ownCashKrw === null ? null : String(before.ownCashKrw),
+        ownInKindKrw:
+          before.ownInKindKrw === null ? null : String(before.ownInKindKrw),
         grantNo: before.grantNo,
         prize: before.prize,
         venue: before.venue,
@@ -302,9 +441,14 @@ export async function saveCompanyRecordText(
       }
     : {}
 
-  const given = Object.fromEntries(Object.entries(args).filter(([k, v]) => k !== "record_id" && v !== undefined))
+  const given = Object.fromEntries(
+    Object.entries(args).filter(
+      ([k, v]) => k !== "record_id" && v !== undefined
+    )
+  )
   const parsed = CompanyRecordSchema.safeParse({ ...base, ...given })
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "잘못된 입력" }
+  if (!parsed.success)
+    return { error: parsed.error.issues[0]?.message ?? "잘못된 입력" }
 
   const data = recordData(parsed.data)
   const dedupeKey = recordDedupeKey({
@@ -318,8 +462,13 @@ export async function saveCompanyRecordText(
 
   try {
     const row = before
-      ? await prisma.companyRecord.update({ where: { id: before.id }, data: { dedupeKey, ...data } })
-      : await prisma.companyRecord.create({ data: { dedupeKey, source: "옴니스", ...data } })
+      ? await prisma.companyRecord.update({
+          where: { id: before.id },
+          data: { dedupeKey, ...data },
+        })
+      : await prisma.companyRecord.create({
+          data: { dedupeKey, source: "옴니스", ...data },
+        })
     await writeActivity({
       userId: caller.userId,
       action: before ? "company.record.updated" : "company.record.created",
@@ -332,7 +481,8 @@ export async function saveCompanyRecordText(
       text: `${before ? "고쳤습니다" : "남겼습니다"} — [${RECORD_KIND_LABEL[row.kind]}] ${row.title} · ${row.periodRaw ?? "기간 없음"}${row.status ? ` · ${row.status}` : ""}\nid ${row.id}`,
     }
   } catch (err) {
-    if ((err as { code?: string }).code === "P2002") return { error: "같은 연혁이 이미 있습니다" }
+    if ((err as { code?: string }).code === "P2002")
+      return { error: "같은 연혁이 이미 있습니다" }
     throw err
   }
 }
@@ -348,7 +498,10 @@ export async function deleteCompanyRecordText(
   caller: { userId: string }
 ): Promise<{ text: string } | { error: string }> {
   const id = typeof args.record_id === "string" ? args.record_id.trim() : ""
-  if (!id) return { error: "record_id 가 필요합니다 — list_company_records 의 id 를 씁니다" }
+  if (!id)
+    return {
+      error: "record_id 가 필요합니다 — list_company_records 의 id 를 씁니다",
+    }
 
   const row = await prisma.companyRecord.findUnique({ where: { id } })
   if (!row) return { error: "없는 연혁입니다" }
@@ -360,40 +513,73 @@ export async function deleteCompanyRecordText(
     entity: "COMPANY_RECORD",
     entityId: id,
     title: `연혁 삭제: [${RECORD_KIND_LABEL[row.kind]}] ${row.title}`,
-    metadata: { via: "mcp", startsOn: row.startsOn?.toISOString().slice(0, 10) ?? null },
+    metadata: {
+      via: "mcp",
+      startsOn: row.startsOn?.toISOString().slice(0, 10) ?? null,
+    },
   })
-  return { text: `지웠습니다 — [${RECORD_KIND_LABEL[row.kind]}] ${row.title} · ${row.periodRaw ?? "기간 없음"}` }
+  return {
+    text: `지웠습니다 — [${RECORD_KIND_LABEL[row.kind]}] ${row.title} · ${row.periodRaw ?? "기간 없음"}`,
+  }
 }
 
 // ─── 연혁 제안 (2026-10-06) ──────────────────────────────
 
 // 종류 「주요」(MILESTONE)와 겹쳐 읽히지 않게 등급은 쓰임새로 부른다
-const GRADE_LABEL = { MAJOR: "주요 등급(기업현황카드 후보)", GENERAL: "일반 등급(상세 연혁)" } as const
+const GRADE_LABEL = {
+  MAJOR: "주요 등급(기업현황카드 후보)",
+  GENERAL: "일반 등급(상세 연혁)",
+} as const
 
 /** 연혁 후보 목록 — 근거 인용을 함께 줘야 대화창에서 바로 판단할 수 있다 */
-export async function recordProposalsText(status: "PENDING" | "decided"): Promise<string> {
+export async function recordProposalsText(
+  status: "PENDING" | "decided"
+): Promise<string> {
   const [rows, stats] = await Promise.all([
     prisma.recordProposal.findMany({
-      where: status === "decided" ? { status: { in: ["ACCEPTED", "REJECTED", "AUTO_APPLIED"] } } : { status: "PENDING" },
-      orderBy: status === "decided" ? { decidedAt: "desc" } : [{ occurredOn: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
+      where:
+        status === "decided"
+          ? { status: { in: ["ACCEPTED", "REJECTED", "AUTO_APPLIED"] } }
+          : { status: "PENDING" },
+      orderBy:
+        status === "decided"
+          ? { decidedAt: "desc" }
+          : [
+              { occurredOn: { sort: "desc", nulls: "last" } },
+              { createdAt: "desc" },
+            ],
       take: 40,
     }),
     loadTypeStats(),
   ])
   const lines = rows.map((p) => {
-    const refs = (p.sourceRefs as { kind: string; label: string; quote?: string }[]).filter((r) => r.kind === "message").slice(0, 2)
+    const refs = (
+      p.sourceRefs as { kind: string; label: string; quote?: string }[]
+    )
+      .filter((r) => r.kind === "message")
+      .slice(0, 2)
     return [
       `- ${p.occurredOn?.toISOString().slice(0, 10) ?? p.periodRaw ?? "날짜 모름"} [${RECORD_KIND_LABEL[p.kind]} · ${GRADE_LABEL[p.grade]}]${p.confidential ? " ⚠대외비" : ""} ${p.title}`,
       `  확신 ${Math.round(p.confidence * 100)}% · ${p.reason}${status === "decided" ? ` · ${p.status}${p.edited ? "(수정)" : ""}${p.revertedAt ? "(되돌림)" : ""}` : ""} · id ${p.id}`,
-      ...refs.map((r) => `  > ${r.label}: ${(r.quote ?? "").replace(/\s+/g, " ").slice(0, 120)}`),
+      ...refs.map(
+        (r) =>
+          `  > ${r.label}: ${(r.quote ?? "").replace(/\s+/g, " ").slice(0, 120)}`
+      ),
     ].join("\n")
   })
   const statLines = stats.map(
-    (s) => `- ${RECORD_KIND_LABEL[s.kind]} · ${GRADE_LABEL[s.grade]}: 판단 ${s.decided} · 원안 채택 ${s.matched}${s.rate === null ? "" : ` (${Math.round(s.rate * 100)}%)`} · 연속 ${s.streak}${s.auto ? " → 자동 등록 중" : ""}`
+    (s) =>
+      `- ${RECORD_KIND_LABEL[s.kind]} · ${GRADE_LABEL[s.grade]}: 판단 ${s.decided} · 원안 채택 ${s.matched}${s.rate === null ? "" : ` (${Math.round(s.rate * 100)}%)`} · 연속 ${s.streak}${s.auto ? " → 자동 등록 중" : ""}`
   )
   return [
-    rows.length ? `${status === "decided" ? "처리한" : "확인 대기"} 연혁 후보 ${rows.length}건:\n${lines.join("\n")}` : status === "decided" ? "처리한 연혁 후보가 없습니다." : "확인 대기 중인 연혁 후보가 없습니다.",
-    statLines.length ? `\n정확도 (자동 등록 기준: 일반 등급 · ${AUTO_MIN_DECIDED}건 이상 · ${Math.round(AUTO_MIN_RATE * 100)}% 이상 · 최근 ${AUTO_STREAK}건 연속):\n${statLines.join("\n")}` : "",
+    rows.length
+      ? `${status === "decided" ? "처리한" : "확인 대기"} 연혁 후보 ${rows.length}건:\n${lines.join("\n")}`
+      : status === "decided"
+        ? "처리한 연혁 후보가 없습니다."
+        : "확인 대기 중인 연혁 후보가 없습니다.",
+    statLines.length
+      ? `\n정확도 (자동 등록 기준: 일반 등급 · ${AUTO_MIN_DECIDED}건 이상 · ${Math.round(AUTO_MIN_RATE * 100)}% 이상 · 최근 ${AUTO_STREAK}건 연속):\n${statLines.join("\n")}`
+      : "",
   ].join("\n")
 }
 
@@ -402,7 +588,8 @@ export async function decideRecordProposalText(
   caller: { userId: string }
 ): Promise<{ text: string } | { error: string }> {
   const id = typeof args.proposal === "string" ? args.proposal.trim() : ""
-  if (!id) return { error: "proposal 이 필요합니다 — list_record_proposals 의 id" }
+  if (!id)
+    return { error: "proposal 이 필요합니다 — list_record_proposals 의 id" }
   const action = args.action
   if (action === "reject") {
     const r = await rejectRecordProposal(id, caller.userId)
@@ -412,15 +599,122 @@ export async function decideRecordProposalText(
     const r = await revertRecordProposal(id, caller.userId)
     return "error" in r ? r : { text: "되돌렸습니다 — 만든 연혁을 지웠습니다." }
   }
-  if (action !== "accept") return { error: "action 은 accept · reject · revert 중 하나입니다" }
+  if (action !== "accept")
+    return { error: "action 은 accept · reject · revert 중 하나입니다" }
   const edits: ProposalEdits = {}
   if (typeof args.title === "string") edits.title = args.title
   if (typeof args.occurred_on === "string") edits.occurredOn = args.occurred_on
-  if (typeof args.kind === "string") edits.kind = args.kind as ProposalEdits["kind"]
-  if (args.grade === "MAJOR" || args.grade === "GENERAL") edits.grade = args.grade
-  if (typeof args.confidential === "boolean") edits.confidential = args.confidential
+  if (typeof args.kind === "string")
+    edits.kind = args.kind as ProposalEdits["kind"]
+  if (args.grade === "MAJOR" || args.grade === "GENERAL")
+    edits.grade = args.grade
+  if (typeof args.confidential === "boolean")
+    edits.confidential = args.confidential
   if (typeof args.organizer === "string") edits.organizer = args.organizer
   const r = await acceptRecordProposal(id, { userId: caller.userId, edits })
   if ("error" in r) return r
-  return { text: `채택했습니다 — 연혁 id ${r.recordId}${Object.keys(edits).length ? " (고쳐서 채택)" : ""}` }
+  return {
+    text: `채택했습니다 — 연혁 id ${r.recordId}${Object.keys(edits).length ? " (고쳐서 채택)" : ""}`,
+  }
+}
+
+// ─── 인증 · 가점 (CompanyCertification, 2026-11-25) ───
+
+const CERT_STATUS_LABEL = {
+  HELD: "보유",
+  RENEWAL_DUE: "갱신 필요",
+  EXPIRED: "만료",
+  CANDIDATE: "취득 후보",
+  NOT_ELIGIBLE: "자격 안 됨",
+} as const
+type CertStatusKey = keyof typeof CERT_STATUS_LABEL
+const CERT_STATUSES = Object.keys(CERT_STATUS_LABEL) as CertStatusKey[]
+
+/** list_certifications — 상태별 인증 · 가점 · 우리 충족 여부. 조사 문장은 조사일 기준 원문 */
+export async function certificationsText(
+  args: Record<string, unknown>
+): Promise<string> {
+  const status = CERT_STATUSES.includes(args.status as CertStatusKey)
+    ? (args.status as CertStatusKey)
+    : null
+  const q = typeof args.query === "string" ? args.query.trim() : ""
+  const detail = args.detail === true
+  const certs = await prisma.companyCertification.findMany({
+    where: {
+      ...(status ? { status } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { officialName: { contains: q, mode: "insensitive" } },
+              { issuer: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ status: "asc" }, { priority: "asc" }, { name: "asc" }],
+    include: { record: { select: { title: true, startsOn: true } } },
+  })
+  if (certs.length === 0) return "조건에 맞는 인증이 없습니다."
+  const out: string[] = [
+    `인증 ${certs.length}건 — 가점은 공고마다 다르니 지원 공고의 평가표로 다시 확인한다`,
+  ]
+  for (const s of CERT_STATUSES) {
+    const list = certs.filter((c) => c.status === s)
+    if (!list.length) continue
+    out.push("", `# ${CERT_STATUS_LABEL[s]} ${list.length}`)
+    for (const c of list) {
+      const r = (c.research ?? {}) as Record<string, unknown>
+      const b = (c.bonus ?? {}) as {
+        medibio?: string | null
+        mss?: string | null
+      }
+      const str = (v: unknown) =>
+        typeof v === "string" && v.trim() ? v.trim() : null
+      const bonus = [
+        b.medibio && `메디바이오 ${b.medibio}`,
+        b.mss && `중기부 ${b.mss}`,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+      out.push(
+        `- ${c.name}${c.issuer ? ` (${c.issuer})` : ""}${c.priority ? ` · 우선 ${c.priority}` : ""}` +
+          `${bonus ? ` · 가점 ${bonus}` : ""}` +
+          `${str(r.our_status) ? ` · 우리 충족: ${str(r.our_status)}` : ""}` +
+          `${c.acquiredOn ? ` · 취득 ${ymd(c.acquiredOn)}` : c.record ? ` · 취득 ${ymd(c.record.startsOn) ?? c.record.title}` : ""}` +
+          `${c.validUntil ? ` · 유효 ${ymd(c.validUntil)} 까지` : ""}`
+      )
+      const lines: [string, string | null][] = [
+        ["판정 이유", str(r.our_status_reason)],
+        ["신청기간", str(r.window_2026_12_2027) ?? str(r.application_window)],
+        ["걸리는 기간", str(r.time_to_issue)],
+        ...(detail
+          ? ([
+              [
+                "자격조건",
+                Array.isArray(r.requirements)
+                  ? (r.requirements as unknown[]).map(String).join(" / ")
+                  : null,
+              ],
+              ["비용", str(r.cost)],
+              ["유효기간", str(r.validity)],
+              ["메모", c.note],
+              [
+                "근거",
+                Array.isArray(r.sources)
+                  ? (r.sources as { url?: string }[])
+                      .map((x) => x.url)
+                      .filter(Boolean)
+                      .join(" ")
+                  : null,
+              ],
+            ] as [string, string | null][])
+          : []),
+      ]
+      for (const [k, v] of lines) if (v) out.push(`  - ${k}: ${v}`)
+      if (detail && c.researchedAt)
+        out.push(`  - 조사일: ${ymd(c.researchedAt)}`)
+    }
+  }
+  return out.join("\n")
 }

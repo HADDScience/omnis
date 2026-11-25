@@ -180,6 +180,7 @@ export const TOOL_LABEL: Record<string, string> = {
   list_notifications: "알림",
   company_profile: "회사 정보",
   list_company_records: "회사 기록",
+  list_certifications: "인증·가점",
   list_record_proposals: "기록 제안",
   list_tax_invoices: "세금계산서",
   list_staff: "인력",
