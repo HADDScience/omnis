@@ -1,8 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons"
+import {
+  ArrowDown01Icon,
+  InformationCircleIcon,
+} from "@hugeicons/core-free-icons"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type {
   CertStatus,
   CompanyCertification,
@@ -119,14 +127,10 @@ export function CertSection({ certs }: { certs: Cert[] }) {
         <h2 id="certs-heading" className="text-[15px] font-semibold">
           인증·가점
         </h2>
-        <span className="text-[12px] text-muted-foreground">
-          가점은 공고마다 다르다 · 줄을 누르면 자세히
-        </span>
       </div>
       {certs.length === 0 ? (
         <p className="rounded-xl border border-dashed p-4 text-[13px] text-muted-foreground">
-          인증 자료가 없습니다. <code>scripts/import-grants.ts --apply</code> 로
-          옮기면 여기에 보입니다.
+          등록된 인증이 없습니다.
         </p>
       ) : (
         <>
@@ -168,7 +172,7 @@ export function CertSection({ certs }: { certs: Cert[] }) {
           >
             {current.list.length === 0 ? (
               <p className="p-4 text-[13px] text-muted-foreground">
-                이 묶음에 든 인증이 없습니다.
+                인증이 없습니다.
               </p>
             ) : (
               <ul className="divide-y divide-[var(--glass-edge)]">
@@ -202,7 +206,11 @@ function CertRow({
   const b = (c.bonus ?? {}) as Bonus
   const chip = STATUS_CHIP[c.status]
   const bonus = bonusShort(b)
-  const detail: [string, string | null | undefined][] = [
+  const bonusRaw =
+    [b.medibio && `메디바이오 ${b.medibio}`, b.mss && `중기부 ${b.mss}`]
+      .filter(Boolean)
+      .join(" · ") || null
+  const detail: [string, ReactNode][] = [
     ["판정 이유", r.our_status_reason],
     [
       "자격조건",
@@ -214,12 +222,7 @@ function CertRow({
     ["걸리는 기간", r.time_to_issue],
     ["비용", r.cost],
     ["유효기간", c.validUntil ? `${ymd(c.validUntil)} 까지` : r.validity],
-    [
-      "가점 원문",
-      [b.medibio && `메디바이오 ${b.medibio}`, b.mss && `중기부 ${b.mss}`]
-        .filter(Boolean)
-        .join(" · ") || null,
-    ],
+    ["가점", bonusRaw && <BonusValue text={bonusRaw} />],
     [
       "취득",
       c.acquiredOn
@@ -237,8 +240,9 @@ function CertRow({
       <button
         type="button"
         aria-expanded={open}
+        aria-label={`${c.name} ${open ? "접기" : "펼치기"}`}
         onClick={onToggle}
-        className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-foreground/[0.03]"
+        className="group flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.04] focus-visible:outline-none"
       >
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1.5">
@@ -265,7 +269,7 @@ function CertRow({
           icon={ArrowDown01Icon}
           strokeWidth={2}
           aria-hidden
-          className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          className={`size-4 shrink-0 text-muted-foreground transition-transform group-hover:text-foreground ${open ? "rotate-180" : ""}`}
         />
       </button>
       {open && (
@@ -302,5 +306,28 @@ function CertRow({
         </div>
       )}
     </li>
+  )
+}
+
+/** 가점 값 — 공고마다 다르다는 점은 옆 정보 아이콘 툴팁으로만 */
+function BonusValue({ text }: { text: string }) {
+  return (
+    <span className="inline-flex items-start gap-1">
+      <span>{text}</span>
+      <Tooltip>
+        <TooltipTrigger
+          type="button"
+          aria-label="가점 안내"
+          className="mt-px inline-flex shrink-0 cursor-help text-muted-foreground hover:text-foreground"
+        >
+          <HugeiconsIcon
+            icon={InformationCircleIcon}
+            strokeWidth={2}
+            className="size-3.5"
+          />
+        </TooltipTrigger>
+        <TooltipContent>가점은 공고마다 다릅니다</TooltipContent>
+      </Tooltip>
+    </span>
   )
 }
