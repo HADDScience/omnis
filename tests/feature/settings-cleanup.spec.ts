@@ -135,8 +135,8 @@ test.describe("앱 정보", () => {
     await quickLogin(page, "팀장")
     await page.goto("/settings?tab=info")
     const admin = page.locator("[data-admin-links]")
-    // 흩어져 있던 관리 링크는 /admin 으로 묶었다(2026-11-13)
-    expect(await admin.getByRole("link").allTextContents()).toEqual(["관리자 페이지"])
+    // 흩어져 있던 관리 링크는 /admin 으로 묶었다(2026-11-13). 셸이 스플래시 뒤에 흘러오므로 기다리는 단언으로 본다
+    await expect(admin.getByRole("link")).toHaveText(["관리자 페이지"], { timeout: 15_000 })
     await admin.getByRole("link", { name: "관리자 페이지" }).click()
     await page.waitForURL("**/admin/users")
   })
