@@ -55,6 +55,7 @@ model User {
   identities            UserIdentity[]
   aiDraftRevisions      AiDraftRevision[]
   staffProfile          StaffProfile?
+  grantDecisionOwners   GrantDecisionOwner[]
 }
 
 enum Role {
@@ -359,6 +360,7 @@ model Task {
   files           File[]
   cardProposals   CardProposal[]
   recordProposals RecordProposal[]
+  grantDecisions  GrantDecision[]
   events          TaskEvent[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -459,6 +461,7 @@ model Project {
   records     CompanyRecord[]
   /// 이 프로젝트의 업무방을 모은 채팅방 폴더(사람마다)
   chatFolders ChatFolder[]
+  grantDecisions GrantDecision[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -1542,6 +1545,8 @@ model CompanyRecord {
   visibility   RecordVisibility @default(PUBLIC)
   /// 이 줄을 만든 AI 제안 (채택 · 자동 등록)
   proposals    RecordProposal[]
+  /// 이 연혁이 취득 사건인 인증
+  certification CompanyCertification?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -2281,4 +2286,99 @@ model JobApplicationEvent {
   createdAt     DateTime             @default(now())
 
   @@index([applicationId, createdAt])
+}
+
+// ─── 인증 · 국가과제 결정 (2026-11-25) ─────────────────────────
+// 설계: omnis-reports/gov-grants/omnis-cert-decision-proposal-261125.md. 이식 원천은 수집기 export/v1
+
+enum CertStatus {
+  HELD // 보유
+  RENEWAL_DUE // 갱신·재발급 필요(법인 전환 포함)
+  CANDIDATE // 취득 후보
+  NOT_ELIGIBLE // 지금은 자격 안 됨
+  EXPIRED
+}
+
+/// 회사 인증 · 가점. 연혁(CompanyRecord MILESTONE)은 취득 사건이고, 이 표는 지금 상태다
+model CompanyCertification {
+  id           String         @id @default(uuid())
+  /// 수집기 certifications.json 의 key(cert:…) — 이식 멱등 키
+  externalKey  String         @unique
+  name         String
+  officialName String?
+  issuer       String?
+  status       CertStatus
+  acquiredOn   DateTime?
+  validUntil   DateTime?
+  certNo       String?
+  /// 노션 우선순위(상·중·하)
+  priority     String?
+  difficulty   String?
+  /// 가점 원문. 공고마다 달라 숫자로 두지 않는다 — { medibio, mss, examples[] }
+  bonus        Json?
+  /// 조사 결과 원문(자격조건 · 우리 충족 여부와 이유 · 신청기간 · 걸리는 기간 · 비용 · 유효기간 · 근거)
+  research     Json?
+  researchedAt DateTime?
+  note         String?
+  /// 취득 사건 연혁. 연혁은 그대로 두고 잇기만 한다
+  recordId     String?        @unique
+  record       CompanyRecord? @relation(fields: [recordId], references: [id], onDelete: SetNull)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([status])
+}
+
+enum GrantStage {
+  REVIEW // 검토
+  PREPARING // 준비
+  SUBMITTED // 제출
+  SELECTED // 선정
+  REJECTED // 미선정
+  DROPPED // 불참
+}
+
+/// 국가과제에 대한 우리 결정(노션 「지원사업」 51건에서 시작). 공고 본문은 수집기 내보내기가 정본
+model GrantDecision {
+  id             String               @id @default(uuid())
+  /// notion:<페이지ID> 또는 수집기 key(group:… / notice:…) — 이식 멱등 키
+  externalKey    String               @unique
+  title          String
+  stage          GrantStage
+  /// 불참 사유(자격 미달 · 접수 기간 지남), 선정의 「수행 완료」
+  stageReason    String?
+  /// 노션 원래 상태(가능성검토 · 지원기간마감 …)
+  statusRaw      String?
+  submittedTitle String?
+  note           String?
+  deadline       DateTime?
+  /// 지원금액 원문
+  amount         String?
+  /// 조사 결과 원문(자격조건 · 2027 신청기간 · 선정까지 기간)
+  research       Json?
+  /// 수집기 공고 연결 [{relation, notice, export_key, title, date}]
+  noticeLinks    Json?
+  owners         GrantDecisionOwner[]
+  /// 신청 업무 카드
+  taskId         String?
+  task           Task?                @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  /// 선정 뒤 과제 프로젝트
+  projectId      String?
+  project        Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([stage])
+  @@index([deadline])
+}
+
+model GrantDecisionOwner {
+  decisionId String
+  decision   GrantDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 제출 · 지원 · 책임 · 제안서 작성 · 발표
+  role       String?
+
+  @@id([decisionId, userId])
 }
