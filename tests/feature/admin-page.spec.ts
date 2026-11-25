@@ -45,6 +45,9 @@ test("관리자 — 메뉴 넷 · 계정 목록에 비밀번호 · 해시 · 원
   await page.goto("/admin")
   await page.waitForURL("**/admin/users")
   const nav = page.locator("[data-admin-nav]")
+  // 흐름으로 받은 본문은 한동안 <div hidden id="S:…"> 안에 있다가 드러난다(#257). getByRole 은 숨은 링크를 세지 않으니,
+  // 넷이 보일 때까지 기다린 다음 이름을 읽는다. evaluateAll 은 기다리지 않는다
+  await expect(nav.getByRole("link")).toHaveCount(4, { timeout: 30_000 })
   const labels = await nav.getByRole("link").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))
   expect(labels).toEqual(["사용자", "운영", "비용·사용량", "기록"])
   await expect(nav.getByRole("link", { name: "사용자" })).toHaveAttribute("aria-current", "page")
