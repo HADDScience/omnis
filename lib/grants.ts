@@ -2,6 +2,7 @@
 // 권한: 구성원이면 누구나 고친다(연혁과 같다). 누가 무엇을 바꿨는지는 활동 기록에 남는다.
 import { prisma } from "@/lib/db"
 import { writeActivity } from "@/lib/api"
+import { normalizeNasPath } from "@/lib/nas"
 import type { CertStatus, GrantStage, Prisma } from "@/generated/prisma/client"
 import {
   CERT_STATUSES,
@@ -98,6 +99,8 @@ export interface DecisionPatch {
   ownerIds?: unknown
   taskId?: unknown
   projectId?: unknown
+  /** NAS 폴더 경로(/HADD Science/…). 빈 문자열이면 연결을 푼다 — 어느 쪽이든 사람이 정한 것으로 남긴다 */
+  nasFolder?: unknown
 }
 
 /** 과제 결정 고치기 — 단계 · 사유 · 메모 · 마감 · 담당자 · 신청 업무 · 선정 과제 프로젝트 */
@@ -187,6 +190,21 @@ export async function updateGrantDecision(
     }
   }
 
+  if (patch.nasFolder !== undefined) {
+    const raw =
+      typeof patch.nasFolder === "string" ? patch.nasFolder.trim() : ""
+    const folder = raw ? normalizeNasPath(raw) : null
+    if (raw && !folder)
+      return fail(400, "HADD Science 공유폴더 안의 경로만 잇습니다")
+    if (folder !== before.nasFolder || before.nasFolderBy !== "user") {
+      data.nasFolder = folder
+      data.nasFolderBy = "user"
+      if (folder !== before.nasFolder)
+        changed.push(
+          folder ? `NAS 폴더 ${folder.split("/").pop()}` : "NAS 폴더 연결 해제"
+        )
+    }
+  }
   let ownerIds: string[] | null = null
   if (patch.ownerIds !== undefined) {
     if (
@@ -294,23 +312,43 @@ export async function findDecisionForNotice(externalKey: string) {
   })
 }
 
-/** 공고 key 묶음 중 이미 결정이 있는 것 — 후보 목록의 「올림」 표시용 */
-export async function decidedNoticeKeys(keys: string[]): Promise<Set<string>> {
-  if (keys.length === 0) return new Set()
-  const rows = await prisma.grantDecision.findMany({
-    select: { externalKey: true, noticeLinks: true },
-  })
-  const out = new Set<string>()
+/** 공고 key → 그 공고를 가리키는 결정(같은 key 로 만들었거나 공고 연결 export_key · notice 에 있으면) — 첫 결정 하나 */
+export async function decisionsForNotices(
+  keys: string[]
+): Promise<
+  Map<string, { id: string; title: string; nasFolder: string | null }>
+> {
+  const out = new Map<
+    string,
+    { id: string; title: string; nasFolder: string | null }
+  >()
+  if (keys.length === 0) return out
   const want = new Set(keys)
+  const rows = await prisma.grantDecision.findMany({
+    select: {
+      id: true,
+      title: true,
+      externalKey: true,
+      noticeLinks: true,
+      nasFolder: true,
+    },
+  })
   for (const r of rows) {
-    if (want.has(r.externalKey)) out.add(r.externalKey)
+    const v = { id: r.id, title: r.title, nasFolder: r.nasFolder }
+    const hit = (k?: string) => k && want.has(k) && !out.has(k) && out.set(k, v)
+    hit(r.externalKey)
     for (const l of (Array.isArray(r.noticeLinks) ? r.noticeLinks : []) as {
       export_key?: string
       notice?: string
     }[]) {
-      if (l.export_key && want.has(l.export_key)) out.add(l.export_key)
-      if (l.notice && want.has(l.notice)) out.add(l.notice)
+      hit(l.export_key)
+      hit(l.notice)
     }
   }
   return out
+}
+
+/** 공고 key 묶음 중 이미 결정이 있는 것 — 후보 목록의 「올림」 표시용 */
+export async function decidedNoticeKeys(keys: string[]): Promise<Set<string>> {
+  return new Set((await decisionsForNotices(keys)).keys())
 }

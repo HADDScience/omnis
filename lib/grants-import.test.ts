@@ -103,3 +103,53 @@ test("공고 — 사람이 읽은 판정이 있으면 그것, 없으면 규칙 �
   assert.equal(l.judgedBy, "llm")
   assert.deepEqual(l.reasonsSole, [{ claim: "c", quote: "" }])
 })
+
+test("공고 첨부 — 형식은 파일 이름 끝, 기업마당은 공고 페이지를 같이, 같은 이름은 하나", async () => {
+  const { noticeAttachments } = await import("./grants-import")
+  const item = {
+    key: "notice:bizinfo:1",
+    title: "T",
+    members: [
+      {
+        source: "bizinfo",
+        url: "https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId=P1",
+        url_kind: "detail",
+      },
+    ],
+    attachments: [
+      {
+        name: "(공고문)신청.hwpx",
+        url: "https://www.bizinfo.go.kr/cmm/fms/getImageFile.do?atchFileId=F1&fileSn=0",
+        type: null,
+      },
+      {
+        name: "(공고문)신청.hwpx",
+        url: "https://www.bizinfo.go.kr/cmm/fms/getImageFile.do?atchFileId=F1&fileSn=0",
+        type: null,
+      },
+      {
+        name: "RFP",
+        url: "https://www.iris.go.kr/comm/file/fileDownload.do?x=1",
+        type: "pdf",
+      },
+    ],
+  }
+  const r = noticeAttachments(
+    item,
+    new Map([["https://www.iris.go.kr/comm/file/fileDownload.do?x=1", 1234]])
+  ) as unknown as {
+    name: string
+    type: string
+    size: number | null
+    page?: string
+  }[]
+  assert.equal(r.length, 2)
+  assert.equal(r[0].type, "hwpx")
+  assert.equal(
+    r[0].page,
+    "https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId=P1"
+  )
+  assert.equal(r[1].type, "pdf")
+  assert.equal(r[1].size, 1234)
+  assert.equal(r[1].page, undefined)
+})

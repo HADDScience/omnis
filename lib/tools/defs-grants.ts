@@ -20,7 +20,7 @@ export const GRANT_TOOLS = [
     name: "list_grant_decisions",
     description: [
       "국가과제 「우리 결정」 — 검토 · 준비 · 제출 · 선정 · 미선정 · 불참 단계, 담당자, 마감, 사유, 연결된 수집기 공고.",
-      "「이번 달 마감 과제」「아리 박사님 담당 과제」「제출한 과제」 를 물으면 쓴다. update_grant_decision 의 decision 을 여기서 고른다.",
+      "「이번 달 마감 과제」「아리 박사님 담당 과제」「제출한 과제」 를 물으면 쓴다. 과제마다 NAS 폴더(신청서 · 제출 서류)와 이어진 공고의 첨부(공고문 · 양식)도 보인다. update_grant_decision 의 decision 을 여기서 고른다.",
     ].join(" "),
     inputSchema: {
       type: "object",
@@ -40,7 +40,7 @@ export const GRANT_TOOLS = [
     description: [
       "과제 후보 — 수집기가 모은 지원사업 · R&D 공고(대표 공고)를 판정(해당 · 애매 · 비해당) · 마감 · 지역으로 찾는다.",
       "판정은 지금 사업자(개인) 기준이 기본이고 profile=corp 면 법인 기준이다. 「이번 달 마감 과제」「우리가 낼 만한 공고」 를 물으면 쓴다.",
-      "add_grant_decision 의 notice 를 여기서 고른다.",
+      "공고마다 첨부(공고문 · 신청서 양식 — 이름 · 형식 · 크기 · 받는 곳)를 같이 준다. add_grant_decision 의 notice 를 여기서 고른다.",
     ].join(" "),
     inputSchema: {
       type: "object",
@@ -100,7 +100,7 @@ export const GRANT_TOOLS = [
     name: "update_grant_decision",
     description: [
       "국가과제 결정 한 줄을 고친다 — 단계 · 사유 · 메모 · 마감 · 담당자 · 신청 업무 · 선정 과제 프로젝트. 준 칸만 바뀐다.",
-      "owners 를 주면 담당자를 그 목록으로 바꾼다(정식 이름). task 는 업무 슬러그 또는 id, project 는 프로젝트 id 또는 이름 — 빈 문자열이면 연결을 푼다.",
+      "owners 를 주면 담당자를 그 목록으로 바꾼다(정식 이름). task 는 업무 슬러그 또는 id, project 는 프로젝트 id 또는 이름, nas_folder 는 NAS 폴더 경로 — 빈 문자열이면 연결을 푼다.",
     ].join(" "),
     inputSchema: {
       type: "object",
@@ -123,6 +123,11 @@ export const GRANT_TOOLS = [
         },
         task: TEXT,
         project: TEXT,
+        nas_folder: {
+          type: "string",
+          description:
+            "NAS 「(2026) 예비 지원과제」 안의 이 과제 폴더 경로(/HADD Science/…, browse_nas 로 찾는다). 빈 문자열이면 연결을 푼다",
+        },
         confirm: CONFIRM_PROP,
       },
       required: ["decision"],

@@ -13,6 +13,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { send } from "@/components/grants/send"
+import {
+  GrantFiles,
+  type AttachmentView,
+} from "@/components/grants/grant-files"
 import { seoulYmd } from "@/lib/grants-labels"
 import { cn } from "@/lib/utils"
 
@@ -31,6 +35,9 @@ export interface NoticeView {
   reasons: { claim: string; quote: string }[]
   judgedBy: string | null
   decided: boolean
+  attachments: AttachmentView[]
+  /** 이 공고가 이어진 결정의 NAS 폴더 */
+  nasFolder: string | null
 }
 
 const VERDICT_CHIP: Record<string, string> = {
@@ -221,6 +228,7 @@ function NoticeRow({
               <dd>{r.judgedBy === "llm" ? "공고 본문 검토" : "규칙"}</dd>
             </dl>
           </div>
+          <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
           {r.url && (
             <a
               href={r.url}

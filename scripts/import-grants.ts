@@ -9,7 +9,8 @@
  * externalKey 로 upsert 하니 다시 돌려도 행이 늘지 않는다. 담당자는 이식 때마다 원천대로 다시 맞춘다.
  */
 import "dotenv/config"
-import { readFileSync } from "fs"
+import { existsSync, readdirSync, readFileSync, statSync } from "fs"
+import { DatabaseSync } from "node:sqlite"
 import { homedir } from "os"
 import { join } from "path"
 import { prisma } from "@/lib/db"
@@ -22,6 +23,7 @@ import {
   type CertItem,
   type DecisionItem,
 } from "@/lib/grants-import"
+import { confidentFolder, rankFolders } from "@/lib/grants-match"
 
 const APPLY = process.argv.includes("--apply")
 const DIR =
@@ -38,6 +40,53 @@ function aliases(): Record<string, string> {
     const y = readFileSync(join(DIR, "../../notion_people.yaml"), "utf8")
     for (const m of y.matchAll(/^\s+(\S+):\s*(\S+)\s*$/gm)) out[m[1]] = m[2]
   } catch {}
+  return out
+}
+
+const NAS_ROOT =
+  process.env.GRANTS_NAS_ROOT ??
+  join(homedir(), "NAS/HADD Science/(2026) 예비 지원과제")
+const NAS_PREFIX = "/HADD Science/(2026) 예비 지원과제"
+
+/** 예비 지원과제 폴더 목록(맥 마운트에서 읽는다). 마운트가 없으면 null — 폴더 잇기는 건너뛴다 */
+function nasGrantFolders(): { name: string; path: string }[] | null {
+  if (!existsSync(NAS_ROOT)) return null
+  const list = (dir: string, rel: string) =>
+    readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .map((e) => ({
+        name: e.name.normalize("NFC"),
+        path: `${NAS_PREFIX}/${rel}${e.name.normalize("NFC")}`,
+      }))
+  const top = list(NAS_ROOT, "")
+  const drop = top.find((f) => f.name.startsWith("99."))
+  const inner = drop ? list(join(NAS_ROOT, drop.name), `${drop.name}/`) : []
+  return [...top.filter((f) => f !== drop), ...inner]
+}
+
+/** 첨부 크기 — 수집기 DB 의 size_hint, 없으면 받아 둔 파일 크기 */
+function attachmentSizes(): Map<string, number> {
+  const out = new Map<string, number>()
+  const path = join(DIR, "../../gov-grants.sqlite3")
+  if (!existsSync(path)) return out
+  const db = new DatabaseSync(path, { readOnly: true })
+  for (const r of db
+    .prepare(
+      "select url, size_hint, local_path from attachments where url is not null"
+    )
+    .all() as {
+    url: string
+    size_hint: number | null
+    local_path: string | null
+  }[]) {
+    const local =
+      r.local_path && existsSync(r.local_path)
+        ? statSync(r.local_path).size
+        : null
+    const size = r.size_hint ?? local
+    if (size) out.set(r.url, size)
+  }
+  db.close()
   return out
 }
 
@@ -127,6 +176,56 @@ async function main() {
     }
   }
 
+  // NAS 폴더 — 「(2026) 예비 지원과제」(와 99.불참 또는 탈락 과제) 폴더를 이름 유사도로 잇는다.
+  // 확실한 것만(confidentFolder) 넣고, 사람이 고른 적 있는 결정(nasFolderBy=user)과 이미 이은 결정은 건드리지 않는다
+  const folders = nasGrantFolders()
+  const folderTally = {
+    mounted: folders !== null,
+    folders: folders?.length ?? 0,
+    auto: 0,
+    kept: 0,
+    unsure: 0,
+  }
+  if (folders) {
+    const rows = await prisma.grantDecision.findMany({
+      select: {
+        id: true,
+        externalKey: true,
+        title: true,
+        noticeLinks: true,
+        nasFolder: true,
+        nasFolderBy: true,
+      },
+    })
+    const byKey = new Map(rows.map((r) => [r.externalKey, r]))
+    for (const item of decisions.items) {
+      const r = byKey.get(item.key)
+      if (r && (r.nasFolder || r.nasFolderBy === "user")) {
+        folderTally.kept++
+        continue
+      }
+      const pick = confidentFolder(
+        rankFolders(
+          item.title,
+          folders,
+          (item.notice_links ?? []).map(
+            (l) => (l as { title?: string }).title ?? ""
+          )
+        )
+      )
+      if (!pick) {
+        folderTally.unsure++
+        continue
+      }
+      folderTally.auto++
+      if (APPLY && r)
+        await prisma.grantDecision.update({
+          where: { id: r.id },
+          data: { nasFolder: pick.path, nasFolderBy: "auto" },
+        })
+    }
+  }
+
   // 공고 — 수집기가 정본이라 통째로 맞춘다. 20건씩 나눠 쓴다
   const notices = read<NoticeItem>("notices.json")
   const existingNotices = new Set(
@@ -139,7 +238,8 @@ async function main() {
     update: 0,
     byVerdictSole: {} as Record<string, number>,
   }
-  const rows = notices.items.map(noticeRow)
+  const sizes = attachmentSizes()
+  const rows = notices.items.map((n) => noticeRow(n, sizes))
   for (const r of rows) {
     if (existingNotices.has(r.externalKey)) noticeTally.update++
     else noticeTally.new++
@@ -149,15 +249,13 @@ async function main() {
   if (APPLY) {
     for (let i = 0; i < rows.length; i += 20) {
       await Promise.all(
-        rows
-          .slice(i, i + 20)
-          .map((r) =>
-            prisma.grantNotice.upsert({
-              where: { externalKey: r.externalKey },
-              create: r,
-              update: r,
-            })
-          )
+        rows.slice(i, i + 20).map((r) =>
+          prisma.grantNotice.upsert({
+            where: { externalKey: r.externalKey },
+            create: r,
+            update: r,
+          })
+        )
       )
     }
   }
@@ -183,7 +281,12 @@ async function main() {
         byStatus,
         byStage,
         tally,
-        notices: noticeTally,
+        notices: {
+          ...noticeTally,
+          withAttachments: rows.filter((r) => r.attachments).length,
+          sizesKnown: sizes.size,
+        },
+        nasFolders: folderTally,
         after,
       },
       null,

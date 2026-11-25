@@ -3,7 +3,10 @@ import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
-import { decidedNoticeKeys } from "@/lib/grants"
+import { decisionsForNotices } from "@/lib/grants"
+import type { NoticeAttachment } from "@/lib/grants-import"
+import { apiUrl } from "@/lib/base-path"
+import type { AttachmentView } from "@/components/grants/grant-files"
 import {
   DEADLINE_FILTERS,
   GRANT_STAGES,
@@ -31,6 +34,18 @@ export const metadata: Metadata = { title: "국가과제 · HADD DB" }
 export const dynamic = "force-dynamic"
 
 const PAGE = 50
+
+/** 공고 첨부 → 화면 줄. 받기는 옴니스 경로를 거친다(기업마당 새 토큰) */
+function attachmentViews(noticeId: string, raw: unknown): AttachmentView[] {
+  return ((Array.isArray(raw) ? raw : []) as NoticeAttachment[]).map(
+    (a, i) => ({
+      name: a.name,
+      type: a.type,
+      size: a.size,
+      href: apiUrl(`/api/grants/notices/${noticeId}/files/${i}`),
+    })
+  )
+}
 type SP = Record<string, string | string[] | undefined>
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
 
@@ -172,6 +187,32 @@ async function Decisions({ sp }: { sp: SP }) {
   const countOf = (s: string) => counts.find((c) => c.stage === s)?._count ?? 0
   const total = counts.reduce((a, c) => a + c._count, 0)
 
+  // 이 결정 · 같은 사업(같은 공고 · 다른 회차)으로 이어진 공고의 첨부
+  const linkKeysOf = (r: (typeof rows)[number]) => [
+    r.externalKey,
+    ...(
+      (Array.isArray(r.noticeLinks) ? r.noticeLinks : []) as {
+        relation?: string
+        export_key?: string
+      }[]
+    )
+      .filter((l) => l.relation !== "related" && l.export_key)
+      .map((l) => l.export_key!),
+  ]
+  const linked = await prisma.grantNotice.findMany({
+    where: { externalKey: { in: [...new Set(rows.flatMap(linkKeysOf))] } },
+    select: { id: true, externalKey: true, attachments: true },
+  })
+  const filesByKey = new Map(
+    linked.map((n) => [n.externalKey, attachmentViews(n.id, n.attachments)])
+  )
+  const filesOf = (r: (typeof rows)[number]) => {
+    const seen = new Set<string>()
+    return linkKeysOf(r)
+      .flatMap((k) => filesByKey.get(k) ?? [])
+      .filter((a) => !seen.has(a.name) && seen.add(a.name))
+  }
+
   const view: DecisionView[] = rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -202,6 +243,8 @@ async function Decisions({ sp }: { sp: SP }) {
       date: l.date ?? null,
       key: l.export_key ?? null,
     })),
+    nasFolder: r.nasFolder,
+    attachments: filesOf(r),
   }))
 
   return (
@@ -264,7 +307,7 @@ async function Notices({ sp }: { sp: SP }) {
       take: PAGE,
     }),
   ])
-  const decided = await decidedNoticeKeys(rows.map((r) => r.externalKey))
+  const decided = await decisionsForNotices(rows.map((r) => r.externalKey))
   const view: NoticeView[] = rows.map((r) => ({
     id: r.id,
     key: r.externalKey,
@@ -285,6 +328,8 @@ async function Notices({ sp }: { sp: SP }) {
     ).map((x) => ({ claim: x.claim ?? "", quote: x.quote ?? "" })),
     judgedBy: r.judgedBy,
     decided: decided.has(r.externalKey),
+    attachments: attachmentViews(r.id, r.attachments),
+    nasFolder: decided.get(r.externalKey)?.nasFolder ?? null,
   }))
   const toggleVerdict = (v: (typeof VERDICTS)[number]) => {
     const has = f.verdicts.includes(v)

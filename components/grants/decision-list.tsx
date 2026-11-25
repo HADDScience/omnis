@@ -13,6 +13,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { send } from "@/components/grants/send"
+import {
+  GrantFiles,
+  type AttachmentView,
+} from "@/components/grants/grant-files"
+import { NasFolderPicker } from "@/components/grants/nas-folder-picker"
 import { GRANT_STAGES, GRANT_STAGE_LABEL, seoulYmd } from "@/lib/grants-labels"
 import type { GrantStage } from "@/generated/prisma/client"
 import { cn } from "@/lib/utils"
@@ -36,6 +41,9 @@ export interface DecisionView {
     date: string | null
     key: string | null
   }[]
+  nasFolder: string | null
+  /** 이 결정 · 같은 사업 공고의 첨부 */
+  attachments: AttachmentView[]
 }
 
 type Opt = { id: string; name: string }
@@ -232,6 +240,7 @@ function DecisionRow({
               ))}
             </ul>
           )}
+          <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
           {editing ? (
             <DecisionEditor
               r={r}
@@ -287,6 +296,7 @@ function DecisionEditor({
     ownerIds: r.owners.map((o) => o.id),
     taskId: r.task?.id ?? "",
     projectId: r.project?.id ?? "",
+    nasFolder: r.nasFolder ?? "",
   })
   // 지금 담당인데 재직 목록에 없는 사람도 칩으로 남긴다
   const people = [
@@ -302,7 +312,10 @@ function DecisionEditor({
     e.preventDefault()
     setSaving(true)
     try {
-      const res = await send(`/api/grants/decisions/${r.id}`, "PATCH", form)
+      // NAS 폴더는 바꿨을 때만 보낸다 — 보내면 「사람이 정한 것」 으로 남아 이식이 다시 채우지 않는다
+      const { nasFolder, ...rest } = form
+      const body = nasFolder === (r.nasFolder ?? "") ? rest : form
+      const res = await send(`/api/grants/decisions/${r.id}`, "PATCH", body)
       toast.success(`${r.title} · ${res.changed?.join(" · ") ?? "저장"}`)
       onDone()
       router.refresh()
@@ -426,6 +439,18 @@ function DecisionEditor({
             </NativeSelectOption>
           ))}
         </NativeSelect>
+      </div>
+      <div className="sm:col-span-2">
+        <Label htmlFor={id("nas")} className="mb-1 block text-[12px]">
+          NAS 폴더
+        </Label>
+        <NasFolderPicker
+          id={id("nas")}
+          value={form.nasFolder}
+          title={r.title}
+          extraTitles={r.noticeLinks.map((l) => l.title)}
+          onChange={(nasFolder) => setForm({ ...form, nasFolder })}
+        />
       </div>
       <div className="sm:col-span-2">
         <Label htmlFor={id("note")} className="mb-1 block text-[12px]">

@@ -1,4 +1,4 @@
-// 국가과제 결정 한 줄 고치기 — 단계 · 사유 · 메모 · 마감 · 담당자 · 업무/프로젝트 연결. 구성원 누구나, 활동 기록에 남는다.
+// 국가과제 결정 한 줄 고치기 — 단계 · 사유 · 메모 · 마감 · 담당자 · 업무/프로젝트 · NAS 폴더 연결. 구성원 누구나, 활동 기록에 남는다.
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { apiError, parseJson } from "@/lib/api"
@@ -20,6 +20,7 @@ export async function PATCH(
     note: body.note,
     deadline: body.deadline,
     ownerIds: body.ownerIds,
+    nasFolder: body.nasFolder,
     taskId: body.taskId,
     projectId: body.projectId,
   })

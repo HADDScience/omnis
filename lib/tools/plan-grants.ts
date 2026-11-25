@@ -1,12 +1,15 @@
 // 인증 · 국가과제 도구 실행(defs-grants.ts) — 화면 API 와 같은 서버 함수(lib/grants.ts)를 부른다.
 import { prisma } from "@/lib/db"
+import { normalizeNasPath } from "@/lib/nas"
 import type { Caller } from "@/lib/omnis-mcp"
 import {
   createDecisionFromNotice,
   decidedNoticeKeys,
+  decisionsForNotices,
   updateCertification,
   updateGrantDecision,
 } from "@/lib/grants"
+import type { NoticeAttachment } from "@/lib/grants-import"
 import {
   CERT_STATUS_LABEL,
   GRANT_STAGE_LABEL,
@@ -24,6 +27,35 @@ import { blocked, clip, has, str, type Planner } from "./planned"
 import type { GrantReadName, GrantWriteName } from "./defs-grants"
 
 const DAY = 86_400_000
+
+const kb = (n: number | null) =>
+  n === null
+    ? null
+    : n >= 1_048_576
+      ? `${(n / 1_048_576).toFixed(1)}MB`
+      : `${Math.max(1, Math.round(n / 1024))}KB`
+
+/** 첨부 한 줄 — 이름 · 형식 · 크기 · 받는 곳(기업마당은 새 토큰이 필요해 공고 페이지) */
+function attachmentText(a: NoticeAttachment): string {
+  const meta = [a.type, kb(a.size)].filter(Boolean).join(" · ")
+  return `${a.name}${meta ? ` (${meta})` : ""} — ${a.page ?? a.url}`
+}
+
+function attachmentsOf(
+  links: { export_key?: string }[],
+  byKey: Map<string, NoticeAttachment[]>
+): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const l of links) {
+    for (const a of (l.export_key && byKey.get(l.export_key)) || []) {
+      if (seen.has(a.name)) continue
+      seen.add(a.name)
+      out.push(attachmentText(a))
+    }
+  }
+  return out.slice(0, 8)
+}
 
 export async function runGrantRead(
   name: GrantReadName,
@@ -62,6 +94,36 @@ export async function runGrantRead(
         },
       })
       if (!rows.length) return { text: "조건에 맞는 과제 결정이 없습니다." }
+      // 같은 사업 · 다른 회차로 이어진 공고의 첨부를 결정 아래에 같이 보인다
+      const linkKeys = rows.flatMap((r) =>
+        (
+          (Array.isArray(r.noticeLinks) ? r.noticeLinks : []) as {
+            relation?: string
+            export_key?: string
+          }[]
+        )
+          .filter((l) => l.relation !== "related" && l.export_key)
+          .map((l) => l.export_key!)
+      )
+      const noticeByKey = new Map(
+        (
+          await prisma.grantNotice.findMany({
+            where: {
+              externalKey: {
+                in: [
+                  ...new Set([...linkKeys, ...rows.map((r) => r.externalKey)]),
+                ],
+              },
+            },
+            select: { externalKey: true, attachments: true },
+          })
+        ).map((n) => [
+          n.externalKey,
+          (Array.isArray(n.attachments)
+            ? n.attachments
+            : []) as unknown as NoticeAttachment[],
+        ])
+      )
       const out = [`국가과제 결정 ${rows.length}건`]
       for (const s of Object.keys(GRANT_STAGE_LABEL) as GrantStage[]) {
         const list = rows.filter((r) => r.stage === s)
@@ -72,6 +134,7 @@ export async function runGrantRead(
             relation?: string
             title?: string
             date?: string | null
+            export_key?: string
           }[]
           out.push(
             `- ${r.title}` +
@@ -82,6 +145,16 @@ export async function runGrantRead(
               ` · id ${r.id}`
           )
           if (r.note) out.push(`  - 메모: ${clip(r.note, 200)}`)
+          if (r.nasFolder)
+            out.push(`  - NAS 폴더: ${r.nasFolder} (안의 파일은 browse_nas)`)
+          for (const a of attachmentsOf(
+            [
+              { export_key: r.externalKey },
+              ...links.filter((l) => l.relation !== "related"),
+            ],
+            noticeByKey
+          ))
+            out.push(`  - 공고 첨부: ${a}`)
           for (const l of links.slice(0, 3))
             out.push(
               `  - 공고(${l.relation ?? "연결"}): ${l.title ?? ""}${l.date ? ` · ${l.date}` : ""}`
@@ -103,7 +176,7 @@ export async function runGrantRead(
         }),
       ])
       if (!rows.length) return { text: "조건에 맞는 공고가 없습니다." }
-      const decided = await decidedNoticeKeys(rows.map((r) => r.externalKey))
+      const decided = await decisionsForNotices(rows.map((r) => r.externalKey))
       const verdictOf = (r: (typeof rows)[number]) =>
         f.profile === "corp" ? r.verdictCorp : r.verdictSole
       const reasonsOf = (r: (typeof rows)[number]) =>
@@ -120,12 +193,20 @@ export async function runGrantRead(
             `${r.agency || r.ministry ? ` · ${[r.ministry, r.agency].filter(Boolean).join(" / ")}` : ""}` +
             ` · 마감 ${r.deadlineAt ? seoulYmd(r.deadlineAt) : (r.deadlineRaw ?? "미정")}` +
             `${r.regionDetail.length ? ` · ${r.regionDetail.join("·")}` : ""}` +
-            `${decided.has(r.externalKey) ? " · 우리 결정에 있음" : ""}` +
+            `${decided.has(r.externalKey) ? ` · 우리 결정에 있음(${decided.get(r.externalKey)!.title})` : ""}` +
             ` · id ${r.id}`
         )
         const why = reasonsOf(r)[0]?.claim
         if (why) out.push(`  - 판정 근거: ${clip(why, 160)}`)
         if (r.url) out.push(`  - ${r.url}`)
+        for (const a of (
+          (Array.isArray(r.attachments)
+            ? r.attachments
+            : []) as unknown as NoticeAttachment[]
+        ).slice(0, 6))
+          out.push(`  - 첨부: ${attachmentText(a)}`)
+        const folder = decided.get(r.externalKey)?.nasFolder
+        if (folder) out.push(`  - NAS 폴더: ${folder} (안의 파일은 browse_nas)`)
       }
       return { text: out.join("\n") }
     }
@@ -343,6 +424,23 @@ const planUpdateDecision: Planner = async (args, caller: Caller) => {
       after: t ? `#${t.slug}` : "(연결 해제)",
     })
     patch.taskId = t?.id ?? ""
+  }
+  if (has(args, "nas_folder")) {
+    const raw = str(args.nas_folder)
+    const folder = raw ? normalizeNasPath(raw) : null
+    if (raw && !folder)
+      return blocked(
+        T,
+        d.title,
+        "HADD Science 공유폴더 안의 경로만 잇습니다 — browse_nas 로 찾은 경로를 씁니다"
+      )
+    if (folder !== d.nasFolder)
+      changes.push({
+        label: "NAS 폴더",
+        before: d.nasFolder ?? "(없음)",
+        after: folder ?? "(연결 해제)",
+      })
+    patch.nasFolder = folder ?? ""
   }
   if (has(args, "project")) {
     const ref = str(args.project)

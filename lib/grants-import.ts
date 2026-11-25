@@ -120,7 +120,8 @@ type Judgement = {
 export type NoticeItem = {
   key: string
   title: string
-  members?: { url?: string; url_kind?: string }[]
+  members?: { source?: string; url?: string; url_kind?: string }[]
+  attachments?: { name: string; url?: string | null; type?: string | null }[]
   org_ministry?: string | null
   org_agency?: string | null
   rcpt_start_at?: string | null
@@ -150,7 +151,10 @@ const reasons = (j?: Judgement) =>
     : undefined
 
 /** 공고 한 건 → GrantNotice. 사람이 읽은 판정(llm)이 있으면 그것을, 없으면 규칙 판정을 쓴다 */
-export function noticeRow(item: NoticeItem) {
+export function noticeRow(
+  item: NoticeItem,
+  sizeByUrl: Map<string, number> = new Map()
+) {
   const llm = item.judgements?.llm
   const useLlm = Boolean(llm?.sole?.verdict || llm?.corp?.verdict)
   const j = useLlm ? llm! : (item.judgements?.rules ?? {})
@@ -176,7 +180,51 @@ export function noticeRow(item: NoticeItem) {
     reasonsSole: reasons(j.sole),
     reasonsCorp: reasons(j.corp),
     judgedBy: useLlm ? "llm" : item.judgements?.rules ? "rules" : null,
+    attachments: noticeAttachments(item, sizeByUrl),
     firstSeen: date(item.first_seen),
     lastSeen: date(item.last_seen),
   }
+}
+
+export type NoticeAttachment = {
+  name: string
+  type: string | null
+  size: number | null
+  url: string
+  page?: string
+}
+
+/** 기업마당(bizinfo) 첨부 주소 — 그대로는 403 이고, 공고 페이지가 주는 새 토큰 주소로 받아야 한다 */
+export const isBizinfoFile = (url: string) =>
+  /bizinfo\.go\.kr\/cmm\/fms\/getImageFile\.do/.test(url)
+
+/** 파일 이름 끝으로 형식 — hwp · hwpx · pdf · zip · xlsx · docx · jpg … */
+export function fileType(name: string, given?: string | null): string | null {
+  const ext = name.match(/\.([A-Za-z0-9]{2,5})$/)?.[1]?.toLowerCase()
+  if (ext) return ext === "jpeg" ? "jpg" : ext
+  return given && given !== "image" ? given : null
+}
+
+/** 공고 첨부 → 화면 · 도구가 쓸 모양. 이름이 같은 것은 하나만 */
+export function noticeAttachments(
+  item: NoticeItem,
+  sizeByUrl: Map<string, number>
+): Prisma.InputJsonArray | undefined {
+  const bizinfoPage =
+    item.members?.find((m) => m.source === "bizinfo" && m.url_kind === "detail")
+      ?.url ?? item.members?.find((m) => m.source === "bizinfo")?.url
+  const seen = new Set<string>()
+  const out: NoticeAttachment[] = []
+  for (const a of item.attachments ?? []) {
+    if (!a.url || seen.has(a.name)) continue
+    seen.add(a.name)
+    out.push({
+      name: a.name,
+      type: fileType(a.name, a.type),
+      size: sizeByUrl.get(a.url) ?? null,
+      url: a.url,
+      ...(isBizinfoFile(a.url) && bizinfoPage ? { page: bizinfoPage } : {}),
+    })
+  }
+  return out.length ? (out as unknown as Prisma.InputJsonArray) : undefined
 }
