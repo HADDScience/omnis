@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
+import { CertEditor } from "@/components/company/cert-editor"
+import { seoulYmd } from "@/lib/grants-labels"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowDown01Icon,
@@ -17,12 +19,11 @@ import type {
 } from "@/generated/prisma/client"
 
 /**
- * 회사 정보 화면의 「인증·가점」 구역(읽기). 위 묶음 전환으로 한 묶음씩, 인증마다 한 줄 요약 —
- * 줄을 누르면 판정 이유 · 자격조건 · 신청기간 · 비용 · 유효기간 · 근거가 펼쳐진다. 편집 · AI 도구는 다음 단계(PR #264)
+ * 회사 정보 화면의 「인증·가점」 구역. 위 묶음 전환으로 한 묶음씩, 인증마다 한 줄 요약 —
+ * 줄을 누르면 판정 이유 · 자격조건 · 신청기간 · 비용 · 유효기간 · 근거와 고치기(cert-editor)가 펼쳐진다.
  */
-/** lib/company-context 의 ymd 와 같다 — 그 모듈은 DB 를 읽어 클라이언트에서 못 쓴다 */
-const ymd = (d: Date | string | null | undefined) =>
-  d ? new Date(d).toISOString().slice(0, 10) : null
+/** 서울 날짜 — 이식한 연혁 · 고친 취득일 모두 서울 자정이다 */
+const ymd = seoulYmd
 
 type Cert = CompanyCertification & {
   record: { title: string; startsOn: Date | null } | null
@@ -303,6 +304,7 @@ function CertRow({
               {c.researchedAt && <span>조사 {ymd(c.researchedAt)}</span>}
             </p>
           )}
+          <CertEditor cert={c} />
         </div>
       )}
     </li>
