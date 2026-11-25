@@ -40,8 +40,11 @@ const VERDICT_CHIP: Record<string, string> = {
   불명: "bg-muted text-muted-foreground",
 }
 
+/** 수집기 원문 기간 — 2026-11-06T09:00:00 → 2026-11-06 09:00 */
+const rawPeriod = (s: string) => s.replace(/T(\d{2}:\d{2}):\d{2}/g, " $1")
+
 function due(iso: string | null, raw: string | null) {
-  if (!iso) return raw ? raw : "마감 미정"
+  if (!iso) return raw ? rawPeriod(raw) : "마감 미정"
   const day = seoulYmd(iso)!
   const left = Math.round(
     (new Date(`${day}T00:00:00+09:00`).getTime() -
@@ -199,7 +202,7 @@ function NoticeRow({
               {r.deadlineRaw && (
                 <>
                   <dt className="text-muted-foreground">접수</dt>
-                  <dd>{r.deadlineRaw}</dd>
+                  <dd>{rawPeriod(r.deadlineRaw)}</dd>
                 </>
               )}
               {r.fields.length > 0 && (
