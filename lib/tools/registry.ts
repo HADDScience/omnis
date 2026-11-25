@@ -77,6 +77,7 @@ export const TOOL_POLICY = {
   list_chat: { ...R, why: "질문 경로에서는 방 보기(view=room)를 닫는다 — lib/omnis-ask.ts routeToolSchema" },
   company_profile: R,
   list_company_records: R,
+  list_certifications: R,
   list_record_proposals: R,
   list_tax_invoices: R,
   list_staff: R,

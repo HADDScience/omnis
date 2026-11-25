@@ -22,19 +22,50 @@ import { prisma } from "@/lib/db"
 import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { openFileObject } from "@/lib/file-object"
 import { TASK_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/constants"
-import { retrieveContext, sectionToText, syncEmbeddingsSafe, withFollowUps, type EmbeddingSource } from "@/lib/embeddings"
+import {
+  retrieveContext,
+  sectionToText,
+  syncEmbeddingsSafe,
+  withFollowUps,
+  type EmbeddingSource,
+} from "@/lib/embeddings"
 import { migrateContent } from "@/lib/omnis-types"
 import { askOmnis, buildCrmOverview, SOURCE_LABEL } from "@/lib/omnis-ask"
 import { postChatMessage } from "@/lib/chat-post"
-import { listWeeklyReports, updateWeeklyReport, upsertThisWeekReport } from "@/lib/weekly-report"
+import {
+  listWeeklyReports,
+  updateWeeklyReport,
+  upsertThisWeekReport,
+} from "@/lib/weekly-report"
 import { createOmnisCard, updateOmnisCard } from "@/lib/omnis-cards"
-import { listReadableRooms, readableRooms, readRoomFeed, readChatFeed, ROOM_KIND_LABEL, searchRoomMessages, type FeedView } from "@/lib/chat-feed"
+import {
+  listReadableRooms,
+  readableRooms,
+  readRoomFeed,
+  readChatFeed,
+  ROOM_KIND_LABEL,
+  searchRoomMessages,
+  type FeedView,
+} from "@/lib/chat-feed"
 import { formatRoomHit, mergeResults, roomLimit } from "@/lib/chat-room-search"
-import { kakaoMissingAttachment, missingAttachmentToolNote } from "@/lib/kakao-placeholder"
+import {
+  kakaoMissingAttachment,
+  missingAttachmentToolNote,
+} from "@/lib/kakao-placeholder"
 import { sourceMessageFacts } from "@/lib/source-messages"
 import { sourceFactToolLine } from "@/lib/source-facts"
-import { pickByMembers, pickByRef, pickPostTarget, type PickableRoom, type PostTarget } from "@/lib/chat-room-pick"
-import { loadPeopleRoom, openSelfRoom, postPeopleMessage } from "@/lib/chat-people"
+import {
+  pickByMembers,
+  pickByRef,
+  pickPostTarget,
+  type PickableRoom,
+  type PostTarget,
+} from "@/lib/chat-room-pick"
+import {
+  loadPeopleRoom,
+  openSelfRoom,
+  postPeopleMessage,
+} from "@/lib/chat-people"
 import { PEOPLE_MESSAGE_MAX, SELF_ROOM_TITLE } from "@/lib/chat-people-rules"
 import { runAfterResponse } from "@/lib/after-response"
 import { largeUploadGuide } from "@/lib/mcp-large-upload"
@@ -45,16 +76,41 @@ import { getIpAccess, type IpMembership } from "@/lib/ip-data"
 import { persistMentions } from "@/lib/mentions"
 import { TOOL_POLICY } from "@/lib/tools/registry"
 import { quoteTotals, QUOTE_STATUS_LABEL } from "@/lib/crm"
-import { findOrgsLoose, productListText, recordSampleDelivery } from "@/lib/crm-sample-server"
+import {
+  findOrgsLoose,
+  productListText,
+  recordSampleDelivery,
+} from "@/lib/crm-sample-server"
 import { CRM_WRITE_TOOLS, isCrmWriteTool } from "@/lib/crm-write-rules"
 import { EXTRA_TOOLS } from "@/lib/tools/defs"
 import { plannerFor, readerFor } from "@/lib/tools/planned-index"
 import { runPlanned } from "@/lib/tools/planned"
-import { quoteListText, receivableListText, runCrmWrite, sampleListText } from "@/lib/crm-write-tools"
-import { companyProfileText, companyRecordsText, contextText, decideRecordProposalText, deleteCompanyRecordText, marketCompaniesText, recordProposalsText, saveCompanyRecordText, staffText, taxInvoicesText } from "@/lib/company-tools"
+import {
+  quoteListText,
+  receivableListText,
+  runCrmWrite,
+  sampleListText,
+} from "@/lib/crm-write-tools"
+import {
+  companyProfileText,
+  companyRecordsText,
+  certificationsText,
+  contextText,
+  decideRecordProposalText,
+  deleteCompanyRecordText,
+  marketCompaniesText,
+  recordProposalsText,
+  saveCompanyRecordText,
+  staffText,
+  taxInvoicesText,
+} from "@/lib/company-tools"
 import { respondToAction } from "@/lib/notifications"
 import { updateTask, type UpdateTaskInput } from "@/lib/task-update"
-import { addChecklistItem, deleteChecklistItem, updateChecklistItem } from "@/lib/checklists"
+import {
+  addChecklistItem,
+  deleteChecklistItem,
+  updateChecklistItem,
+} from "@/lib/checklists"
 import { recordTaskEvents } from "@/lib/task-events"
 import { findOrCreateProduct } from "@/lib/project-resolve"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
@@ -73,7 +129,8 @@ import {
 
 export { PROTOCOL_VERSION, randomToken, sha256 } from "@/lib/ip-mcp"
 /** 옴니스 도구는 이미지를 함께 돌려줄 수 있다(read_file). 라우트가 MCP image content 로 옮긴다. */
-export type ToolResult = IpToolResult | { text: string; image: { data: string; mimeType: string } }
+export type ToolResult =
+  IpToolResult | { text: string; image: { data: string; mimeType: string } }
 export const SERVER_INFO = { name: "hadd-omnis", version: "2.1.0" }
 export { MAX_UPLOAD_BYTES }
 
@@ -93,7 +150,9 @@ export interface Caller {
  * 멤버십은 따로 붙인다. 마지막 사용 시각 갱신과 조회를 한 문장(UPDATE … RETURNING)으로
  * 끝내는 것은 그대로다.
  */
-export async function resolveCaller(authorization: string | null): Promise<Caller | null> {
+export async function resolveCaller(
+  authorization: string | null
+): Promise<Caller | null> {
   const token = (authorization ?? "").replace(/^Bearer\s+/i, "").trim()
   if (!token) return null
   const hash = sha256(token)
@@ -115,7 +174,12 @@ export async function resolveCaller(authorization: string | null): Promise<Calle
   })
   if (!user || !user.isActive) return null
 
-  return { userId: user.id, name: user.name, role: user.role, ip: await getIpAccess(user.id) }
+  return {
+    userId: user.id,
+    name: user.name,
+    role: user.role,
+    ip: await getIpAccess(user.id),
+  }
 }
 
 // ─── 지침 ───────────────────────────────────────────────────────────
@@ -130,10 +194,13 @@ export const INSTRUCTIONS = [
   "주간보고는 list_weekly_reports·write_weekly_report, 사내 지식 카드 작성은 write_omnis_card, 업무 밖 채팅은 list_chat 입니다.",
   "단톡방·1:1 대화는 list_rooms 로 내가 든 방을 보고 list_chat(view=room, room 또는 members)으로 읽습니다. 내가 참여자가 아닌 방은 누구도 읽을 수 없습니다.",
   "업무 카드의 상태·마감·우선순위는 update_task, 체크리스트는 update_checklist. 진행 보고라면 post_message 가 먼저입니다(담당자 확인과 AI 재구성이 따라옵니다).",
-  "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
+  "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 인증·가점은 list_certifications, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
   "웍스 캘린더 일정(행사·미팅·외근)은 list_calendar — 날짜는 서울 기준이고, 결과의 마지막 동기화 시각만큼 웍스와 늦을 수 있습니다.",
   "",
-  IP_INSTRUCTIONS.replace("HADD SCIENCE 지식재산권 기록 서버입니다.", "지식재산권 도구(list_ip·get_ip·add_progress …)는 구성원에게만 열립니다."),
+  IP_INSTRUCTIONS.replace(
+    "HADD SCIENCE 지식재산권 기록 서버입니다.",
+    "지식재산권 도구(list_ip·get_ip·add_progress …)는 구성원에게만 열립니다."
+  ),
 ].join("\n")
 
 // ─── 도구 ───────────────────────────────────────────────────────────
@@ -147,7 +214,9 @@ export const OMNIS_TOOLS = [
       "옴니스 AI 에게 묻는다. 질문에 맞춰 검색·업무·CRM·지식재산권 도구를 스스로 골라 부르고 답한다. 「X 어디까지 됐어」「지연된 업무」「재고 얼마 남았어」처럼 현황을 묻는 질문에 먼저 쓴다. 화면의 「Omnis AI 에게 질문하기」와 같은 것이다. 전사방 · 업무 글만 근거로 삼는다 — 단톡방 · 1:1 대화는 list_chat(view=room)으로 직접 읽는다.",
     inputSchema: {
       type: "object",
-      properties: { question: { type: "string", description: "한국어 질문. 500자 이내." } },
+      properties: {
+        question: { type: "string", description: "한국어 질문. 500자 이내." },
+      },
       required: ["question"],
     },
   },
@@ -161,8 +230,20 @@ export const OMNIS_TOOLS = [
         query: { type: "string" },
         sources: {
           type: "array",
-          items: { type: "string", enum: ["TASK", "CHAT_MESSAGE", "OMNIS_CARD", "WEEKLY_REPORT", "IP_CASE", "PHOTO", "ROOM_MESSAGE"] },
-          description: "생략하면 전부. ROOM_MESSAGE 는 내가 든 단톡방 · 1:1 · 옴니스 1:1 글(낱말 검색) — 빼면 방 글을 찾지 않는다",
+          items: {
+            type: "string",
+            enum: [
+              "TASK",
+              "CHAT_MESSAGE",
+              "OMNIS_CARD",
+              "WEEKLY_REPORT",
+              "IP_CASE",
+              "PHOTO",
+              "ROOM_MESSAGE",
+            ],
+          },
+          description:
+            "생략하면 전부. ROOM_MESSAGE 는 내가 든 단톡방 · 1:1 · 옴니스 1:1 글(낱말 검색) — 빼면 방 글을 찾지 않는다",
         },
         limit: { type: "integer", description: "기본 8, 최대 30" },
       },
@@ -176,13 +257,22 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        status: { type: "string", enum: [...TASK_STATUS], description: "TODO 할 일 · IN_PROGRESS 진행 중 · REVIEW 검토 · DONE 완료" },
+        status: {
+          type: "string",
+          enum: [...TASK_STATUS],
+          description:
+            "TODO 할 일 · IN_PROGRESS 진행 중 · REVIEW 검토 · DONE 완료",
+        },
         assignee: { type: "string", description: "담당자 이름 (일부도 됨)" },
         project: { type: "string", description: "프로젝트 이름 일부" },
         query: { type: "string", description: "업무 이름·배경에 포함된 말" },
         mine: { type: "boolean" },
         overdue: { type: "boolean" },
-        unassigned: { type: "boolean", description: "담당 미배정(담당 0명 · 미완료)만. mine · assignee · status=DONE 과 함께 쓸 수 없다" },
+        unassigned: {
+          type: "boolean",
+          description:
+            "담당 미배정(담당 0명 · 미완료)만. mine · assignee · status=DONE 과 함께 쓸 수 없다",
+        },
         limit: { type: "integer", description: "기본 50, 최대 200" },
       },
     },
@@ -195,7 +285,10 @@ export const OMNIS_TOOLS = [
       type: "object",
       properties: {
         task: { type: "string" },
-        messages: { type: "integer", description: "함께 보여줄 최근 메시지 수. 기본 20, 최대 100" },
+        messages: {
+          type: "integer",
+          description: "함께 보여줄 최근 메시지 수. 기본 20, 최대 100",
+        },
       },
       required: ["task"],
     },
@@ -209,17 +302,38 @@ export const OMNIS_TOOLS = [
       "그러니 지시·보고·피드백은 task 와 함께 보낸다(전사방에서만). 잡담이나 공지는 task 없이.",
       "room 을 주면 단톡방 · 1:1 · 「나와의 대화」 에 보낸다 — 화면에서 그 방에 쓴 것과 같다(참여자에게 채팅 알림, @이름 은 멘션 알림, @옴니스 는 옴니스 호출, 방 목록 · 안 읽은 수에 바로 반영).",
       "room 은 list_rooms 와 같은 규칙(방 ID 또는 이름 일부)이고 **내가 참여자인 방만** 된다. 이름이 여러 방에 맞으면 보내지 않고 후보를 돌려준다 — 그때는 방 ID 로 다시 보낸다.",
-      "「나와의 대화」 는 room=\"me\"(또는 \"나와의 대화\"). **카톡에서 옮겨 온 방에 보내도 카카오톡으로는 가지 않는다** — 옴니스 안의 그 방에만 남는다.",
+      '「나와의 대화」 는 room="me"(또는 "나와의 대화"). **카톡에서 옮겨 온 방에 보내도 카카오톡으로는 가지 않는다** — 옴니스 안의 그 방에만 남는다.',
       "옴니스 1:1 방에는 보내지 않는다(옴니스에게 묻는 것은 ask_omnis).",
     ].join(" "),
     inputSchema: {
       type: "object",
       properties: {
-        content: { type: "string", description: "올릴 글. #슬러그 를 직접 적어도 된다(전사방). 단톡방 · 1:1 은 4000자까지." },
-        room: { type: "string", description: "보낼 방 — 방 ID 또는 이름 일부(list_rooms), 「나와의 대화」 는 \"me\". 생략하면 전사방." },
-        task: { type: "string", description: "업무 슬러그·ID·이름 일부. 전사방에서만 — room 과 함께 쓰지 않는다. 생략하면 스레드 없이 전체 채팅에." },
-        files: { type: "array", items: { type: "string" }, description: "첨부할 파일 ID. upload_file·create_upload_link 로 받은 것. 단톡방 · 1:1 · 나와의 대화에 붙일 파일은 올릴 때 같은 room 을 줘야 한다" },
-        reply_to: { type: "string", description: "답장할 글 ID(list_chat 의 「글 …」). 같은 방의 글에만 답장한다 — 화면의 답장과 같다" },
+        content: {
+          type: "string",
+          description:
+            "올릴 글. #슬러그 를 직접 적어도 된다(전사방). 단톡방 · 1:1 은 4000자까지.",
+        },
+        room: {
+          type: "string",
+          description:
+            '보낼 방 — 방 ID 또는 이름 일부(list_rooms), 「나와의 대화」 는 "me". 생략하면 전사방.',
+        },
+        task: {
+          type: "string",
+          description:
+            "업무 슬러그·ID·이름 일부. 전사방에서만 — room 과 함께 쓰지 않는다. 생략하면 스레드 없이 전체 채팅에.",
+        },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "첨부할 파일 ID. upload_file·create_upload_link 로 받은 것. 단톡방 · 1:1 · 나와의 대화에 붙일 파일은 올릴 때 같은 room 을 줘야 한다",
+        },
+        reply_to: {
+          type: "string",
+          description:
+            "답장할 글 ID(list_chat 의 「글 …」). 같은 방의 글에만 답장한다 — 화면의 답장과 같다",
+        },
       },
       required: ["content"],
     },
@@ -236,12 +350,22 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        name: { type: "string", description: "확장자를 포함한 파일 이름. 예: 킥오프_회의록.md" },
+        name: {
+          type: "string",
+          description: "확장자를 포함한 파일 이름. 예: 킥오프_회의록.md",
+        },
         content: { type: "string", description: "텍스트 파일 본문 (UTF-8)" },
-        content_base64: { type: "string", description: "바이너리 파일 본문 (base64)" },
+        content_base64: {
+          type: "string",
+          description: "바이너리 파일 본문 (base64)",
+        },
         mime_type: { type: "string", description: "생략하면 확장자로 정한다" },
         task: { type: "string", description: "업무 슬러그·ID·이름 일부" },
-        room: { type: "string", description: "이 파일을 붙일 방(post_message 의 room 과 같은 값). 생략하면 전사방 · 업무용" },
+        room: {
+          type: "string",
+          description:
+            "이 파일을 붙일 방(post_message 의 room 과 같은 값). 생략하면 전사방 · 업무용",
+        },
       },
       required: ["name"],
     },
@@ -256,8 +380,16 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        task: { type: "string", description: "업무 슬러그·ID·이름 일부. 주면 올린 파일이 그 업무 첨부로 들어간다." },
-        room: { type: "string", description: "올린 파일을 붙일 방(post_message 의 room 과 같은 값). 생략하면 전사방 · 업무용" },
+        task: {
+          type: "string",
+          description:
+            "업무 슬러그·ID·이름 일부. 주면 올린 파일이 그 업무 첨부로 들어간다.",
+        },
+        room: {
+          type: "string",
+          description:
+            "올린 파일을 붙일 방(post_message 의 room 과 같은 값). 생략하면 전사방 · 업무용",
+        },
       },
     },
   },
@@ -272,8 +404,14 @@ export const OMNIS_TOOLS = [
       type: "object",
       properties: {
         file: { type: "string", description: "파일 ID" },
-        task: { type: "string", description: "업무 슬러그·ID·이름 일부 (file 이 없을 때)" },
-        name: { type: "string", description: "파일 이름 일부 (file 이 없을 때)" },
+        task: {
+          type: "string",
+          description: "업무 슬러그·ID·이름 일부 (file 이 없을 때)",
+        },
+        name: {
+          type: "string",
+          description: "파일 이름 일부 (file 이 없을 때)",
+        },
       },
     },
   },
@@ -285,7 +423,12 @@ export const OMNIS_TOOLS = [
     ].join(" "),
     inputSchema: {
       type: "object",
-      properties: { limit: { type: "integer", description: "최근 알림 수. 기본 10, 최대 50" } },
+      properties: {
+        limit: {
+          type: "integer",
+          description: "최근 알림 수. 기본 10, 최대 50",
+        },
+      },
     },
   },
   {
@@ -298,8 +441,14 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        notification: { type: "string", description: "알림 ID (list_notifications)" },
-        task: { type: "string", description: "업무 슬러그·ID·이름 일부 (notification 이 없을 때)" },
+        notification: {
+          type: "string",
+          description: "알림 ID (list_notifications)",
+        },
+        task: {
+          type: "string",
+          description: "업무 슬러그·ID·이름 일부 (notification 이 없을 때)",
+        },
         response: { type: "string", enum: ["accept", "confirm_done", "defer"] },
       },
       required: ["response"],
@@ -318,17 +467,43 @@ export const OMNIS_TOOLS = [
       type: "object",
       properties: {
         task: { type: "string", description: "업무 슬러그·ID·이름 일부" },
-        status: { type: "string", enum: [...TASK_STATUS], description: "TODO 할 일 · IN_PROGRESS 진행 중 · REVIEW 검토 · DONE 완료" },
+        status: {
+          type: "string",
+          enum: [...TASK_STATUS],
+          description:
+            "TODO 할 일 · IN_PROGRESS 진행 중 · REVIEW 검토 · DONE 완료",
+        },
         name: { type: "string" },
         priority: { type: "string", enum: ["LOW", "NORMAL", "HIGH"] },
-        deadline: { type: "string", description: "YYYY-MM-DD (KST). 빈 문자열이면 지운다" },
+        deadline: {
+          type: "string",
+          description: "YYYY-MM-DD (KST). 빈 문자열이면 지운다",
+        },
         background: { type: "string" },
         expected_result: { type: "string" },
-        project: { type: "string", description: "기존 프로젝트 이름 (일부도 됨). 빈 문자열이면 뺀다" },
-        assignees: { type: "array", items: { type: "string" }, description: "담당자 정식 이름들 — 주면 담당자 전체를 이 목록으로 바꾼다" },
-        archived: { type: "boolean", description: "true 면 보관(목록에서 사라진다). false 면 보관된 업무를 다시 꺼낸다" },
-        product: { type: "string", description: "제품 이름(list_task_products). 빈 문자열이면 뺀다" },
-        instructor: { type: "string", description: "지시자 정식 이름(list_members)" },
+        project: {
+          type: "string",
+          description: "기존 프로젝트 이름 (일부도 됨). 빈 문자열이면 뺀다",
+        },
+        assignees: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "담당자 정식 이름들 — 주면 담당자 전체를 이 목록으로 바꾼다",
+        },
+        archived: {
+          type: "boolean",
+          description:
+            "true 면 보관(목록에서 사라진다). false 면 보관된 업무를 다시 꺼낸다",
+        },
+        product: {
+          type: "string",
+          description: "제품 이름(list_task_products). 빈 문자열이면 뺀다",
+        },
+        instructor: {
+          type: "string",
+          description: "지시자 정식 이름(list_members)",
+        },
       },
       required: ["task"],
     },
@@ -345,17 +520,45 @@ export const OMNIS_TOOLS = [
       type: "object",
       properties: {
         task: { type: "string", description: "업무 슬러그·ID·이름 일부" },
-        add: { type: "array", items: { type: "string" }, description: "새 항목 이름" },
-        check: { type: "array", items: { type: "string" }, description: "체크할 항목 (번호 또는 이름)" },
-        uncheck: { type: "array", items: { type: "string" }, description: "체크를 풀 항목" },
-        remove: { type: "array", items: { type: "string" }, description: "지울 항목" },
+        add: {
+          type: "array",
+          items: { type: "string" },
+          description: "새 항목 이름",
+        },
+        check: {
+          type: "array",
+          items: { type: "string" },
+          description: "체크할 항목 (번호 또는 이름)",
+        },
+        uncheck: {
+          type: "array",
+          items: { type: "string" },
+          description: "체크를 풀 항목",
+        },
+        remove: {
+          type: "array",
+          items: { type: "string" },
+          description: "지울 항목",
+        },
         rename: {
-          type: "array", description: "이름 바꿀 항목 — { item: 번호 또는 이름, value: 새 이름 }",
-          items: { type: "object", properties: { item: { type: "string" }, value: { type: "string" } }, required: ["item", "value"] },
+          type: "array",
+          description:
+            "이름 바꿀 항목 — { item: 번호 또는 이름, value: 새 이름 }",
+          items: {
+            type: "object",
+            properties: { item: { type: "string" }, value: { type: "string" } },
+            required: ["item", "value"],
+          },
         },
         memo: {
-          type: "array", description: "메모 고칠 항목 — { item: 번호 또는 이름, value: 메모(빈 글이면 지움) }",
-          items: { type: "object", properties: { item: { type: "string" }, value: { type: "string" } }, required: ["item", "value"] },
+          type: "array",
+          description:
+            "메모 고칠 항목 — { item: 번호 또는 이름, value: 메모(빈 글이면 지움) }",
+          items: {
+            type: "object",
+            properties: { item: { type: "string" }, value: { type: "string" } },
+            required: ["item", "value"],
+          },
         },
       },
       required: ["task"],
@@ -372,41 +575,85 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        name: { type: "string", description: "20자 안팎의 명사구. 예: CHAMP+ 2차면접 발표자료 준비" },
-        assignees: { type: "array", items: { type: "string" }, description: "담당자 정식 이름들" },
-        instruction: { type: "string", description: "사용자가 한 지시 원문. 채팅에 그대로 올라간다." },
+        name: {
+          type: "string",
+          description: "20자 안팎의 명사구. 예: CHAMP+ 2차면접 발표자료 준비",
+        },
+        assignees: {
+          type: "array",
+          items: { type: "string" },
+          description: "담당자 정식 이름들",
+        },
+        instruction: {
+          type: "string",
+          description: "사용자가 한 지시 원문. 채팅에 그대로 올라간다.",
+        },
         background: { type: "string" },
-        checklist: { type: "array", items: { type: "string" }, description: "2~5개. 대화에서 실제 요구된 행동만" },
-        deadline: { type: "string", description: "YYYY-MM-DD (KST). 명시된 경우만" },
+        checklist: {
+          type: "array",
+          items: { type: "string" },
+          description: "2~5개. 대화에서 실제 요구된 행동만",
+        },
+        deadline: {
+          type: "string",
+          description: "YYYY-MM-DD (KST). 명시된 경우만",
+        },
         priority: { type: "string", enum: ["LOW", "NORMAL", "HIGH"] },
-        project: { type: "string", description: "기존 프로젝트 이름 (일부도 됨)" },
-        product: { type: "string", description: "업무용 제품 이름(list_task_products). 없는 이름이면 화면처럼 새 제품으로 만든다" },
+        project: {
+          type: "string",
+          description: "기존 프로젝트 이름 (일부도 됨)",
+        },
+        product: {
+          type: "string",
+          description:
+            "업무용 제품 이름(list_task_products). 없는 이름이면 화면처럼 새 제품으로 만든다",
+        },
       },
       required: ["name", "assignees"],
     },
   },
   {
     name: "list_projects",
-    description: "프로젝트(과제) 목록과 각각의 업무 수. 이 회사에서 프로젝트는 정부과제·행사·교육프로그램 단위다.",
+    description:
+      "프로젝트(과제) 목록과 각각의 업무 수. 이 회사에서 프로젝트는 정부과제·행사·교육프로그램 단위다.",
     inputSchema: {
       type: "object",
-      properties: { query: { type: "string" }, includeArchived: { type: "boolean" } },
+      properties: {
+        query: { type: "string" },
+        includeArchived: { type: "boolean" },
+      },
     },
   },
   {
     name: "list_members",
-    description: "구성원 이름·직급·부서. 담당자를 지정하거나 「우창」「혜린씨」 같은 호칭을 정식 이름으로 바꿀 때 본다.",
-    inputSchema: { type: "object", properties: { includeInactive: { type: "boolean", description: "과거 구성원 포함" } } },
+    description:
+      "구성원 이름·직급·부서. 담당자를 지정하거나 「우창」「혜린씨」 같은 호칭을 정식 이름으로 바꿀 때 본다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeInactive: { type: "boolean", description: "과거 구성원 포함" },
+      },
+    },
   },
   {
     name: "crm_overview",
-    description: "CRM 현황 전량 — 원료·완제품 재고, 생산 기록, 배합, 견적 전부, 샘플요청 전부. 계산되는 값이라 물을 때마다 센다.",
+    description:
+      "CRM 현황 전량 — 원료·완제품 재고, 생산 기록, 배합, 견적 전부, 샘플요청 전부. 계산되는 값이라 물을 때마다 센다.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "find_org",
-    description: "거래 기관 찾기. 이름·코드 일부로 찾아 담당자·견적·샘플요청·출고 이력(각 ID 포함)을 돌려준다. 띄어쓰기·(주)·주식회사 같은 법인 표기는 무시한다. query 를 비우면 기관 전체 목록(화면 CRM › 기관과 같다).",
-    inputSchema: { type: "object", properties: { query: { type: "string", description: "기관 이름 · 코드 일부. 비우면 전체 목록" } } },
+    description:
+      "거래 기관 찾기. 이름·코드 일부로 찾아 담당자·견적·샘플요청·출고 이력(각 ID 포함)을 돌려준다. 띄어쓰기·(주)·주식회사 같은 법인 표기는 무시한다. query 를 비우면 기관 전체 목록(화면 CRM › 기관과 같다).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "기관 이름 · 코드 일부. 비우면 전체 목록",
+        },
+      },
+    },
   },
   {
     name: "list_products",
@@ -415,7 +662,12 @@ export const OMNIS_TOOLS = [
       "「2미리」 「ADDGEL」 처럼 적힌 말은 이름 · 별칭 · 규격을 보고 고르고, 규격이 여럿이면 사용자에게 후보를 보여 주고 묻는다.",
     inputSchema: {
       type: "object",
-      properties: { query: { type: "string", description: "이름 · 별칭 · 규격 · 코드 일부. 비우면 전체" } },
+      properties: {
+        query: {
+          type: "string",
+          description: "이름 · 별칭 · 규격 · 코드 일부. 비우면 전체",
+        },
+      },
     },
   },
   {
@@ -428,18 +680,55 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        org: { type: "string", description: "기관 이름 또는 코드(ORG001). 일부여도 된다" },
-        product_id: { type: "string", description: "list_products 의 product_id(또는 코드 PRD001). 있으면 product 보다 먼저 쓴다" },
-        product: { type: "string", description: "CRM 제품 이름(규격까지 적으면 더 정확하다 — 예: 이름 5ml). product_id 가 없을 때만 쓴다" },
-        quantity: { type: "integer", description: "전달한 수량(개). product_id 또는 product 가 있어야 한다" },
-        date: { type: "string", description: "전달한 날 YYYY-MM-DD. 비우면 오늘(서울). 앞날은 안 된다" },
+        org: {
+          type: "string",
+          description: "기관 이름 또는 코드(ORG001). 일부여도 된다",
+        },
+        product_id: {
+          type: "string",
+          description:
+            "list_products 의 product_id(또는 코드 PRD001). 있으면 product 보다 먼저 쓴다",
+        },
+        product: {
+          type: "string",
+          description:
+            "CRM 제품 이름(규격까지 적으면 더 정확하다 — 예: 이름 5ml). product_id 가 없을 때만 쓴다",
+        },
+        quantity: {
+          type: "integer",
+          description:
+            "전달한 수량(개). product_id 또는 product 가 있어야 한다",
+        },
+        date: {
+          type: "string",
+          description:
+            "전달한 날 YYYY-MM-DD. 비우면 오늘(서울). 앞날은 안 된다",
+        },
         contact: { type: "string", description: "받은 사람(기관 담당자) 이름" },
-        content: { type: "string", description: "요청사항 원문. 비우면 제품·수량으로 적는다" },
-        referral: { type: "string", description: "소개경로 — 학회·지인·전화 등" },
+        content: {
+          type: "string",
+          description: "요청사항 원문. 비우면 제품·수량으로 적는다",
+        },
+        referral: {
+          type: "string",
+          description: "소개경로 — 학회·지인·전화 등",
+        },
         note: { type: "string", description: "비고" },
-        create_org: { type: "boolean", description: "기관이 없을 때 새로 만든다. 사용자가 그렇게 하라고 했을 때만 true" },
-        org_type: { type: "string", enum: ["UNIVERSITY", "RESEARCH", "COMPANY", "HOSPITAL", "OTHER"], description: "새 기관의 종류. 비우면 OTHER" },
-        confirm: { type: "boolean", description: "사용자가 남길 내용에 동의했으면 true. 없으면 미리보기만" },
+        create_org: {
+          type: "boolean",
+          description:
+            "기관이 없을 때 새로 만든다. 사용자가 그렇게 하라고 했을 때만 true",
+        },
+        org_type: {
+          type: "string",
+          enum: ["UNIVERSITY", "RESEARCH", "COMPANY", "HOSPITAL", "OTHER"],
+          description: "새 기관의 종류. 비우면 OTHER",
+        },
+        confirm: {
+          type: "boolean",
+          description:
+            "사용자가 남길 내용에 동의했으면 true. 없으면 미리보기만",
+        },
       },
       required: ["org"],
     },
@@ -450,13 +739,18 @@ export const OMNIS_TOOLS = [
   ...EXTRA_TOOLS,
   {
     name: "list_omnis_cards",
-    description: "사내 지식 카드(옴니스) 목록. 분류·제목·태그로 거른다. 본문은 get_omnis_card.",
+    description:
+      "사내 지식 카드(옴니스) 목록. 분류·제목·태그로 거른다. 본문은 get_omnis_card.",
     inputSchema: { type: "object", properties: { query: { type: "string" } } },
   },
   {
     name: "get_omnis_card",
     description: "지식 카드 본문 전부. card 는 ID 또는 제목 일부.",
-    inputSchema: { type: "object", properties: { card: { type: "string" } }, required: ["card"] },
+    inputSchema: {
+      type: "object",
+      properties: { card: { type: "string" } },
+      required: ["card"],
+    },
   },
   {
     name: "write_omnis_card",
@@ -468,19 +762,34 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        card: { type: "string", description: "고칠 카드의 ID 또는 제목 일부. 생략하면 새 카드" },
+        card: {
+          type: "string",
+          description: "고칠 카드의 ID 또는 제목 일부. 생략하면 새 카드",
+        },
         title: { type: "string", description: "카드 제목" },
-        category: { type: "string", description: "분류 이름 — list_omnis_cards 의 [대괄호] 안 이름" },
+        category: {
+          type: "string",
+          description: "분류 이름 — list_omnis_cards 의 [대괄호] 안 이름",
+        },
         markdown: { type: "string", description: "본문" },
-        append: { type: "boolean", description: "true 면 기존 본문 뒤에 덧붙인다" },
+        append: {
+          type: "boolean",
+          description: "true 면 기존 본문 뒤에 덧붙인다",
+        },
         tags: { type: "array", items: { type: "string" } },
       },
     },
   },
   {
     name: "list_weekly_reports",
-    description: "사용자 본인의 주간보고. 주차·상태·그 주의 완료/진행 업무와 본문을 준다. 남의 보고서는 보이지 않는다.",
-    inputSchema: { type: "object", properties: { limit: { type: "integer", description: "기본 4, 최대 20" } } },
+    description:
+      "사용자 본인의 주간보고. 주차·상태·그 주의 완료/진행 업무와 본문을 준다. 남의 보고서는 보이지 않는다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", description: "기본 4, 최대 20" },
+      },
+    },
   },
   {
     name: "write_weekly_report",
@@ -495,7 +804,10 @@ export const OMNIS_TOOLS = [
         draft: { type: "boolean", description: "AI 초안 생성" },
         markdown: { type: "string", description: "보고서 본문" },
         submit: { type: "boolean", description: "제출 완료로 표시" },
-        report: { type: "string", description: "고칠 보고서 ID (list_weekly_reports). 생략하면 이번 주" },
+        report: {
+          type: "string",
+          description: "고칠 보고서 ID (list_weekly_reports). 생략하면 이번 주",
+        },
       },
     },
   },
@@ -509,15 +821,44 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        view: { type: "string", enum: ["all", "task", "dm", "ai", "room"], description: "기본 all" },
-        task: { type: "string", description: "view=task 일 때 업무 슬러그·ID·이름 일부" },
+        view: {
+          type: "string",
+          enum: ["all", "task", "dm", "ai", "room"],
+          description: "기본 all",
+        },
+        task: {
+          type: "string",
+          description: "view=task 일 때 업무 슬러그·ID·이름 일부",
+        },
         user: { type: "string", description: "view=dm 일 때 상대 이름" },
-        room: { type: "string", description: "view=room 일 때 방 이름 일부 또는 방 ID (list_rooms)" },
-        members: { type: "array", items: { type: "string" }, description: "view=room 일 때 room 대신 — 참여자 이름 목록. 정확히 그 사람들(과 나)만 있는 방을 고른다" },
-        since: { type: "string", description: "view=room — 이 시각 이후(YYYY-MM-DD 또는 ISO, 서울 기준)" },
-        until: { type: "string", description: "view=room — 이 시각 전까지(날짜만 주면 그 날 끝까지)" },
-        query: { type: "string", description: "view=room — 본문에 이 말이 든 글만(대소문자 무시)" },
-        limit: { type: "integer", description: "기본 40, 최대 200. view=room 은 범위 안에서 최근 것부터 이만큼" },
+        room: {
+          type: "string",
+          description: "view=room 일 때 방 이름 일부 또는 방 ID (list_rooms)",
+        },
+        members: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "view=room 일 때 room 대신 — 참여자 이름 목록. 정확히 그 사람들(과 나)만 있는 방을 고른다",
+        },
+        since: {
+          type: "string",
+          description:
+            "view=room — 이 시각 이후(YYYY-MM-DD 또는 ISO, 서울 기준)",
+        },
+        until: {
+          type: "string",
+          description: "view=room — 이 시각 전까지(날짜만 주면 그 날 끝까지)",
+        },
+        query: {
+          type: "string",
+          description: "view=room — 본문에 이 말이 든 글만(대소문자 무시)",
+        },
+        limit: {
+          type: "integer",
+          description:
+            "기본 40, 최대 200. view=room 은 범위 안에서 최근 것부터 이만큼",
+        },
       },
     },
   },
@@ -530,7 +871,10 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "방 이름 · 참여자 이름 일부로 거른다" },
+        query: {
+          type: "string",
+          description: "방 이름 · 참여자 이름 일부로 거른다",
+        },
         limit: { type: "integer", description: "기본 50, 최대 200" },
       },
     },
@@ -552,10 +896,42 @@ export const OMNIS_TOOLS = [
         query: { type: "string", description: "제목·기관·과제명 일부" },
         kind: {
           type: "string",
-          enum: ["GRANT", "AWARD", "EXHIBITION", "FORUM", "EDUCATION", "NETWORKING", "INTERNAL", "MILESTONE"],
-          description: "GRANT 지원사업 · AWARD 수상 · EXHIBITION 학회·전시 · FORUM 포럼·세미나 · EDUCATION 교육 · NETWORKING 네트워킹 · INTERNAL 내부행사 · MILESTONE 주요 사건",
+          enum: [
+            "GRANT",
+            "AWARD",
+            "EXHIBITION",
+            "FORUM",
+            "EDUCATION",
+            "NETWORKING",
+            "INTERNAL",
+            "MILESTONE",
+          ],
+          description:
+            "GRANT 지원사업 · AWARD 수상 · EXHIBITION 학회·전시 · FORUM 포럼·세미나 · EDUCATION 교육 · NETWORKING 네트워킹 · INTERNAL 내부행사 · MILESTONE 주요 사건",
         },
         year: { type: "integer", description: "시작 연도" },
+      },
+    },
+  },
+  {
+    name: "list_certifications",
+    description:
+      "회사 인증 · 가점 — 보유 · 갱신 필요 · 취득 후보 · 자격 안 됨으로 나눠 가점(메디바이오 · 중기부), 우리 회사 충족 여부와 이유, 신청기간, 걸리는 기간을 준다. 「우리 가점 뭐 있어」「벤처기업 인증 있어」「받을 만한 인증」 을 물으면 쓴다. detail 이면 자격조건 · 비용 · 유효기간 · 근거 링크까지.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["HELD", "RENEWAL_DUE", "EXPIRED", "CANDIDATE", "NOT_ELIGIBLE"],
+          description:
+            "HELD 보유 · RENEWAL_DUE 갱신 필요 · EXPIRED 만료 · CANDIDATE 취득 후보 · NOT_ELIGIBLE 자격 안 됨. 비우면 전부",
+        },
+        query: { type: "string", description: "인증 이름 · 발급 기관 일부" },
+        detail: {
+          type: "boolean",
+          description:
+            "자격조건 · 비용 · 유효기간 · 메모 · 근거까지 (기본 false)",
+        },
       },
     },
   },
@@ -566,18 +942,39 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        record_id: { type: "string", description: "고칠 연혁 id. 없으면 새로 만든다 (list_company_records 로 찾는다)" },
+        record_id: {
+          type: "string",
+          description:
+            "고칠 연혁 id. 없으면 새로 만든다 (list_company_records 로 찾는다)",
+        },
         kind: {
           type: "string",
-          enum: ["GRANT", "AWARD", "EXHIBITION", "FORUM", "EDUCATION", "NETWORKING", "INTERNAL", "MILESTONE"],
-          description: "GRANT 지원사업 · AWARD 수상 · EXHIBITION 학회·전시 · FORUM 포럼·세미나 · EDUCATION 교육 · NETWORKING 네트워킹 · INTERNAL 내부행사 · MILESTONE 주요 사건",
+          enum: [
+            "GRANT",
+            "AWARD",
+            "EXHIBITION",
+            "FORUM",
+            "EDUCATION",
+            "NETWORKING",
+            "INTERNAL",
+            "MILESTONE",
+          ],
+          description:
+            "GRANT 지원사업 · AWARD 수상 · EXHIBITION 학회·전시 · FORUM 포럼·세미나 · EDUCATION 교육 · NETWORKING 네트워킹 · INTERNAL 내부행사 · MILESTONE 주요 사건",
         },
         title: { type: "string", description: "제목. 새로 만들 때 필수" },
         organizer: { type: "string", description: "주관 기관" },
         starts_on: { type: "string", description: "시작일 YYYY-MM-DD" },
         ends_on: { type: "string", description: "종료일 YYYY-MM-DD" },
-        period_raw: { type: "string", description: "원문 기간 표기(예: 2026.04.28~04.30). 비우면 날짜로 만든다" },
-        status: { type: "string", description: "완료 · 진행중 · 발표완료 · 계획" },
+        period_raw: {
+          type: "string",
+          description:
+            "원문 기간 표기(예: 2026.04.28~04.30). 비우면 날짜로 만든다",
+        },
+        status: {
+          type: "string",
+          description: "완료 · 진행중 · 발표완료 · 계획",
+        },
         venue: { type: "string", description: "장소" },
         prize: { type: "string", description: "상격(수상)" },
         subject: { type: "string", description: "과제명" },
@@ -585,11 +982,22 @@ export const OMNIS_TOOLS = [
         funding_krw: { type: "string", description: "지원금(원). 숫자" },
         role: { type: "string", description: "역할(주관 · 참여 등)" },
         own_cash_krw: { type: "string", description: "자부담 현금(원). 숫자" },
-        own_in_kind_krw: { type: "string", description: "자부담 현물(원). 숫자" },
+        own_in_kind_krw: {
+          type: "string",
+          description: "자부담 현물(원). 숫자",
+        },
         partner: { type: "string", description: "대리점" },
         category: { type: "string", description: "분류" },
-        note: { type: "string", description: "비고 — 근거가 된 메일·문서를 적어 둔다" },
-        visibility: { type: "string", enum: ["PUBLIC", "INTERNAL"], description: "공개범위. INTERNAL 은 대외비 — 외부 자료에 쓰지 않는다. 비우면 PUBLIC" },
+        note: {
+          type: "string",
+          description: "비고 — 근거가 된 메일·문서를 적어 둔다",
+        },
+        visibility: {
+          type: "string",
+          enum: ["PUBLIC", "INTERNAL"],
+          description:
+            "공개범위. INTERNAL 은 대외비 — 외부 자료에 쓰지 않는다. 비우면 PUBLIC",
+        },
       },
     },
   },
@@ -599,7 +1007,13 @@ export const OMNIS_TOOLS = [
       "연혁·실적 한 줄을 지운다. 같은 사건이 두 줄로 들어갔을 때 정리하는 용도다. 되돌릴 수 없으니 list_company_records 로 확인한 id 만 넘긴다.",
     inputSchema: {
       type: "object",
-      properties: { record_id: { type: "string", description: "지울 연혁 id (list_company_records 가 줄 끝에 함께 준다)" } },
+      properties: {
+        record_id: {
+          type: "string",
+          description:
+            "지울 연혁 id (list_company_records 가 줄 끝에 함께 준다)",
+        },
+      },
       required: ["record_id"],
     },
   },
@@ -609,7 +1023,13 @@ export const OMNIS_TOOLS = [
       "AI 가 채팅·업무에서 찾은 연혁 후보(확인 대기)와 종류×등급별 정확도. 각 후보에 근거 대화 인용이 붙는다. 판단은 decide_record_proposal.",
     inputSchema: {
       type: "object",
-      properties: { status: { type: "string", enum: ["PENDING", "decided"], description: "기본 PENDING(확인 대기)" } },
+      properties: {
+        status: {
+          type: "string",
+          enum: ["PENDING", "decided"],
+          description: "기본 PENDING(확인 대기)",
+        },
+      },
     },
   },
   {
@@ -619,12 +1039,36 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        proposal: { type: "string", description: "후보 id (list_record_proposals 가 준다)" },
-        action: { type: "string", enum: ["accept", "reject", "revert"], description: "accept 채택 · reject 제외 · revert 채택·자동 등록 되돌리기(만든 연혁을 지운다)" },
+        proposal: {
+          type: "string",
+          description: "후보 id (list_record_proposals 가 준다)",
+        },
+        action: {
+          type: "string",
+          enum: ["accept", "reject", "revert"],
+          description:
+            "accept 채택 · reject 제외 · revert 채택·자동 등록 되돌리기(만든 연혁을 지운다)",
+        },
         title: { type: "string" },
         occurred_on: { type: "string", description: "YYYY-MM-DD" },
-        kind: { type: "string", enum: ["GRANT", "AWARD", "EXHIBITION", "FORUM", "EDUCATION", "NETWORKING", "INTERNAL", "MILESTONE"] },
-        grade: { type: "string", enum: ["MAJOR", "GENERAL"], description: "MAJOR 주요(기업현황카드 후보) · GENERAL 일반" },
+        kind: {
+          type: "string",
+          enum: [
+            "GRANT",
+            "AWARD",
+            "EXHIBITION",
+            "FORUM",
+            "EDUCATION",
+            "NETWORKING",
+            "INTERNAL",
+            "MILESTONE",
+          ],
+        },
+        grade: {
+          type: "string",
+          enum: ["MAJOR", "GENERAL"],
+          description: "MAJOR 주요(기업현황카드 후보) · GENERAL 일반",
+        },
         confidential: { type: "boolean", description: "대외비" },
         organizer: { type: "string" },
       },
@@ -633,24 +1077,39 @@ export const OMNIS_TOOLS = [
   },
   {
     name: "list_tax_invoices",
-    description: "발행된 세금계산서 — 날짜·기관·품목·공급가액·제품/용역 구분·연결된 견적, 연도별 매출 합. 「올해 누구에게 얼마 팔았나」「기관별 매출」 을 물으면 쓴다.",
-    inputSchema: { type: "object", properties: { year: { type: "integer" }, org: { type: "string", description: "기관명 일부" } } },
+    description:
+      "발행된 세금계산서 — 날짜·기관·품목·공급가액·제품/용역 구분·연결된 견적, 연도별 매출 합. 「올해 누구에게 얼마 팔았나」「기관별 매출」 을 물으면 쓴다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        year: { type: "integer" },
+        org: { type: "string", description: "기관명 일부" },
+      },
+    },
   },
   {
     name: "list_staff",
-    description: "인력 — 재직자의 이름·소속·직급·하드사이언스 역할(CAO·CMO 등)·담당 업무·학력·4대보험 가입 여부. 과제 참여연구원 구성이나 직함을 물으면 쓴다. 관리자가 부르면 휴대폰·이메일·생년월일·과학기술인번호도 준다(학회 가입·과제 서류용). 서명은 주지 않는다.",
+    description:
+      "인력 — 재직자의 이름·소속·직급·하드사이언스 역할(CAO·CMO 등)·담당 업무·학력·4대보험 가입 여부. 과제 참여연구원 구성이나 직함을 물으면 쓴다. 관리자가 부르면 휴대폰·이메일·생년월일·과학기술인번호도 준다(학회 가입·과제 서류용). 서명은 주지 않는다.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "list_market_companies",
-    description: "시장·경쟁 기업(오가노이드·배양 소재 관련) — 국가·분류·주력 제품·매출 원문. 경쟁사·시장 조사를 물으면 쓴다. 거래처는 find_org.",
-    inputSchema: { type: "object", properties: { query: { type: "string" }, segment: { type: "string" } } },
+    description:
+      "시장·경쟁 기업(오가노이드·배양 소재 관련) — 국가·분류·주력 제품·매출 원문. 경쟁사·시장 조사를 물으면 쓴다. 거래처는 find_org.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string" }, segment: { type: "string" } },
+    },
   },
   {
     name: "get_context",
     description:
       "대상 하나(업무·프로젝트·사람·기관·견적·세금계산서·연혁·특허·카드)와 DB 로 이어진 것, 의미상 가까운 것. 「국일그래핀과 엮인 견적·세금계산서」「이 과제에 딸린 업무」 처럼 관계를 물으면 쓴다. node 는 이전 결과의 key, 없으면 query 에 이름을 준다.",
-    inputSchema: { type: "object", properties: { node: { type: "string" }, query: { type: "string" } } },
+    inputSchema: {
+      type: "object",
+      properties: { node: { type: "string" }, query: { type: "string" } },
+    },
   },
   // ─── 캘린더 (lib/calendar/agent-tool) — 캘린더 탭과 같은 함수 · 같은 보기 권한 ───
   {
@@ -663,11 +1122,29 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        from: { type: "string", description: "시작 날짜 YYYY-MM-DD(서울). 생략하면 오늘" },
-        to: { type: "string", description: "끝 날짜 YYYY-MM-DD(서울, 그날 포함). 생략하면 from 부터 7일. from~to 는 최대 62일" },
-        calendar: { type: "string", description: "캘린더 이름 일부(예: 대표님). 생략하면 볼 수 있는 캘린더 전부" },
-        query: { type: "string", description: "제목 · 장소에서 찾을 말 — 사람 이름 · 기관 · 행사명 · 외근. 띄어 쓴 말은 모두 든 일정만" },
-        all_day: { type: "boolean", description: "true 면 종일 일정만, false 면 시간 있는 일정만" },
+        from: {
+          type: "string",
+          description: "시작 날짜 YYYY-MM-DD(서울). 생략하면 오늘",
+        },
+        to: {
+          type: "string",
+          description:
+            "끝 날짜 YYYY-MM-DD(서울, 그날 포함). 생략하면 from 부터 7일. from~to 는 최대 62일",
+        },
+        calendar: {
+          type: "string",
+          description:
+            "캘린더 이름 일부(예: 대표님). 생략하면 볼 수 있는 캘린더 전부",
+        },
+        query: {
+          type: "string",
+          description:
+            "제목 · 장소에서 찾을 말 — 사람 이름 · 기관 · 행사명 · 외근. 띄어 쓴 말은 모두 든 일정만",
+        },
+        all_day: {
+          type: "boolean",
+          description: "true 면 종일 일정만, false 면 시간 있는 일정만",
+        },
       },
     },
   },
@@ -678,7 +1155,8 @@ export const TOOLS = [...OMNIS_TOOLS, ...IP_TOOLS]
 // 도구 레지스트리와 맞춤 — MCP 에 새 도구를 더하면 lib/tools/registry.ts 에 한 줄(노출 · 위험 · 확인)을 더해야 tsc 가 지나간다.
 // 앱 AI · 질문 경로에 열지 말지는 그 한 줄이 정한다(한쪽에만 등록하는 일을 막는다)
 type McpToolName = (typeof TOOLS)[number]["name"]
-const REGISTERED: { readonly [K in McpToolName]: { readonly mcp: true } } = TOOL_POLICY
+const REGISTERED: { readonly [K in McpToolName]: { readonly mcp: true } } =
+  TOOL_POLICY
 void REGISTERED
 
 const IP_TOOL_NAMES = new Set<string>(IP_TOOLS.map((t) => t.name))
@@ -686,13 +1164,30 @@ const IP_TOOL_NAMES = new Set<string>(IP_TOOLS.map((t) => t.name))
 // ─── 도우미 ─────────────────────────────────────────────────────────
 
 const kst = (d: Date | null | undefined, withTime = false) =>
-  d ? d.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, withTime ? 16 : 10) : ""
+  d
+    ? d
+        .toLocaleString("sv-SE", { timeZone: "Asia/Seoul" })
+        .slice(0, withTime ? 16 : 10)
+    : ""
 const clampInt = (v: unknown, def: number, max: number) =>
-  Math.min(max, Math.max(1, Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : def))
+  Math.min(
+    max,
+    Math.max(
+      1,
+      Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : def
+    )
+  )
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "")
 
 const TASK_SELECT = {
-  id: true, name: true, slug: true, status: true, priority: true, deadline: true, createdAt: true, updatedAt: true,
+  id: true,
+  name: true,
+  slug: true,
+  status: true,
+  priority: true,
+  deadline: true,
+  createdAt: true,
+  updatedAt: true,
   project: { select: { name: true } },
   product: { select: { name: true } },
   instructor: { select: { name: true } },
@@ -700,8 +1195,17 @@ const TASK_SELECT = {
 } as const
 
 type TaskRow = {
-  id: string; name: string; slug: string; status: string; priority: string; deadline: Date | null; createdAt: Date; updatedAt: Date
-  project: { name: string } | null; product: { name: string } | null; instructor: { name: string }
+  id: string
+  name: string
+  slug: string
+  status: string
+  priority: string
+  deadline: Date | null
+  createdAt: Date
+  updatedAt: Date
+  project: { name: string } | null
+  product: { name: string } | null
+  instructor: { name: string }
   assignees: { user: { id: string; name: string } }[]
 }
 
@@ -710,10 +1214,13 @@ const isOverdue = (t: { status: string; deadline: Date | null }) =>
 
 function taskLine(t: TaskRow): string {
   const bits = [
-    `#${t.slug}`, t.name, TASK_STATUS_LABELS[t.status] ?? t.status,
+    `#${t.slug}`,
+    t.name,
+    TASK_STATUS_LABELS[t.status] ?? t.status,
     `담당 ${t.assignees.map((a) => a.user.name).join(",") || "미배정"}`,
   ]
-  if (t.deadline) bits.push(`마감 ${kst(t.deadline)}${isOverdue(t) ? " (지연)" : ""}`)
+  if (t.deadline)
+    bits.push(`마감 ${kst(t.deadline)}${isOverdue(t) ? " (지연)" : ""}`)
   if (t.project) bits.push(t.project.name)
   if (t.priority === "HIGH") bits.push("중요")
   return `- ${bits.join(" · ")}`
@@ -723,7 +1230,10 @@ function taskLine(t: TaskRow): string {
  * 업무 찾기 — ID → 슬러그 → 이름 일부(최근 것 우선).
  * 이름으로 여럿이 걸리고 정확히 같은 이름이 없으면 고르지 않고 후보를 돌려준다.
  */
-export async function findTask(ref: string, opts: { includeArchived?: boolean } = {}): Promise<{ id: string } | { error: string }> {
+export async function findTask(
+  ref: string,
+  opts: { includeArchived?: boolean } = {}
+): Promise<{ id: string } | { error: string }> {
   const key = ref.replace(/^#/, "").trim()
   if (!key) return { error: "task 가 비어 있습니다." }
   // 보관 풀기(update_task archived=false)는 보관된 업무도 찾아야 한다 — 화면 PATCH 는 보관 업무도 고친다
@@ -739,28 +1249,48 @@ export async function findTask(ref: string, opts: { includeArchived?: boolean } 
     orderBy: { createdAt: "desc" },
     take: 10,
   })
-  if (hits.length === 0) return { error: `'${key}' 에 맞는 업무가 없습니다. list_tasks 로 찾아보세요.` }
+  if (hits.length === 0)
+    return {
+      error: `'${key}' 에 맞는 업무가 없습니다. list_tasks 로 찾아보세요.`,
+    }
   const exact = hits.find((h) => h.name === key)
   if (hits.length === 1 || exact) return { id: (exact ?? hits[0]).id }
   return {
     error: [
       `'${key}' 에 맞는 업무가 ${hits.length}개입니다. 슬러그로 다시 부르세요.`,
-      ...hits.map((h) => `- #${h.slug} · ${h.name} · ${TASK_STATUS_LABELS[h.status] ?? h.status} · ${kst(h.createdAt)}`),
+      ...hits.map(
+        (h) =>
+          `- #${h.slug} · ${h.name} · ${TASK_STATUS_LABELS[h.status] ?? h.status} · ${kst(h.createdAt)}`
+      ),
     ].join("\n"),
   }
 }
 
 /** 이름 → 사용자. 정확히 같은 이름 우선, 없으면 「우창님」「혜린씨」 같은 호칭을 벗긴 부분 일치. */
-export async function findUsers(names: string[], keep: { id: string; name: string }[] = []): Promise<{ ids: string[]; missing: string[] }> {
+export async function findUsers(
+  names: string[],
+  keep: { id: string; name: string }[] = []
+): Promise<{ ids: string[]; missing: string[] }> {
   // keep — 이 업무에 이미 걸린 사람. 퇴사했어도 담당 목록을 통째로 다시 보낼 때 이름이 풀려야 한다
-  const active = await prisma.user.findMany({ where: ACTIVE_MEMBER_WHERE, select: { id: true, name: true } })
-  const users = [...active, ...keep.filter((k) => !active.some((a) => a.id === k.id))]
+  const active = await prisma.user.findMany({
+    where: ACTIVE_MEMBER_WHERE,
+    select: { id: true, name: true },
+  })
+  const users = [
+    ...active,
+    ...keep.filter((k) => !active.some((a) => a.id === k.id)),
+  ]
   const ids: string[] = []
   const missing: string[] = []
   for (const raw of names) {
     const n = raw.trim().replace(/(님|씨|박사님|대표님|과장님|상무님)$/g, "")
-    const hit = users.find((u) => u.name === raw.trim()) ?? users.find((u) => u.name === n) ?? users.find((u) => u.name.includes(n) && n.length >= 2)
-    if (hit) { if (!ids.includes(hit.id)) ids.push(hit.id) } else missing.push(raw)
+    const hit =
+      users.find((u) => u.name === raw.trim()) ??
+      users.find((u) => u.name === n) ??
+      users.find((u) => u.name.includes(n) && n.length >= 2)
+    if (hit) {
+      if (!ids.includes(hit.id)) ids.push(hit.id)
+    } else missing.push(raw)
   }
   return { ids, missing }
 }
@@ -771,24 +1301,40 @@ export async function findUsers(names: string[], keep: { id: string; name: strin
 // 그 라우트는 배포 파일이라 건드리지 않고(ai-pairing.md) 같은 저장 함수를 부른다.
 
 const MIME_BY_EXT: Record<string, string> = {
-  md: "text/markdown", txt: "text/plain", csv: "text/csv", json: "application/json", html: "text/html",
-  pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
+  md: "text/markdown",
+  txt: "text/plain",
+  csv: "text/csv",
+  json: "application/json",
+  html: "text/html",
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  hwp: "application/x-hwp", hwpx: "application/hwp+zip", zip: "application/zip",
+  hwp: "application/x-hwp",
+  hwpx: "application/hwp+zip",
+  zip: "application/zip",
 }
 
 /** 준 형식이 없거나 curl 기본값(octet-stream)이면 확장자로 정한다. 텍스트는 한글이 깨지지 않게 charset 을 붙인다. */
 function mimeFor(name: string, given: string): string {
   const g = given.trim()
   if (g && g !== "application/octet-stream") return g
-  const type = MIME_BY_EXT[name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream"
+  const type =
+    MIME_BY_EXT[name.split(".").pop()?.toLowerCase() ?? ""] ??
+    "application/octet-stream"
   return type.startsWith("text/") ? `${type}; charset=utf-8` : type
 }
 
 export async function saveUpload(input: {
-  name: string; body: Buffer; mimeType: string; taskId: string | null
+  name: string
+  body: Buffer
+  mimeType: string
+  taskId: string | null
   /** 단톡방 · 1:1 · 나와의 대화에 붙일 파일 — 올린 사람 id. 붙기 전에는 그 사람만 본다(lib/file-access.ts) */
   privateToUserId?: string | null
 }): Promise<{ id: string; name: string; size: number } | { error: string }> {
@@ -796,7 +1342,9 @@ export async function saveUpload(input: {
   if (!name) return { error: "name 이 비어 있습니다." }
   if (input.body.length === 0) return { error: "빈 파일입니다." }
   if (input.body.length > MAX_UPLOAD_BYTES) {
-    return { error: `파일이 너무 큽니다. ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 이하만 올릴 수 있습니다.` }
+    return {
+      error: `파일이 너무 큽니다. ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 이하만 올릴 수 있습니다.`,
+    }
   }
   const id = randomUUID()
   const mimeType = mimeFor(name, input.mimeType)
@@ -804,8 +1352,13 @@ export async function saveUpload(input: {
   return prisma.file.create({
     // 참여자만 보는 방의 파일은 업무에 걸지 않는다(업무 첨부는 공개 자리다)
     data: {
-      id, name, path: `/api/files/${id}/raw`, size: input.body.length, mimeType,
-      taskId: input.privateToUserId ? null : input.taskId, privateToUserId: input.privateToUserId ?? null,
+      id,
+      name,
+      path: `/api/files/${id}/raw`,
+      size: input.body.length,
+      mimeType,
+      taskId: input.privateToUserId ? null : input.taskId,
+      privateToUserId: input.privateToUserId ?? null,
     },
     select: { id: true, name: true, size: true },
   })
@@ -822,15 +1375,25 @@ type LinkPurpose = "upload" | "download"
 function linkSignature(purpose: LinkPurpose, payload: string): string {
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
   if (!secret) throw new Error("AUTH_SECRET 이 설정되지 않았습니다")
-  return createHmac("sha256", secret).update(`mcp-${purpose}.${payload}`).digest("base64url")
+  return createHmac("sha256", secret)
+    .update(`mcp-${purpose}.${payload}`)
+    .digest("base64url")
 }
 
-function signLink(purpose: LinkPurpose, data: Record<string, string | null>): string {
-  const payload = Buffer.from(JSON.stringify({ ...data, e: Math.floor(Date.now() / 1000) + LINK_TTL_SEC })).toString("base64url")
+function signLink(
+  purpose: LinkPurpose,
+  data: Record<string, string | null>
+): string {
+  const payload = Buffer.from(
+    JSON.stringify({ ...data, e: Math.floor(Date.now() / 1000) + LINK_TTL_SEC })
+  ).toString("base64url")
   return `${payload}.${linkSignature(purpose, payload)}`
 }
 
-async function verifyLink(purpose: LinkPurpose, token: string): Promise<Record<string, unknown> | null> {
+async function verifyLink(
+  purpose: LinkPurpose,
+  token: string
+): Promise<Record<string, unknown> | null> {
   const [payload, sig, extra] = token.split(".")
   if (!payload || !sig || extra !== undefined) return null
   const a = Buffer.from(sig)
@@ -842,40 +1405,94 @@ async function verifyLink(purpose: LinkPurpose, token: string): Promise<Record<s
   } catch {
     return null
   }
-  if (typeof p.u !== "string" || typeof p.e !== "number" || p.e * 1000 < Date.now()) return null
+  if (
+    typeof p.u !== "string" ||
+    typeof p.e !== "number" ||
+    p.e * 1000 < Date.now()
+  )
+    return null
   // 링크를 만든 뒤 계정이 닫혔으면 막는다 — resolveCaller 와 같은 기준.
-  const user = await prisma.user.findUnique({ where: { id: p.u }, select: { isActive: true } })
+  const user = await prisma.user.findUnique({
+    where: { id: p.u },
+    select: { isActive: true },
+  })
   if (!user?.isActive) return null
   return p
 }
 
 /** isPrivate — 단톡방 · 1:1 · 나와의 대화에 붙일 파일(올린 사람만 보다가 붙은 뒤 그 방 참여자만) */
-export const signUploadLink = (userId: string, taskId: string | null, isPrivate = false) =>
-  signLink("upload", { u: userId, t: isPrivate ? null : taskId, p: isPrivate ? "1" : null })
+export const signUploadLink = (
+  userId: string,
+  taskId: string | null,
+  isPrivate = false
+) =>
+  signLink("upload", {
+    u: userId,
+    t: isPrivate ? null : taskId,
+    p: isPrivate ? "1" : null,
+  })
 
-export async function verifyUploadLink(token: string): Promise<{ userId: string; taskId: string | null; isPrivate: boolean } | null> {
+export async function verifyUploadLink(
+  token: string
+): Promise<{
+  userId: string
+  taskId: string | null
+  isPrivate: boolean
+} | null> {
   const p = await verifyLink("upload", token)
   if (!p) return null
-  return { userId: String(p.u), taskId: typeof p.t === "string" ? p.t : null, isPrivate: p.p === "1" }
+  return {
+    userId: String(p.u),
+    taskId: typeof p.t === "string" ? p.t : null,
+    isPrivate: p.p === "1",
+  }
 }
 
-export const signDownloadLink = (userId: string, fileId: string) => signLink("download", { u: userId, f: fileId })
+export const signDownloadLink = (userId: string, fileId: string) =>
+  signLink("download", { u: userId, f: fileId })
 
-export async function verifyDownloadLink(token: string): Promise<{ fileId: string; userId: string } | null> {
+export async function verifyDownloadLink(
+  token: string
+): Promise<{ fileId: string; userId: string } | null> {
   const p = await verifyLink("download", token)
-  return p && typeof p.f === "string" && typeof p.u === "string" ? { fileId: p.f, userId: p.u } : null
+  return p && typeof p.f === "string" && typeof p.u === "string"
+    ? { fileId: p.f, userId: p.u }
+    : null
 }
 
-type FileRow = { id: string; name: string; path: string; mimeType: string; size: number; task: { slug: string } | null }
+type FileRow = {
+  id: string
+  name: string
+  path: string
+  mimeType: string
+  size: number
+  task: { slug: string } | null
+}
 
 /** 파일 찾기 — ID, 없으면 업무 첨부(업무에 직접 붙었거나 그 스레드 메시지에 붙은 것) 중 이름 일부. 여럿이면 고르지 않는다. */
-async function findFile(args: Record<string, unknown>, userId: string): Promise<FileRow | { error: string }> {
-  const select = { id: true, name: true, path: true, mimeType: true, size: true, task: { select: { slug: true } } } as const
+async function findFile(
+  args: Record<string, unknown>,
+  userId: string
+): Promise<FileRow | { error: string }> {
+  const select = {
+    id: true,
+    name: true,
+    path: true,
+    mimeType: true,
+    size: true,
+    task: { select: { slug: true } },
+  } as const
   const id = str(args.file)
   if (id) {
     // 참여자만 보는 방의 파일은 그 방 사람에게만(lib/file-access.ts) — 못 보는 파일은 없는 파일과 같게
-    const f = (await findVisibleFile(id, userId)) ? await prisma.file.findUnique({ where: { id }, select }) : null
-    return f ?? { error: `'${id}' 파일이 없습니다. get_task 의 첨부 목록에서 파일 ID 를 확인하세요.` }
+    const f = (await findVisibleFile(id, userId))
+      ? await prisma.file.findUnique({ where: { id }, select })
+      : null
+    return (
+      f ?? {
+        error: `'${id}' 파일이 없습니다. get_task 의 첨부 목록에서 파일 ID 를 확인하세요.`,
+      }
+    )
   }
   if (!str(args.task)) return { error: "file(파일 ID) 또는 task 를 주세요." }
   const found = await findTask(str(args.task))
@@ -887,23 +1504,46 @@ async function findFile(args: Record<string, unknown>, userId: string): Promise<
       ...PUBLIC_FILE_WHERE,
       ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
     },
-    select, orderBy: { createdAt: "desc" }, take: 20,
+    select,
+    orderBy: { createdAt: "desc" },
+    take: 20,
   })
-  if (hits.length === 0) return { error: `업무에 ${q ? `'${q}' 에 맞는 ` : ""}첨부가 없습니다.` }
+  if (hits.length === 0)
+    return { error: `업무에 ${q ? `'${q}' 에 맞는 ` : ""}첨부가 없습니다.` }
   if (hits.length === 1) return hits[0]
-  return { error: [`첨부가 ${hits.length}개 걸립니다. file 에 파일 ID 를 주세요.`, ...hits.map((h) => `- ${h.name} · ${h.id}`)].join("\n") }
+  return {
+    error: [
+      `첨부가 ${hits.length}개 걸립니다. file 에 파일 ID 를 주세요.`,
+      ...hits.map((h) => `- ${h.name} · ${h.id}`),
+    ].join("\n"),
+  }
 }
 
-function fileKind(name: string, mimeType: string): "text" | "sheet" | "image" | "other" {
+function fileKind(
+  name: string,
+  mimeType: string
+): "text" | "sheet" | "image" | "other" {
   const ext = name.split(".").pop()?.toLowerCase() ?? ""
   const m = mimeType.split(";")[0].trim()
   if (ext === "xlsx" || ext === "xls") return "sheet"
   if (/^image\/(png|jpeg|gif|webp)$/.test(m)) return "image"
-  if (m.startsWith("text/") || m === "application/json" || ["md", "txt", "csv", "tsv", "json", "log", "xml", "yaml", "yml"].includes(ext)) return "text"
+  if (
+    m.startsWith("text/") ||
+    m === "application/json" ||
+    ["md", "txt", "csv", "tsv", "json", "log", "xml", "yaml", "yml"].includes(
+      ext
+    )
+  )
+    return "text"
   return "other"
 }
 
-async function readObject(file: { id: string; name: string; path: string; size: number }): Promise<Buffer> {
+async function readObject(file: {
+  id: string
+  name: string
+  path: string
+  size: number
+}): Promise<Buffer> {
   const res = await openFileObject(file)
   const chunks: Buffer[] = []
   for await (const chunk of res.body) chunks.push(Buffer.from(chunk))
@@ -913,13 +1553,18 @@ async function readObject(file: { id: string; name: string; path: string; size: 
 /** 모델 컨텍스트를 한 파일이 다 먹지 않게 자른다. */
 const TEXT_LIMIT = 100_000
 const clip = (s: string) =>
-  s.length > TEXT_LIMIT ? `${s.slice(0, TEXT_LIMIT)}\n\n… (${s.length.toLocaleString()}자 중 앞 ${TEXT_LIMIT.toLocaleString()}자)` : s
+  s.length > TEXT_LIMIT
+    ? `${s.slice(0, TEXT_LIMIT)}\n\n… (${s.length.toLocaleString()}자 중 앞 ${TEXT_LIMIT.toLocaleString()}자)`
+    : s
 
 // ─── 실행 ───────────────────────────────────────────────────────────
 
 /** 방 한 줄 — 「이름 (종류) · 참여자 … · ID …」 */
 function roomLine(r: PickableRoom): string {
-  const people = r.kind === "COMPANY" ? "구성원 전체" : r.members.map((m) => m.name).join(", ") || "참여자 없음"
+  const people =
+    r.kind === "COMPANY"
+      ? "구성원 전체"
+      : r.members.map((m) => m.name).join(", ") || "참여자 없음"
   return `${r.title} (${ROOM_KIND_LABEL[r.kind] ?? r.kind}) · 참여자 ${people} · ID ${r.id}`
 }
 
@@ -932,35 +1577,69 @@ function kstBound(raw: string, endOfDay: boolean): Date | null {
 }
 
 /** list_chat view=room — 방을 고르고(읽을 수 있는 방 안에서만) 그 방 글을 읽는다 */
-async function listRoomChat(args: Record<string, unknown>, caller: Caller): Promise<ToolResult> {
+async function listRoomChat(
+  args: Record<string, unknown>,
+  caller: Caller
+): Promise<ToolResult> {
   const ref = str(args.room)
-  const names = Array.isArray(args.members) ? args.members.map(String).map((x) => x.trim()).filter(Boolean) : []
-  if (!ref && names.length === 0) return { error: "view=room 에는 room(방 이름 일부 · ID) 또는 members(참여자 이름 목록)가 필요합니다. list_rooms 로 방을 찾을 수 있습니다." }
+  const names = Array.isArray(args.members)
+    ? args.members
+        .map(String)
+        .map((x) => x.trim())
+        .filter(Boolean)
+    : []
+  if (!ref && names.length === 0)
+    return {
+      error:
+        "view=room 에는 room(방 이름 일부 · ID) 또는 members(참여자 이름 목록)가 필요합니다. list_rooms 로 방을 찾을 수 있습니다.",
+    }
   const rooms = await readableRooms(caller.userId)
   // 고르기는 읽을 수 있는 방 안에서만 — 남의 방은 ID 를 알아도 「없음」 과 같게 답한다(이름이 새지 않게)
-  const hits = ref ? pickByRef(rooms, ref) : pickByMembers(rooms, names, caller.userId)
+  const hits = ref
+    ? pickByRef(rooms, ref)
+    : pickByMembers(rooms, names, caller.userId)
   const asked = ref ? `「${ref}」` : `참여자 ${names.join(", ")}`
-  if (hits.length === 0) return { error: `${asked} 에 맞는 방이 없거나 볼 수 없는 방입니다. list_rooms 로 내가 든 방을 확인하세요.` }
+  if (hits.length === 0)
+    return {
+      error: `${asked} 에 맞는 방이 없거나 볼 수 없는 방입니다. list_rooms 로 내가 든 방을 확인하세요.`,
+    }
   if (hits.length > 1) {
-    return { error: [`${asked} 에 맞는 방이 ${hits.length}개입니다. room 에 방 ID 를 주세요.`, ...hits.slice(0, 10).map(roomLine)].join("\n") }
+    return {
+      error: [
+        `${asked} 에 맞는 방이 ${hits.length}개입니다. room 에 방 ID 를 주세요.`,
+        ...hits.slice(0, 10).map(roomLine),
+      ].join("\n"),
+    }
   }
   const room = hits[0]
   const since = str(args.since) ? kstBound(str(args.since), false) : undefined
   const until = str(args.until) ? kstBound(str(args.until), true) : undefined
-  if (since === null || until === null) return { error: "since · until 은 YYYY-MM-DD 또는 ISO 시각입니다." }
+  if (since === null || until === null)
+    return { error: "since · until 은 YYYY-MM-DD 또는 ISO 시각입니다." }
   const query = str(args.query)
-  const r = await readRoomFeed({ currentUserId: caller.userId, roomId: room.id, since, until, query: query || undefined, take: clampInt(args.limit, 40, 200) })
+  const r = await readRoomFeed({
+    currentUserId: caller.userId,
+    roomId: room.id,
+    since,
+    until,
+    query: query || undefined,
+    take: clampInt(args.limit, 40, 200),
+  })
   if ("error" in r) return { error: r.error }
   const head = roomLine(room)
-  if (r.messages.length === 0) return { text: `${head}\n글이 없습니다${query || since || until ? " (조건에 맞는 글)" : ""}.` }
+  if (r.messages.length === 0)
+    return {
+      text: `${head}\n글이 없습니다${query || since || until ? " (조건에 맞는 글)" : ""}.`,
+    }
   return {
     text: [
       `${head}`,
       `글 ${r.messages.length}건 (오래된 것부터)`,
-      ...r.messages.map((m) =>
-        `[${kst(m.createdAt, true)} · 글 ${m.id}] ${m.author}${m.taskSlug ? ` · #${m.taskSlug}` : ""}: ` +
-        `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
-        `${m.files.length ? ` [첨부: ${m.files.map((f) => `${f.name} (${f.id})`).join(", ")}]` : m.missing ? ` ${missingAttachmentToolNote(m.missing)}` : ""}`
+      ...r.messages.map(
+        (m) =>
+          `[${kst(m.createdAt, true)} · 글 ${m.id}] ${m.author}${m.taskSlug ? ` · #${m.taskSlug}` : ""}: ` +
+          `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
+          `${m.files.length ? ` [첨부: ${m.files.map((f) => `${f.name} (${f.id})`).join(", ")}]` : m.missing ? ` ${missingAttachmentToolNote(m.missing)}` : ""}`
       ),
     ].join("\n"),
   }
@@ -968,22 +1647,45 @@ async function listRoomChat(args: Record<string, unknown>, caller: Caller): Prom
 
 /** 여러 방에 맞았을 때 · 없을 때의 답 — 고르지 않고 후보를 보인다 */
 function roomPickError(ref: string, target: PostTarget): ToolResult | null {
-  if (target.kind === "none") return { error: `「${ref}」 에 맞는 방이 없거나 내가 참여자가 아닌 방입니다. list_rooms 로 내가 든 방을 확인하세요.` }
+  if (target.kind === "none")
+    return {
+      error: `「${ref}」 에 맞는 방이 없거나 내가 참여자가 아닌 방입니다. list_rooms 로 내가 든 방을 확인하세요.`,
+    }
   if (target.kind === "many") {
-    return { error: [`「${ref}」 에 맞는 방이 ${target.rooms.length}개라 보내지 않았습니다. room 에 방 ID 를 주세요.`, ...target.rooms.slice(0, 10).map(roomLine)].join("\n") }
+    return {
+      error: [
+        `「${ref}」 에 맞는 방이 ${target.rooms.length}개라 보내지 않았습니다. room 에 방 ID 를 주세요.`,
+        ...target.rooms.slice(0, 10).map(roomLine),
+      ].join("\n"),
+    }
   }
-  if (target.kind === "omnis") return { error: `「${target.room.title}」 은 옴니스 1:1 방입니다. 글 보내기 대신 ask_omnis 로 물으세요.` }
+  if (target.kind === "omnis")
+    return {
+      error: `「${target.room.title}」 은 옴니스 1:1 방입니다. 글 보내기 대신 ask_omnis 로 물으세요.`,
+    }
   return null
 }
 
 /** upload_file · create_upload_link 의 room — 전사방이면 공개 파일, 그 밖의 방이면 나만 보는 파일 */
-async function fileScopeFor(ref: string, caller: Caller): Promise<{ isPrivate: boolean; label: string } | ToolResult> {
+async function fileScopeFor(
+  ref: string,
+  caller: Caller
+): Promise<{ isPrivate: boolean; label: string } | ToolResult> {
   if (!ref) return { isPrivate: false, label: "" }
-  const target = pickPostTarget(await readableRooms(caller.userId), ref, caller.userId)
+  const target = pickPostTarget(
+    await readableRooms(caller.userId),
+    ref,
+    caller.userId
+  )
   const bad = roomPickError(ref, target)
   if (bad) return bad
   if (target.kind === "company") return { isPrivate: false, label: "" }
-  const title = target.kind === "self" ? SELF_ROOM_TITLE : target.kind === "room" ? target.room.title : ""
+  const title =
+    target.kind === "self"
+      ? SELF_ROOM_TITLE
+      : target.kind === "room"
+        ? target.room.title
+        : ""
   return { isPrivate: true, label: title }
 }
 
@@ -991,19 +1693,47 @@ async function fileScopeFor(ref: string, caller: Caller): Promise<{ isPrivate: b
  * 단톡방 · 1:1 · 나와의 대화에 글 — 화면 라우트(app/api/chat/messages POST 의 DM · GROUP 갈래)와 같은 함수를 지난다:
  * 참여자 확인(loadPeopleRoom) → 첨부 확인 · 저장 · 방 목록 시각(postPeopleMessage) → 채팅 푸시 · 멘션 알림 → @옴니스 호출.
  */
-async function postToPeopleRoom(roomId: string, content: string, fileIds: string[], caller: Caller, replyToId: string | null = null): Promise<ToolResult> {
+async function postToPeopleRoom(
+  roomId: string,
+  content: string,
+  fileIds: string[],
+  caller: Caller,
+  replyToId: string | null = null
+): Promise<ToolResult> {
   // 참여자가 아니면 없는 방과 같은 답 — 방이 있다는 것도 새지 않게
   const room = await loadPeopleRoom(roomId, caller.userId)
-  if (!room) return { error: "방을 찾을 수 없거나 내가 참여자가 아닌 방입니다. list_rooms 로 확인하세요." }
-  if (content.length > PEOPLE_MESSAGE_MAX) return { error: `단톡방 · 1:1 글은 ${PEOPLE_MESSAGE_MAX}자까지입니다 (지금 ${content.length}자).` }
+  if (!room)
+    return {
+      error:
+        "방을 찾을 수 없거나 내가 참여자가 아닌 방입니다. list_rooms 로 확인하세요.",
+    }
+  if (content.length > PEOPLE_MESSAGE_MAX)
+    return {
+      error: `단톡방 · 1:1 글은 ${PEOPLE_MESSAGE_MAX}자까지입니다 (지금 ${content.length}자).`,
+    }
   // 답장 — 같은 방의 지우지 않은 글만(postPeopleMessage 도 같은 방만 받는다 — 여기서는 못 찾으면 조용히 빼지 않고 알린다)
-  if (replyToId && !(await prisma.chatMessage.findFirst({ where: { id: replyToId, roomId: room.id, deletedAt: null }, select: { id: true } }))) {
-    return { error: "reply_to 글을 이 방에서 찾지 못했습니다 — list_chat(view=room) 의 글 ID 를 넣으세요." }
+  if (
+    replyToId &&
+    !(await prisma.chatMessage.findFirst({
+      where: { id: replyToId, roomId: room.id, deletedAt: null },
+      select: { id: true },
+    }))
+  ) {
+    return {
+      error:
+        "reply_to 글을 이 방에서 찾지 못했습니다 — list_chat(view=room) 의 글 ID 를 넣으세요.",
+    }
   }
-  const posted = await postPeopleMessage({ id: caller.userId, name: caller.name }, room, { content, replyToId, fileIds: fileIds.length ? fileIds : undefined })
+  const posted = await postPeopleMessage(
+    { id: caller.userId, name: caller.name },
+    room,
+    { content, replyToId, fileIds: fileIds.length ? fileIds : undefined }
+  )
   if (!posted.ok) {
     if (posted.status === 404 && fileIds.length) {
-      return { error: `${posted.error} — 단톡방 · 1:1 · 나와의 대화에 붙일 파일은 upload_file · create_upload_link 에 같은 room 을 주고 올려야 합니다.` }
+      return {
+        error: `${posted.error} — 단톡방 · 1:1 · 나와의 대화에 붙일 파일은 upload_file · create_upload_link 에 같은 room 을 주고 올려야 합니다.`,
+      }
     }
     return { error: posted.error }
   }
@@ -1017,21 +1747,38 @@ async function postToPeopleRoom(roomId: string, content: string, fileIds: string
       requester: { id: caller.userId, name: caller.name },
     })
   })
-  const where = room.kind === "DM" && room.members.length === 1 ? SELF_ROOM_TITLE : room.title
-  const out = [`「${where}」 에 올렸습니다 (${kst(message.createdAt, true)} · ${caller.name}) · 방 ID ${room.id} · 글 ID ${message.id}.`]
-  if (message.files.length) out.push(`첨부 ${message.files.length}: ${message.files.map((f) => f.name).join(", ")}`)
+  const where =
+    room.kind === "DM" && room.members.length === 1
+      ? SELF_ROOM_TITLE
+      : room.title
+  const out = [
+    `「${where}」 에 올렸습니다 (${kst(message.createdAt, true)} · ${caller.name}) · 방 ID ${room.id} · 글 ID ${message.id}.`,
+  ]
+  if (message.files.length)
+    out.push(
+      `첨부 ${message.files.length}: ${message.files.map((f) => f.name).join(", ")}`
+    )
   return { text: out.join("\n") }
 }
 
 export async function runTool(
-  name: string, args: Record<string, unknown>, caller: Caller, ctx: { base: string } = { base: "" }
+  name: string,
+  args: Record<string, unknown>,
+  caller: Caller,
+  ctx: { base: string } = { base: "" }
 ): Promise<ToolResult> {
   if (IP_TOOL_NAMES.has(name)) {
     if (!caller.ip) {
-      return { error: "지식재산권 도구는 구성원에게만 열립니다. 이 계정은 지식재산권 구성원이 아닙니다 — 담당자에게 권한을 요청하세요." }
+      return {
+        error:
+          "지식재산권 도구는 구성원에게만 열립니다. 이 계정은 지식재산권 구성원이 아닙니다 — 담당자에게 권한을 요청하세요.",
+      }
     }
     return runIpTool(name, args, {
-      userId: caller.ip.userId, email: caller.ip.email, displayName: caller.ip.displayName, role: caller.ip.role,
+      userId: caller.ip.userId,
+      email: caller.ip.email,
+      displayName: caller.ip.displayName,
+      role: caller.ip.role,
     })
   }
 
@@ -1045,9 +1792,12 @@ export async function runTool(
     case "ask_omnis": {
       const question = str(args.question)
       if (question.length < 2) return { error: "질문을 2자 이상 주세요." }
-      if (question.length > 500) return { error: "질문이 너무 깁니다 (500자 이내)." }
+      if (question.length > 500)
+        return { error: "질문이 너무 깁니다 (500자 이내)." }
       const r = await askOmnis(question, caller.userId)
-      const src = r.sources.map((s, i) => `[${i + 1}] ${s.sourceLabel} · ${s.title} (${s.similarity}%)`)
+      const src = r.sources.map(
+        (s, i) => `[${i + 1}] ${s.sourceLabel} · ${s.title} (${s.similarity}%)`
+      )
       return { text: [r.answer, "", "근거:", ...src].join("\n") }
     }
 
@@ -1055,43 +1805,90 @@ export async function runTool(
       const query = str(args.query)
       if (!query) return { error: "query 가 비어 있습니다." }
       const limit = clampInt(args.limit, 8, 30)
-      const asked = Array.isArray(args.sources) ? args.sources.filter((s): s is string => typeof s === "string") : undefined
-      const embedSources = asked?.filter((s): s is EmbeddingSource => s in SOURCE_LABEL)
+      const asked = Array.isArray(args.sources)
+        ? args.sources.filter((s): s is string => typeof s === "string")
+        : undefined
+      const embedSources = asked?.filter(
+        (s): s is EmbeddingSource => s in SOURCE_LABEL
+      )
       // sources 를 주면 그 안에 든 것만 — 방 글만 달라면 색인 검색(Gemini 호출)을 하지 않는다
       const wantEmbedded = !asked || (embedSources?.length ?? 0) > 0
       const wantRooms = !asked || asked.includes("ROOM_MESSAGE")
       const [embedded, roomHits] = await Promise.all([
         wantEmbedded
-          ? retrieveContext(query, { limit, sources: embedSources, minSimilarity: 0.25, userId: caller.userId })
+          ? retrieveContext(query, {
+              limit,
+              sources: embedSources,
+              minSimilarity: 0.25,
+              userId: caller.userId,
+            })
               .then(withFollowUps)
-              .then((chunks) => ({ chunks, error: null as unknown }), (error: unknown) => ({ chunks: [], error }))
+              .then(
+                (chunks) => ({ chunks, error: null as unknown }),
+                (error: unknown) => ({ chunks: [], error })
+              )
           : Promise.resolve({ chunks: [], error: null as unknown }),
-        wantRooms ? searchRoomMessages({ currentUserId: caller.userId, query, take: roomLimit(limit) }) : Promise.resolve([]),
+        wantRooms
+          ? searchRoomMessages({
+              currentUserId: caller.userId,
+              query,
+              take: roomLimit(limit),
+            })
+          : Promise.resolve([]),
       ])
       // 의미 검색(임베딩 호출)이 실패해도 방 글이 찾아졌으면 그것만이라도 돌려준다. 방 글도 없으면 도구 오류로 —
       // 예전에는 던져서 MCP 응답이 500 이었다
-      const embedError = embedded.error instanceof Error ? embedded.error.message.slice(0, 200) : embedded.error ? String(embedded.error) : ""
-      if (embedded.error && roomHits.length === 0) return { error: `의미 검색을 하지 못했습니다: ${embedError}` }
-      if (embedded.error) console.warn("[search_knowledge] 의미 검색 실패 — 방 글만 돌려준다:", embedError)
+      const embedError =
+        embedded.error instanceof Error
+          ? embedded.error.message.slice(0, 200)
+          : embedded.error
+            ? String(embedded.error)
+            : ""
+      if (embedded.error && roomHits.length === 0)
+        return { error: `의미 검색을 하지 못했습니다: ${embedError}` }
+      if (embedded.error)
+        console.warn(
+          "[search_knowledge] 의미 검색 실패 — 방 글만 돌려준다:",
+          embedError
+        )
       const merged = mergeResults(embedded.chunks, roomHits, limit)
       if (merged.length === 0) return { text: "비슷한 조각이 없습니다." }
       // 채팅 글 결과에는 원문 자리 · 바로가기 · 첨부(파일 ID) 또는 「첨부 없음」 을 붙인다 — 파일명만 보고 첨부가 있다고 말하지 않게
-      const messageIds = merged.map((m) => (m.kind === "room" ? m.item.messageId : m.item.source === "CHAT_MESSAGE" ? m.item.sourceId : null)).filter((x): x is string => !!x)
-      const facts = new Map((await sourceMessageFacts(messageIds, caller.userId).catch(() => [])).map((f) => [f.id, f]))
+      const messageIds = merged
+        .map((m) =>
+          m.kind === "room"
+            ? m.item.messageId
+            : m.item.source === "CHAT_MESSAGE"
+              ? m.item.sourceId
+              : null
+        )
+        .filter((x): x is string => !!x)
+      const facts = new Map(
+        (
+          await sourceMessageFacts(messageIds, caller.userId).catch(() => [])
+        ).map((f) => [f.id, f])
+      )
       const factLine = (id: string | null) => {
         const f = id ? facts.get(id) : undefined
         return f ? `\n${sourceFactToolLine(f)}` : ""
       }
       return {
-        text: (embedded.error ? "(의미 검색을 하지 못해 방 글만 보입니다)\n\n" : "") + merged
-          .map((m, i) =>
-            m.kind === "room"
-              ? formatRoomHit(i + 1, m.item, ROOM_KIND_LABEL) + factLine(m.item.messageId)
-              : // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
-                `[${i + 1}] ${SOURCE_LABEL[m.item.source]} · ${m.item.title} (${Math.round(m.item.similarity * 100)}%)\n${m.item.content.slice(0, m.item.source === "CHAT_MESSAGE" || m.item.source === "PHOTO" ? 1500 : 600)}` +
-                factLine(m.item.source === "CHAT_MESSAGE" ? m.item.sourceId : null),
-          )
-          .join("\n\n"),
+        text:
+          (embedded.error
+            ? "(의미 검색을 하지 못해 방 글만 보입니다)\n\n"
+            : "") +
+          merged
+            .map((m, i) =>
+              m.kind === "room"
+                ? formatRoomHit(i + 1, m.item, ROOM_KIND_LABEL) +
+                  factLine(m.item.messageId)
+                : // 채팅 조각은 「이후 대화」가 붙어 길다 — 600 자로 자르면 정정이 잘려 나간다
+                  `[${i + 1}] ${SOURCE_LABEL[m.item.source]} · ${m.item.title} (${Math.round(m.item.similarity * 100)}%)\n${m.item.content.slice(0, m.item.source === "CHAT_MESSAGE" || m.item.source === "PHOTO" ? 1500 : 600)}` +
+                  factLine(
+                    m.item.source === "CHAT_MESSAGE" ? m.item.sourceId : null
+                  )
+            )
+            .join("\n\n"),
       }
     }
 
@@ -1100,7 +1897,10 @@ export async function runTool(
       const unassigned = args.unassigned === true
       const built = listTasksWhere(
         {
-          status: status && (TASK_STATUS as readonly string[]).includes(status) ? status : undefined,
+          status:
+            status && (TASK_STATUS as readonly string[]).includes(status)
+              ? status
+              : undefined,
           mine: args.mine === true,
           assignee: str(args.assignee) || undefined,
           project: str(args.project) || undefined,
@@ -1108,7 +1908,7 @@ export async function runTool(
           overdue: args.overdue === true,
           unassigned,
         },
-        caller.userId,
+        caller.userId
       )
       if ("error" in built) return built
       const { where } = built
@@ -1118,13 +1918,23 @@ export async function runTool(
           where,
           select: TASK_SELECT,
           // 담당 미배정은 급한 것부터 — 묻힌 업무를 찾는 조회다
-          orderBy: unassigned ? [{ deadline: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }] : { createdAt: "desc" },
+          orderBy: unassigned
+            ? [
+                { deadline: { sort: "asc", nulls: "last" } },
+                { createdAt: "desc" },
+              ]
+            : { createdAt: "desc" },
           take: limit,
         }),
         prisma.task.count({ where }),
       ])
       if (rows.length === 0) return { text: "조건에 맞는 업무가 없습니다." }
-      return { text: [`업무 ${total}건${total > rows.length ? ` 중 ${rows.length}건` : ""}`, ...rows.map(taskLine)].join("\n") }
+      return {
+        text: [
+          `업무 ${total}건${total > rows.length ? ` 중 ${rows.length}건` : ""}`,
+          ...rows.map(taskLine),
+        ].join("\n"),
+      }
     }
 
     case "get_task": {
@@ -1133,43 +1943,82 @@ export async function runTool(
       const t = await prisma.task.findUnique({
         where: { id: found.id },
         select: {
-          ...TASK_SELECT, background: true, expectedResult: true, workStart: true, workEnd: true,
-          checklists: { select: { name: true, done: true }, orderBy: { createdAt: "asc" } },
-          files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true, size: true } },
+          ...TASK_SELECT,
+          background: true,
+          expectedResult: true,
+          workStart: true,
+          workEnd: true,
+          checklists: {
+            select: { name: true, done: true },
+            orderBy: { createdAt: "asc" },
+          },
+          files: {
+            where: visibleFileWhere(caller.userId),
+            select: { id: true, name: true, size: true },
+          },
         },
       })
       if (!t) return { error: "업무가 없습니다." }
       const n = clampInt(args.messages, 20, 100)
       const msgs = await prisma.chatMessage.findMany({
         // 화면과 같다 — 참여자 전용 방의 글은 그 방 사람에게만
-        where: { taskId: t.id, kind: "NORMAL", ...NOT_EXTERNAL_WHERE, ...visibleMessageWhere(caller.userId) },
+        where: {
+          taskId: t.id,
+          kind: "NORMAL",
+          ...NOT_EXTERNAL_WHERE,
+          ...visibleMessageWhere(caller.userId),
+        },
         select: {
-          createdAt: true, content: true, sourceId: true, author: { select: { name: true } },
-          files: { where: visibleFileWhere(caller.userId), select: { id: true, name: true } },
+          createdAt: true,
+          content: true,
+          sourceId: true,
+          author: { select: { name: true } },
+          files: {
+            where: visibleFileWhere(caller.userId),
+            select: { id: true, name: true },
+          },
           _count: { select: { files: true } },
         },
-        orderBy: { createdAt: "desc" }, take: n,
+        orderBy: { createdAt: "desc" },
+        take: n,
       })
       // 파일 ID 를 함께 보여준다 — read_file 이 ID 로 읽는다.
       const fileRef = (f: { id: string; name: string }) => `${f.name} (${f.id})`
       const lines = [
         `# ${t.name}  (#${t.slug})`,
         `상태 ${TASK_STATUS_LABELS[t.status] ?? t.status} · 우선순위 ${PRIORITY_LABELS[t.priority] ?? t.priority}` +
-          (t.deadline ? ` · 마감 ${kst(t.deadline)}${isOverdue(t) ? " (지연)" : ""}` : "") +
+          (t.deadline
+            ? ` · 마감 ${kst(t.deadline)}${isOverdue(t) ? " (지연)" : ""}`
+            : "") +
           ` · 만든 날 ${kst(t.createdAt)}`,
         `지시 ${t.instructor.name} · 담당 ${t.assignees.map((a) => a.user.name).join(", ") || "미배정"}` +
-          (t.project ? ` · 프로젝트 ${t.project.name}` : "") + (t.product ? ` · 제품 ${t.product.name}` : ""),
+          (t.project ? ` · 프로젝트 ${t.project.name}` : "") +
+          (t.product ? ` · 제품 ${t.product.name}` : ""),
       ]
       if (t.background) lines.push("", `배경: ${t.background}`)
       if (t.expectedResult) lines.push(`기대결과: ${t.expectedResult}`)
-      if (t.checklists.length) lines.push("", "체크리스트:", ...t.checklists.map((c, i) => `${i + 1}. [${c.done ? "x" : " "}] ${c.name}`))
-      if (t.files.length) lines.push("", `첨부 ${t.files.length}: ${t.files.map(fileRef).join(", ")}`)
+      if (t.checklists.length)
+        lines.push(
+          "",
+          "체크리스트:",
+          ...t.checklists.map(
+            (c, i) => `${i + 1}. [${c.done ? "x" : " "}] ${c.name}`
+          )
+        )
+      if (t.files.length)
+        lines.push(
+          "",
+          `첨부 ${t.files.length}: ${t.files.map(fileRef).join(", ")}`
+        )
       if (msgs.length) {
         lines.push("", `대화 (최근 ${msgs.length}건, 시간순):`)
         for (const m of msgs.reverse()) {
           // 카톡 자리표시(「File: 이름」 · 첨부 없음)는 그렇다고 밝힌다 — 파일명만 보고 「첨부가 있다」 고 답하지 않게
-          const missing = m._count.files === 0 ? kakaoMissingAttachment(m) : null
-          lines.push(`[${kst(m.createdAt, true)}] ${m.author.name}: ${m.content}${m.files.length ? ` [첨부: ${m.files.map(fileRef).join(", ")}]` : missing ? ` ${missingAttachmentToolNote(missing)}` : ""}`)
+          const missing =
+            m._count.files === 0 ? kakaoMissingAttachment(m) : null
+          lines.push(
+            `[${kst(m.createdAt, true)}] ${m.author.name}: ${m.content}${m.files.length ? ` [첨부: ${m.files.map(fileRef).join(", ")}]` : missing ? ` ${missingAttachmentToolNote(missing)}` : ""}`
+          )
         }
       }
       return { text: lines.join("\n") }
@@ -1180,14 +2029,43 @@ export async function runTool(
       if (!content) return { error: "content 가 비어 있습니다." }
       const roomRef = str(args.room)
       if (roomRef) {
-        const target = pickPostTarget(await readableRooms(caller.userId), roomRef, caller.userId)
+        const target = pickPostTarget(
+          await readableRooms(caller.userId),
+          roomRef,
+          caller.userId
+        )
         const bad = roomPickError(roomRef, target)
         if (bad) return bad
         if (target.kind !== "company") {
-          if (str(args.task)) return { error: "task(업무 스레드)는 전사방 글에만 씁니다. 단톡방 · 1:1 · 나와의 대화에 보낼 때는 task 를 빼세요." }
-          const ids = Array.isArray(args.files) ? [...new Set(args.files.map(String).map((x) => x.trim()).filter(Boolean))] : []
-          const roomId = target.kind === "self" ? (target.room?.id ?? (await openSelfRoom({ id: caller.userId })).roomId) : target.kind === "room" ? target.room.id : ""
-          return postToPeopleRoom(roomId, content, ids, caller, str(args.reply_to) || null)
+          if (str(args.task))
+            return {
+              error:
+                "task(업무 스레드)는 전사방 글에만 씁니다. 단톡방 · 1:1 · 나와의 대화에 보낼 때는 task 를 빼세요.",
+            }
+          const ids = Array.isArray(args.files)
+            ? [
+                ...new Set(
+                  args.files
+                    .map(String)
+                    .map((x) => x.trim())
+                    .filter(Boolean)
+                ),
+              ]
+            : []
+          const roomId =
+            target.kind === "self"
+              ? (target.room?.id ??
+                (await openSelfRoom({ id: caller.userId })).roomId)
+              : target.kind === "room"
+                ? target.room.id
+                : ""
+          return postToPeopleRoom(
+            roomId,
+            content,
+            ids,
+            caller,
+            str(args.reply_to) || null
+          )
         }
       }
       let taskId: string | undefined
@@ -1195,35 +2073,83 @@ export async function runTool(
       if (str(args.task)) {
         const found = await findTask(str(args.task))
         if ("error" in found) return found
-        const t = await prisma.task.findUnique({ where: { id: found.id }, select: { id: true, slug: true } })
-        taskId = t?.id; slug = t?.slug
+        const t = await prisma.task.findUnique({
+          where: { id: found.id },
+          select: { id: true, slug: true },
+        })
+        taskId = t?.id
+        slug = t?.slug
       }
       // 첨부 — 있는 파일이고 아직 어느 메시지에도 붙지 않은 것만. 화면 라우트는 확인 없이 붙이지만,
       // 여기서는 모델이 ID 를 잘못 옮기면 남의 메시지 첨부를 빼앗아 온다.
-      const fileIds = Array.isArray(args.files) ? [...new Set(args.files.map(String).map((s) => s.trim()).filter(Boolean))] : []
+      const fileIds = Array.isArray(args.files)
+        ? [
+            ...new Set(
+              args.files
+                .map(String)
+                .map((s) => s.trim())
+                .filter(Boolean)
+            ),
+          ]
+        : []
       if (fileIds.length) {
         // 참여자만 보는 방의 파일은 없는 파일로 본다 — 전사방 글로 옮기지 않는다(lib/file-access.ts)
-        const rows = await prisma.file.findMany({ where: { id: { in: fileIds }, ...PUBLIC_FILE_WHERE }, select: { id: true, name: true, messageId: true } })
+        const rows = await prisma.file.findMany({
+          where: { id: { in: fileIds }, ...PUBLIC_FILE_WHERE },
+          select: { id: true, name: true, messageId: true },
+        })
         const missing = fileIds.filter((id) => !rows.some((r) => r.id === id))
-        if (missing.length) return { error: `없는 파일 ID: ${missing.join(", ")}. upload_file 로 받은 ID 를 넣으세요.` }
+        if (missing.length)
+          return {
+            error: `없는 파일 ID: ${missing.join(", ")}. upload_file 로 받은 ID 를 넣으세요.`,
+          }
         const taken = rows.filter((r) => r.messageId)
-        if (taken.length) return { error: `이미 다른 메시지에 붙은 파일입니다: ${taken.map((r) => r.name).join(", ")}. 새로 올리세요.` }
+        if (taken.length)
+          return {
+            error: `이미 다른 메시지에 붙은 파일입니다: ${taken.map((r) => r.name).join(", ")}. 새로 올리세요.`,
+          }
       }
       // #슬러그가 본문에 이미 있으면 그대로, 없으면 앞에 붙인다 — 화면에서 쓰는 것과 같은 모양.
-      const body = slug && !/#[a-z0-9가-힣_-]+/i.test(content) ? `#${slug} ${content}` : content
+      const body =
+        slug && !/#[a-z0-9가-힣_-]+/i.test(content)
+          ? `#${slug} ${content}`
+          : content
       // 답장 — 전사방의 지우지 않은 글만(화면 답장과 같은 방). 업무 스레드 글에 답할 때는 그 업무를 함께 준다
       const replyToId = str(args.reply_to) || null
-      if (replyToId && !(await prisma.chatMessage.findFirst({ where: { id: replyToId, roomId: "default-room", deletedAt: null }, select: { id: true } }))) {
-        return { error: "reply_to 글을 전사방에서 찾지 못했습니다 — list_chat 의 글 ID 를 넣으세요." }
+      if (
+        replyToId &&
+        !(await prisma.chatMessage.findFirst({
+          where: { id: replyToId, roomId: "default-room", deletedAt: null },
+          select: { id: true },
+        }))
+      ) {
+        return {
+          error:
+            "reply_to 글을 전사방에서 찾지 못했습니다 — list_chat 의 글 ID 를 넣으세요.",
+        }
       }
       const { message, taskUpdate } = await postChatMessage({
-        user: { id: caller.userId, name: caller.name }, roomId: "default-room", content: body, taskId, replyToId,
+        user: { id: caller.userId, name: caller.name },
+        roomId: "default-room",
+        content: body,
+        taskId,
+        replyToId,
         fileIds: fileIds.length ? fileIds : undefined,
       })
-      const out = [`올렸습니다 (${kst(message?.createdAt ?? new Date(), true)} · ${caller.name}).`]
-      if (message?.files.length) out.push(`첨부 ${message.files.length}: ${message.files.map((f) => f.name).join(", ")}`)
-      if (message?.task) out.push(`업무: #${message.task.slug} ${message.task.name}`)
-      out.push(taskUpdate ? `업무 처리: ${taskUpdate.summary ?? taskUpdate.statusLabel ?? taskUpdate.action}` : "업무 카드 변경 없음 (정보 공유로 판단)")
+      const out = [
+        `올렸습니다 (${kst(message?.createdAt ?? new Date(), true)} · ${caller.name}).`,
+      ]
+      if (message?.files.length)
+        out.push(
+          `첨부 ${message.files.length}: ${message.files.map((f) => f.name).join(", ")}`
+        )
+      if (message?.task)
+        out.push(`업무: #${message.task.slug} ${message.task.name}`)
+      out.push(
+        taskUpdate
+          ? `업무 처리: ${taskUpdate.summary ?? taskUpdate.statusLabel ?? taskUpdate.action}`
+          : "업무 카드 변경 없음 (정보 공유로 판단)"
+      )
       return { text: out.join("\n") }
     }
 
@@ -1231,24 +2157,42 @@ export async function runTool(
       const fileName = str(args.name)
       const hasText = typeof args.content === "string"
       const hasB64 = typeof args.content_base64 === "string"
-      if (!fileName) return { error: "name 이 비어 있습니다. 확장자를 포함해 주세요." }
-      if (hasText === hasB64) return { error: "content(텍스트) 와 content_base64(바이너리) 중 하나만 주세요." }
-      const b64 = hasB64 ? (args.content_base64 as string).replace(/\s/g, "") : ""
-      if (hasB64 && !/^[A-Za-z0-9+/_-]*={0,2}$/.test(b64)) return { error: "content_base64 가 base64 가 아닙니다." }
+      if (!fileName)
+        return { error: "name 이 비어 있습니다. 확장자를 포함해 주세요." }
+      if (hasText === hasB64)
+        return {
+          error:
+            "content(텍스트) 와 content_base64(바이너리) 중 하나만 주세요.",
+        }
+      const b64 = hasB64
+        ? (args.content_base64 as string).replace(/\s/g, "")
+        : ""
+      if (hasB64 && !/^[A-Za-z0-9+/_-]*={0,2}$/.test(b64))
+        return { error: "content_base64 가 base64 가 아닙니다." }
       let taskId: string | null = null
       let slug = ""
       if (str(args.task)) {
         const found = await findTask(str(args.task))
         if ("error" in found) return found
-        const t = await prisma.task.findUnique({ where: { id: found.id }, select: { id: true, slug: true } })
-        taskId = t?.id ?? null; slug = t?.slug ?? ""
+        const t = await prisma.task.findUnique({
+          where: { id: found.id },
+          select: { id: true, slug: true },
+        })
+        taskId = t?.id ?? null
+        slug = t?.slug ?? ""
       }
       const scope = await fileScopeFor(str(args.room), caller)
       if ("error" in scope || "text" in scope) return scope
-      if (scope.isPrivate && taskId) return { error: "단톡방 · 1:1 · 나와의 대화에 붙일 파일은 업무(task)에 걸지 않습니다. task 를 빼세요." }
+      if (scope.isPrivate && taskId)
+        return {
+          error:
+            "단톡방 · 1:1 · 나와의 대화에 붙일 파일은 업무(task)에 걸지 않습니다. task 를 빼세요.",
+        }
       const saved = await saveUpload({
         name: fileName,
-        body: hasText ? Buffer.from(args.content as string, "utf8") : Buffer.from(b64, "base64"),
+        body: hasText
+          ? Buffer.from(args.content as string, "utf8")
+          : Buffer.from(b64, "base64"),
         mimeType: str(args.mime_type),
         taskId,
         privateToUserId: scope.isPrivate ? caller.userId : null,
@@ -1258,28 +2202,45 @@ export async function runTool(
         text: [
           `올렸습니다: ${saved.name} (${(saved.size / 1024).toFixed(1)}KB) · 파일 ID ${saved.id}`,
           ...(slug ? [`업무 #${slug} 첨부 목록에 들어갔습니다.`] : []),
-          ...(scope.isPrivate ? [`「${scope.label}」 에 붙일 파일입니다 — 붙기 전에는 나만 봅니다.`] : []),
+          ...(scope.isPrivate
+            ? [
+                `「${scope.label}」 에 붙일 파일입니다 — 붙기 전에는 나만 봅니다.`,
+              ]
+            : []),
           `채팅에 붙이려면 post_message 의 files 에 "${saved.id}" 를 넣으세요${scope.isPrivate ? ` (room 도 같은 방으로)` : ""}.`,
         ].join("\n"),
       }
     }
 
     case "create_upload_link": {
-      if (!ctx.base) return { error: "이 서버 주소를 알 수 없어 링크를 만들 수 없습니다." }
+      if (!ctx.base)
+        return { error: "이 서버 주소를 알 수 없어 링크를 만들 수 없습니다." }
       let taskId: string | null = null
       let slug = ""
       if (str(args.task)) {
         const found = await findTask(str(args.task))
         if ("error" in found) return found
-        const t = await prisma.task.findUnique({ where: { id: found.id }, select: { id: true, slug: true } })
-        taskId = t?.id ?? null; slug = t?.slug ?? ""
+        const t = await prisma.task.findUnique({
+          where: { id: found.id },
+          select: { id: true, slug: true },
+        })
+        taskId = t?.id ?? null
+        slug = t?.slug ?? ""
       }
       const scope = await fileScopeFor(str(args.room), caller)
       if ("error" in scope || "text" in scope) return scope
-      if (scope.isPrivate && taskId) return { error: "단톡방 · 1:1 · 나와의 대화에 붙일 파일은 업무(task)에 걸지 않습니다. task 를 빼세요." }
+      if (scope.isPrivate && taskId)
+        return {
+          error:
+            "단톡방 · 1:1 · 나와의 대화에 붙일 파일은 업무(task)에 걸지 않습니다. task 를 빼세요.",
+        }
       const token = signUploadLink(caller.userId, taskId, scope.isPrivate)
       const url = `${ctx.base}/upload?t=${token}`
-      const where = scope.isPrivate ? ` · 「${scope.label}」 에 붙일 파일` : slug ? ` · 업무 #${slug} 첨부` : ""
+      const where = scope.isPrivate
+        ? ` · 「${scope.label}」 에 붙일 파일`
+        : slug
+          ? ` · 업무 #${slug} 첨부`
+          : ""
       return {
         text: [
           `업로드 링크 (10분${where}):`,
@@ -1301,18 +2262,41 @@ export async function runTool(
       const head = `# ${f.name}  (${(f.size / 1024).toFixed(1)}KB · ${f.mimeType}${f.task ? ` · 업무 #${f.task.slug}` : ""} · 파일 ID ${f.id})`
       const kind = fileKind(f.name, f.mimeType)
       if (kind === "other" || f.size > MAX_UPLOAD_BYTES) {
-        if (!ctx.base) return { error: "이 서버 주소를 알 수 없어 내려받기 링크를 만들 수 없습니다." }
-        const why = kind === "other"
-          ? "이 형식은 여기서 본문을 풀지 못합니다."
-          : `${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 가 넘어 본문 대신 링크를 줍니다.`
+        if (!ctx.base)
+          return {
+            error:
+              "이 서버 주소를 알 수 없어 내려받기 링크를 만들 수 없습니다.",
+          }
+        const why =
+          kind === "other"
+            ? "이 형식은 여기서 본문을 풀지 못합니다."
+            : `${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB 가 넘어 본문 대신 링크를 줍니다.`
         const url = `${ctx.base}/download?t=${signDownloadLink(caller.userId, f.id)}`
-        return { text: [head, "", `${why} 셸이 있으면 내려받아 여세요 (10분):`, url, "", `curl -sS -o '${f.name.replace(/'/g, "")}' '${url}'`].join("\n") }
+        return {
+          text: [
+            head,
+            "",
+            `${why} 셸이 있으면 내려받아 여세요 (10분):`,
+            url,
+            "",
+            `curl -sS -o '${f.name.replace(/'/g, "")}' '${url}'`,
+          ].join("\n"),
+        }
       }
       const buf = await readObject(f)
-      if (kind === "image") return { text: head, image: { data: buf.toString("base64"), mimeType: f.mimeType.split(";")[0].trim() } }
+      if (kind === "image")
+        return {
+          text: head,
+          image: {
+            data: buf.toString("base64"),
+            mimeType: f.mimeType.split(";")[0].trim(),
+          },
+        }
       if (kind === "sheet") {
         const wb = XLSX.read(buf, { type: "buffer" })
-        const body = wb.SheetNames.map((s) => `## ${s}\n${XLSX.utils.sheet_to_csv(wb.Sheets[s])}`).join("\n\n")
+        const body = wb.SheetNames.map(
+          (s) => `## ${s}\n${XLSX.utils.sheet_to_csv(wb.Sheets[s])}`
+        ).join("\n\n")
         return { text: `${head}\n\n${clip(body)}` }
       }
       return { text: `${head}\n\n${clip(buf.toString("utf8"))}` }
@@ -1322,67 +2306,127 @@ export async function runTool(
       const limit = clampInt(args.limit, 10, 50)
       const [pending, recent] = await Promise.all([
         prisma.notification.findMany({
-          where: { userId: caller.userId, actionType: { not: null }, resolvedAt: null },
+          where: {
+            userId: caller.userId,
+            actionType: { not: null },
+            resolvedAt: null,
+          },
           orderBy: { createdAt: "desc" },
         }),
         prisma.notification.findMany({
-          where: { userId: caller.userId, OR: [{ actionType: null }, { resolvedAt: { not: null } }] },
-          orderBy: { createdAt: "desc" }, take: limit,
+          where: {
+            userId: caller.userId,
+            OR: [{ actionType: null }, { resolvedAt: { not: null } }],
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
         }),
       ])
-      const taskIds = [...new Set([...pending, ...recent].map((n) => n.entityId).filter((x): x is string => !!x))]
-      const slugs = new Map((await prisma.task.findMany({ where: { id: { in: taskIds } }, select: { id: true, slug: true } })).map((t) => [t.id, t.slug]))
+      const taskIds = [
+        ...new Set(
+          [...pending, ...recent]
+            .map((n) => n.entityId)
+            .filter((x): x is string => !!x)
+        ),
+      ]
+      const slugs = new Map(
+        (
+          await prisma.task.findMany({
+            where: { id: { in: taskIds } },
+            select: { id: true, slug: true },
+          })
+        ).map((t) => [t.id, t.slug])
+      )
       const ACTION_HINT: Record<string, string> = {
         accept_task: "업무 수락 대기 → respond_notification response=accept",
-        confirm_done: "완료 확인 대기 → respond_notification response=confirm_done 또는 defer",
+        confirm_done:
+          "완료 확인 대기 → respond_notification response=confirm_done 또는 defer",
       }
       const line = (n: (typeof pending)[number]) => {
         const slug = n.entityId ? slugs.get(n.entityId) : undefined
         return `- [${kst(n.createdAt, true)}] ${n.title}${slug ? ` · #${slug}` : ""} — ${n.content}${n.read ? "" : " (안 읽음)"} · ID ${n.id}`
       }
       const out = [`응답 대기 ${pending.length}건`]
-      for (const n of pending) out.push(line(n), `  ${ACTION_HINT[n.actionType ?? ""] ?? n.actionType}`)
+      for (const n of pending)
+        out.push(
+          line(n),
+          `  ${ACTION_HINT[n.actionType ?? ""] ?? n.actionType}`
+        )
       out.push("", `최근 알림 ${recent.length}건`, ...recent.map(line))
       // 기기 알림(푸시) 켜기 · 끄기 — 화면 마이 › 기기 알림과 같은 값(lib/notification-manage.ts)
       const { notificationPrefsLine } = await import("@/lib/tools/plan-work")
-      out.push("", await notificationPrefsLine(caller.userId), "읽음 · 지우기는 manage_notifications.")
+      out.push(
+        "",
+        await notificationPrefsLine(caller.userId),
+        "읽음 · 지우기는 manage_notifications."
+      )
       return { text: out.join("\n") }
     }
 
     case "respond_notification": {
       const response = str(args.response)
       if (!["accept", "confirm_done", "defer"].includes(response)) {
-        return { error: "response 는 accept · confirm_done · defer 중 하나입니다." }
+        return {
+          error: "response 는 accept · confirm_done · defer 중 하나입니다.",
+        }
       }
       let notificationId = str(args.notification)
       if (!notificationId) {
-        if (!str(args.task)) return { error: "notification(알림 ID) 또는 task 를 주세요." }
+        if (!str(args.task))
+          return { error: "notification(알림 ID) 또는 task 를 주세요." }
         const found = await findTask(str(args.task))
         if ("error" in found) return found
         const n = await prisma.notification.findFirst({
-          where: { userId: caller.userId, entityId: found.id, resolvedAt: null, actionType: response === "accept" ? "accept_task" : "confirm_done" },
-          orderBy: { createdAt: "desc" }, select: { id: true },
+          where: {
+            userId: caller.userId,
+            entityId: found.id,
+            resolvedAt: null,
+            actionType: response === "accept" ? "accept_task" : "confirm_done",
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
         })
-        if (!n) return { error: "이 업무에 사용자 본인이 응답할 알림이 없습니다. list_notifications 로 확인하세요." }
+        if (!n)
+          return {
+            error:
+              "이 업무에 사용자 본인이 응답할 알림이 없습니다. list_notifications 로 확인하세요.",
+          }
         notificationId = n.id
       }
       // 화면의 알림 버튼과 같은 함수 — 선점·업무 완료·지시자 알림이 여기서 한 번만 일어난다.
-      const r = await respondToAction(caller.userId, caller.name, notificationId, response as "accept" | "confirm_done" | "defer")
-      if ("error" in r) return { error: `${r.error}. list_notifications 로 사용자 본인의 알림 ID 를 확인하세요.` }
-      if (r.alreadyResolved) return { text: "이미 응답한 알림입니다. 아무것도 바꾸지 않았습니다." }
+      const r = await respondToAction(
+        caller.userId,
+        caller.name,
+        notificationId,
+        response as "accept" | "confirm_done" | "defer"
+      )
+      if ("error" in r)
+        return {
+          error: `${r.error}. list_notifications 로 사용자 본인의 알림 ID 를 확인하세요.`,
+        }
+      if (r.alreadyResolved)
+        return { text: "이미 응답한 알림입니다. 아무것도 바꾸지 않았습니다." }
       return {
-        text: response === "confirm_done"
-          ? "완료로 표시했습니다. 체크리스트를 모두 체크했습니다."
-          : response === "accept" ? "업무를 수락했습니다." : "나중으로 미뤘습니다. 알림은 응답한 것으로 닫힙니다.",
+        text:
+          response === "confirm_done"
+            ? "완료로 표시했습니다. 체크리스트를 모두 체크했습니다."
+            : response === "accept"
+              ? "업무를 수락했습니다."
+              : "나중으로 미뤘습니다. 알림은 응답한 것으로 닫힙니다.",
       }
     }
 
     case "update_task": {
-      const found = await findTask(str(args.task), { includeArchived: args.archived === false })
+      const found = await findTask(str(args.task), {
+        includeArchived: args.archived === false,
+      })
       if ("error" in found) return found
       const input: UpdateTaskInput = {}
       if (args.status !== undefined) {
-        if (!(TASK_STATUS as readonly string[]).includes(str(args.status))) return { error: `status 는 ${TASK_STATUS.join(" · ")} 중 하나입니다.` }
+        if (!(TASK_STATUS as readonly string[]).includes(str(args.status)))
+          return {
+            error: `status 는 ${TASK_STATUS.join(" · ")} 중 하나입니다.`,
+          }
         input.status = str(args.status) as UpdateTaskInput["status"]
       }
       if (args.name !== undefined) {
@@ -1390,55 +2434,101 @@ export async function runTool(
         input.name = str(args.name).slice(0, 120)
       }
       if (args.priority !== undefined) {
-        if (!["LOW", "NORMAL", "HIGH"].includes(str(args.priority))) return { error: "priority 는 LOW · NORMAL · HIGH 중 하나입니다." }
+        if (!["LOW", "NORMAL", "HIGH"].includes(str(args.priority)))
+          return { error: "priority 는 LOW · NORMAL · HIGH 중 하나입니다." }
         input.priority = str(args.priority) as UpdateTaskInput["priority"]
       }
       if (args.deadline !== undefined) {
         const d = str(args.deadline)
-        if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: "deadline 은 YYYY-MM-DD 이거나 빈 문자열(지우기)입니다." }
+        if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d))
+          return {
+            error: "deadline 은 YYYY-MM-DD 이거나 빈 문자열(지우기)입니다.",
+          }
         input.deadline = d ? `${d}T23:59:59+09:00` : null
       }
-      if (args.background !== undefined) input.background = str(args.background) || null
-      if (args.expected_result !== undefined) input.expectedResult = str(args.expected_result) || null
+      if (args.background !== undefined)
+        input.background = str(args.background) || null
+      if (args.expected_result !== undefined)
+        input.expectedResult = str(args.expected_result) || null
       if (args.archived !== undefined) input.archived = args.archived === true
       if (args.project !== undefined) {
         const q = str(args.project)
         if (!q) input.projectId = null
         else {
           const ps = await prisma.project.findMany({
-            where: { archived: false, name: { contains: q, mode: "insensitive" } }, select: { id: true, name: true }, take: 10,
+            where: {
+              archived: false,
+              name: { contains: q, mode: "insensitive" },
+            },
+            select: { id: true, name: true },
+            take: 10,
           })
-          if (ps.length === 0) return { error: `'${q}' 프로젝트가 없습니다. list_projects 로 확인하세요.` }
+          if (ps.length === 0)
+            return {
+              error: `'${q}' 프로젝트가 없습니다. list_projects 로 확인하세요.`,
+            }
           const exact = ps.find((p) => p.name === q)
-          if (ps.length > 1 && !exact) return { error: `프로젝트가 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}` }
+          if (ps.length > 1 && !exact)
+            return {
+              error: `프로젝트가 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}`,
+            }
           input.projectId = (exact ?? ps[0]).id
         }
       }
       if (args.assignees !== undefined) {
-        const names = Array.isArray(args.assignees) ? args.assignees.map(String).map((n) => n.trim()).filter(Boolean) : []
-        if (names.length === 0) return { error: "assignees 는 담당자 이름 1명 이상입니다." }
-        const current = await prisma.taskAssignee.findMany({ where: { taskId: found.id }, select: { user: { select: { id: true, name: true } } } })
-        const { ids, missing } = await findUsers(names, current.map((a) => a.user))
-        if (missing.length) return { error: `모르거나 재직 중이 아닌 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
+        const names = Array.isArray(args.assignees)
+          ? args.assignees
+              .map(String)
+              .map((n) => n.trim())
+              .filter(Boolean)
+          : []
+        if (names.length === 0)
+          return { error: "assignees 는 담당자 이름 1명 이상입니다." }
+        const current = await prisma.taskAssignee.findMany({
+          where: { taskId: found.id },
+          select: { user: { select: { id: true, name: true } } },
+        })
+        const { ids, missing } = await findUsers(
+          names,
+          current.map((a) => a.user)
+        )
+        if (missing.length)
+          return {
+            error: `모르거나 재직 중이 아닌 이름: ${missing.join(", ")}. list_members 로 확인하세요.`,
+          }
         input.assigneeIds = ids
       }
       if (args.product !== undefined) {
         const q = str(args.product)
         if (!q) input.productId = null
         else {
-          const ps = await prisma.product.findMany({ where: { name: { contains: q, mode: "insensitive" } }, select: { id: true, name: true }, take: 10 })
+          const ps = await prisma.product.findMany({
+            where: { name: { contains: q, mode: "insensitive" } },
+            select: { id: true, name: true },
+            take: 10,
+          })
           const exact = ps.find((p) => p.name === q)
-          if (ps.length === 0) return { error: `'${q}' 제품이 없습니다. list_task_products 로 확인하세요.` }
-          if (ps.length > 1 && !exact) return { error: `제품이 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}` }
+          if (ps.length === 0)
+            return {
+              error: `'${q}' 제품이 없습니다. list_task_products 로 확인하세요.`,
+            }
+          if (ps.length > 1 && !exact)
+            return {
+              error: `제품이 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}`,
+            }
           input.productId = (exact ?? ps[0]).id
         }
       }
       if (args.instructor !== undefined) {
         const { ids, missing } = await findUsers([str(args.instructor)])
-        if (missing.length || ids.length !== 1) return { error: `모르거나 재직 중이 아닌 이름: ${str(args.instructor)}. list_members 로 확인하세요.` }
+        if (missing.length || ids.length !== 1)
+          return {
+            error: `모르거나 재직 중이 아닌 이름: ${str(args.instructor)}. list_members 로 확인하세요.`,
+          }
         input.instructorId = ids[0]
       }
-      if (Object.keys(input).length === 0) return { error: "바꿀 필드를 하나 이상 주세요." }
+      if (Object.keys(input).length === 0)
+        return { error: "바꿀 필드를 하나 이상 주세요." }
 
       const r = await updateTask(found.id, caller.userId, input, "mcp")
       if ("error" in r) return r
@@ -1447,7 +2537,8 @@ export async function runTool(
         text: [
           `고쳤습니다: #${t.slug} ${t.name}`,
           `상태 ${TASK_STATUS_LABELS[t.status] ?? t.status} · 우선순위 ${PRIORITY_LABELS[t.priority] ?? t.priority}` +
-            (t.deadline ? ` · 마감 ${kst(t.deadline)}` : " · 마감 없음") + (t.archived ? " · 보관됨" : ""),
+            (t.deadline ? ` · 마감 ${kst(t.deadline)}` : " · 마감 없음") +
+            (t.archived ? " · 보관됨" : ""),
           `바뀐 필드: ${Object.keys(input).join(", ")}`,
         ].join("\n"),
       }
@@ -1456,56 +2547,135 @@ export async function runTool(
     case "update_checklist": {
       const found = await findTask(str(args.task))
       if ("error" in found) return found
-      const listArg = (k: string) => (Array.isArray(args[k]) ? (args[k] as unknown[]).map(String).map((s) => s.trim()).filter(Boolean) : [])
-      const [add, check, uncheck, remove] = ["add", "check", "uncheck", "remove"].map(listArg)
-      const editArg = (k: string) => (Array.isArray(args[k]) ? (args[k] as unknown[]) : []).flatMap((x) => {
-        const o = x as { item?: unknown; value?: unknown }
-        return typeof o?.item === "string" && typeof o.value === "string" && o.item.trim() ? [{ item: o.item.trim(), value: o.value.trim() }] : []
-      })
+      const listArg = (k: string) =>
+        Array.isArray(args[k])
+          ? (args[k] as unknown[])
+              .map(String)
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : []
+      const [add, check, uncheck, remove] = [
+        "add",
+        "check",
+        "uncheck",
+        "remove",
+      ].map(listArg)
+      const editArg = (k: string) =>
+        (Array.isArray(args[k]) ? (args[k] as unknown[]) : []).flatMap((x) => {
+          const o = x as { item?: unknown; value?: unknown }
+          return typeof o?.item === "string" &&
+            typeof o.value === "string" &&
+            o.item.trim()
+            ? [{ item: o.item.trim(), value: o.value.trim() }]
+            : []
+        })
       const [renames, memos] = [editArg("rename"), editArg("memo")]
-      if (renames.some((r) => !r.value)) return { error: "rename 의 value(새 이름)를 비울 수는 없습니다." }
-      if (add.length + check.length + uncheck.length + remove.length + renames.length + memos.length === 0) {
-        return { error: "add · check · uncheck · remove · rename · memo 중 하나 이상 주세요." }
+      if (renames.some((r) => !r.value))
+        return { error: "rename 의 value(새 이름)를 비울 수는 없습니다." }
+      if (
+        add.length +
+          check.length +
+          uncheck.length +
+          remove.length +
+          renames.length +
+          memos.length ===
+        0
+      ) {
+        return {
+          error:
+            "add · check · uncheck · remove · rename · memo 중 하나 이상 주세요.",
+        }
       }
 
       type Item = { id: string; name: string; done: boolean }
       const items: Item[] = await prisma.checklist.findMany({
-        where: { taskId: found.id }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, done: true },
+        where: { taskId: found.id },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, done: true },
       })
       // 번호는 고치기 전 목록 기준, 이름은 지금 살아 있는 항목(추가될 것 포함)에서 찾는다.
       const resolveRef = (ref: string, pool: Item[]): Item | string => {
-        if (/^\d+$/.test(ref)) return items[Number(ref) - 1] ?? `${ref}번(항목은 ${items.length}개)`
+        if (/^\d+$/.test(ref))
+          return items[Number(ref) - 1] ?? `${ref}번(항목은 ${items.length}개)`
         const exact = pool.filter((c) => c.name === ref)
-        const hits = exact.length ? exact : pool.filter((c) => c.name.includes(ref))
+        const hits = exact.length
+          ? exact
+          : pool.filter((c) => c.name.includes(ref))
         if (hits.length === 1) return hits[0]
-        return hits.length === 0 ? `'${ref}'(없음)` : `'${ref}'(${hits.length}개: ${hits.map((h) => h.name).join(" / ")})`
+        return hits.length === 0
+          ? `'${ref}'(없음)`
+          : `'${ref}'(${hits.length}개: ${hits.map((h) => h.name).join(" / ")})`
       }
 
       // 먼저 전부 해석한다 — 하나라도 못 찾으면 아무것도 바꾸지 않는다.
       const removeItems = remove.map((r) => resolveRef(r, items))
-      const removedIds = new Set(removeItems.flatMap((x) => (typeof x === "string" ? [] : [x.id])))
-      const planned = [...items, ...add.map((name, i) => ({ id: `new:${i}`, name, done: false }))].filter((c) => !removedIds.has(c.id))
-      const toggles = [...check, ...uncheck, ...renames.map((e) => e.item), ...memos.map((e) => e.item)].map((r) => {
+      const removedIds = new Set(
+        removeItems.flatMap((x) => (typeof x === "string" ? [] : [x.id]))
+      )
+      const planned = [
+        ...items,
+        ...add.map((name, i) => ({ id: `new:${i}`, name, done: false })),
+      ].filter((c) => !removedIds.has(c.id))
+      const toggles = [
+        ...check,
+        ...uncheck,
+        ...renames.map((e) => e.item),
+        ...memos.map((e) => e.item),
+      ].map((r) => {
         const x = resolveRef(r, planned)
-        return typeof x !== "string" && removedIds.has(x.id) ? `'${r}'(지울 항목)` : x
+        return typeof x !== "string" && removedIds.has(x.id)
+          ? `'${r}'(지울 항목)`
+          : x
       })
-      const bad = [...removeItems, ...toggles].filter((x): x is string => typeof x === "string")
-      if (bad.length) return { error: `항목을 못 찾았습니다: ${bad.join(", ")}. get_task 로 체크리스트를 확인하세요. 아무것도 바꾸지 않았습니다.` }
+      const bad = [...removeItems, ...toggles].filter(
+        (x): x is string => typeof x === "string"
+      )
+      if (bad.length)
+        return {
+          error: `항목을 못 찾았습니다: ${bad.join(", ")}. get_task 로 체크리스트를 확인하세요. 아무것도 바꾸지 않았습니다.`,
+        }
 
       // 화면과 같은 함수로 하나씩 — 색인·활동 기록이 같이 남는다.
-      for (const it of removeItems as Item[]) await deleteChecklistItem(it.id, caller.userId, "mcp")
+      for (const it of removeItems as Item[])
+        await deleteChecklistItem(it.id, caller.userId, "mcp")
       const created: Item[] = []
-      for (const name of add) created.push(await addChecklistItem(found.id, name, caller.userId, "mcp"))
+      for (const name of add)
+        created.push(
+          await addChecklistItem(found.id, name, caller.userId, "mcp")
+        )
       const pool = [...items.filter((c) => !removedIds.has(c.id)), ...created]
-      for (const [refs, done] of [[check, true], [uncheck, false]] as const) {
-        for (const ref of refs) await updateChecklistItem((resolveRef(ref, pool) as Item).id, { done }, caller.userId, "mcp")
+      for (const [refs, done] of [
+        [check, true],
+        [uncheck, false],
+      ] as const) {
+        for (const ref of refs)
+          await updateChecklistItem(
+            (resolveRef(ref, pool) as Item).id,
+            { done },
+            caller.userId,
+            "mcp"
+          )
       }
       // 이름 · 메모 — 화면과 같은 updateChecklistItem(name · memo). 번호는 고치기 전 목록 기준이라 바꾼 이름에 흔들리지 않는다
-      for (const e of renames) await updateChecklistItem((resolveRef(e.item, pool) as Item).id, { name: e.value }, caller.userId, "mcp")
-      for (const e of memos) await updateChecklistItem((resolveRef(e.item, pool) as Item).id, { memo: e.value }, caller.userId, "mcp")
+      for (const e of renames)
+        await updateChecklistItem(
+          (resolveRef(e.item, pool) as Item).id,
+          { name: e.value },
+          caller.userId,
+          "mcp"
+        )
+      for (const e of memos)
+        await updateChecklistItem(
+          (resolveRef(e.item, pool) as Item).id,
+          { memo: e.value },
+          caller.userId,
+          "mcp"
+        )
 
       const after = await prisma.checklist.findMany({
-        where: { taskId: found.id }, orderBy: { createdAt: "asc" }, select: { name: true, done: true },
+        where: { taskId: found.id },
+        orderBy: { createdAt: "asc" },
+        select: { name: true, done: true },
       })
       return {
         text: [
@@ -1517,40 +2687,85 @@ export async function runTool(
 
     case "create_task": {
       const taskName = str(args.name)
-      const names = Array.isArray(args.assignees) ? args.assignees.map(String) : []
+      const names = Array.isArray(args.assignees)
+        ? args.assignees.map(String)
+        : []
       if (!taskName) return { error: "name 이 비어 있습니다." }
-      if (names.length === 0) return { error: "담당자가 1명 이상 필요합니다. list_members 로 정식 이름을 확인하세요." }
+      if (names.length === 0)
+        return {
+          error:
+            "담당자가 1명 이상 필요합니다. list_members 로 정식 이름을 확인하세요.",
+        }
       const { ids: assigneeIds, missing } = await findUsers(names)
-      if (missing.length) return { error: `모르거나 재직 중이 아닌 이름: ${missing.join(", ")}. list_members 로 확인하세요.` }
+      if (missing.length)
+        return {
+          error: `모르거나 재직 중이 아닌 이름: ${missing.join(", ")}. list_members 로 확인하세요.`,
+        }
 
       let projectId: string | null = null
       if (str(args.project)) {
         const ps = await prisma.project.findMany({
-          where: { archived: false, name: { contains: str(args.project), mode: "insensitive" } },
-          select: { id: true, name: true }, take: 10,
+          where: {
+            archived: false,
+            name: { contains: str(args.project), mode: "insensitive" },
+          },
+          select: { id: true, name: true },
+          take: 10,
         })
-        if (ps.length === 0) return { error: `'${str(args.project)}' 프로젝트가 없습니다. list_projects 로 확인하세요.` }
+        if (ps.length === 0)
+          return {
+            error: `'${str(args.project)}' 프로젝트가 없습니다. list_projects 로 확인하세요.`,
+          }
         const exact = ps.find((p) => p.name === str(args.project))
-        if (ps.length > 1 && !exact) return { error: `프로젝트가 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}` }
+        if (ps.length > 1 && !exact)
+          return {
+            error: `프로젝트가 ${ps.length}개 걸립니다: ${ps.map((p) => p.name).join(" / ")}`,
+          }
         projectId = (exact ?? ps[0]).id
       }
       // 제품 — 화면(app/api/tasks POST)과 같은 findOrCreateProduct(같은 이름이면 있는 것)
       const productId = str(args.product)
-        ? (await prisma.$transaction((tx) => findOrCreateProduct(tx, str(args.product)))).product.id
+        ? (
+            await prisma.$transaction((tx) =>
+              findOrCreateProduct(tx, str(args.product))
+            )
+          ).product.id
         : null
-      const deadline = /^\d{4}-\d{2}-\d{2}$/.test(str(args.deadline)) ? new Date(`${str(args.deadline)}T23:59:59+09:00`) : null
-      const priority = ["LOW", "NORMAL", "HIGH"].includes(str(args.priority)) ? (str(args.priority) as "LOW" | "NORMAL" | "HIGH") : "NORMAL"
-      const items = Array.isArray(args.checklist) ? args.checklist.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 8) : []
-      const base = taskName.toLowerCase().replace(/[^\w\s가-힣]/g, "").replace(/\s+/g, "-").slice(0, 50) || "업무"
+      const deadline = /^\d{4}-\d{2}-\d{2}$/.test(str(args.deadline))
+        ? new Date(`${str(args.deadline)}T23:59:59+09:00`)
+        : null
+      const priority = ["LOW", "NORMAL", "HIGH"].includes(str(args.priority))
+        ? (str(args.priority) as "LOW" | "NORMAL" | "HIGH")
+        : "NORMAL"
+      const items = Array.isArray(args.checklist)
+        ? args.checklist
+            .map(String)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 8)
+        : []
+      const base =
+        taskName
+          .toLowerCase()
+          .replace(/[^\w\s가-힣]/g, "")
+          .replace(/\s+/g, "-")
+          .slice(0, 50) || "업무"
 
       // slug 유니크 충돌은 접미사를 붙여 다시 시도한다 (app/api/tasks 와 같은 처리).
       let task: { id: string; slug: string; name: string } | null = null
       for (let attempt = 0; attempt < 4 && !task; attempt++) {
-        const slug = attempt === 0 ? base : `${base}-${randomBytes(3).toString("hex")}`
+        const slug =
+          attempt === 0 ? base : `${base}-${randomBytes(3).toString("hex")}`
         try {
           task = await prisma.task.create({
             data: {
-              name: taskName.slice(0, 120), slug, instructorId: caller.userId, projectId, productId, priority, deadline,
+              name: taskName.slice(0, 120),
+              slug,
+              instructorId: caller.userId,
+              projectId,
+              productId,
+              priority,
+              deadline,
               background: str(args.background) || null,
               assignees: { create: assigneeIds.map((userId) => ({ userId })) },
               checklists: { create: items.map((n) => ({ name: n })) },
@@ -1564,60 +2779,132 @@ export async function runTool(
       }
       if (!task) return { error: "업무를 만들지 못했습니다." }
       await recordTaskEvents(task.id, caller.userId, "mcp", [
-        { field: "created", before: null, after: { status: "TODO", assignees: [...assigneeIds].sort(), deadline: deadline?.toISOString() ?? null } },
+        {
+          field: "created",
+          before: null,
+          after: {
+            status: "TODO",
+            assignees: [...assigneeIds].sort(),
+            deadline: deadline?.toISOString() ?? null,
+          },
+        },
       ])
 
       // 담당자 전원에게 수락 알림 — 화면에서 만든 것과 같다. 에이전트 확인 카드도 이 길을 지난다(executeWrite → runTool).
-      for (const userId of assignmentTargets({ previous: [], next: assigneeIds, actorId: caller.userId, systemUserId: SYSTEM_USER_ID })) {
-        await createNotification(userId, "task_assigned", `새 업무: ${task.name}`, `${caller.name}님이 업무를 지시했습니다.`, task.id, "accept_task")
+      for (const userId of assignmentTargets({
+        previous: [],
+        next: assigneeIds,
+        actorId: caller.userId,
+        systemUserId: SYSTEM_USER_ID,
+      })) {
+        await createNotification(
+          userId,
+          "task_assigned",
+          `새 업무: ${task.name}`,
+          `${caller.name}님이 업무를 지시했습니다.`,
+          task.id,
+          "accept_task"
+        )
       }
       // 채팅에 지시 원문과 카드를 올린다 — 채팅이 기록의 원본이다.
       const roomId = "default-room"
-      await prisma.chatRoom.upsert({ where: { id: roomId }, update: {}, create: { id: roomId, name: "하드사이언스" } })
-      const instruction = str(args.instruction) || `${task.name} — 담당 ${names.join(", ")}`
-      const raw = await prisma.chatMessage.create({ data: { roomId, authorId: caller.userId, content: instruction, taskId: task.id, kind: "NORMAL" } })
-      const card = await prisma.chatMessage.create({ data: { roomId, authorId: caller.userId, content: `__TASK_CREATED__:${task.id}`, taskId: task.id, kind: "TASK_CREATED" } })
+      await prisma.chatRoom.upsert({
+        where: { id: roomId },
+        update: {},
+        create: { id: roomId, name: "하드사이언스" },
+      })
+      const instruction =
+        str(args.instruction) || `${task.name} — 담당 ${names.join(", ")}`
+      const raw = await prisma.chatMessage.create({
+        data: {
+          roomId,
+          authorId: caller.userId,
+          content: instruction,
+          taskId: task.id,
+          kind: "NORMAL",
+        },
+      })
+      const card = await prisma.chatMessage.create({
+        data: {
+          roomId,
+          authorId: caller.userId,
+          content: `__TASK_CREATED__:${task.id}`,
+          taskId: task.id,
+          kind: "TASK_CREATED",
+        },
+      })
       await persistMentions(raw.id, instruction).catch(() => {})
       await persistMentions(card.id, `#${task.slug}`).catch(() => {})
       await syncEmbeddingsSafe("TASK", task.id, caller.userId)
 
-      return { text: `만들었습니다: #${task.slug} ${task.name}\n담당 ${names.join(", ")}${deadline ? ` · 마감 ${kst(deadline)}` : ""}${items.length ? `\n체크리스트 ${items.length}개` : ""}` }
+      return {
+        text: `만들었습니다: #${task.slug} ${task.name}\n담당 ${names.join(", ")}${deadline ? ` · 마감 ${kst(deadline)}` : ""}${items.length ? `\n체크리스트 ${items.length}개` : ""}`,
+      }
     }
 
     case "list_projects": {
-      const where: Record<string, unknown> = args.includeArchived === true ? {} : { archived: false }
-      if (str(args.query)) where.name = { contains: str(args.query), mode: "insensitive" }
+      const where: Record<string, unknown> =
+        args.includeArchived === true ? {} : { archived: false }
+      if (str(args.query))
+        where.name = { contains: str(args.query), mode: "insensitive" }
       const rows = await prisma.project.findMany({
-        where, orderBy: { createdAt: "desc" },
+        where,
+        orderBy: { createdAt: "desc" },
         select: {
-          name: true, status: true, purpose: true, deadline: true, archived: true,
+          name: true,
+          status: true,
+          purpose: true,
+          deadline: true,
+          archived: true,
           product: { select: { name: true } },
           tasks: { select: { status: true }, where: { archived: false } },
         },
       })
       if (rows.length === 0) return { text: "프로젝트가 없습니다." }
       return {
-        text: [`프로젝트 ${rows.length}개`, ...rows.map((p) => {
-          const open = p.tasks.filter((t) => t.status !== "DONE").length
-          const bits = [p.name, p.status, `업무 ${p.tasks.length} (미완료 ${open})`]
-          if (p.product) bits.push(`제품 ${p.product.name}`)
-          if (p.deadline) bits.push(`마감 ${kst(p.deadline)}`)
-          if (p.purpose) bits.push(p.purpose)
-          if (p.archived) bits.push("보관됨")
-          return `- ${bits.join(" · ")}`
-        })].join("\n"),
+        text: [
+          `프로젝트 ${rows.length}개`,
+          ...rows.map((p) => {
+            const open = p.tasks.filter((t) => t.status !== "DONE").length
+            const bits = [
+              p.name,
+              p.status,
+              `업무 ${p.tasks.length} (미완료 ${open})`,
+            ]
+            if (p.product) bits.push(`제품 ${p.product.name}`)
+            if (p.deadline) bits.push(`마감 ${kst(p.deadline)}`)
+            if (p.purpose) bits.push(p.purpose)
+            if (p.archived) bits.push("보관됨")
+            return `- ${bits.join(" · ")}`
+          }),
+        ].join("\n"),
       }
     }
 
     case "list_members": {
       const rows = await prisma.user.findMany({
         // 시스템 계정(🤖 메시지 작성자)은 구성원이 아니다 — 과거 구성원을 포함해도 뺀다.
-        where: { id: { not: SYSTEM_USER_ID }, ...(args.includeInactive === true ? {} : ACTIVE_MEMBER_WHERE) },
-        select: { name: true, position: true, department: true, role: true, isActive: true, staffProfile: { select: { employment: true } } },
+        where: {
+          id: { not: SYSTEM_USER_ID },
+          ...(args.includeInactive === true ? {} : ACTIVE_MEMBER_WHERE),
+        },
+        select: {
+          name: true,
+          position: true,
+          department: true,
+          role: true,
+          isActive: true,
+          staffProfile: { select: { employment: true } },
+        },
         orderBy: { name: "asc" },
       })
       return {
-        text: rows.map((u) => `- ${u.name}${u.position ? ` · ${u.position}` : ""}${u.department ? ` · ${u.department}` : ""}${u.role === "ADMIN" ? " · 관리자" : ""}${isActiveMember(u) ? "" : " · 과거 구성원"}`).join("\n"),
+        text: rows
+          .map(
+            (u) =>
+              `- ${u.name}${u.position ? ` · ${u.position}` : ""}${u.department ? ` · ${u.department}` : ""}${u.role === "ADMIN" ? " · 관리자" : ""}${isActiveMember(u) ? "" : " · 과거 구성원"}`
+          )
+          .join("\n"),
       }
     }
 
@@ -1630,35 +2917,87 @@ export async function runTool(
       const q = str(args.query)
       if (!q) {
         // 전체 목록 — 화면 CRM › 기관(app/api/crm/orgs GET)과 같은 기관 · 담당자
-        const all = await prisma.crmOrg.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { contacts: true, quotes: true } } } })
+        const all = await prisma.crmOrg.findMany({
+          orderBy: { name: "asc" },
+          include: { _count: { select: { contacts: true, quotes: true } } },
+        })
         if (all.length === 0) return { text: "기관이 없습니다." }
-        return { text: [`기관 ${all.length}곳 — 자세히는 query 에 이름이나 코드`, ...all.map((o) => `- ${o.name} (${o.code} · ${o.type}) · 담당자 ${o._count.contacts} · 견적 ${o._count.quotes} · org_id=${o.id}`)].join("\n") }
+        return {
+          text: [
+            `기관 ${all.length}곳 — 자세히는 query 에 이름이나 코드`,
+            ...all.map(
+              (o) =>
+                `- ${o.name} (${o.code} · ${o.type}) · 담당자 ${o._count.contacts} · 견적 ${o._count.quotes} · org_id=${o.id}`
+            ),
+          ].join("\n"),
+        }
       }
       // 띄어쓰기 · 법인 표기 · 이름 일부가 달라도 찾는다(lib/crm-sample-rules rankOrgs) — contains 한 번으로는 「(주)」 하나에 놓쳤다
       const ranked = await findOrgsLoose(q)
       const order = new Map(ranked.map((r, i) => [r.org.id, i]))
-      const orgs = (await prisma.crmOrg.findMany({
-        where: { id: { in: ranked.map((r) => r.org.id) } },
-        include: {
-          contacts: true,
-          quotes: { include: { items: { include: { product: true } } }, orderBy: { quotedAt: "desc" } },
-          sampleRequests: { include: { product: true }, orderBy: { requestedAt: "desc" } },
-          shipments: { include: { product: true }, orderBy: { shippedAt: "desc" }, take: 10 },
-        },
-      })).sort((a, b) => order.get(a.id)! - order.get(b.id)!)
-      if (orgs.length === 0) return { text: `'${q}' 에 맞는 기관이 없습니다. 샘플 전달 등을 적으려면 record_sample — 없는 기관은 사용자에게 새로 만들지 물은 뒤 create_org=true.` }
+      const orgs = (
+        await prisma.crmOrg.findMany({
+          where: { id: { in: ranked.map((r) => r.org.id) } },
+          include: {
+            contacts: true,
+            quotes: {
+              include: { items: { include: { product: true } } },
+              orderBy: { quotedAt: "desc" },
+            },
+            sampleRequests: {
+              include: { product: true },
+              orderBy: { requestedAt: "desc" },
+            },
+            shipments: {
+              include: { product: true },
+              orderBy: { shippedAt: "desc" },
+              take: 10,
+            },
+          },
+        })
+      ).sort((a, b) => order.get(a.id)! - order.get(b.id)!)
+      if (orgs.length === 0)
+        return {
+          text: `'${q}' 에 맞는 기관이 없습니다. 샘플 전달 등을 적으려면 record_sample — 없는 기관은 사용자에게 새로 만들지 물은 뒤 create_org=true.`,
+        }
       const out: string[] = []
       for (const o of orgs) {
-        out.push(`# ${o.name} (${o.code} · ${o.type}) · org_id=${o.id}${o.address ? ` · ${o.address}` : ""}${o.note ? `\n${o.note}` : ""}`)
-        if (o.contacts.length) out.push("담당자:", ...o.contacts.map((c) => `- ${c.name}${c.title ? ` ${c.title}` : ""}${c.email ? ` · ${c.email}` : ""}${c.phone ? ` · ${c.phone}` : ""} · contact_id=${c.id}`))
+        out.push(
+          `# ${o.name} (${o.code} · ${o.type}) · org_id=${o.id}${o.address ? ` · ${o.address}` : ""}${o.note ? `\n${o.note}` : ""}`
+        )
+        if (o.contacts.length)
+          out.push(
+            "담당자:",
+            ...o.contacts.map(
+              (c) =>
+                `- ${c.name}${c.title ? ` ${c.title}` : ""}${c.email ? ` · ${c.email}` : ""}${c.phone ? ` · ${c.phone}` : ""} · contact_id=${c.id}`
+            )
+          )
         if (o.quotes.length) {
-          out.push(`견적 ${o.quotes.length}건:`, ...o.quotes.map((qt) => {
-            const t = quoteTotals(qt.items, qt.discountAmount, qt.vatRate)
-            return `- ${qt.code} ${kst(qt.quotedAt)} · ${qt.items.map((i) => `${i.product.name} ${i.quantity}개`).join(", ")} · ${QUOTE_STATUS_LABEL[qt.status]} · ${t.total.toLocaleString()}원`
-          }))
+          out.push(
+            `견적 ${o.quotes.length}건:`,
+            ...o.quotes.map((qt) => {
+              const t = quoteTotals(qt.items, qt.discountAmount, qt.vatRate)
+              return `- ${qt.code} ${kst(qt.quotedAt)} · ${qt.items.map((i) => `${i.product.name} ${i.quantity}개`).join(", ")} · ${QUOTE_STATUS_LABEL[qt.status]} · ${t.total.toLocaleString()}원`
+            })
+          )
         }
-        if (o.sampleRequests.length) out.push(`샘플요청 ${o.sampleRequests.length}건:`, ...o.sampleRequests.map((s) => `- ${s.code} ${kst(s.requestedAt)}${s.product ? ` · ${s.product.name}` : ""} · ${s.status === "SENT" ? "발송완료" : "미발송"}`))
-        if (o.shipments.length) out.push(`출고 (최근 ${o.shipments.length}):`, ...o.shipments.map((s) => `- ${s.code} ${kst(s.shippedAt)} · ${s.product.name} ${s.quantity}개 · ${s.kind} · ${s.status} · shipment_id=${s.id}`))
+        if (o.sampleRequests.length)
+          out.push(
+            `샘플요청 ${o.sampleRequests.length}건:`,
+            ...o.sampleRequests.map(
+              (s) =>
+                `- ${s.code} ${kst(s.requestedAt)}${s.product ? ` · ${s.product.name}` : ""} · ${s.status === "SENT" ? "발송완료" : "미발송"}`
+            )
+          )
+        if (o.shipments.length)
+          out.push(
+            `출고 (최근 ${o.shipments.length}):`,
+            ...o.shipments.map(
+              (s) =>
+                `- ${s.code} ${kst(s.shippedAt)} · ${s.product.name} ${s.quantity}개 · ${s.kind} · ${s.status} · shipment_id=${s.id}`
+            )
+          )
         out.push("")
       }
       return { text: out.join("\n").trim() }
@@ -1671,10 +3010,20 @@ export async function runTool(
       return recordSampleDelivery(args, caller.userId)
 
     case "list_samples":
-      return { text: await sampleListText(str(args.query) || undefined, Number(args.limit) || 20) }
+      return {
+        text: await sampleListText(
+          str(args.query) || undefined,
+          Number(args.limit) || 20
+        ),
+      }
 
     case "list_quotes":
-      return { text: await quoteListText(str(args.query) || undefined, Number(args.limit) || 20) }
+      return {
+        text: await quoteListText(
+          str(args.query) || undefined,
+          Number(args.limit) || 20
+        ),
+      }
 
     case "list_receivables":
       return { text: await receivableListText(args) }
@@ -1696,60 +3045,126 @@ export async function runTool(
     case "list_omnis_cards": {
       const q = str(args.query)
       const rows = await prisma.omnisCard.findMany({
-        where: q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { tags: { has: q } }, { category: { name: { contains: q } } }] } : {},
-        select: { id: true, title: true, tags: true, updatedAt: true, category: { select: { name: true } } },
-        orderBy: [{ category: { sortOrder: "asc" } }, { title: "asc" }], take: 200,
+        where: q
+          ? {
+              OR: [
+                { title: { contains: q, mode: "insensitive" } },
+                { tags: { has: q } },
+                { category: { name: { contains: q } } },
+              ],
+            }
+          : {},
+        select: {
+          id: true,
+          title: true,
+          tags: true,
+          updatedAt: true,
+          category: { select: { name: true } },
+        },
+        orderBy: [{ category: { sortOrder: "asc" } }, { title: "asc" }],
+        take: 200,
       })
       if (rows.length === 0) return { text: "지식 카드가 없습니다." }
-      return { text: rows.map((c) => `- [${c.category.name}] ${c.title}${c.tags.length ? ` (${c.tags.join(", ")})` : ""} · ${kst(c.updatedAt)} · ${c.id}`).join("\n") }
+      return {
+        text: rows
+          .map(
+            (c) =>
+              `- [${c.category.name}] ${c.title}${c.tags.length ? ` (${c.tags.join(", ")})` : ""} · ${kst(c.updatedAt)} · ${c.id}`
+          )
+          .join("\n"),
+      }
     }
 
     case "get_omnis_card": {
       const key = str(args.card)
       const card =
-        (await prisma.omnisCard.findFirst({ where: { id: key }, include: { category: true } })) ??
-        (await prisma.omnisCard.findFirst({ where: { title: { contains: key, mode: "insensitive" } }, include: { category: true }, orderBy: { updatedAt: "desc" } }))
+        (await prisma.omnisCard.findFirst({
+          where: { id: key },
+          include: { category: true },
+        })) ??
+        (await prisma.omnisCard.findFirst({
+          where: { title: { contains: key, mode: "insensitive" } },
+          include: { category: true },
+          orderBy: { updatedAt: "desc" },
+        }))
       if (!card) return { error: `'${key}' 에 맞는 카드가 없습니다.` }
       const cc = migrateContent(card.content)
-      const body = cc.sections.map((s) => { const t = sectionToText(s).trim(); return t ? `${s.title ? `## ${s.title}\n` : ""}${t}` : "" }).filter(Boolean).join("\n\n")
-      return { text: `# [${card.category.name}] ${card.title}\n갱신 ${kst(card.updatedAt)} · v${card.version}${card.tags.length ? ` · ${card.tags.join(", ")}` : ""}\n\n${body || "(본문 없음)"}` }
+      const body = cc.sections
+        .map((s) => {
+          const t = sectionToText(s).trim()
+          return t ? `${s.title ? `## ${s.title}\n` : ""}${t}` : ""
+        })
+        .filter(Boolean)
+        .join("\n\n")
+      return {
+        text: `# [${card.category.name}] ${card.title}\n갱신 ${kst(card.updatedAt)} · v${card.version}${card.tags.length ? ` · ${card.tags.join(", ")}` : ""}\n\n${body || "(본문 없음)"}`,
+      }
     }
 
     case "write_omnis_card": {
       const key = str(args.card)
       const title = str(args.title)
       const categoryName = str(args.category)
-      const markdown = args.markdown !== undefined ? String(args.markdown) : undefined
+      const markdown =
+        args.markdown !== undefined ? String(args.markdown) : undefined
       const tags = Array.isArray(args.tags)
-        ? args.tags.map(String).map((t) => t.trim()).filter(Boolean)
+        ? args.tags
+            .map(String)
+            .map((t) => t.trim())
+            .filter(Boolean)
         : undefined
 
       let categoryId: string | undefined
       if (categoryName) {
         const cats = await prisma.omnisCategory.findMany({
-          where: { name: { contains: categoryName, mode: "insensitive" } }, select: { id: true, name: true }, take: 10,
+          where: { name: { contains: categoryName, mode: "insensitive" } },
+          select: { id: true, name: true },
+          take: 10,
         })
-        if (cats.length === 0) return { error: `'${categoryName}' 분류가 없습니다. list_omnis_cards 의 [대괄호] 이름을 쓰세요.` }
+        if (cats.length === 0)
+          return {
+            error: `'${categoryName}' 분류가 없습니다. list_omnis_cards 의 [대괄호] 이름을 쓰세요.`,
+          }
         const exact = cats.find((c) => c.name === categoryName)
-        if (cats.length > 1 && !exact) return { error: `분류가 ${cats.length}개 걸립니다: ${cats.map((c) => c.name).join(" / ")}` }
+        if (cats.length > 1 && !exact)
+          return {
+            error: `분류가 ${cats.length}개 걸립니다: ${cats.map((c) => c.name).join(" / ")}`,
+          }
         categoryId = (exact ?? cats[0]).id
       }
 
       if (!key) {
         if (!title || !categoryId) {
-          return { error: "새 카드는 title 과 category 가 필요합니다. 기존 카드를 고치려면 card 에 ID·제목을 주세요." }
+          return {
+            error:
+              "새 카드는 title 과 category 가 필요합니다. 기존 카드를 고치려면 card 에 ID·제목을 주세요.",
+          }
         }
-        const sections = markdown !== undefined ? [{ id: randomUUID(), type: "text", title: "", body: markdown }] : []
+        const sections =
+          markdown !== undefined
+            ? [{ id: randomUUID(), type: "text", title: "", body: markdown }]
+            : []
         const card = await createOmnisCard(caller.userId, {
-          categoryId, title, tags, content: { sections } as unknown as Prisma.InputJsonValue,
+          categoryId,
+          title,
+          tags,
+          content: { sections } as unknown as Prisma.InputJsonValue,
         })
-        return { text: `만들었습니다: [${card.category.name}] ${card.title} · ID ${card.id}` }
+        return {
+          text: `만들었습니다: [${card.category.name}] ${card.title} · ID ${card.id}`,
+        }
       }
 
       const existing =
         (await prisma.omnisCard.findFirst({ where: { id: key } })) ??
-        (await prisma.omnisCard.findFirst({ where: { title: { contains: key, mode: "insensitive" } }, orderBy: { updatedAt: "desc" } }))
-      if (!existing) return { error: `'${key}' 에 맞는 카드가 없습니다. list_omnis_cards 로 확인하세요.` }
+        (await prisma.omnisCard.findFirst({
+          where: { title: { contains: key, mode: "insensitive" } },
+          orderBy: { updatedAt: "desc" },
+        }))
+      if (!existing)
+        return {
+          error: `'${key}' 에 맞는 카드가 없습니다. list_omnis_cards 로 확인하세요.`,
+        }
 
       // 본문은 첫 텍스트 구역만 바꾼다 — 표·키값·첨부 구역을 통째로 날리지 않으려는 것이다.
       let content: Prisma.InputJsonValue | undefined
@@ -1759,85 +3174,148 @@ export async function runTool(
         const at = sections.findIndex((sec) => sec.type === "text")
         if (at >= 0) {
           const prev = sections[at] as { body: string }
-          const body = args.append === true && prev.body ? `${prev.body}\n\n${markdown}` : markdown
+          const body =
+            args.append === true && prev.body
+              ? `${prev.body}\n\n${markdown}`
+              : markdown
           sections[at] = { ...sections[at], body } as (typeof sections)[number]
         } else {
-          sections.push({ id: randomUUID(), type: "text", title: "", body: markdown })
+          sections.push({
+            id: randomUUID(),
+            type: "text",
+            title: "",
+            body: markdown,
+          })
         }
         content = { ...cc, sections } as unknown as Prisma.InputJsonValue
       }
 
       const updated = await updateOmnisCard(caller.userId, {
-        id: existing.id, title: title || undefined, content, tags, categoryId,
+        id: existing.id,
+        title: title || undefined,
+        content,
+        tags,
+        categoryId,
       })
       if ("error" in updated) return { error: updated.error }
       const card = updated.card
-      return { text: `고쳤습니다: [${card.category.name}] ${card.title} · v${card.version} · ID ${card.id}` }
+      return {
+        text: `고쳤습니다: [${card.category.name}] ${card.title} · v${card.version} · ID ${card.id}`,
+      }
     }
 
     case "list_weekly_reports": {
       const rows = await listWeeklyReports(caller.userId)
-      if (rows.length === 0) return { text: "주간보고가 없습니다. write_weekly_report 로 이번 주 보고서를 만듭니다." }
+      if (rows.length === 0)
+        return {
+          text: "주간보고가 없습니다. write_weekly_report 로 이번 주 보고서를 만듭니다.",
+        }
       const out = rows.slice(0, clampInt(args.limit, 4, 20)).map((r) => {
-        const c = (r.content ?? {}) as { completed?: string[]; inProgress?: string[]; markdown?: string; draft?: string }
+        const c = (r.content ?? {}) as {
+          completed?: string[]
+          inProgress?: string[]
+          markdown?: string
+          draft?: string
+        }
         const lines = [
           `# ${r.title} · ${r.isoWeek} · ${r.status}${r.submittedAt ? ` · 제출 ${kst(r.submittedAt)}` : ""} · ID ${r.id}`,
           `기간 ${kst(r.weekStart)} ~ ${kst(r.weekEnd)}`,
         ]
-        if (c.completed?.length) lines.push(`완료 ${c.completed.length}: ${c.completed.join(", ")}`)
-        if (c.inProgress?.length) lines.push(`진행 ${c.inProgress.length}: ${c.inProgress.join(", ")}`)
+        if (c.completed?.length)
+          lines.push(`완료 ${c.completed.length}: ${c.completed.join(", ")}`)
+        if (c.inProgress?.length)
+          lines.push(`진행 ${c.inProgress.length}: ${c.inProgress.join(", ")}`)
         const body = c.markdown || c.draft
         if (body) lines.push("", clip(body))
         return lines.join("\n")
       })
-      return { text: [`주간보고 ${rows.length}건${rows.length > out.length ? ` 중 ${out.length}건` : ""}`, "", ...out].join("\n") }
+      return {
+        text: [
+          `주간보고 ${rows.length}건${rows.length > out.length ? ` 중 ${out.length}건` : ""}`,
+          "",
+          ...out,
+        ].join("\n"),
+      }
     }
 
     case "write_weekly_report": {
-      const markdown = args.markdown !== undefined ? String(args.markdown) : undefined
+      const markdown =
+        args.markdown !== undefined ? String(args.markdown) : undefined
       const submit = args.submit === true
       const status = submit ? "제출 완료" : undefined
       const reportId = str(args.report)
 
       if (reportId) {
         if (markdown === undefined && !submit) {
-          return { error: "report 를 줄 때는 markdown 이나 submit 중 하나가 필요합니다." }
+          return {
+            error:
+              "report 를 줄 때는 markdown 이나 submit 중 하나가 필요합니다.",
+          }
         }
-        const r = await updateWeeklyReport(caller.userId, { id: reportId, markdown, status })
-        if ("error" in r) return { error: `${r.error}. list_weekly_reports 로 사용자 본인의 보고서 ID 를 확인하세요.` }
+        const r = await updateWeeklyReport(caller.userId, {
+          id: reportId,
+          markdown,
+          status,
+        })
+        if ("error" in r)
+          return {
+            error: `${r.error}. list_weekly_reports 로 사용자 본인의 보고서 ID 를 확인하세요.`,
+          }
         return { text: `고쳤습니다: ${r.report.title} · ${r.report.status}` }
       }
 
       // 이번 주 보고서 — 없으면 만들고, 있으면 업무 목록만 다시 센다.
-      const report = await upsertThisWeekReport(caller.userId, { generateDraft: args.draft === true })
+      const report = await upsertThisWeekReport(caller.userId, {
+        generateDraft: args.draft === true,
+      })
       let current = report
       if (markdown !== undefined || submit) {
-        const r = await updateWeeklyReport(caller.userId, { id: report.id, markdown, status })
+        const r = await updateWeeklyReport(caller.userId, {
+          id: report.id,
+          markdown,
+          status,
+        })
         if ("error" in r) return { error: r.error }
         current = r.report
       }
-      const c = (current.content ?? {}) as { completed?: string[]; inProgress?: string[]; markdown?: string; draft?: string }
+      const c = (current.content ?? {}) as {
+        completed?: string[]
+        inProgress?: string[]
+        markdown?: string
+        draft?: string
+      }
       return {
         text: [
           `${current.title} · ${current.status} · ID ${current.id}`,
           `완료 ${c.completed?.length ?? 0} · 진행 ${c.inProgress?.length ?? 0}`,
           c.draft && args.draft === true ? "\nAI 초안:\n" + clip(c.draft) : "",
           c.markdown ? "\n본문:\n" + clip(c.markdown) : "",
-        ].filter(Boolean).join("\n"),
+        ]
+          .filter(Boolean)
+          .join("\n"),
       }
     }
 
     case "list_rooms": {
       const q = str(args.query).replace(/\s+/g, "").toLowerCase()
       const rooms = (await listReadableRooms(caller.userId)).filter(
-        (r) => !q || [r.title, ...r.members.map((m) => m.name)].some((n) => n.replace(/\s+/g, "").toLowerCase().includes(q)),
+        (r) =>
+          !q ||
+          [r.title, ...r.members.map((m) => m.name)].some((n) =>
+            n.replace(/\s+/g, "").toLowerCase().includes(q)
+          )
       )
-      if (rooms.length === 0) return { text: q ? "그 말에 맞는 방이 없습니다." : "방이 없습니다." }
+      if (rooms.length === 0)
+        return { text: q ? "그 말에 맞는 방이 없습니다." : "방이 없습니다." }
       const shown = rooms.slice(0, clampInt(args.limit, 50, 200))
       return {
         text: [
           `방 ${rooms.length}개${shown.length < rooms.length ? ` 중 ${shown.length}개` : ""} (최근 글 순)`,
-          ...shown.map((r) => roomLine(r) + ` · 마지막 ${kst(r.lastAt, true)}${r.unread ? ` · 안 읽음 ${r.unread}` : ""}`),
+          ...shown.map(
+            (r) =>
+              roomLine(r) +
+              ` · 마지막 ${kst(r.lastAt, true)}${r.unread ? ` · 안 읽음 ${r.unread}` : ""}`
+          ),
         ].join("\n"),
       }
     }
@@ -1845,32 +3323,43 @@ export async function runTool(
     case "list_chat": {
       const view = (str(args.view) || "all") as FeedView | "room"
       if (view === "room") return listRoomChat(args, caller)
-      if (!["all", "task", "dm", "ai"].includes(view)) return { error: "view 는 all · task · dm · ai · room 중 하나입니다." }
+      if (!["all", "task", "dm", "ai"].includes(view))
+        return { error: "view 는 all · task · dm · ai · room 중 하나입니다." }
       let id: string | undefined
       let userId: string | undefined
       if (view === "task") {
-        if (!str(args.task)) return { error: "view=task 에는 task 가 필요합니다." }
+        if (!str(args.task))
+          return { error: "view=task 에는 task 가 필요합니다." }
         const found = await findTask(str(args.task))
         if ("error" in found) return found
         id = found.id
       }
       if (view === "dm") {
         const name = str(args.user)
-        if (!name) return { error: "view=dm 에는 user(상대 이름)가 필요합니다." }
+        if (!name)
+          return { error: "view=dm 에는 user(상대 이름)가 필요합니다." }
         const { ids, missing } = await findUsers([name])
-        if (missing.length || !ids[0]) return { error: `모르는 이름: ${name}. list_members 로 확인하세요.` }
+        if (missing.length || !ids[0])
+          return { error: `모르는 이름: ${name}. list_members 로 확인하세요.` }
         userId = ids[0]
       }
-      const r = await readChatFeed({ currentUserId: caller.userId, view, id, userId, take: clampInt(args.limit, 40, 200) })
+      const r = await readChatFeed({
+        currentUserId: caller.userId,
+        view,
+        id,
+        userId,
+        take: clampInt(args.limit, 40, 200),
+      })
       if ("error" in r) return { error: r.error }
       if (r.messages.length === 0) return { text: "글이 없습니다." }
       return {
         text: [
           `채팅 ${r.messages.length}건 (오래된 것부터)`,
-          ...r.messages.map((m) =>
-            `[${kst(m.createdAt, true)} · 글 ${m.id}] ${m.author.name}${m.task ? ` · #${m.task.slug}` : ""}: ` +
-            `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
-            `${m.files.length ? ` [첨부: ${m.files.map((f) => f.name).join(", ")}]` : ""}`
+          ...r.messages.map(
+            (m) =>
+              `[${kst(m.createdAt, true)} · 글 ${m.id}] ${m.author.name}${m.task ? ` · #${m.task.slug}` : ""}: ` +
+              `${m.content.replace(/\s*\n+\s*/g, " ").slice(0, 300)}` +
+              `${m.files.length ? ` [첨부: ${m.files.map((f) => f.name).join(", ")}]` : ""}`
           ),
         ].join("\n"),
       }
@@ -1880,20 +3369,33 @@ export async function runTool(
       return { text: await companyProfileText() }
     case "list_company_records":
       return { text: await companyRecordsText(args) }
+    case "list_certifications":
+      return { text: await certificationsText(args) }
     case "save_company_record": {
       // MCP 는 snake_case, Zod 스키마는 camelCase 다 — 여기서 한 번만 맞춘다
       const map: Record<string, string> = {
-        starts_on: "startsOn", ends_on: "endsOn", period_raw: "periodRaw",
-        grant_no: "grantNo", funding_krw: "fundingKrw", record_id: "record_id",
-        own_cash_krw: "ownCashKrw", own_in_kind_krw: "ownInKindKrw",
+        starts_on: "startsOn",
+        ends_on: "endsOn",
+        period_raw: "periodRaw",
+        grant_no: "grantNo",
+        funding_krw: "fundingKrw",
+        record_id: "record_id",
+        own_cash_krw: "ownCashKrw",
+        own_in_kind_krw: "ownInKindKrw",
       }
-      const mapped = Object.fromEntries(Object.entries(args).map(([k, v]) => [map[k] ?? k, v]))
+      const mapped = Object.fromEntries(
+        Object.entries(args).map(([k, v]) => [map[k] ?? k, v])
+      )
       return saveCompanyRecordText(mapped, caller)
     }
     case "delete_company_record":
       return deleteCompanyRecordText(args, caller)
     case "list_record_proposals":
-      return { text: await recordProposalsText(str(args.status) === "decided" ? "decided" : "PENDING") }
+      return {
+        text: await recordProposalsText(
+          str(args.status) === "decided" ? "decided" : "PENDING"
+        ),
+      }
     case "decide_record_proposal":
       return decideRecordProposalText(args, caller)
     case "list_tax_invoices":
@@ -1905,7 +3407,10 @@ export async function runTool(
     case "get_context":
       return contextText(args, caller.role === "ADMIN")
     case "list_calendar":
-      return listCalendarText(args, { id: caller.userId, isAdmin: caller.role === "ADMIN" })
+      return listCalendarText(args, {
+        id: caller.userId,
+        isAdmin: caller.role === "ADMIN",
+      })
   }
 
   return { error: `모르는 도구입니다: ${name}` }
