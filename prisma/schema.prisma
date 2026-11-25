@@ -13,48 +13,48 @@ datasource db {
 // ─── 사용자 ──────────────────────────────────────────────
 
 model User {
-  id              String   @id @default(uuid())
-  name            String   @unique
-  email           String?
-  position        String? // 직급 (예: 대표, 상무, 팀장, 과장, 사원)
-  department      String? // 부서 (예: 연구개발팀, AI개발팀)
-  role            Role     @default(MEMBER)
-  passwordHash    String
-  isActive        Boolean  @default(true)
+  id                    String    @id @default(uuid())
+  name                  String    @unique
+  email                 String?
+  position              String? // 직급 (예: 대표, 상무, 팀장, 과장, 사원)
+  department            String? // 부서 (예: 연구개발팀, AI개발팀)
+  role                  Role      @default(MEMBER)
+  passwordHash          String
+  isActive              Boolean   @default(true)
   onboardingVideoSeenAt DateTime?
   onboardingCompletedAt DateTime?
   /// 마지막으로 마치거나 건너뛴 안내 판(lib/onboarding-version.ts). 비어 있으면 마친 시각이 있을 때 1판으로 본다
   onboardingVersion     Int?
-  workspaceLayout Json?
-  createdAt       DateTime @default(now())
+  workspaceLayout       Json?
+  createdAt             DateTime  @default(now())
 
-  assignedTasks    TaskAssignee[]
-  instructedTasks  Task[]             @relation("TaskInstructor")
-  chatMessages     ChatMessage[]
-  chatRoomsCreated ChatRoom[]         @relation("ChatRoomCreator")
-  chatRoomMembers  ChatRoomMember[]
-  chatRoomPrefs    ChatRoomPref[]
-  chatFolders      ChatFolder[]
-  weeklyReports   WeeklyReport[]
-  omnisUpdates     OmnisCard[]
-  omnisVersions    OmnisCardVersion[]
-  cardDecisions    CardProposal[]
-  recordDecisions  RecordProposal[]   @relation("RecordProposalDecider")
-  omnisQueries     OmnisQuery[]
-  notifications    Notification[]
-  pushSubscriptions PushSubscription[]
-  notificationPref NotificationPref?
-  pushPresence     PushPresence?
-  uiEvents         UiEvent[]
-  uiSurveyResponses UiSurveyResponse[]
+  assignedTasks         TaskAssignee[]
+  instructedTasks       Task[]                @relation("TaskInstructor")
+  chatMessages          ChatMessage[]
+  chatRoomsCreated      ChatRoom[]            @relation("ChatRoomCreator")
+  chatRoomMembers       ChatRoomMember[]
+  chatRoomPrefs         ChatRoomPref[]
+  chatFolders           ChatFolder[]
+  weeklyReports         WeeklyReport[]
+  omnisUpdates          OmnisCard[]
+  omnisVersions         OmnisCardVersion[]
+  cardDecisions         CardProposal[]
+  recordDecisions       RecordProposal[]      @relation("RecordProposalDecider")
+  omnisQueries          OmnisQuery[]
+  notifications         Notification[]
+  pushSubscriptions     PushSubscription[]
+  notificationPref      NotificationPref?
+  pushPresence          PushPresence?
+  uiEvents              UiEvent[]
+  uiSurveyResponses     UiSurveyResponse[]
   featureRequestEntries FeatureRequestEntry[]
-  omnisViewLogs    OmnisViewLog[]
-  bookmarks        Bookmark[]
-  activityLogs     ActivityLog[]
-  geminiUsages     GeminiUsage[]
-  identities       UserIdentity[]
-  aiDraftRevisions AiDraftRevision[]
-  staffProfile     StaffProfile?
+  omnisViewLogs         OmnisViewLog[]
+  bookmarks             Bookmark[]
+  activityLogs          ActivityLog[]
+  geminiUsages          GeminiUsage[]
+  identities            UserIdentity[]
+  aiDraftRevisions      AiDraftRevision[]
+  staffProfile          StaffProfile?
 }
 
 enum Role {
@@ -140,10 +140,10 @@ enum ChatRoomKind {
 /// 방 참여자. COMPANY 는 모두가 참여자라 행을 만들지 않는다 — OMNIS_DM · GROUP · DM 은 이 표로 읽기 권한을 정한다.
 model ChatRoomMember {
   roomId     String
-  room       ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room       ChatRoom          @relation(fields: [roomId], references: [id], onDelete: Cascade)
   userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  joinedAt   DateTime  @default(now())
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime          @default(now())
   /// 마지막으로 이 방을 연 시각. 안 읽은 글 표시가 쓴다
   lastReadAt DateTime?
   /// 옴니스 세션(OMNIS_DM)에 공유로 들어온 길(2026-11-11). null 이면 세션 주인(만든 사람 · 인계받은 사람)이거나 세션이 아닌 방의 참여자.
@@ -226,20 +226,20 @@ model ChatFolderRoom {
 }
 
 model ChatMessage {
-  id                String      @id @default(uuid())
+  id                String           @id @default(uuid())
   /// 외부에서 들여온 원본 식별자. 카톡 이식은 "kakao:<sha1>" 형태.
   /// 이식을 여러 번 돌려도 중복이 생기지 않게 하는 유일한 장치다.
-  sourceId          String?     @unique
+  sourceId          String?          @unique
   roomId            String
-  room              ChatRoom    @relation(fields: [roomId], references: [id])
+  room              ChatRoom         @relation(fields: [roomId], references: [id])
   authorId          String
-  author            User        @relation(fields: [authorId], references: [id])
+  author            User             @relation(fields: [authorId], references: [id])
   content           String
   taskId            String?
-  task              Task?       @relation(fields: [taskId], references: [id])
-  isTaskInstruction Boolean     @default(false)
-  kind              MessageKind @default(NORMAL)
-  createdAt         DateTime    @default(now())
+  task              Task?            @relation(fields: [taskId], references: [id])
+  isTaskInstruction Boolean          @default(false)
+  kind              MessageKind      @default(NORMAL)
+  createdAt         DateTime         @default(now())
   /// 고친 시각. null 이면 보낸 그대로다.
   editedAt          DateTime?
   /// 지운 시각. 행은 지우지 않는다 — 답장이 가리키는 글 · 업무 연결 · 색인이 함께 사라지기 때문이다.
@@ -251,15 +251,15 @@ model ChatMessage {
   changedAt         DateTime?
   /// 화면이 보낼 때 만든 id. 응답만 끊긴 글을 다시 보내도 두 번 저장되지 않게 한다(2026-10-30).
   /// 화면 밖(MCP · 카톡 이식 · 시스템 글)은 비워 둔다
-  clientId          String?     @unique
+  clientId          String?          @unique
   /// 답장 대상. 지워진 글에도 답장이 달려 있을 수 있어 행을 남긴다.
   replyToId         String?
-  replyTo           ChatMessage?  @relation("MessageReply", fields: [replyToId], references: [id])
-  replies           ChatMessage[] @relation("MessageReply")
+  replyTo           ChatMessage?     @relation("MessageReply", fields: [replyToId], references: [id])
+  replies           ChatMessage[]    @relation("MessageReply")
   /// 옴니스 답이면 그 답을 만든 질문 기록. 출처(sources)는 OmnisQuery 에 있어 여기 다시 싣지 않는다.
   /// 옴니스 글의 작성자는 시스템 계정(lib/system-user.ts, id "system")이다
-  omnisQueryId      String?       @unique
-  omnisQuery        OmnisQuery?   @relation(fields: [omnisQueryId], references: [id])
+  omnisQueryId      String?          @unique
+  omnisQuery        OmnisQuery?      @relation(fields: [omnisQueryId], references: [id])
   /// 옴니스 계정이 없는 사람의 글(카톡 이식 · 참여자 전용 방만). 이때 authorId 는 시스템 계정이다 — lib/external-speaker.ts
   externalSpeakerId String?
   externalSpeaker   ExternalSpeaker? @relation(fields: [externalSpeakerId], references: [id], onDelete: Restrict)
@@ -267,8 +267,9 @@ model ChatMessage {
   /// 관계를 두지 않는다 — ChatMessage ↔ ChatRoom 에 관계가 둘이 되면 기존 관계에도 이름을 붙여야 한다
   sessionRoomId     String?
 
-  files    File[]
-  mentions ChatMention[]
+  files     File[]
+  mentions  ChatMention[]
+  revisions ChatMessageRevision[]
 
   @@index([roomId, createdAt])
   @@index([roomId, changedAt])
@@ -285,6 +286,22 @@ enum MessageKind {
   /// 완료로 보이지만 담당자 확인을 기다리는 상태. TASK_DONE 과 구분해야
   /// 활동 요약에 "완료"라고 잘못 적히지 않는다.
   TASK_DONE_PENDING
+}
+
+/// 고치기 전 본문(2026-11-17). 고칠 때마다 한 줄 — 관리자 감사용이고 화면 · API 로 내려보내지 않는다.
+/// 지금 본문은 ChatMessage.content 다. 가장 오래된 줄이 처음 보낸 원문이다
+model ChatMessageRevision {
+  id         String      @id @default(uuid())
+  messageId  String
+  message    ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  /// 고치기 전 본문
+  content    String
+  /// 고친 사람 — 지금은 글쓴이 본인만 고친다. User 관계는 두지 않는다(User 모델을 넓히지 않으려고)
+  editedById String
+  /// 이 본문이 바뀐 시각
+  createdAt  DateTime    @default(now())
+
+  @@index([messageId, createdAt])
 }
 
 model ChatMention {
@@ -337,14 +354,14 @@ model Task {
   notionId       String?
   sourceMessages Json?
 
-  checklists    Checklist[]
-  messages      ChatMessage[]
-  files         File[]
-  cardProposals CardProposal[]
+  checklists      Checklist[]
+  messages        ChatMessage[]
+  files           File[]
+  cardProposals   CardProposal[]
   recordProposals RecordProposal[]
-  events        TaskEvent[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  events          TaskEvent[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@index([status])
   @@index([projectId])
@@ -438,12 +455,12 @@ model Project {
   productId String?
   product   Product?  @relation(fields: [productId], references: [id])
 
-  tasks     Task[]
-  records   CompanyRecord[]
+  tasks       Task[]
+  records     CompanyRecord[]
   /// 이 프로젝트의 업무방을 모은 채팅방 폴더(사람마다)
   chatFolders ChatFolder[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   @@index([productId])
 }
@@ -585,14 +602,14 @@ model CardProposal {
 
 // 옴니스 RAG 질문·답변 내역 (사용자별)
 model OmnisQuery {
-  id        String   @id @default(uuid())
+  id        String       @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User         @relation(fields: [userId], references: [id])
   question  String
   answer    String
   /// 답변 근거 출처 배열 [{ id, source, sourceId, title, sourceLabel, similarity }]
   sources   Json
-  createdAt DateTime @default(now())
+  createdAt DateTime     @default(now())
   /// 메신저 옴니스 방에서 나온 질문이면 그 답 글
   message   ChatMessage?
 
@@ -650,30 +667,30 @@ model ExternalSpeaker {
 }
 
 model File {
-  id        String       @id @default(uuid())
-  name      String
-  path      String
-  size      Int
-  mimeType  String
-  messageId String?
-  message   ChatMessage? @relation(fields: [messageId], references: [id])
-  taskId    String?
-  task      Task?        @relation(fields: [taskId], references: [id])
-  createdAt DateTime     @default(now())
+  id              String        @id @default(uuid())
+  name            String
+  path            String
+  size            Int
+  mimeType        String
+  messageId       String?
+  message         ChatMessage?  @relation(fields: [messageId], references: [id])
+  taskId          String?
+  task            Task?         @relation(fields: [taskId], references: [id])
+  createdAt       DateTime      @default(now())
   /// 사진 설명 — 검색 색인(EmbeddingSource.PHOTO)에 들어가는 글. 이미지가 아니거나 아직 안 만들었으면 null.
   /// 사진 안의 내용으로 찾게 하려고 둔다(mydocs/plans/2026-10-29-photo-search.md)
-  description String?   @db.Text
-  describedAt DateTime?
+  description     String?       @db.Text
+  describedAt     DateTime?
   /// 만든 모델 — "openai:gpt-6.1-terra" (앱 업로드) · "claude-cli:sonnet" (카톡 이식 · 일괄)
-  describedBy String?
+  describedBy     String?
   /// 참여자만 보는 방(옴니스 1:1 · 사람 1:1 · 단톡방)에 붙이려고 올린 파일이면 올린 사람 id. 전사방 · 업무 첨부는 null.
   /// 메시지에 붙기 전에는 올린 사람만, 붙은 뒤에는 그 방 참여자만 본다 — 판정은 lib/file-access.ts 한 곳.
   /// User 관계를 두지 않는다(AgentRun.userId 와 같은 이유 — 사람이 바뀌어도 행은 남는다)
   privateToUserId String?
   /// 큰 첨부(4MB 초과)를 임시 저장소에서 NAS 로 옮기는 상태. 행이 없으면 지금처럼 NAS 파일이다
-  transfer FileTransfer?
+  transfer        FileTransfer?
   /// R2(S3 호환)에 올린 큰 첨부. 행이 있으면 실물은 R2 에 있고 열람은 서명 주소로 간다(mydocs/manual/r2-upload.md)
-  r2Object FileR2Object?
+  r2Object        FileR2Object?
 
   @@index([privateToUserId])
 }
@@ -926,20 +943,20 @@ enum CrmQuoteStatus {
 }
 
 model CrmOrg {
-  id        String     @id @default(uuid())
-  code      String     @unique // ORG001 — 엑셀 기관코드를 그대로 이어받는다
-  name      String     @unique
-  type      CrmOrgType @default(OTHER)
+  id           String     @id @default(uuid())
+  code         String     @unique // ORG001 — 엑셀 기관코드를 그대로 이어받는다
+  name         String     @unique
+  type         CrmOrgType @default(OTHER)
   /// 사업자등록번호 — 세금계산서의 공급받는자를 기관에 잇는 열쇠
-  bizRegNo  String?    @unique
-  address   String?
-  note      String?
+  bizRegNo     String?    @unique
+  address      String?
+  note         String?
   /// 세금계산서를 받는 기관. **비어 있으면 자기 자신이다** — 기존 기관은 전부 비어 있다.
   /// 대학 학과(견적) → 산학협력단(세금계산서)처럼 둘이 다를 때만 채운다. 한 단계만 — 청구처의 청구처는 없다.
   billingOrgId String?
   billingOrg   CrmOrg?    @relation("BillingOrg", fields: [billingOrgId], references: [id], onDelete: SetNull)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   /// 이 기관을 청구처로 둔 기관들
   billedOrgs     CrmOrg[]           @relation("BillingOrg")
@@ -1305,11 +1322,11 @@ model WebsiteInquiry {
   /// 승인해야 채워진다. 기관·담당자·견적·샘플요청이 지워지면 null 로 풀리지만 status 와
   /// reviewedAt 은 남는다 — 「사람이 승인했다」 는 사실이 링크보다 오래 간다.
   orgId     String?
-  org       CrmOrg?     @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  org       CrmOrg?           @relation(fields: [orgId], references: [id], onDelete: SetNull)
   contactId String?
-  contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  contact   CrmContact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
   quoteId   String?
-  quote     CrmQuote?   @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  quote     CrmQuote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   /// 샘플 요청으로 받은 문의는 견적이 아니라 이쪽이 생긴다. 둘 중 하나만 차거나 둘 다 비어 있다
   /// (기관·담당자만 등록한 경우) — 어느 쪽이든 status 는 ACCEPTED 다.
   sampleId  String?
@@ -1491,9 +1508,9 @@ enum RecordKind {
 /// 회사 연혁 · 실적. 연혁 표가 상위 집합이고, 지원사업 · 수상 · 학회 시트는 상세 칸이 붙는 부분집합이다.
 /// 날짜가 다르면 상세 시트가 정본 (2026-09-10 결정). 특허 · 상표는 ip 스키마가 정본이라 담지 않는다.
 model CompanyRecord {
-  id           String     @id @default(uuid())
+  id           String           @id @default(uuid())
   /// 이식 멱등 키 — kind · 제목 · 기관 · 시작일을 정규화해 만든다 (시작일이 비어도 겹치지 않게)
-  dedupeKey    String     @unique
+  dedupeKey    String           @unique
   kind         RecordKind
   title        String
   organizer    String?
@@ -1519,14 +1536,14 @@ model CompanyRecord {
   /// 어느 표에서 왔나 — 연혁 · 지원사업 · 수상 · 학회 · 노션 · 옴니스
   source       String
   projectId    String?
-  project      Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  project      Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
   /// 공개범위. INTERNAL 은 대외비 — 외부 자료(기업현황카드 · IR · 홈페이지)에 쓰지 않는다.
   /// 이 칸이 생기기 전에는 제목 앞 [내부용·대외비] 와 비고로만 갈랐다 (2026-10-06)
   visibility   RecordVisibility @default(PUBLIC)
   /// 이 줄을 만든 AI 제안 (채택 · 자동 등록)
   proposals    RecordProposal[]
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   @@index([kind, startsOn])
   @@index([startsOn])
@@ -1552,12 +1569,12 @@ enum RecordGrade {
 ///
 /// 배경: mydocs/plans/2026-09-30-record-proposals-and-card-categories.md
 model RecordProposal {
-  id           String             @id @default(uuid())
-  status       CardProposalStatus @default(PENDING)
+  id     String             @id @default(uuid())
+  status CardProposalStatus @default(PENDING)
 
   kind         RecordKind
   grade        RecordGrade
-  confidential Boolean            @default(false)
+  confidential Boolean     @default(false)
   title        String
   organizer    String?
   occurredOn   DateTime?
@@ -1572,7 +1589,7 @@ model RecordProposal {
   /// AI 원안 { kind, grade, confidential, title, occurredOn, organizer } — 사람이 고쳐도 남긴다
   original     Json
   /// 사람이 고쳐서 채택했다. 정확도에서는 「원안과 다름」으로 센다
-  edited       Boolean            @default(false)
+  edited       Boolean     @default(false)
 
   /// 무엇이 이 제안을 불렀나 — task_done · chat_daily · manual
   trigger       String
@@ -1753,11 +1770,11 @@ model KpiDaily {
 
 /// 후보 수집 한 번. 한도 추적을 위해 걸린 시간과 CPU 시간을 남긴다.
 model ColumnKeywordRun {
-  id          String    @id @default(uuid())
-  startedAt   DateTime  @default(now())
+  id          String          @id @default(uuid())
+  startedAt   DateTime        @default(now())
   finishedAt  DateTime?
   /// [{feed, url, fetched, ok, error?}]
-  sources     Json      @default("[]")
+  sources     Json            @default("[]")
   model       String
   tokensIn    Int?
   tokensOut   Int?
@@ -1771,24 +1788,24 @@ model ColumnKeywordRun {
 }
 
 model ColumnKeyword {
-  id            String    @id @default(uuid())
+  id            String            @id @default(uuid())
   /// 사람이 손으로 넣은 키워드는 null
   runId         String?
   run           ColumnKeywordRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
   /// 표시용 "오가노이드 동물대체시험 가이드라인"
   term          String
   /// 공백·기호를 뺀 소문자. 같은 키워드를 두 번 저장하지 않는다
-  normalized    String    @unique
+  normalized    String            @unique
   /// 정책 · 산업 · 연구 · 규제 · 투자 · 기술 (lib/column/types.ts 의 TOPICS)
   topic         String
   /// 주제 설명 2~3문장
   summary       String
   /// [{title, url, publisher, date}] — 피드에서 실제로 읽은 항목만. 모델이 URL 을 쓰지 않는다
-  sources       Json      @default("[]")
+  sources       Json              @default("[]")
   /// 근거 중 가장 최근 날짜(시의성)
   timelyAt      DateTime?
   /// candidate · reserved · used · discarded
-  status        String    @default("candidate")
+  status        String            @default("candidate")
   /// 「예약」을 누른 사람
   reservedById  String?
   reservedAt    DateTime?
@@ -1799,38 +1816,38 @@ model ColumnKeyword {
   /// 가장 비슷한 기존 라이브러리 글과 그 코사인 유사도
   nearestPostId String?
   nearestScore  Float?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
   drafts        ColumnDraft[]
 
   @@index([status])
 }
 
 model ColumnDraft {
-  id          String   @id @default(uuid())
-  keywordId   String
-  keyword     ColumnKeyword @relation(fields: [keywordId], references: [id], onDelete: Restrict)
+  id               String        @id @default(uuid())
+  keywordId        String
+  keyword          ColumnKeyword @relation(fields: [keywordId], references: [id], onDelete: Restrict)
   /// 「초안 만들기」를 누른 사람 — 사용 이력의 단위
-  createdById String
+  createdById      String
   /// 로테이션용 자리. 이번 범위에서는 쓰지 않는다
-  assigneeId  String?
+  assigneeId       String?
   /// draft · in_review · changes_requested · approved · published
-  status      String   @default("draft")
-  title       String
-  summary     String
+  status           String        @default("draft")
+  title            String
+  summary          String
   /// 사이트 PostBlock[] 그대로 — 게시 때 변환하지 않는다
-  blocks      Json
+  blocks           Json
   /// 이미지 제안(검토용, 게시되지 않는다) — lib/column/image-suggest.ts. null = 제안 없이 만든 옛 초안
   imageSuggestions Json?
-  model       String
-  durationMs  Int?
-  cpuMs       Int?
-  reviewerId  String?
-  reviewNote  String?
+  model            String
+  durationMs       Int?
+  cpuMs            Int?
+  reviewerId       String?
+  reviewNote       String?
   /// 게시된 WebsitePost id
-  postId      String?  @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  postId           String?       @unique
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   @@index([keywordId])
   @@index([status])

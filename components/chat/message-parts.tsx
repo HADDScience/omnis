@@ -11,6 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { AiMagicIcon, CheckmarkCircle02Icon, Clock01Icon, Task01Icon } from "@hugeicons/core-free-icons"
 import { avatarText, avatarTone, fullTimeLabel, timeLabel } from "@/lib/chat-layout"
 import { cn } from "@/lib/utils"
+import { editedLabel } from "@/lib/message-edit"
 
 /** 날이 바뀔 때 한 줄 — 가운데 날짜, 양옆 가는 선 */
 export function DayDivider({ label, pillOnPhone = false }: { label: string; pillOnPhone?: boolean }) {
@@ -74,6 +75,20 @@ export function MessageTime({ iso, className, compact = false }: { iso: string; 
     >
       {compact ? timeLabel(d).replace(/^오[전후] /, "") : timeLabel(d)}
     </time>
+  )
+}
+
+/** 고친 글 표시 — 「수정됨 오후 6:30」. 나중에 읽는 사람이 원문과 다름을 알아야 한다 */
+export function EditedMark({ createdAt, editedAt, className }: { createdAt: string; editedAt: string; className?: string }) {
+  const edited = new Date(editedAt)
+  return (
+    <span
+      data-edited
+      title={`${fullTimeLabel(edited)} 수정`}
+      className={cn("whitespace-nowrap text-[10px] text-muted-foreground in-data-[messenger]:text-[12px]", className)}
+    >
+      {editedLabel(new Date(createdAt), edited)}
+    </span>
   )
 }
 
