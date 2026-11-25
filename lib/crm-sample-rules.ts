@@ -1,3 +1,4 @@
+import { concText, lotText, variantLabel, type GelLot, type GelType } from "@/lib/crm-gel"
 // 샘플 전달 기록 · 기관 찾기 — DB 없이 시험하는 규칙. 서버 쪽은 lib/crm-sample-server.ts.
 //
 // 기능 요청(#231): 「거래처에 샘플을 전달했다」 고 말했는데 find_org 가 기관을 못 찾았다.
@@ -111,24 +112,34 @@ export const productLabel = (p: ProductLike) => `${p.name}${p.spec ? ` ${p.spec}
 export interface ProductRow extends ProductLike {
   id: string
   code: string
-  /** 현재고(장부 IN − OUT) */
+  /** 현재고(장부 IN − OUT). 젤 타입은 모든 농도의 총 ml */
   stock: number
-  unit: "PIECE" | "GRAM"
+  unit: "PIECE" | "GRAM" | "ML"
+  /** 젤 타입(애드젤 · 라이브젤)이면 타입, 아니면 null — 재고는 lots(농도별)로 본다 */
+  gelType?: GelType | null
+  lots?: GelLot[]
 }
 
-const unitText = (qty: number, unit: ProductRow["unit"]) => (unit === "GRAM" ? `${Number(qty.toFixed(3))}g` : `${qty}개`)
+const unitText = (qty: number, unit: ProductRow["unit"]) =>
+  unit === "GRAM" ? `${Number(qty.toFixed(3))}g` : unit === "ML" ? `${Number(qty.toFixed(3))}ml` : `${qty}개`
 
 /** list_products 한 줄 — AI 가 여기서 product_id 를 골라 record_sample 에 넣는다 */
 export function productListLine(p: ProductRow): string {
   const alias = productNameVariants(p.name).slice(2)
-  return [
+  const head = [
     `- product_id=${p.id}`,
     p.code,
     p.name,
     alias.length ? `별칭 ${alias.join(", ")}` : null,
-    `규격 ${p.spec ?? "-"}`,
-    `재고 ${unitText(p.stock, p.unit)}`,
-  ].filter(Boolean).join(" · ")
+  ]
+  if (p.gelType) {
+    const lots = (p.lots ?? []).filter((l) => l.ml !== 0)
+    return [
+      [...head, "젤 타입 — 농도(concentration) · ml(volume_ml)를 함께 준다. 개수는 세지 않는다", `재고 합계 ${unitText(p.stock, "ML")}`].filter(Boolean).join(" · "),
+      ...(lots.length ? lots.map((l) => `  · 농도 ${l.conc === 0 ? "(빈 칸)" : concText(l.conc)}: ${lotText(l)}`) : ["  · 농도별 재고 없음"]),
+    ].join("\n")
+  }
+  return [...head, `규격 ${p.spec ?? "-"}`, `재고 ${unitText(p.stock, p.unit)}`].filter(Boolean).join(" · ")
 }
 
 /**
@@ -154,6 +165,11 @@ export function resolveProduct<T extends ProductLike & { id: string; code: strin
   return { problem: `'${v.product}' 제품이 CRM 제품 목록에 없습니다. 목록에 있는 이름으로 다시 부르거나, 제품 없이 content 에 적어 남기세요. list_products 로 목록을 보고 product_id 로 부르면 정확합니다.` }
 }
 
+/** 젤 타입이면 「애드젤 (ADD GEL) · 1% · 5ml」, 아니면 이름 규격 */
+export function variantProductLabel(p: ProductLike & { gelType?: GelType | null }, conc?: number | null, volumeMl?: number | null): string {
+  return p.gelType ? variantLabel(p.name, conc ?? null, volumeMl ?? null) : productLabel(p)
+}
+
 /** 출고 뒤 재고 경고 — 0 이 되거나 모자라면 */
 export function stockWarning(before: number, quantity: number, unit: ProductRow["unit"] = "PIECE"): string | null {
   const after = Math.round((before - quantity) * 1000) / 1000
@@ -173,6 +189,9 @@ export interface SampleArgs {
   productId: string | null
   product: string | null
   quantity: number | null
+  /** 젤 타입이면 농도(%) · 보낸 ml — 검사는 제품을 고른 뒤(planSampleDelivery) */
+  concentration: unknown
+  volumeMl: unknown
   /** YYYY-MM-DD — 전달한 날 */
   date: string
   contact: string | null
@@ -218,6 +237,8 @@ export function parseSampleArgs(args: Record<string, unknown>, now = new Date())
       productId,
       product,
       quantity,
+      concentration: args.concentration ?? null,
+      volumeMl: args.volume_ml ?? null,
       date,
       contact: clip(args.contact, 100),
       content: clip(args.content, 2000),
@@ -231,8 +252,8 @@ export function parseSampleArgs(args: Record<string, unknown>, now = new Date())
 }
 
 /** 샘플요청 칸 「요청사항」 에 들어갈 말 — 사용자가 준 말이 없으면 제품 · 수량으로 */
-export function sampleRequestText(v: Pick<SampleArgs, "content">, product: ProductLike | null, quantity: number | null): string {
+export function sampleRequestText(v: Pick<SampleArgs, "content">, product: (ProductLike & { label?: string }) | null, quantity: number | null): string {
   if (v.content) return v.content
-  if (product) return `${productLabel(product)}${quantity ? ` ${quantity}개` : ""} 샘플 전달`
+  if (product) return `${product.label ?? productLabel(product)}${quantity ? ` ${quantity}개` : ""} 샘플 전달`
   return "샘플 전달"
 }

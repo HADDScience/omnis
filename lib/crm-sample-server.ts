@@ -4,6 +4,8 @@
 //   샘플요청 한 줄(발송완료) + 제품 · 수량이 있으면 샘플 출고 한 줄 + 그만큼 재고 출고.
 // 출고와 재고를 한 트랜잭션에 두는 까닭은 shipments 라우트 주석 그대로다 — 따로 두면 「물건은 나갔는데 재고는 그대로」 가 된다.
 import { prisma } from "@/lib/db"
+import { gelLotsByProduct } from "@/lib/crm-gel-server"
+import { gelShortWarning, lotMl, parseConc, parseMl, round3, variantLabel } from "@/lib/crm-gel"
 import { writeActivity } from "@/lib/api"
 import { nextCode, nextDatedCode } from "@/lib/crm"
 import { createWithUniqueCode } from "@/lib/crm-server"
@@ -22,7 +24,7 @@ export async function findOrgsLoose(query: string, take = 5) {
 /** CRM 제품 + 현재고(장부 IN − OUT). 보관(archived) 제품은 뺀다 */
 export async function listProductsWithStock(): Promise<ProductRow[]> {
   const [products, sums] = await Promise.all([
-    prisma.crmProduct.findMany({ where: { archived: false }, select: { id: true, code: true, name: true, spec: true, stockUnit: true }, orderBy: { code: "asc" } }),
+    prisma.crmProduct.findMany({ where: { archived: false }, select: { id: true, code: true, name: true, spec: true, stockUnit: true, gelType: true }, orderBy: { code: "asc" } }),
     prisma.crmStockMove.groupBy({ by: ["productId", "direction"], _sum: { quantity: true } }),
   ])
   const bal = new Map<string, number>()
@@ -30,9 +32,12 @@ export async function listProductsWithStock(): Promise<ProductRow[]> {
     const q = Number(r._sum.quantity ?? 0) * (r.direction === "IN" ? 1 : -1)
     bal.set(r.productId, (bal.get(r.productId) ?? 0) + q)
   }
+  const lots = await gelLotsByProduct(products.filter((p) => p.gelType).map((p) => p.id))
   return products.map((p) => ({
     id: p.id, code: p.code, name: p.name, spec: p.spec, unit: p.stockUnit,
     stock: Math.round((bal.get(p.id) ?? 0) * 1000) / 1000,
+    gelType: p.gelType,
+    ...(p.gelType ? { lots: lots.get(p.id) ?? [] } : {}),
   }))
 }
 
@@ -62,8 +67,9 @@ export interface SamplePlan {
   org?: { id: string; name: string } | null
   /** 없는 기관을 새로 만든다(create_org=true 일 때만) */
   newOrgName?: string
-  product?: { id: string; name: string; spec: string | null } | null
-  /** 샘플 출고로 바뀌는 재고(제품 · 수량이 있을 때) */
+  /** label: 화면 · 글에 쓰는 이름(젤이면 「애드젤 (ADD GEL) · 10% · 5ml」) */
+  product?: { id: string; name: string; spec: string | null; label: string; gel: { conc: number; volumeMl: number | null } | null } | null
+  /** 샘플 출고로 바뀌는 재고(제품 · 수량이 있을 때). 젤이면 그 농도 칸의 ml */
   stock?: { before: number; after: number; unit: ProductRow["unit"] } | null
   /** 재고가 0 이 되거나 모자랄 때 — 확인 카드 · 미리보기에 보인다 */
   warning?: string | null
@@ -102,10 +108,31 @@ export async function planSampleDelivery(raw: Record<string, unknown>): Promise<
     if ("problem" in r) return { args: v, rows: [], problem: r.problem }
     if (r.product) {
       const p = r.product
-      product = { id: p.id, name: p.name, spec: p.spec }
-      if (v.quantity) {
-        stock = { before: p.stock, after: Math.round((p.stock - v.quantity) * 1000) / 1000, unit: p.unit }
-        warning = stockWarning(p.stock, v.quantity, p.unit)
+      let gel: { conc: number; volumeMl: number | null } | null = null
+      if (p.gelType) {
+        const c = parseConc(v.concentration)
+        if ("problem" in c) return { args: v, rows: [], problem: `${p.name} 은 젤 타입이라 concentration(농도 %)이 필요합니다 — ${c.problem}` }
+        // 젤 타입은 개수를 세지 않는다 — 보낸 ml 전체(volume_ml)만 받는다. quantity=1 은 같은 뜻이라 받아 준다
+        if (v.quantity && v.quantity > 1) return { args: v, rows: [], problem: `${p.name} 은 젤 타입이라 개수를 세지 않습니다 — 보낸 ml 전체를 volume_ml 로 주세요(5ml 3개면 15).` }
+        let vol: number | null = null
+        if (v.volumeMl !== null && v.volumeMl !== undefined && v.volumeMl !== "") {
+          const m = parseMl(v.volumeMl)
+          if ("problem" in m) return { args: v, rows: [], problem: m.problem }
+          vol = m.ml
+        } else if (v.quantity) return { args: v, rows: [], problem: `${p.name} 은 젤 타입이라 샘플 출고를 적으려면 volume_ml(보낸 ml)이 필요합니다.` }
+        gel = { conc: c.conc, volumeMl: vol }
+      }
+      product = { id: p.id, name: p.name, spec: p.spec, label: gel ? variantLabel(p.name, gel.conc, gel.volumeMl) : productLabel(p), gel }
+      if (gel ? gel.volumeMl != null : v.quantity) {
+        if (gel) {
+          const before = lotMl(p.lots ?? [], gel.conc)
+          const take = gel.volumeMl ?? 0
+          stock = { before, after: round3(before - take), unit: "ML" }
+          warning = gelShortWarning(variantLabel(p.name, gel.conc), before, take)
+        } else {
+          stock = { before: p.stock, after: Math.round((p.stock - v.quantity!) * 1000) / 1000, unit: p.unit }
+          warning = stockWarning(p.stock, v.quantity!, p.unit)
+        }
       }
     }
   }
@@ -119,17 +146,21 @@ export async function planSampleDelivery(raw: Record<string, unknown>): Promise<
   const rows: PlanRow[] = [
     { label: "기관", value: org ? org.name : `${newOrgName} — 새로 만듭니다(${ORG_TYPE_LABEL[v.orgType]})` },
     { label: "전달일", value: v.date },
-    { label: "요청사항", value: sampleRequestText(v, product, v.quantity) },
+    { label: "요청사항", value: sampleRequestText(v, product, product?.gel ? null : v.quantity) },
     { label: "상태", value: "발송완료" },
   ]
-  if (product) rows.push({ label: "제품", value: productLabel(product) })
-  if (product && v.quantity) rows.push({ label: "샘플 출고", value: `${productLabel(product)} ${v.quantity}개 · 재고에서 뺍니다` })
+  if (product) rows.push({ label: "제품", value: product.label })
+  if (product && shipsSample(product, v.quantity)) rows.push({ label: "샘플 출고", value: `${product.label}${product.gel ? "" : ` ${v.quantity}개`} · 재고에서 뺍니다` })
   if (stock) rows.push({ label: "재고", value: `${stockText(stock.before, stock.unit)} → ${stockText(stock.after, stock.unit)}` })
   if (v.contact) rows.push({ label: "담당자", value: contact ? contact.name : `${v.contact} (CRM 담당자에 없어 비고에 적습니다)` })
   if (v.referral) rows.push({ label: "소개경로", value: v.referral })
   if (v.note) rows.push({ label: "비고", value: v.note })
   return { args: v, org, newOrgName, product, stock, warning, contact, rows }
 }
+
+/** 샘플 출고가 생기는가 — 젤 타입은 보낸 ml 가 있을 때, 아니면 수량이 있을 때 */
+const shipsSample = (product: NonNullable<SamplePlan["product"]>, quantity: number | null) =>
+  product.gel ? product.gel.volumeMl != null : Boolean(quantity)
 
 export const planText = (plan: SamplePlan) =>
   [...plan.rows.map((r) => `- ${r.label}: ${r.value}`), plan.warning ? `⚠ ${plan.warning}` : null].filter(Boolean).join("\n")
@@ -171,7 +202,8 @@ export async function recordSampleDelivery(raw: Record<string, unknown>, userId:
           orgId,
           contactId: plan.contact?.id ?? null,
           productId: plan.product?.id ?? null,
-          request: sampleRequestText(v, plan.product ?? null, v.quantity),
+          ...(plan.product?.gel ? { concentrationPct: plan.product.gel.conc, volumeMl: plan.product.gel.volumeMl } : {}),
+          request: sampleRequestText(v, plan.product ?? null, plan.product?.gel ? null : v.quantity),
           referral: v.referral,
           status: "SENT",
           sentAt: at,
@@ -180,17 +212,22 @@ export async function recordSampleDelivery(raw: Record<string, unknown>, userId:
         select: { id: true, code: true },
       })
       let shipment: { id: string; code: string } | null = null
-      if (plan.product && v.quantity) {
+      if (plan.product && shipsSample(plan.product, v.quantity)) {
         const shipCodes = (await tx.crmShipment.findMany({ select: { code: true } })).map((s) => s.code)
+        const gel = plan.product.gel && plan.product.gel.volumeMl != null ? { concentrationPct: plan.product.gel.conc, volumeMl: plan.product.gel.volumeMl } : null
         shipment = await tx.crmShipment.create({
           data: {
             code: nextCode("SH", shipCodes), shippedAt: at, kind: "SAMPLE", status: "DELIVERED",
-            orgId, productId: plan.product.id, quantity: v.quantity, sampleRequestId: sample.id,
+            orgId, productId: plan.product.id, quantity: gel ? null : v.quantity, sampleRequestId: sample.id,
+            ...(gel ?? {}),
           },
           select: { id: true, code: true },
         })
         await tx.crmStockMove.create({
-          data: { movedAt: at, productId: plan.product.id, direction: "OUT", quantity: v.quantity, note: `출고 ${shipment.code}`, shipmentId: shipment.id },
+          data: {
+            movedAt: at, productId: plan.product.id, direction: "OUT", note: `출고 ${shipment.code}`, shipmentId: shipment.id,
+            ...(gel ? { quantity: gel.volumeMl, concentrationPct: gel.concentrationPct } : { quantity: v.quantity! }),
+          },
         })
       }
       return { sample, shipment, orgCreated, orgId }
@@ -212,7 +249,7 @@ export async function recordSampleDelivery(raw: Record<string, unknown>, userId:
   return {
     text: [
       `기록했습니다: 샘플요청 ${r.sample.code} · ${orgName}${r.orgCreated ? ` (새 기관 ${r.orgCreated.code})` : ""}`,
-      r.shipment ? `샘플 출고 ${r.shipment.code} · ${productLabel(plan.product!)} ${v.quantity}개 — 재고에서 뺐습니다` : null,
+      r.shipment ? `샘플 출고 ${r.shipment.code} · ${plan.product!.label} ${v.quantity}개 — 재고에서 뺐습니다` : null,
       "CRM › 샘플요청 에서 볼 수 있습니다.",
     ].filter(Boolean).join("\n"),
   }

@@ -1,18 +1,6 @@
-import { HeaderSkeleton, CrmNavSkeleton, ListHeadSkeleton, CardListSkeleton, TableSkeleton } from "@/components/ui/page-skeleton"
+import { CrmTabSkeleton } from "@/components/crm/crm-tab-skeleton"
 
+/** 탭 전환 스켈레톤과 같은 것 — 탭 줄은 진짜라 누른 탭이 켜져 있다(components/crm/crm-tabs.tsx) */
 export default function Loading() {
-  return (
-    <>
-      <HeaderSkeleton />
-      <div className="mx-auto w-full max-w-[1000px] px-6 pb-20 pt-6">
-        <CrmNavSkeleton />
-        <ListHeadSkeleton />
-        <CardListSkeleton count={2} lines={3} />
-        <div className="mt-8">
-          <ListHeadSkeleton />
-          <TableSkeleton rows={7} cols={7} />
-        </div>
-      </div>
-    </>
-  )
+  return <CrmTabSkeleton tab="inventory" />
 }

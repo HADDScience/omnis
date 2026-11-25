@@ -4,10 +4,16 @@ import { prisma } from "@/lib/db"
 import { writeActivity } from "@/lib/api"
 import { normalizeOrgName } from "@/lib/crm-sample-rules"
 import { listProductsWithStock } from "@/lib/crm-sample-server"
-import { createOrg, createPayment, createProduction, createQuote, createShipment, createStockMove, deleteQuote, deleteSampleRequest, updateOrg, updateQuote, updateSampleRequest, type OpResult } from "@/lib/crm-ops"
+import {
+  createOrg, createPayment, createProduction, createQuote, createShipment, createStockMove, deleteProduction, deleteQuote, deleteSampleRequest, deleteShipment,
+  planProductionInput, updateOrg, updateProduction, updateQuote, updateSampleRequest, updateShipment, type OpResult,
+} from "@/lib/crm-ops"
+import { amountText, rowProductLabel, variantLabel } from "@/lib/crm-gel"
 import { receivableChains } from "@/lib/crm-receivables"
-import { QUOTE_STATUS_LABEL, quoteTotals } from "@/lib/crm"
-import { crmPlanText, planCrmWrite, type CrmOp, type CrmPlan, type CrmPort, type CrmQuoteView, type CrmReceivableView, type CrmSampleView, type CrmWriteToolName } from "@/lib/crm-write-rules"
+import { QUOTE_STATUS_LABEL, quoteTotals, SHIPMENT_KIND_LABEL, SHIPMENT_STATUS_LABEL } from "@/lib/crm"
+import {
+  crmPlanText, planCrmWrite, type CrmOp, type CrmPlan, type CrmPort, type CrmProductionView, type CrmQuoteView, type CrmReceivableView, type CrmSampleView, type CrmShipmentView, type CrmWriteToolName,
+} from "@/lib/crm-write-rules"
 
 const kst = (d: Date) => d.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 10)
 
@@ -16,17 +22,110 @@ async function sampleView(ref: string): Promise<CrmSampleView | null> {
   const uuid = /^[0-9a-f-]{36}$/i.test(key)
   const s = await prisma.crmSampleRequest.findFirst({
     where: uuid ? { id: key } : { code: { equals: key, mode: "insensitive" } },
-    include: { org: { select: { id: true, name: true } }, shipments: { select: { id: true, code: true, quantity: true, productId: true }, orderBy: { createdAt: "asc" } } },
+    include: { org: { select: { id: true, name: true } }, shipments: { select: { id: true, code: true, quantity: true, productId: true, concentrationPct: true, volumeMl: true }, orderBy: { createdAt: "asc" } } },
   })
   if (!s) return null
+  const n = (v: unknown) => (v == null ? null : Number(v))
   return {
     id: s.id, code: s.code, date: kst(s.requestedAt), org: s.org, productId: s.productId,
-    request: s.request, referral: s.referral, note: s.note, sent: s.status === "SENT", shipments: s.shipments,
+    request: s.request, referral: s.referral, note: s.note, sent: s.status === "SENT",
+    shipments: s.shipments.map((x) => ({ ...x, concentrationPct: n(x.concentrationPct), volumeMl: n(x.volumeMl) })),
+    concentrationPct: n(s.concentrationPct), volumeMl: n(s.volumeMl),
   }
 }
 
+const productionInclude = {
+  product: { select: { name: true } },
+  material: { select: { name: true } },
+}
+
+async function productionView(ref: string): Promise<CrmProductionView | null> {
+  const key = ref.trim()
+  const p = await prisma.crmProduction.findFirst({
+    where: isUuid(key) ? { id: key } : { code: { equals: key, mode: "insensitive" } },
+    include: productionInclude,
+  })
+  if (!p) return null
+  return {
+    id: p.id, code: p.code, date: kst(p.producedAt), productId: p.productId, productName: p.product.name,
+    concentrationPct: p.concentrationPct != null ? Number(p.concentrationPct) : null,
+    totalMl: Number(p.totalMl ?? 0), materialId: p.materialId, materialName: p.material?.name ?? null,
+    materialGrams: Number(p.materialGrams), note: p.note, photoFileIds: p.photoFileIds,
+  }
+}
+
+/** list_productions — production_id 를 여기서 고른다 */
+export async function productionListText(query?: string, limit = 20): Promise<string> {
+  const take = Math.min(Math.max(limit || 20, 1), 50)
+  const q = (query ?? "").trim()
+  const rows = await prisma.crmProduction.findMany({
+    where: q ? { OR: [{ code: { contains: q, mode: "insensitive" } }, { note: { contains: q, mode: "insensitive" } }, { product: { name: { contains: q, mode: "insensitive" } } }] } : {},
+    orderBy: { producedAt: "desc" }, take, include: productionInclude,
+  })
+  if (rows.length === 0) return q ? `'${q}' 에 맞는 생산 기록이 없습니다.` : "생산 기록이 없습니다."
+  return [
+    `CRM 생산 기록 ${rows.length}건(최근순) — 고치기 · 지우기는 production_id 로 update_production · delete_production.`,
+    ...rows.map((p) => [
+      `- production_id=${p.id}`, p.code, kst(p.producedAt),
+      variantLabel(p.product.name, p.concentrationPct != null ? Number(p.concentrationPct) : null, Number(p.totalMl ?? 0)),
+      p.material ? `${p.material.name} −${Number(p.materialGrams)}g` : "원재료 차감 없음",
+      p.photoFileIds.length ? `사진 ${p.photoFileIds.length}장` : null,
+      p.note ? `메모 ${p.note.slice(0, 80)}` : null,
+    ].filter(Boolean).join(" · ")),
+  ].join("\n")
+}
+
 const isUuid = (k: string) => /^[0-9a-f-]{36}$/i.test(k)
-const label = (p: { name: string; spec: string | null }) => `${p.name}${p.spec ? ` ${p.spec}` : ""}`
+
+const shipmentInclude = {
+  org: { select: { id: true, name: true, code: true } },
+  product: { select: { name: true, spec: true, gelType: true } },
+  sampleRequest: { select: { code: true } },
+  _count: { select: { stockMoves: true } },
+} as const
+
+async function shipmentView(ref: string): Promise<CrmShipmentView | null> {
+  const key = ref.trim()
+  const s = await prisma.crmShipment.findFirst({
+    where: isUuid(key) ? { id: key } : { code: { equals: key, mode: "insensitive" } },
+    include: shipmentInclude,
+  })
+  if (!s) return null
+  return {
+    id: s.id, code: s.code, date: kst(s.shippedAt), kind: s.kind, status: s.status, org: { id: s.org.id, name: s.org.name },
+    productId: s.productId, concentrationPct: s.concentrationPct != null ? Number(s.concentrationPct) : null,
+    volumeMl: s.volumeMl != null ? Number(s.volumeMl) : null, quantity: s.quantity, note: s.note,
+    ledger: s._count.stockMoves > 0, sampleCode: s.sampleRequest?.code ?? null,
+  }
+}
+
+/** list_shipments — shipment_id 를 여기서 고른다 */
+export async function shipmentListText(query?: string, limit = 20): Promise<string> {
+  const take = Math.min(Math.max(limit || 20, 1), 50)
+  const q = (query ?? "").trim()
+  const rows = await prisma.crmShipment.findMany({
+    where: q ? { OR: [
+      { code: { contains: q, mode: "insensitive" } }, { note: { contains: q, mode: "insensitive" } },
+      { org: { name: { contains: q, mode: "insensitive" } } }, { org: { code: { equals: q, mode: "insensitive" } } },
+      { product: { name: { contains: q, mode: "insensitive" } } },
+    ] } : {},
+    orderBy: [{ shippedAt: "desc" }, { createdAt: "desc" }], take, include: shipmentInclude,
+  })
+  if (rows.length === 0) return q ? `'${q}' 에 맞는 출고가 없습니다.` : "출고 기록이 없습니다."
+  return [
+    `CRM 출고 ${rows.length}건(최근순) — 고치기 · 지우기는 shipment_id 로 update_shipment · delete_shipment.`,
+    ...rows.map((s) => [
+      `- shipment_id=${s.id}`, s.code, kst(s.shippedAt), `${s.org.name}(${s.org.code})`,
+      `${rowProductLabel(s.product, { concentrationPct: s.concentrationPct })} ${amountText(s, s.product.gelType)}`,
+      SHIPMENT_KIND_LABEL[s.kind], SHIPMENT_STATUS_LABEL[s.status],
+      s._count.stockMoves > 0 ? "재고 차감됨" : "미반영(재고 무관)",
+      s.sampleRequest ? `샘플요청 ${s.sampleRequest.code}` : null,
+      s.note ? `비고 ${s.note.slice(0, 80)}` : null,
+    ].filter(Boolean).join(" · ")),
+  ].join("\n")
+}
+
+const label = (p: { name: string; spec: string | null; gelType?: string | null }, row?: { concentrationPct?: unknown; volumeMl?: unknown }) => rowProductLabel(p, row)
 
 async function quoteView(ref: string): Promise<CrmQuoteView | null> {
   const key = ref.trim()
@@ -34,14 +133,14 @@ async function quoteView(ref: string): Promise<CrmQuoteView | null> {
     where: isUuid(key) ? { id: key } : { code: { equals: key, mode: "insensitive" } },
     include: {
       org: { select: { id: true, name: true } },
-      items: { include: { product: { select: { name: true, spec: true } } }, orderBy: { sortOrder: "asc" } },
+      items: { include: { product: { select: { name: true, spec: true, gelType: true } } }, orderBy: { sortOrder: "asc" } },
       _count: { select: { shipments: true, taxInvoices: true } },
     },
   })
   if (!q) return null
   return {
     id: q.id, code: q.code, date: kst(q.quotedAt), org: q.org, status: q.status, note: q.note, discount: q.discountAmount, vatRate: q.vatRate,
-    items: q.items.map((i) => ({ productId: i.productId, label: label(i.product), quantity: i.quantity, unitPrice: i.unitPrice })),
+    items: q.items.map((i) => ({ productId: i.productId, label: label(i.product, i), quantity: i.quantity, unitPrice: i.unitPrice })),
     shipments: q._count.shipments, taxInvoices: q._count.taxInvoices,
     taxInvoicedAt: q.taxInvoicedAt ? kst(q.taxInvoicedAt) : null,
   }
@@ -78,6 +177,18 @@ export const prismaCrmPort: CrmPort = {
   sample: sampleView,
   quote: quoteView,
   receivable: receivableView,
+  production: productionView,
+  shipment: shipmentView,
+  async productionPreview(input, excludeId) {
+    const r = await planProductionInput({ ...input, producedAt: `${input.producedAt}T00:00:00Z` }, excludeId)
+    if (!r.ok) return { problem: r.error }
+    const v = r.value
+    return {
+      productId: v.product.id, productName: v.product.name, conc: v.conc, totalMl: v.totalMl,
+      materialId: v.material?.id ?? null, materialName: v.material?.name ?? null, materialGrams: v.materialGrams,
+      materialBefore: v.material?.grams ?? 0, warnings: v.warnings,
+    }
+  },
 }
 
 export const planCrm = (name: CrmWriteToolName, args: Record<string, unknown>) => planCrmWrite(name, args, prismaCrmPort)
@@ -105,6 +216,17 @@ async function runOp(op: CrmOp, userId: string): Promise<OpResult<{ id: string; 
       if (!r.ok) return r
       return { ok: true, value: { id: r.value.id, text: `출고 ${r.value.code} 를 남겼습니다 — 재고에서 뺐습니다.` } }
     }
+    case "updateShipment": {
+      const input = { ...op.input, ...(typeof op.input.shippedAt === "string" ? { shippedAt: `${op.input.shippedAt}T00:00:00Z` } : {}) }
+      const r = await updateShipment(op.id, input)
+      if (!r.ok) return r
+      return { ok: true, value: { id: op.id, text: `고쳤습니다: 출고 ${r.value.code} — ${r.value.summary}.${r.value.ledger ? " 재고를 다시 계산했습니다." : " 미반영 출고라 재고는 그대로입니다."}` } }
+    }
+    case "deleteShipment": {
+      const r = await deleteShipment(op.id)
+      if (!r.ok) return r
+      return { ok: true, value: { id: op.id, text: `지웠습니다: 출고 ${r.value.code} — ${r.value.summary}.${r.value.ledger ? " 재고가 돌아왔습니다." : ""}` } }
+    }
     case "payment": {
       const r = await createPayment(op.input, userId)
       if (!r.ok) return r
@@ -116,7 +238,7 @@ async function runOp(op: CrmOp, userId: string): Promise<OpResult<{ id: string; 
       const v = r.value
       return { ok: true, value: { id: op.id, text: [
         `고쳤습니다: 샘플요청 ${v.code}`,
-        v.shipment ? `샘플 출고 ${v.shipment.code} · ${v.shipment.quantity}개 — 재고가 따라 바뀌었습니다` : null,
+        v.shipment ? `샘플 출고 ${v.shipment.code} · ${amountText({ quantity: v.shipment.quantity, volumeMl: v.shipment.ml }, v.shipment.ml != null ? "gel" : null)} — 재고가 따라 바뀌었습니다` : null,
         v.removedShipment ? `샘플 출고 ${v.removedShipment} 를 지웠습니다 — 재고가 돌아왔습니다` : null,
       ].filter(Boolean).join("\n") } }
     }
@@ -146,7 +268,17 @@ async function runOp(op: CrmOp, userId: string): Promise<OpResult<{ id: string; 
     case "production": {
       const r = await createProduction({ ...op.input, producedAt: `${op.input.producedAt}T00:00:00Z` })
       if (!r.ok) return r
-      return { ok: true, value: { id: r.value.id, text: `생산 ${r.value.code} 를 남겼습니다 — 완제품 재고가 늘고 원료가 줄었습니다.` } }
+      return { ok: true, value: { id: r.value.id, text: `생산 ${r.value.code} 를 남겼습니다 — ${r.value.summary}. 완제품 재고가 늘고${r.value.materialName ? ` ${r.value.materialName} ${r.value.materialGrams}g 이 줄었습니다` : " 원재료는 차감하지 않았습니다"}.` } }
+    }
+    case "updateProduction": {
+      const r = await updateProduction(op.id, { ...op.input, producedAt: `${op.input.producedAt}T00:00:00Z` })
+      if (!r.ok) return r
+      return { ok: true, value: { id: op.id, text: `고쳤습니다: 생산 ${r.value.code} — ${r.value.summary}. 재고 · 원재료 차감을 다시 계산했습니다.` } }
+    }
+    case "deleteProduction": {
+      const r = await deleteProduction(op.id)
+      if (!r.ok) return r
+      return { ok: true, value: { id: op.id, text: `지웠습니다: 생산 ${r.value.code} — 완제품 재고를 빼고 원재료를 돌려놓았습니다.` } }
     }
   }
 }
@@ -182,8 +314,8 @@ export async function sampleListText(query?: string, limit = 20): Promise<string
     take: query ? 500 : take,
     include: {
       org: { select: { name: true, code: true } },
-      product: { select: { name: true, spec: true } },
-      shipments: { select: { code: true, quantity: true, product: { select: { name: true, spec: true } } } },
+      product: { select: { name: true, spec: true, gelType: true } },
+      shipments: { select: { code: true, quantity: true, volumeMl: true, product: { select: { name: true, spec: true, gelType: true } } } },
     },
   })
   const q = query ? normalizeOrgName(query) : ""
@@ -195,8 +327,8 @@ export async function sampleListText(query?: string, limit = 20): Promise<string
     `샘플요청 ${hit.length}건(최근 것부터) — 고치기 · 지우기는 sample_id 로(update_sample · delete_sample).`,
     ...hit.map((s) => [
       `- sample_id=${s.id}`, s.code, kst(s.requestedAt), `${s.org.name}(${s.org.code})`,
-      s.product ? `${s.product.name}${s.product.spec ? ` ${s.product.spec}` : ""}` : "제품 없음",
-      s.shipments.length ? `출고 ${s.shipments.map((x) => `${x.code} ${x.quantity}개`).join(", ")}` : "출고 없음",
+      s.product ? rowProductLabel(s.product, s) : "제품 없음",
+      s.shipments.length ? `출고 ${s.shipments.map((x) => `${x.code} ${amountText(x, x.product.gelType)}`).join(", ")}` : "출고 없음",
       s.status === "SENT" ? "발송완료" : "미발송",
       s.request ? `요청 ${s.request.slice(0, 60)}` : null,
     ].filter(Boolean).join(" · ")),
@@ -211,7 +343,7 @@ export async function quoteListText(query?: string, limit = 20): Promise<string>
     take: query ? 500 : take,
     include: {
       org: { select: { name: true, code: true } },
-      items: { include: { product: { select: { name: true, spec: true } } }, orderBy: { sortOrder: "asc" } },
+      items: { include: { product: { select: { name: true, spec: true, gelType: true } } }, orderBy: { sortOrder: "asc" } },
       _count: { select: { taxInvoices: true, shipments: true } },
     },
   })
@@ -224,7 +356,7 @@ export async function quoteListText(query?: string, limit = 20): Promise<string>
     `견적 ${hit.length}건(최근 것부터) — 고치기 · 지우기는 quote_id 로(update_quote · delete_quote).`,
     ...hit.map((x) => [
       `- quote_id=${x.id}`, x.code, kst(x.quotedAt), `${x.org.name}(${x.org.code})`,
-      x.items.map((i) => `${label(i.product)} ${i.quantity}개 × ${i.unitPrice.toLocaleString("ko-KR")}원`).join(", "),
+      x.items.map((i) => `${label(i.product, i)} ${i.quantity}개 × ${i.unitPrice.toLocaleString("ko-KR")}원`).join(", "),
       `합계 ${quoteTotals(x.items, x.discountAmount, x.vatRate).total.toLocaleString("ko-KR")}원`,
       QUOTE_STATUS_LABEL[x.status],
       x._count.taxInvoices ? `세금계산서 ${x._count.taxInvoices}장` : "세금계산서 없음",

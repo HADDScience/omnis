@@ -71,6 +71,10 @@ export const TOOL_POLICY = {
   // 견적 · 받을 돈 목록 — update_quote · delete_quote 의 quote_id, record_payment 의 invoice_id
   list_quotes: R,
   list_receivables: R,
+  // 생산 기록 목록 — update_production · delete_production 의 production_id
+  list_productions: R,
+  // 출고 목록 — update_shipment · delete_shipment 의 shipment_id
+  list_shipments: R,
   list_omnis_cards: R,
   get_omnis_card: R,
   list_weekly_reports: R,
@@ -119,10 +123,14 @@ export const TOOL_POLICY = {
   update_org: CRM_W,
   record_stock: CRM_W,
   record_production: CRM_W,
+  update_production: CRM_W,
+  delete_production: CRM_W,
   create_quote: CRM_W,
   update_quote: CRM_W,
   delete_quote: CRM_W,
   record_shipment: CRM_W,
+  update_shipment: CRM_W,
+  delete_shipment: CRM_W,
   record_payment: CRM_W,
 
   // ─── 묶음 1(#248) 업무 · 프로젝트 · 채팅 방 · 알림 · 주간보고 — lib/tools/defs-work.ts ───
@@ -140,8 +148,6 @@ export const TOOL_POLICY = {
   list_stock_moves: R,
   list_payments: R,
   list_inquiries: R,
-  update_shipment: PW,
-  delete_shipment: PW,
   delete_stock_move: PW,
   delete_payment: PW,
   settle_payments: PW,

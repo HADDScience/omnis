@@ -6,9 +6,12 @@
 //   앱 AI    — 이 계획이 확인 카드(바뀌기 전 → 뒤, 재고 변화, 0 이하 경고)가 되고, 확인하면 confirm=true 로 실행한다
 //   질문 경로 — 미리보기만(confirm 칸이 없다)
 // 대상은 ID(또는 코드)로 고른다 — list_samples · find_org · list_products 로 찾는다. 이름이 여럿 걸리면 후보를 돌려주고 묻게 한다.
-import { gramsForQuantity, ORG_TYPE_LABEL, QUOTE_STATUS_LABEL, quoteTotals, SHIPMENT_KIND_LABEL, SHIPMENT_STATUS_LABEL } from "@/lib/crm"
 import {
-  kstToday, normalizeOrgName, pickOrg, productLabel, rankOrgs, resolveProduct, stockText, stockWarning,
+  CONC_MAX, CONC_MIN, concText, gelShortWarning, lotMl, mlText, parseConc, parseMl, variantLabel,
+} from "@/lib/crm-gel"
+import { ORG_TYPE_LABEL, QUOTE_STATUS_LABEL, quoteTotals, SHIPMENT_KIND_LABEL, SHIPMENT_STATUS_LABEL } from "@/lib/crm"
+import {
+  kstToday, normalizeOrgName, pickOrg, productLabel, rankOrgs, resolveProduct, stockText, stockWarning, variantProductLabel,
   type ProductRow,
 } from "@/lib/crm-sample-rules"
 
@@ -17,6 +20,10 @@ import {
 const CONFIRM = { type: "boolean", description: "사용자가 바뀔 내용에 동의했으면 true. 없으면 쓰지 않고 미리보기만 돌려준다" } as const
 const DATE = { type: "string", description: "날짜 YYYY-MM-DD(서울). 비우면 오늘. 앞날은 안 된다" } as const
 const ORG_TYPE = { type: "string", enum: ["UNIVERSITY", "RESEARCH", "COMPANY", "HOSPITAL", "OTHER"], description: "기관 종류 — 대학 · 연구원 · 기업 · 병원 · 기타" } as const
+const CONCENTRATION = { type: "number", description: "젤 타입(애드젤 · 라이브젤)일 때 농도 % (0.5~20). list_products 에 농도별 재고가 있다" } as const
+const VOLUME_ML = { type: "number", description: "젤 타입일 때 ml(양수). 젤은 개수를 세지 않는다 — 5ml 짜리 3개를 보냈으면 volume_ml=15, quantity 는 비운다" } as const
+/** 견적 품목만은 개수 × 단가로 남긴다 — 한 개 용량 */
+const QUOTE_VOLUME_ML = { type: "number", description: "젤 타입일 때 한 개 용량(ml, 양수) — 견적은 개수 × 단가로 적는다. 5ml 짜리 3개면 volume_ml=5, quantity=3" } as const
 const PREVIEW_RULE = "confirm 없이 부르면 쓰지 않고 바뀔 내용(전 → 뒤 · 재고 변화)만 돌려준다 — 사용자에게 보여 주고 동의를 받은 뒤 confirm=true 로 다시 부른다."
 
 export const CRM_WRITE_TOOLS = [
@@ -37,7 +44,7 @@ export const CRM_WRITE_TOOLS = [
     name: "update_sample",
     description:
       "CRM 샘플요청 한 건을 고친다 — 날짜 · 기관 · 제품 · 수량 · 요청사항 · 소개경로 · 비고 · 발송 여부. 준 칸만 바뀐다. " +
-      "딸린 샘플 출고가 따라간다: 수량을 바꾸면 출고 수량과 재고가, 제품을 바꾸면 출고 · 재고의 제품이 바뀐다. quantity=0 이면 샘플 출고를 지워 재고를 되돌린다. " +
+      "딸린 샘플 출고가 따라간다: 수량(젤 타입은 volume_ml 의 ml)을 바꾸면 출고와 재고가, 제품을 바꾸면 출고 · 재고의 제품이 바뀐다. quantity=0 이면 샘플 출고를 지워 재고를 되돌린다. " +
       "sample_id 는 list_samples 로 찾는다. 제품은 list_products 의 product_id. " + PREVIEW_RULE,
     inputSchema: {
       type: "object",
@@ -46,7 +53,9 @@ export const CRM_WRITE_TOOLS = [
         date: { type: "string", description: "전달한 날 YYYY-MM-DD. 출고 날짜도 함께 바뀐다" },
         org: { type: "string", description: "기관을 바꿀 때 — find_org 의 기관 코드(ORG001) · 이름" },
         product_id: { type: "string", description: "제품을 바꿀 때 — list_products 의 product_id(또는 코드). 'none' 이면 제품을 비우고 샘플 출고를 지운다" },
-        quantity: { type: "integer", description: "샘플 출고 수량(개). 0 이면 출고를 지워 재고를 되돌린다" },
+        quantity: { type: "integer", description: "샘플 출고 수량(개) — 젤 타입이 아닌 제품만(젤은 volume_ml). 0 이면 출고를 지워 재고를 되돌린다" },
+        concentration: CONCENTRATION,
+        volume_ml: VOLUME_ML,
         content: { type: "string", description: "요청사항" },
         referral: { type: "string", description: "소개경로" },
         note: { type: "string", description: "비고" },
@@ -116,7 +125,8 @@ export const CRM_WRITE_TOOLS = [
       properties: {
         product_id: { type: "string", description: "list_products 의 product_id(또는 코드)" },
         mode: { type: "string", enum: ["in", "out", "count"], description: "in 입고 · out 출고(폐기 등) · count 실사 보정" },
-        quantity: { type: "number", description: "in · out 은 움직인 양, count 는 세어 본 실제 재고. 단위는 제품 단위(개 · g)" },
+        quantity: { type: "number", description: "in · out 은 움직인 양, count 는 세어 본 실제 재고. 단위는 제품 단위(개 · g). 젤 타입은 ml" },
+        concentration: { ...CONCENTRATION, description: "젤 타입이면 필수 — 어느 농도 칸인가(%)" },
         date: DATE,
         note: { type: "string", description: "사유 — 원료 입고 · 폐기 · 실사 등" },
         confirm: CONFIRM,
@@ -127,20 +137,64 @@ export const CRM_WRITE_TOOLS = [
   {
     name: "record_production",
     description:
-      "CRM 생산 한 건 — 완제품이 늘고 원료가 준다(한 번에). 원료 그램을 비우면 제품 용량 · 농도로 계산한다. " +
-      "제품 · 원료는 list_products 의 product_id(원료는 단위가 g 인 줄). " + PREVIEW_RULE,
+      "CRM 생산 한 건 — 젤 타입(애드젤 ADDGEL · 라이브젤 LIVEGEL) · 농도 · 만든 ml. 개수는 세지 않는다. 그 농도의 완제품 재고(ml)가 늘고, 타입에 이어진 원재료(예: DNA)가 농도/100 × ml(g, 농도는 g/100ml)만큼 준다(한 번에). " +
+      "원재료가 모자라도 기록하고 경고한다. " + PREVIEW_RULE,
     inputSchema: {
       type: "object",
       properties: {
-        product_id: { type: "string", description: "만든 완제품 — list_products 의 product_id(또는 코드)" },
-        material_id: { type: "string", description: "쓴 원료 — list_products 의 product_id(또는 코드)" },
-        quantity: { type: "integer", description: "만든 수량(개)" },
-        material_grams: { type: "number", description: "실제로 쓴 원료 그램. 비우면 계산한다" },
+        type: { type: "string", enum: ["ADDGEL", "LIVEGEL"], description: "제품 타입 — ADDGEL 애드젤 · LIVEGEL 라이브젤" },
+        concentration: { type: "number", description: "농도 % (0.5~20)" },
+        volume_ml: { type: "number", description: "만든 양(ml, 양수) — 5ml 3개 + 2ml 5개를 만들었으면 25" },
         date: DATE,
-        note: { type: "string", description: "비고 — 로트 등" },
+        note: { type: "string", description: "메모 — 로트 등" },
+        material_id: { type: "string", description: "원재료를 바꿀 때만 — list_products 의 원료(g) product_id. 'none' 이면 차감하지 않는다. 비우면 타입별 기본 원재료" },
         confirm: CONFIRM,
       },
-      required: ["product_id", "material_id", "quantity"],
+      required: ["type", "concentration", "volume_ml"],
+    },
+  },
+  {
+    name: "list_productions",
+    description: "CRM 생산 기록 목록 — production_id · MFG 코드 · 날짜 · 타입 · 농도 · 만든 ml · 원재료 차감. 최근 것부터. 생산을 고치거나 지우려면 먼저 이것으로 production_id 를 찾는다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "MFG 코드 · 타입 이름 · 메모 일부. 비우면 최근 것" },
+        limit: { type: "integer", description: "기본 20, 최대 50" },
+      },
+    },
+  },
+  {
+    name: "update_production",
+    description:
+      "CRM 생산 기록 한 건을 고친다 — 타입 · 농도 · 만든 ml · 날짜 · 메모 · 원재료. 준 칸만 바뀌고, 그 생산의 재고 장부 줄을 다시 만들어 완제품 재고와 원재료 차감이 다시 계산된다. " +
+      "production_id 는 list_productions 로 찾는다. " + PREVIEW_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        production_id: { type: "string", description: "list_productions 의 production_id(또는 MFG 코드)" },
+        type: { type: "string", enum: ["ADDGEL", "LIVEGEL"], description: "제품 타입을 바꿀 때" },
+        concentration: { type: "number", description: "농도 % (0.5~20)" },
+        volume_ml: { type: "number", description: "만든 양(ml)" },
+        date: DATE,
+        note: { type: "string", description: "메모" },
+        material_id: { type: "string", description: "원재료 — 원료 product_id, 'none' 이면 차감 안 함" },
+        confirm: CONFIRM,
+      },
+      required: ["production_id"],
+    },
+  },
+  {
+    name: "delete_production",
+    description:
+      "CRM 생산 기록 한 건을 지운다 — 그 생산에서 나온 재고 장부 줄이 함께 사라져 완제품은 빠지고 원재료는 돌아온다(생산 전으로 되돌림). production_id 는 list_productions 로 찾는다. " + PREVIEW_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        production_id: { type: "string", description: "list_productions 의 production_id(또는 MFG 코드)" },
+        confirm: CONFIRM,
+      },
+      required: ["production_id"],
     },
   },
   // ─── 견적 · 출하 · 입금 ───
@@ -172,8 +226,10 @@ export const CRM_WRITE_TOOLS = [
             type: "object",
             properties: {
               product_id: { type: "string", description: "list_products 의 product_id(또는 코드)" },
-              quantity: { type: "integer", description: "수량" },
-              unit_price: { type: "integer", description: "단가(원, 부가세 별도). 비우면 제품 기본 단가" },
+              quantity: { type: "integer", description: "수량(젤 타입은 한 개 용량 volume_ml 의 개수)" },
+              unit_price: { type: "integer", description: "단가(원, 부가세 별도). 비우면 제품 기본 단가(젤 타입은 기본 단가가 없어 직접 준다)" },
+              concentration: CONCENTRATION,
+              volume_ml: QUOTE_VOLUME_ML,
             },
             required: ["product_id", "quantity"],
           },
@@ -227,7 +283,9 @@ export const CRM_WRITE_TOOLS = [
       properties: {
         org: { type: "string", description: "받는 기관 코드(ORG001) · 이름" },
         product_id: { type: "string", description: "list_products 의 product_id(또는 코드)" },
-        quantity: { type: "integer", description: "수량(개)" },
+        quantity: { type: "integer", description: "수량(개) — 젤 타입이 아닌 제품만. 젤 타입은 volume_ml(ml)" },
+        concentration: CONCENTRATION,
+        volume_ml: VOLUME_ML,
         kind: { type: "string", enum: ["SALE", "SAMPLE", "GIFT"], description: "판매(기본) · 샘플 · 증정" },
         status: { type: "string", enum: ["PREPARING", "SHIPPING", "DELIVERED"], description: "준비중 · 배송중 · 배송완료(기본)" },
         quote_id: { type: "string", description: "이어지는 견적(있으면)" },
@@ -235,7 +293,54 @@ export const CRM_WRITE_TOOLS = [
         note: { type: "string", description: "비고 — 송장번호 등" },
         confirm: CONFIRM,
       },
-      required: ["org", "product_id", "quantity"],
+      required: ["org", "product_id"],
+    },
+  },
+  {
+    name: "list_shipments",
+    description: "CRM 출고(출하) 목록 — shipment_id · SH 코드 · 날짜 · 기관 · 제품(젤은 농도) · 나간 양(젤 ml · 아니면 개수) · 유형 · 상태 · 재고 반영 여부. 최근 것부터. 출고를 고치거나 지우려면 먼저 이것으로 shipment_id 를 찾는다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "SH 코드 · 기관 이름 · 기관 코드 · 제품 이름 · 메모 일부. 비우면 최근 것" },
+        limit: { type: "integer", description: "기본 20, 최대 50" },
+      },
+    },
+  },
+  {
+    name: "update_shipment",
+    description:
+      "CRM 출고 한 건을 고친다 — 제품 · 농도 · 나간 ml(젤) · 개수(젤이 아닌 제품) · 기관 · 날짜 · 유형 · 상태 · 비고. 준 칸만 바뀌고, 재고에 반영된 출고면 그 출고의 재고 장부 줄을 다시 만들어 재고가 다시 계산된다(다른 농도 칸 · 다른 제품으로 옮겨도). " +
+      "엑셀에서 넘어온 「미반영」 출고는 고쳐도 재고가 바뀌지 않는다. 샘플요청에서 나온 출고의 기관 · 제품은 update_sample 로 고친다. shipment_id 는 list_shipments 로 찾는다. " + PREVIEW_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        shipment_id: { type: "string", description: "list_shipments 의 shipment_id(또는 SH 코드)" },
+        product_id: { type: "string", description: "제품을 바꿀 때 — list_products 의 product_id(또는 코드)" },
+        concentration: CONCENTRATION,
+        volume_ml: { type: "number", description: "젤 타입 출고의 나간 ml 전체(5ml 3개면 15)" },
+        quantity: { type: "integer", description: "개수 — 젤 타입이 아닌 출고만" },
+        org: { type: "string", description: "받는 기관을 바꿀 때 — 기관 코드(ORG001) · 이름" },
+        kind: { type: "string", enum: ["SALE", "SAMPLE", "GIFT"], description: "판매 · 샘플 · 증정" },
+        status: { type: "string", enum: ["PREPARING", "SHIPPING", "DELIVERED"], description: "준비중 · 배송중 · 배송완료" },
+        date: DATE,
+        note: { type: "string", description: "비고 — 송장번호 등. 빈 문자열이면 지운다" },
+        confirm: CONFIRM,
+      },
+      required: ["shipment_id"],
+    },
+  },
+  {
+    name: "delete_shipment",
+    description:
+      "CRM 출고 한 건을 지운다 — 그 출고에서 나온 재고 장부 줄이 함께 사라져 재고가 출고 전으로 돌아온다(미반영 출고는 재고가 그대로). shipment_id 는 list_shipments 로 찾는다. " + PREVIEW_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        shipment_id: { type: "string", description: "list_shipments 의 shipment_id(또는 SH 코드)" },
+        confirm: CONFIRM,
+      },
+      required: ["shipment_id"],
     },
   },
   {
@@ -271,7 +376,7 @@ export const CRM_WRITE_TOOLS = [
 ] as const
 
 /** CRM 도구 중 읽기 — 고칠 대상의 ID 를 찾는다 */
-export const CRM_READ_NAMES = ["list_samples", "list_quotes", "list_receivables"] as const
+export const CRM_READ_NAMES = ["list_samples", "list_quotes", "list_receivables", "list_productions", "list_shipments"] as const
 export type CrmWriteToolName = Exclude<(typeof CRM_WRITE_TOOLS)[number]["name"], (typeof CRM_READ_NAMES)[number]>
 export const CRM_WRITE_NAMES = CRM_WRITE_TOOLS.map((t) => t.name).filter((n) => !(CRM_READ_NAMES as readonly string[]).includes(n)) as CrmWriteToolName[]
 export const isCrmWriteTool = (n: string): n is CrmWriteToolName => (CRM_WRITE_NAMES as string[]).includes(n)
@@ -307,7 +412,11 @@ export interface CrmSampleView {
   referral: string | null
   note: string | null
   sent: boolean
-  shipments: { id: string; code: string; quantity: number; productId: string }[]
+  /** 젤 타입 출고는 quantity 가 비고 volumeMl 이 출고 ml */
+  shipments: { id: string; code: string; quantity: number | null; productId: string; concentrationPct?: number | null; volumeMl?: number | null }[]
+  /** 젤 타입 제품이면 농도 · 보낸 ml */
+  concentrationPct?: number | null
+  volumeMl?: number | null
 }
 
 export interface CrmQuoteView {
@@ -347,6 +456,61 @@ export interface CrmPort {
   quote(ref: string): Promise<CrmQuoteView | null>
   /** 세금계산서 id 또는 승인번호로 — 묶음(수정세금계산서 포함)의 남은 금액 */
   receivable(ref: string): Promise<CrmReceivableView | null>
+  /** 생산 id 또는 MFG 코드로 */
+  production(ref: string): Promise<CrmProductionView | null>
+  /** 생산 입력 계산(쓰지 않는다) — 화면 · 실제 쓰기와 같은 함수(lib/crm-ops.ts planProductionInput). excludeId: 고치기면 그 생산분을 빼고 본다 */
+  productionPreview(input: Record<string, unknown>, excludeId?: string): Promise<ProductionPreview | { problem: string }>
+  /** 출고 id 또는 SH 코드로 */
+  shipment(ref: string): Promise<CrmShipmentView | null>
+}
+
+export interface CrmShipmentView {
+  id: string
+  code: string
+  /** YYYY-MM-DD(서울) */
+  date: string
+  kind: keyof typeof SHIPMENT_KIND_LABEL
+  status: keyof typeof SHIPMENT_STATUS_LABEL
+  org: { id: string; name: string }
+  productId: string
+  /** 젤 출고 — 농도 · 나간 ml. 개수는 비어 있다 */
+  concentrationPct: number | null
+  volumeMl: number | null
+  /** 젤이 아닌 출고 개수 */
+  quantity: number | null
+  note: string | null
+  /** 재고에 반영된 출고(장부 줄이 있다). 엑셀에서 넘어온 지난 출고는 false */
+  ledger: boolean
+  /** 샘플요청에서 나온 출고면 그 코드 */
+  sampleCode: string | null
+}
+
+export interface CrmProductionView {
+  id: string
+  code: string
+  date: string
+  productId: string
+  productName: string
+  concentrationPct: number | null
+  totalMl: number
+  materialId: string | null
+  materialName: string | null
+  materialGrams: number
+  note: string | null
+  photoFileIds: string[]
+}
+
+export interface ProductionPreview {
+  productId: string
+  productName: string
+  conc: number
+  totalMl: number
+  materialId: string | null
+  materialName: string | null
+  materialGrams: number
+  /** 원재료 현재고(g) — 고치기면 이 생산이 뺀 것을 돌려놓은 값 */
+  materialBefore: number
+  warnings: string[]
 }
 
 export interface CrmChange {
@@ -361,12 +525,17 @@ export type CrmOp =
   | { kind: "deleteSample"; id: string; withShipments: boolean }
   | { kind: "createOrg"; input: { name: string; type: string; address?: string | null; note?: string | null } }
   | { kind: "updateOrg"; id: string; input: Record<string, unknown> }
-  | { kind: "stockMove"; input: { movedAt: string; productId: string; direction: "IN" | "OUT"; quantity: number; note: string | null } }
-  | { kind: "production"; input: { producedAt: string; productId: string; materialId: string; quantity: number; materialGrams?: number; note: string | null } }
-  | { kind: "createQuote"; input: { quotedAt: string; orgId: string; discountAmount: number; status: "DRAFT" | "SENT"; note: string | null; items: { productId: string; quantity: number; unitPrice: number }[] } }
+  | { kind: "stockMove"; input: { movedAt: string; productId: string; direction: "IN" | "OUT"; quantity: number; note: string | null; concentrationPct?: number | null } }
+  /** input 은 화면 POST /api/crm/productions 와 같은 모양(lib/crm-ops.ts productionSchema) */
+  | { kind: "production"; input: Record<string, unknown> }
+  | { kind: "updateProduction"; id: string; input: Record<string, unknown> }
+  | { kind: "deleteProduction"; id: string }
+  | { kind: "createQuote"; input: { quotedAt: string; orgId: string; discountAmount: number; status: "DRAFT" | "SENT"; note: string | null; items: { productId: string; quantity: number; unitPrice: number; concentrationPct?: number | null; volumeMl?: number | null }[] } }
   | { kind: "updateQuote"; id: string; input: { status?: string; note?: string | null; taxInvoicedAt?: string | null } }
   | { kind: "deleteQuote"; id: string }
-  | { kind: "shipment"; input: { shippedAt: string; kind: string; orgId: string; productId: string; quantity: number; status: string; quoteId: string | null; note: string | null } }
+  | { kind: "updateShipment"; id: string; input: Record<string, unknown> }
+  | { kind: "deleteShipment"; id: string }
+  | { kind: "shipment"; input: { shippedAt: string; kind: string; orgId: string; productId: string; quantity: number | null; status: string; quoteId: string | null; note: string | null; concentrationPct?: number | null; volumeMl?: number | null } }
   | { kind: "payment"; input: { invoiceId: string; paidOn: string; amountKrw: number; note: string | null } }
 
 export interface CrmPlan {
@@ -428,6 +597,63 @@ function stockEffect(p: CrmProductRow, delta: number): { row: CrmChange; warning
 
 const joinWarn = (ws: (string | null | undefined)[]) => ws.filter(Boolean).join(" ") || null
 
+/** 젤 타입의 칸 — 농도(%) · ml(출고 · 샘플은 총량, 견적은 한 개 용량). 젤이 아니면 둘 다 null */
+export interface Variant {
+  conc: number | null
+  vol: number | null
+}
+
+/**
+ * 젤 타입 제품의 농도 · ml 읽기 — 준 값(concentration · volume_ml), 없으면 fallback.
+ * needVolume 이면 ml 까지 있어야 한다. 출고 · 샘플은 그 ml(총량)가 그 농도 칸에서 빠지고, 견적은 한 개 용량이다.
+ */
+function parseVariant(p: CrmProductRow, args: Record<string, unknown>, fallback: Variant, needVolume: boolean): { variant: Variant } | { problem: string } {
+  if (!p.gelType) return { variant: { conc: null, vol: null } }
+  const rawC = has(args, "concentration") ? args.concentration : fallback.conc
+  if (rawC == null) return { problem: `${p.name} 은 젤 타입이라 concentration(농도 %, ${CONC_MIN}~${CONC_MAX})이 필요합니다 — list_products 에 농도별 재고가 있습니다.` }
+  const c = parseConc(rawC)
+  if ("problem" in c) return { problem: c.problem }
+  const rawV = has(args, "volume_ml") ? args.volume_ml : fallback.vol
+  if (rawV == null) {
+    if (needVolume) return { problem: `${p.name} 은 젤 타입이라 volume_ml(ml)이 필요합니다.` }
+    return { variant: { conc: c.conc, vol: null } }
+  }
+  const m = parseMl(rawV)
+  if ("problem" in m) return { problem: m.problem }
+  return { variant: { conc: c.conc, vol: m.ml } }
+}
+
+/**
+ * 재고 변화 줄들 — delta 는 제품 단위의 양(늘면 +, 줄면 −). 젤 타입은 (제품, 농도) 칸의 ml, 아니면 개 · g.
+ * 같은 칸의 변화는 합쳐 한 줄로 보인다(샘플 수량만 고치면 「−2개」 한 줄).
+ */
+function stockEffects(items: { p: CrmProductRow; v: Variant; delta: number }[]): { rows: CrmChange[]; warnings: (string | null)[] } {
+  const keyed = new Map<string, { p: CrmProductRow; v: Variant; delta: number }>()
+  for (const it of items) {
+    const gel = Boolean(it.p.gelType)
+    const key = gel ? `${it.p.id}@${it.v.conc}` : it.p.id
+    const delta = round3(it.delta)
+    const cur = keyed.get(key)
+    if (cur) cur.delta = round3(cur.delta + delta)
+    else keyed.set(key, { p: it.p, v: it.v, delta })
+  }
+  const rows: CrmChange[] = []
+  const warnings: (string | null)[] = []
+  for (const { p, v, delta } of keyed.values()) {
+    if (p.gelType && v.conc != null) {
+      const before = lotMl(p.lots ?? [], v.conc)
+      const after = round3(before + delta)
+      rows.push({ label: `재고 · ${variantLabel(p.name, v.conc)}`, before: mlText(before), after: mlText(after) })
+      if (delta < 0) warnings.push(gelShortWarning(variantLabel(p.name, v.conc), before, -delta))
+    } else {
+      const e = stockEffect(p, delta)
+      rows.push(e.row)
+      warnings.push(e.warning)
+    }
+  }
+  return { rows, warnings }
+}
+
 // ─── 도구별 계획 ─────────────────────────────────────────────────────
 
 export async function planCrmWrite(name: CrmWriteToolName, args: Record<string, unknown>, port: CrmPort, now = new Date()): Promise<CrmPlan> {
@@ -438,10 +664,14 @@ export async function planCrmWrite(name: CrmWriteToolName, args: Record<string, 
     case "update_org": return planUpdateOrg(args, port)
     case "record_stock": return planStock(args, port, now)
     case "record_production": return planProduction(args, port, now)
+    case "update_production": return planUpdateProduction(args, port, now)
+    case "delete_production": return planDeleteProduction(args, port)
     case "create_quote": return planCreateQuote(args, port, now)
     case "update_quote": return planUpdateQuote(args, port)
     case "delete_quote": return planDeleteQuote(args, port)
     case "record_shipment": return planShipment(args, port, now)
+    case "update_shipment": return planUpdateShipment(args, port, now)
+    case "delete_shipment": return planDeleteShipment(args, port)
     case "record_payment": return planPayment(args, port, now)
   }
 }
@@ -478,7 +708,7 @@ async function planUpdateSample(args: Record<string, unknown>, port: CrmPort, no
     changes.push({ label: "상태", before: s.sent ? "발송완료" : "미발송", after: args.sent ? "발송완료" : "미발송" })
   }
 
-  // 제품 · 수량 — 딸린 샘플 출고와 재고가 따라간다
+  // 제품 · 수량 · (젤이면) 농도 · 용량 — 딸린 샘플 출고와 재고가 따라간다
   const byId = new Map(products.map((p) => [p.id, p]))
   const ship = s.shipments[0] ?? null
   const oldProduct = s.productId ? byId.get(s.productId) ?? null : null
@@ -491,46 +721,71 @@ async function planUpdateSample(args: Record<string, unknown>, port: CrmPort, no
       newProduct = r.product
     }
   }
+  // 젤 타입은 개수를 세지 않는다 — 출고 양은 ml(volume_ml). 아니면 개(quantity). quantity=0 은 둘 다 출고 지우기
+  const isGel = Boolean(newProduct?.gelType)
   let qty: number | null = ship ? ship.quantity : null
   if (has(args, "quantity")) {
     const n = Number(args.quantity)
     if (!Number.isInteger(n) || n < 0 || n > 10000) return fail(T, target, "quantity 는 0~10000 의 정수입니다(0 이면 샘플 출고를 지웁니다).")
+    if (isGel && n > 0) return fail(T, target, `${newProduct!.name} 은 젤 타입이라 개수를 세지 않습니다 — volume_ml(보낸 ml)로 적어 주세요.`)
     qty = n
   }
   const productChanged = (newProduct?.id ?? null) !== (s.productId ?? null)
-  const qtyChanged = qty !== (ship ? ship.quantity : null)
-  if ((productChanged || qtyChanged) && s.shipments.length > 1) {
+  const oldVariant: Variant = { conc: s.concentrationPct ?? ship?.concentrationPct ?? null, vol: s.volumeMl ?? ship?.volumeMl ?? null }
+  let newVariant: Variant = isGel && !productChanged ? oldVariant : { conc: null, vol: null }
+  if (isGel) {
+    const v = parseVariant(newProduct!, args, { conc: productChanged ? null : oldVariant.conc, vol: productChanged ? null : oldVariant.vol }, Boolean(ship) && qty !== 0)
+    if ("problem" in v) return fail(T, target, v.problem)
+    newVariant = v.variant
+  }
+  const concChanged = isGel && newVariant.conc !== oldVariant.conc
+  const mlChanged = isGel && newVariant.vol !== oldVariant.vol
+  const qtyChanged = has(args, "quantity") && qty !== (ship ? ship.quantity : null)
+  const removeShip = Boolean(ship) && (qty === 0 || newProduct === null)
+  if ((productChanged || qtyChanged || concChanged || mlChanged) && s.shipments.length > 1) {
     return fail(T, target, `이 샘플요청에 출고가 ${s.shipments.length}건(${s.shipments.map((x) => x.code).join(", ")}) 있습니다 — 수량 · 제품은 CRM › 출고에서 출고마다 고쳐 주세요.`)
   }
-  if (productChanged) {
-    input.productId = newProduct ? newProduct.id : null
-    changes.push({ label: "제품", before: oldProduct ? productLabel(oldProduct) : "(없음)", after: newProduct ? productLabel(newProduct) : "(없음 — 샘플 출고를 지웁니다)" })
+  if (ship && newProduct && !isGel && !removeShip && !qty) return fail(T, target, `${productLabel(newProduct)} 은 개수로 셉니다 — quantity 를 함께 주세요.`)
+  if (productChanged || concChanged) {
+    if (productChanged) input.productId = newProduct ? newProduct.id : null
+    changes.push({
+      label: "제품",
+      before: oldProduct ? variantProductLabel(oldProduct, oldVariant.conc, null) : "(없음)",
+      after: newProduct ? variantProductLabel(newProduct, newVariant.conc, null) : "(없음 — 샘플 출고를 지웁니다)",
+    })
   }
+  if (isGel && (productChanged || concChanged || mlChanged || (!ship && has(args, "volume_ml")))) { input.concentrationPct = newVariant.conc; input.volumeMl = newVariant.vol }
   if (qtyChanged && qty !== null) input.quantity = qty
-  // 재고 계산 — 원래 출고분을 되돌리고 새 출고분을 뺀다
+  // 재고 계산 — 원래 출고분을 되돌리고 새 출고분을 뺀다(같은 칸이면 한 줄로 합친다)
   const shipProduct = ship ? byId.get(ship.productId) ?? null : null
-  const removeShip = ship && (qty === 0 || newProduct === null)
-  if (ship && shipProduct && (productChanged || qtyChanged)) {
+  const shipVariant: Variant = { conc: ship?.concentrationPct ?? null, vol: ship?.volumeMl ?? null }
+  const amountOf = (p: CrmProductRow, v: Variant, n: number | null) => (p.gelType ? v.vol ?? 0 : n ?? 0)
+  const amountWord = (p: CrmProductRow, v: Variant, n: number) => (p.gelType ? variantProductLabel(p, v.conc, n) : `${productLabel(p)} ${n}개`)
+  if (ship && shipProduct && (productChanged || qtyChanged || concChanged || mlChanged)) {
+    const oldAmt = amountOf(shipProduct, shipVariant, ship.quantity)
     if (removeShip) {
-      changes.push({ label: "샘플 출고", before: `${ship.code} · ${ship.quantity}개`, after: "지웁니다 — 재고가 돌아옵니다" })
-      changes.push(stockEffect(shipProduct, ship.quantity).row)
-    } else if (newProduct && newProduct.id !== shipProduct.id) {
-      changes.push({ label: "샘플 출고", before: `${ship.code} · ${productLabel(shipProduct)} ${ship.quantity}개`, after: `${productLabel(newProduct)} ${qty}개` })
-      changes.push(stockEffect(shipProduct, ship.quantity).row)
-      const e = stockEffect(newProduct, -(qty ?? 0))
-      changes.push(e.row); warnings.push(e.warning)
-    } else if (qtyChanged && qty !== null) {
-      changes.push({ label: "샘플 출고", before: `${ship.code} · ${ship.quantity}개`, after: `${qty}개` })
-      const e = stockEffect(shipProduct, ship.quantity - qty)
-      changes.push(e.row); warnings.push(e.warning)
+      changes.push({ label: "샘플 출고", before: `${ship.code} · ${amountWord(shipProduct, shipVariant, oldAmt)}`, after: "지웁니다 — 재고가 돌아옵니다" })
+      changes.push(...stockEffects([{ p: shipProduct, v: shipVariant, delta: oldAmt }]).rows)
+    } else if (newProduct) {
+      const newAmt = amountOf(newProduct, newVariant, qty)
+      // 같은 칸(제품 · 농도)이면 양만 보인다 — 「SH101 · 3개 → 1개」, 젤은 「SH103 · 4ml → 6ml」
+      const sameRow = newProduct.id === shipProduct.id && newVariant.conc === shipVariant.conc
+      const amt = (p: CrmProductRow, n: number) => (p.gelType ? mlText(n) : `${n}개`)
+      changes.push(sameRow
+        ? { label: "샘플 출고", before: `${ship.code} · ${amt(shipProduct, oldAmt)}`, after: amt(newProduct, newAmt) }
+        : { label: "샘플 출고", before: `${ship.code} · ${amountWord(shipProduct, shipVariant, oldAmt)}`, after: amountWord(newProduct, newVariant, newAmt) })
+      const e = stockEffects([{ p: shipProduct, v: shipVariant, delta: oldAmt }, { p: newProduct, v: newVariant, delta: -newAmt }])
+      changes.push(...e.rows); warnings.push(...e.warnings)
     }
-  } else if (!ship && qty && qty > 0) {
-    if (!newProduct) return fail(T, target, "이 샘플요청에는 제품이 없어 샘플 출고를 만들 수 없습니다 — product_id 를 함께 주세요(list_products).")
-    changes.push({ label: "샘플 출고", before: null, after: `${productLabel(newProduct)} ${qty}개 — 새로 남깁니다` })
-    const e = stockEffect(newProduct, -qty)
-    changes.push(e.row); warnings.push(e.warning)
+  } else if (!ship && newProduct && (isGel ? has(args, "volume_ml") && newVariant.vol != null : Boolean(qty && qty > 0))) {
+    const newAmt = amountOf(newProduct, newVariant, qty)
+    changes.push({ label: "샘플 출고", before: null, after: `${amountWord(newProduct, newVariant, newAmt)} — 새로 남깁니다` })
+    const e = stockEffects([{ p: newProduct, v: newVariant, delta: -newAmt }])
+    changes.push(...e.rows); warnings.push(...e.warnings)
+  } else if (!ship && !newProduct && qty && qty > 0) {
+    return fail(T, target, "이 샘플요청에는 제품이 없어 샘플 출고를 만들 수 없습니다 — product_id 를 함께 주세요(list_products).")
   }
-  if (changes.length === 0) return fail(T, target, "바뀌는 것이 없습니다 — 고칠 칸(date · org · product_id · quantity · content · referral · note · sent)을 주세요.")
+  if (changes.length === 0) return fail(T, target, "바뀌는 것이 없습니다 — 고칠 칸(date · org · product_id · quantity · volume_ml · content · referral · note · sent)을 주세요.")
   return {
     title: T, target, changes,
     warning: joinWarn(warnings),
@@ -558,16 +813,18 @@ async function planDeleteSample(args: Record<string, unknown>, port: CrmPort): P
   if (s.shipments.length) {
     for (const sh of s.shipments) {
       const p = products.get(sh.productId)
-      changes.push({ label: "샘플 출고", before: `${sh.code} · ${p ? productLabel(p) : "제품"} ${sh.quantity}개`, after: keep ? "남깁니다(연결만 끊김)" : "지웁니다" })
+      const what = p?.gelType ? variantProductLabel(p, sh.concentrationPct ?? null, sh.volumeMl ?? null) : `${p ? productLabel(p) : "제품"} ${sh.quantity ?? 0}개`
+      changes.push({ label: "샘플 출고", before: `${sh.code} · ${what}`, after: keep ? "남깁니다(연결만 끊김)" : "지웁니다" })
     }
     if (!keep) {
-      // 같은 제품 출고가 여럿이면 합쳐서 한 줄
-      const back = new Map<string, number>()
-      for (const sh of s.shipments) back.set(sh.productId, (back.get(sh.productId) ?? 0) + sh.quantity)
-      for (const [pid, q] of back) {
-        const p = products.get(pid)
-        if (p) changes.push(stockEffect(p, q).row)
-      }
+      // 같은 칸(제품 · 젤이면 농도) 출고가 여럿이면 합쳐서 한 줄
+      const back = s.shipments.flatMap((sh) => {
+        const p = products.get(sh.productId)
+        if (!p) return []
+        const v = { conc: sh.concentrationPct ?? null, vol: sh.volumeMl ?? null }
+        return [{ p, v, delta: p.gelType ? v.vol ?? 0 : sh.quantity ?? 0 }]
+      })
+      changes.push(...stockEffects(back).rows)
     }
   }
   return {
@@ -679,6 +936,7 @@ async function planStock(args: Record<string, unknown>, port: CrmPort, now: Date
   const pr = productRef(str(args.product_id), await port.products())
   if ("problem" in pr) return fail(T, str(args.product_id) || "(제품 없음)", pr.problem)
   const p = pr.product
+  if (p.gelType) return planGelStock(T, mode, p, args, now)
   const target = `${productLabel(p)} (${p.code})`
   const n = Number(args.quantity)
   if (!Number.isFinite(n) || n < 0 || (mode !== "count" && n === 0)) return fail(T, target, mode === "count" ? "quantity(세어 본 재고)는 0 이상입니다." : "quantity 는 0보다 커야 합니다.")
@@ -708,44 +966,181 @@ async function planStock(args: Record<string, unknown>, port: CrmPort, now: Date
   }
 }
 
-async function planProduction(args: Record<string, unknown>, port: CrmPort, now: Date): Promise<CrmPlan> {
-  const T = "CRM 생산 기록"
-  const products = await port.products()
-  const pr = productRef(str(args.product_id), products)
-  if ("problem" in pr) return fail(T, str(args.product_id) || "(제품 없음)", pr.problem)
-  const p = pr.product
-  const target = `${productLabel(p)} (${p.code})`
-  const mr = productRef(str(args.material_id), products)
-  if ("problem" in mr) return fail(T, target, mr.problem.replace("제품", "원료"))
-  const m = mr.product
-  if (!m.isMaterial) return fail(T, target, `${productLabel(m)} 은 원료가 아닙니다 — list_products 에서 원료(g 단위) 줄의 product_id 를 고르세요.`)
-  const q = Number(args.quantity)
-  if (!Number.isInteger(q) || q < 1) return fail(T, target, "quantity(생산 수량)는 1 이상의 정수입니다.")
+/**
+ * 젤 타입 재고 맞추기 — (타입, 농도) 칸에 ml 로 적는다. 개수는 세지 않는다.
+ * count(실사)는 세어 본 그 칸의 ml 를 준다.
+ */
+function planGelStock(T: string, mode: string, p: CrmProductRow, args: Record<string, unknown>, now: Date): CrmPlan {
+  const v = parseVariant(p, args, { conc: null, vol: null }, false)
+  if ("problem" in v) return fail(T, p.name, v.problem)
+  const conc = v.variant.conc!
+  const target = `${variantLabel(p.name, conc)} (${p.code})`
+  const n = Number(args.quantity)
+  if (!Number.isFinite(n) || n < 0 || (mode !== "count" && n === 0)) return fail(T, target, mode === "count" ? "quantity(세어 본 재고 ml)는 0 이상입니다." : "quantity(ml)는 0보다 커야 합니다.")
   const d = parseDate(args.date, now)
   if ("problem" in d) return fail(T, target, d.problem)
-  let grams: number | null = null
-  if (has(args, "material_grams")) {
-    const g = Number(args.material_grams)
-    if (!Number.isFinite(g) || g <= 0) return fail(T, target, "material_grams 는 0보다 커야 합니다.")
-    grams = g
-  } else grams = gramsForQuantity(q, p.volumeMl ?? null, p.concentrationPct ?? null)
-  if (grams == null) return fail(T, target, `${p.name} 은 용량(ml) 또는 농도(wt%)가 비어 있어 소요량을 계산할 수 없습니다. 쓴 그램을 material_grams 로 주세요.`)
-  grams = round3(grams)
-  const note = str(args.note).slice(0, 2000) || null
-  const made = stockEffect(p, q)
-  const used = stockEffect(m, -grams)
+  const before = lotMl(p.lots ?? [], conc)
+  let direction: "IN" | "OUT" = mode === "out" ? "OUT" : "IN"
+  let ml = round3(n)
+  if (mode === "count") {
+    const diff = round3(n - before)
+    if (diff === 0) return fail(T, target, `장부 재고가 이미 ${mlText(before)}입니다 — 맞출 것이 없습니다.`)
+    direction = diff > 0 ? "IN" : "OUT"
+    ml = Math.abs(diff)
+  }
+  const note = str(args.note).slice(0, 500) || (mode === "count" ? `실사 보정(세어 본 재고 ${mlText(n)})` : null)
+  const e = stockEffects([{ p, v: { conc, vol: null }, delta: direction === "IN" ? ml : -ml }])
   return {
     title: T, target,
     changes: [
-      { label: "생산", before: null, after: `${d.date} · ${productLabel(p)} ${q}개${note ? ` · ${note}` : ""}` },
-      { label: "원료 사용", before: null, after: `${productLabel(m)} ${stockText(grams, m.unit)}${has(args, "material_grams") ? "" : " (용량 · 농도로 계산)"}` },
-      made.row,
-      used.row,
+      { label: "장부 한 줄", before: null, after: `${d.date} · ${direction === "IN" ? "입고" : "출고"} ${mlText(ml)}${note ? ` · ${note}` : ""}` },
+      ...e.rows,
     ],
-    warning: used.warning,
-    risk: "CRM 생산 기록 한 건이 생기고 완제품 재고는 늘고 원료 재고는 줍니다(한 번에). 활동 기록에 내 이름으로 남습니다. 잘못 적었으면 CRM › 재고 화면에서 고칩니다.",
-    op: { kind: "production", input: { producedAt: d.date, productId: p.id, materialId: m.id, quantity: q, materialGrams: grams, note } },
-    done: { entity: "crm.production", action: "create", title: `생산 ${productLabel(p)} ${q}개` },
+    warning: mode === "count" ? null : joinWarn(e.warnings),
+    risk: "CRM 재고 장부에 한 줄이 생겨 이 농도의 재고가 바뀝니다. 활동 기록에 내 이름으로 남습니다. 잘못 적었으면 CRM › 재고에서 그 줄을 지웁니다.",
+    op: { kind: "stockMove", input: { movedAt: d.date, productId: p.id, direction, quantity: ml, note, concentrationPct: conc } },
+    done: { entity: "crm.stock", action: "create", title: `재고 ${direction === "IN" ? "입고" : "출고"} ${variantLabel(p.name, conc)} ${mlText(ml)}` },
+  }
+}
+
+/** 도구 입력 → 생산 입력(화면 POST /api/crm/productions 와 같은 모양) */
+function productionInputFromArgs(args: Record<string, unknown>, products: CrmProductRow[], date: string, fallback?: CrmProductionView): { input: Record<string, unknown> } | { problem: string } {
+  let productId = fallback?.productId ?? null
+  const typeArg = str(args.type || args.product_id)
+  if (typeArg) {
+    const t = typeArg.toUpperCase().replace(/[^A-Z가-힣]/g, "")
+    const gel = products.find((p) => p.gelType && (p.id === typeArg || p.code.toUpperCase() === typeArg.toUpperCase() || p.gelType === t || (t.includes("애드") && p.gelType === "ADDGEL") || (t.includes("라이브") && p.gelType === "LIVEGEL") || (t.includes("ADD") && p.gelType === "ADDGEL") || (t.includes("LIVE") && p.gelType === "LIVEGEL")))
+    if (!gel) return { problem: `type 은 애드젤(ADDGEL) · 라이브젤(LIVEGEL) 중 하나입니다 — 받은 값 '${typeArg}'.` }
+    productId = gel.id
+  }
+  if (!productId) return { problem: "type(애드젤 ADDGEL · 라이브젤 LIVEGEL)이 비어 있습니다." }
+  const conc = has(args, "concentration") ? args.concentration : fallback?.concentrationPct
+  if (conc == null) return { problem: `concentration(농도 %, ${CONC_MIN}~${CONC_MAX})이 비어 있습니다.` }
+  const totalMl = has(args, "volume_ml") ? args.volume_ml : fallback?.totalMl
+  if (totalMl == null || totalMl === "") return { problem: "volume_ml(만든 ml)가 비어 있습니다 — 예: 5ml 3개 + 2ml 5개를 만들었으면 25." }
+  const material = has(args, "material_id") ? (NONE.test(str(args.material_id)) ? "none" : str(args.material_id)) : fallback?.materialId ?? undefined
+  if (material && material !== "none") {
+    const m = products.find((p) => p.isMaterial && (p.id === material || p.code.toUpperCase() === material.toUpperCase()))
+    if (!m) return { problem: `원재료 '${material}' 가 없습니다 — list_products 에서 원료(g 단위) 줄의 product_id 를 고르세요.` }
+  }
+  const materialId = material && material !== "none" ? products.find((p) => p.isMaterial && (p.id === material || p.code.toUpperCase() === material.toUpperCase()))!.id : material
+  return {
+    input: {
+      producedAt: date, productId, concentrationPct: conc, totalMl,
+      ...(materialId !== undefined ? { materialId } : {}),
+      note: has(args, "note") ? str(args.note).slice(0, 2000) || null : fallback?.note ?? null,
+      photoFileIds: fallback?.photoFileIds ?? [],
+    },
+  }
+}
+
+const productionRows = (pl: ProductionPreview, date: string, note: string | null): CrmChange[] => [
+  { label: "생산", before: null, after: `${date} · ${variantLabel(pl.productName, pl.conc, pl.totalMl)}${note ? ` · ${note}` : ""}` },
+  { label: "원재료 차감", before: null, after: pl.materialName ? `${pl.materialName} ${pl.materialGrams}g (${concText(pl.conc)} × ${mlText(pl.totalMl)}, 농도는 g/100ml)` : "없음 — 이 타입에 이어진 원재료가 없습니다" },
+]
+
+async function planProduction(args: Record<string, unknown>, port: CrmPort, now: Date): Promise<CrmPlan> {
+  const T = "CRM 생산 기록"
+  const products = await port.products()
+  const d = parseDate(args.date, now)
+  if ("problem" in d) return fail(T, "(생산)", d.problem)
+  const ir = productionInputFromArgs(args, products, d.date)
+  if ("problem" in ir) return fail(T, str(args.type) || "(타입 없음)", ir.problem)
+  const pl = await port.productionPreview(ir.input)
+  if ("problem" in pl) return fail(T, str(args.type) || "(생산)", pl.problem)
+  const p = products.find((x) => x.id === pl.productId)!
+  const target = `${variantLabel(pl.productName, pl.conc)} · ${d.date}`
+  const note = (ir.input.note as string | null) ?? null
+  const made = stockEffects([{ p, v: { conc: pl.conc, vol: null }, delta: pl.totalMl }])
+  return {
+    title: T, target,
+    changes: [
+      ...productionRows(pl, d.date, note),
+      ...made.rows,
+      ...(pl.materialName ? [{ label: `재고 · ${pl.materialName}`, before: `${pl.materialBefore}g`, after: `${round3(pl.materialBefore - pl.materialGrams)}g` }] : []),
+    ],
+    warning: joinWarn(pl.warnings),
+    risk: "CRM 생산 기록 한 건이 생기고 그 농도의 완제품 재고는 늘고 원재료는 줍니다(한 번에). 활동 기록에 내 이름으로 남습니다. 잘못 적었으면 update_production · delete_production 이나 CRM › 재고 · 생산의 「고치기 · 지우기」로 바꿉니다(재고 · 원재료가 다시 계산됩니다).",
+    op: { kind: "production", input: ir.input },
+    done: { entity: "crm.production", action: "create", title: `생산 ${variantLabel(pl.productName, pl.conc)} ${mlText(pl.totalMl)}` },
+  }
+}
+
+async function productionTarget(args: Record<string, unknown>, port: CrmPort, T: string): Promise<{ v: CrmProductionView } | { plan: CrmPlan }> {
+  const ref = str(args.production_id)
+  if (!ref) return { plan: fail(T, "(생산 없음)", "production_id 가 비어 있습니다 — list_productions 로 찾으세요.") }
+  const v = await port.production(ref)
+  if (!v) return { plan: fail(T, ref, `'${ref}' 생산 기록이 없습니다 — list_productions 로 production_id(또는 MFG 코드)를 확인하세요.`) }
+  return { v }
+}
+
+const productionViewText = (v: CrmProductionView) =>
+  `${v.code} · ${v.date} · ${variantLabel(v.productName, v.concentrationPct, v.totalMl)}${v.materialName ? ` · ${v.materialName} −${v.materialGrams}g` : ""}`
+
+async function planUpdateProduction(args: Record<string, unknown>, port: CrmPort, now: Date): Promise<CrmPlan> {
+  const T = "CRM 생산 기록 고치기"
+  const t = await productionTarget(args, port, T)
+  if ("plan" in t) return t.plan
+  const v = t.v
+  const products = await port.products()
+  let date = v.date
+  if (has(args, "date")) {
+    const d = parseDate(args.date, now)
+    if ("problem" in d) return fail(T, v.code, d.problem)
+    date = d.date
+  }
+  const ir = productionInputFromArgs(args, products, date, v)
+  if ("problem" in ir) return fail(T, v.code, ir.problem)
+  const pl = await port.productionPreview(ir.input, v.id)
+  if ("problem" in pl) return fail(T, v.code, pl.problem)
+  const p = products.find((x) => x.id === pl.productId)!
+  const oldP = products.find((x) => x.id === v.productId) ?? p
+  const note = (ir.input.note as string | null) ?? null
+  // 재고: 이 생산이 만든 것을 거두고 새로 더한다. 원재료: 뺀 것을 돌려주고 새로 뺀다
+  const e = stockEffects([
+    { p: oldP, v: { conc: v.concentrationPct, vol: null }, delta: -v.totalMl },
+    { p, v: { conc: pl.conc, vol: null }, delta: pl.totalMl },
+  ])
+  const after = `${date} · ${variantLabel(pl.productName, pl.conc, pl.totalMl)}${note ? ` · ${note}` : ""}`
+  const before = productionViewText(v)
+  if (before === `${v.code} · ${after}${pl.materialName ? ` · ${pl.materialName} −${pl.materialGrams}g` : ""}` && note === v.note) {
+    return fail(T, v.code, "바뀌는 것이 없습니다 — 고칠 칸(type · concentration · volume_ml · date · note · material_id)을 주세요.")
+  }
+  return {
+    title: T, target: v.code,
+    changes: [
+      { label: "생산", before, after },
+      { label: "원재료 차감", before: v.materialName ? `${v.materialName} ${v.materialGrams}g` : "없음", after: pl.materialName ? `${pl.materialName} ${pl.materialGrams}g` : "없음" },
+      ...e.rows,
+      ...(pl.materialName ? [{ label: `재고 · ${pl.materialName}`, before: `${round3(pl.materialBefore - (v.materialId === pl.materialId ? v.materialGrams : 0))}g`, after: `${round3(pl.materialBefore - pl.materialGrams)}g` }] : []),
+    ],
+    warning: joinWarn([...e.warnings, ...pl.warnings]),
+    risk: "이 생산에서 나온 재고 장부 줄을 새 값으로 다시 만듭니다 — 완제품 재고와 원재료 차감이 다시 계산됩니다. 활동 기록에 내 이름으로 남습니다.",
+    op: { kind: "updateProduction", id: v.id, input: ir.input },
+    done: { entity: "crm.production", action: "update", title: `생산 고침 ${v.code} · ${variantLabel(pl.productName, pl.conc)} ${mlText(pl.totalMl)}` },
+  }
+}
+
+async function planDeleteProduction(args: Record<string, unknown>, port: CrmPort): Promise<CrmPlan> {
+  const T = "CRM 생산 기록 지우기"
+  const t = await productionTarget(args, port, T)
+  if ("plan" in t) return t.plan
+  const v = t.v
+  const products = await port.products()
+  const p = products.find((x) => x.id === v.productId)
+  const e = p ? stockEffects([{ p, v: { conc: v.concentrationPct, vol: null }, delta: -v.totalMl }]) : { rows: [], warnings: [] }
+  const mat = v.materialId ? products.find((x) => x.id === v.materialId) : null
+  return {
+    title: T, target: v.code,
+    changes: [
+      { label: "지울 생산", before: productionViewText(v), after: "지움" },
+      ...e.rows,
+      ...(mat && v.materialGrams ? [{ label: `재고 · ${productLabel(mat)}`, before: stockText(mat.stock, mat.unit), after: stockText(round3(mat.stock + v.materialGrams), mat.unit) }] : []),
+    ],
+    warning: joinWarn(e.warnings),
+    risk: "생산 기록과 그 생산에서 나온 재고 장부 줄을 지웁니다 — 완제품은 빠지고 원재료는 돌아옵니다(생산 전으로 되돌림). 되돌릴 수 없습니다. 활동 기록에 내 이름으로 남습니다.",
+    op: { kind: "deleteProduction", id: v.id },
+    done: { entity: "crm.production", action: "delete", title: `생산 지움 ${v.code} · ${variantLabel(v.productName, v.concentrationPct)} ${mlText(v.totalMl)}` },
   }
 }
 
@@ -767,17 +1162,19 @@ async function planCreateQuote(args: Record<string, unknown>, port: CrmPort, now
   if (raw.length === 0) return fail(T, target, "items(품목)가 비어 있습니다 — [{product_id, quantity, unit_price}].")
   if (raw.length > 30) return fail(T, target, "품목이 너무 많습니다(30 초과).")
   const products = await port.products()
-  const items: { product: CrmProductRow; quantity: number; unitPrice: number }[] = []
+  const items: { product: CrmProductRow; quantity: number; unitPrice: number; variant: Variant }[] = []
   for (const [i, it] of raw.entries()) {
     const r = (it ?? {}) as Record<string, unknown>
     const pr = productRef(str(r.product_id), products)
     if ("problem" in pr) return fail(T, target, `${i + 1}번째 품목: ${pr.problem}`)
     const q = Number(r.quantity)
     if (!Number.isInteger(q) || q < 1) return fail(T, target, `${i + 1}번째 품목: quantity 는 1 이상의 정수입니다.`)
-    const price = has(r, "unit_price") ? Number(r.unit_price) : pr.product.unitPrice ?? null
-    if (price === null) return fail(T, target, `${i + 1}번째 품목(${productLabel(pr.product)})에 기본 단가가 없습니다 — unit_price 를 주세요.`)
+    const vr = parseVariant(pr.product, r, { conc: null, vol: null }, true)
+    if ("problem" in vr) return fail(T, target, `${i + 1}번째 품목: ${vr.problem}`)
+    const price = has(r, "unit_price") ? Number(r.unit_price) : pr.product.gelType ? null : pr.product.unitPrice ?? null
+    if (price === null) return fail(T, target, `${i + 1}번째 품목(${variantProductLabel(pr.product, vr.variant.conc, vr.variant.vol)})에 기본 단가가 없습니다 — unit_price 를 주세요.`)
     if (!Number.isInteger(price) || price < 0) return fail(T, target, `${i + 1}번째 품목: unit_price 는 0 이상의 정수(원)입니다.`)
-    items.push({ product: pr.product, quantity: q, unitPrice: price })
+    items.push({ product: pr.product, quantity: q, unitPrice: price, variant: vr.variant })
   }
   const d = parseDate(args.date, now)
   if ("problem" in d) return fail(T, target, d.problem)
@@ -791,14 +1188,14 @@ async function planCreateQuote(args: Record<string, unknown>, port: CrmPort, now
     title: T, target,
     changes: [
       { label: "견적일", before: null, after: d.date },
-      ...items.map((it, i) => ({ label: `품목 ${i + 1}`, before: null, after: `${productLabel(it.product)} ${it.quantity}개 × ${won(it.unitPrice)} = ${won(it.quantity * it.unitPrice)}` })),
+      ...items.map((it, i) => ({ label: `품목 ${i + 1}`, before: null, after: `${variantProductLabel(it.product, it.variant.conc, it.variant.vol)} ${it.quantity}개 × ${won(it.unitPrice)} = ${won(it.quantity * it.unitPrice)}` })),
       ...totalsRows(t),
       { label: "상태", before: null, after: QUOTE_STATUS_LABEL[status as "DRAFT"] },
       ...(note ? [{ label: "비고", before: null, after: note }] : []),
     ],
     warning: discount > t.supply ? `할인(${won(discount)})이 공급가보다 커서 공급가만큼만 깎입니다.` : null,
     risk: "CRM 견적 한 건이 생기고 견적 코드(HADD…)가 붙습니다. 재고는 바뀌지 않습니다(출하를 적을 때 빠집니다). 활동 기록에 내 이름으로 남습니다.",
-    op: { kind: "createQuote", input: { quotedAt: d.date, orgId: o.org.id, discountAmount: discount, status, note, items: items.map((it) => ({ productId: it.product.id, quantity: it.quantity, unitPrice: it.unitPrice })) } },
+    op: { kind: "createQuote", input: { quotedAt: d.date, orgId: o.org.id, discountAmount: discount, status, note, items: items.map((it) => ({ productId: it.product.id, quantity: it.quantity, unitPrice: it.unitPrice, ...(it.product.gelType ? { concentrationPct: it.variant.conc, volumeMl: it.variant.vol } : {}) })) } },
     done: { entity: "crm.quote", action: "create", title: `견적 ${o.org.name} ${won(t.total)}` },
   }
 }
@@ -879,9 +1276,18 @@ async function planShipment(args: Record<string, unknown>, port: CrmPort, now: D
   const pr = productRef(str(args.product_id), await port.products())
   if ("problem" in pr) return fail(T, o.org.name, pr.problem)
   const p = pr.product
-  const target = `${o.org.name} · ${productLabel(p)}`
-  const q = Number(args.quantity)
-  if (!Number.isInteger(q) || q < 1) return fail(T, target, "quantity 는 1 이상의 정수입니다.")
+  const vr = parseVariant(p, args, { conc: null, vol: null }, true)
+  if ("problem" in vr) return fail(T, `${o.org.name} · ${productLabel(p)}`, vr.problem)
+  const pv = vr.variant
+  const target = `${o.org.name} · ${variantProductLabel(p, pv.conc, pv.vol)}`
+  // 젤 타입은 개수를 세지 않는다 — volume_ml 가 출고 ml. 아니면 개수
+  const q = p.gelType ? null : Number(args.quantity)
+  if (q !== null && (!Number.isInteger(q) || q < 1)) return fail(T, target, "quantity 는 1 이상의 정수입니다.")
+  if (p.gelType && has(args, "quantity") && Number(args.quantity) !== 1 && args.quantity != null && args.quantity !== "") {
+    return fail(T, target, `${p.name} 은 젤 타입이라 개수를 세지 않습니다 — 나간 ml 전체를 volume_ml 로 적어 주세요(5ml 3개면 15).`)
+  }
+  const amount = p.gelType ? pv.vol! : q!
+  const amountText = p.gelType ? variantProductLabel(p, pv.conc, pv.vol) : `${variantProductLabel(p, null, null)} ${q}개`
   const kind = str(args.kind).toUpperCase() || "SALE"
   if (!(kind in SHIPMENT_KIND_LABEL)) return fail(T, target, "kind 는 SALE · SAMPLE · GIFT 중 하나입니다.")
   const status = str(args.status).toUpperCase() || "DELIVERED"
@@ -895,19 +1301,162 @@ async function planShipment(args: Record<string, unknown>, port: CrmPort, now: D
     if (quote.org.id !== o.org.id) return fail(T, target, `견적 ${quote.code} 는 ${quote.org.name} 의 견적입니다 — 기관이 다릅니다.`)
   }
   const note = str(args.note).slice(0, 2000) || null
-  const e = stockEffect(p, -q)
+  const e = stockEffects([{ p, v: pv, delta: -amount }])
   return {
     title: T, target,
     changes: [
-      { label: "출하", before: null, after: `${d.date} · ${o.org.name} · ${productLabel(p)} ${q}개 · ${SHIPMENT_KIND_LABEL[kind as "SALE"]} · ${SHIPMENT_STATUS_LABEL[status as "DELIVERED"]}` },
+      { label: "출하", before: null, after: `${d.date} · ${o.org.name} · ${amountText} · ${SHIPMENT_KIND_LABEL[kind as "SALE"]} · ${SHIPMENT_STATUS_LABEL[status as "DELIVERED"]}` },
       ...(quote ? [{ label: "견적", before: null, after: quote.code }] : []),
       ...(note ? [{ label: "비고", before: null, after: note }] : []),
-      e.row,
+      ...e.rows,
     ],
-    warning: e.warning,
+    warning: joinWarn(e.warnings),
     risk: "CRM 출고 한 건과 그만큼 재고 출고가 함께 남습니다(한 번에). 활동 기록에 내 이름으로 남습니다. 잘못 적었으면 CRM › 출고에서 지우면 재고가 돌아옵니다.",
-    op: { kind: "shipment", input: { shippedAt: d.date, kind, orgId: o.org.id, productId: p.id, quantity: q, status, quoteId: quote?.id ?? null, note } },
-    done: { entity: "crm.shipment", action: "create", title: `출하 ${o.org.name} · ${productLabel(p)} ${q}개` },
+    op: { kind: "shipment", input: { shippedAt: d.date, kind, orgId: o.org.id, productId: p.id, quantity: q, status, quoteId: quote?.id ?? null, note, ...(p.gelType ? { concentrationPct: pv.conc, volumeMl: pv.vol } : {}) } },
+    done: { entity: "crm.shipment", action: "create", title: `출하 ${o.org.name} · ${amountText}` },
+  }
+}
+
+async function shipmentTarget(args: Record<string, unknown>, port: CrmPort, T: string): Promise<{ v: CrmShipmentView } | { plan: CrmPlan }> {
+  const ref = str(args.shipment_id)
+  if (!ref) return { plan: fail(T, "(출고 없음)", "shipment_id 가 비어 있습니다 — list_shipments 로 찾으세요.") }
+  const v = await port.shipment(ref)
+  if (!v) return { plan: fail(T, ref, `'${ref}' 출고가 없습니다 — list_shipments 로 shipment_id(또는 SH 코드)를 확인하세요.`) }
+  return { v }
+}
+
+/** 출고 한 줄의 글 — 「SH101 · 2026-11-17 · 가나대학교 · 애드젤 (ADD GEL) · 1% · 4ml · 판매 · 배송완료」 */
+function shipmentLine(date: string, org: string, p: CrmProductRow | undefined, v: Variant, quantity: number | null, kind: string, status: string, note: string | null) {
+  const what = p?.gelType ? variantProductLabel(p, v.conc, v.vol) : `${p ? productLabel(p) : "제품"} ${quantity ?? 0}개`
+  return `${date} · ${org} · ${what} · ${SHIPMENT_KIND_LABEL[kind as "SALE"] ?? kind} · ${SHIPMENT_STATUS_LABEL[status as "DELIVERED"] ?? status}${note ? ` · ${note}` : ""}`
+}
+
+/** 출고가 뺀 양 — 젤은 ml, 아니면 개 */
+const shippedAmount = (p: CrmProductRow | undefined, v: { volumeMl: number | null; quantity: number | null }) => (p?.gelType ? v.volumeMl ?? 0 : v.quantity ?? 0)
+
+async function planUpdateShipment(args: Record<string, unknown>, port: CrmPort, now: Date): Promise<CrmPlan> {
+  const T = "CRM 출고 고치기"
+  const t = await shipmentTarget(args, port, T)
+  if ("plan" in t) return t.plan
+  const s = t.v
+  const products = await port.products()
+  const oldP = products.find((x) => x.id === s.productId)
+  const input: Record<string, unknown> = {}
+
+  // 제품 — 샘플요청에서 나온 출고는 샘플요청에서 바꾼다
+  let p = oldP
+  if (has(args, "product_id")) {
+    const pr = productRef(str(args.product_id), products)
+    if ("problem" in pr) return fail(T, s.code, pr.problem)
+    if (pr.product.id !== s.productId) {
+      if (s.sampleCode) return fail(T, s.code, `샘플요청 ${s.sampleCode} 에서 나온 출고입니다 — 제품은 update_sample 로 고쳐 주세요.`)
+      if (pr.product.isMaterial) return fail(T, s.code, `${pr.product.name} 은 원료입니다 — 출고는 완제품만 적습니다.`)
+      p = pr.product
+      input.productId = p.id
+    }
+  }
+  if (!p) return fail(T, s.code, "이 출고의 제품을 찾지 못했습니다(보관된 제품일 수 있습니다) — CRM › 재고 · 출고 화면에서 고쳐 주세요.")
+  const same = p.id === s.productId
+  // 양 — 젤은 농도 · ml, 아니면 개수
+  let v: Variant = { conc: null, vol: null }
+  let quantity: number | null = null
+  if (p.gelType) {
+    if (has(args, "quantity") && Number(args.quantity) !== 1) return fail(T, s.code, `${p.name} 은 젤 타입이라 개수를 세지 않습니다 — 나간 ml 전체를 volume_ml 로 적어 주세요(5ml 3개면 15).`)
+    const vr = parseVariant(p, args, same ? { conc: s.concentrationPct, vol: s.volumeMl } : { conc: null, vol: null }, true)
+    if ("problem" in vr) return fail(T, s.code, vr.problem)
+    v = vr.variant
+    if (has(args, "concentration")) input.concentrationPct = v.conc
+    if (has(args, "volume_ml") || !same) { input.volumeMl = v.vol; input.concentrationPct = v.conc }
+  } else {
+    if (has(args, "volume_ml") || has(args, "concentration")) return fail(T, s.code, "concentration · volume_ml 는 젤 타입(애드젤 · 라이브젤) 출고에만 씁니다 — quantity(개수)로 고쳐 주세요.")
+    quantity = has(args, "quantity") ? Number(args.quantity) : same ? s.quantity : null
+    if (quantity == null || !Number.isInteger(quantity) || quantity < 1) return fail(T, s.code, `${p.name} 은 개수로 셉니다 — quantity(1 이상의 정수)를 주세요.`)
+    if (has(args, "quantity") || !same) input.quantity = quantity
+  }
+  // 기관
+  let org = s.org
+  if (has(args, "org")) {
+    const o = resolveOrgRef(str(args.org), await port.orgs())
+    if ("problem" in o) return fail(T, s.code, o.problem)
+    if (o.org.id !== s.org.id) {
+      if (s.sampleCode) return fail(T, s.code, `샘플요청 ${s.sampleCode} 에서 나온 출고입니다 — 기관은 update_sample 로 고쳐 주세요.`)
+      org = { id: o.org.id, name: o.org.name }
+      input.orgId = org.id
+    }
+  }
+  let date = s.date
+  if (has(args, "date")) {
+    const d = parseDate(args.date, now)
+    if ("problem" in d) return fail(T, s.code, d.problem)
+    date = d.date
+    if (date !== s.date) input.shippedAt = date
+  }
+  let kind: string = s.kind
+  if (has(args, "kind")) {
+    kind = str(args.kind).toUpperCase()
+    if (!(kind in SHIPMENT_KIND_LABEL)) return fail(T, s.code, "kind 는 SALE · SAMPLE · GIFT 중 하나입니다.")
+    if (kind !== s.kind) input.kind = kind
+  }
+  let status: string = s.status
+  if (has(args, "status")) {
+    status = str(args.status).toUpperCase()
+    if (!(status in SHIPMENT_STATUS_LABEL)) return fail(T, s.code, "status 는 PREPARING · SHIPPING · DELIVERED 중 하나입니다.")
+    if (status !== s.status) input.status = status
+  }
+  let note = s.note
+  if (args.note !== undefined && args.note !== null) {
+    note = str(args.note).slice(0, 2000) || null
+    if (note !== s.note) input.note = note
+  }
+
+  const before = shipmentLine(s.date, s.org.name, oldP, { conc: s.concentrationPct, vol: s.volumeMl }, s.quantity, s.kind, s.status, s.note)
+  const after = shipmentLine(date, org.name, p, v, quantity, kind, status, note)
+  if (before === after) return fail(T, s.code, "바뀌는 것이 없습니다 — 고칠 칸(product_id · concentration · volume_ml · quantity · org · kind · status · date · note)을 주세요.")
+  // 재고: 이 출고가 뺀 것을 돌려놓고 새로 뺀다(재고에 반영된 출고만)
+  const e = s.ledger && oldP
+    ? stockEffects([
+      { p: oldP, v: { conc: s.concentrationPct, vol: null }, delta: shippedAmount(oldP, s) },
+      { p, v: { conc: v.conc, vol: null }, delta: -(p.gelType ? v.vol ?? 0 : quantity ?? 0) },
+    ])
+    : { rows: [], warnings: [] }
+  // 같은 칸 · 같은 양이면 재고 줄은 「그대로」라 보이지 않게 한다
+  const rows = e.rows.filter((r) => r.before !== r.after)
+  return {
+    title: T, target: `${s.code} · ${s.org.name}`,
+    changes: [
+      { label: "출고", before: `${s.code} · ${before}`, after },
+      ...rows,
+      ...(s.ledger ? [] : [{ label: "재고", before: null, after: "바뀌지 않음 — 엑셀에서 넘어온 「미반영」 출고입니다" }]),
+    ],
+    warning: joinWarn(e.warnings),
+    risk: s.ledger
+      ? "이 출고에서 나온 재고 장부 줄을 새 값으로 다시 만듭니다 — 재고가 다시 계산됩니다. 활동 기록에 내 이름으로 남습니다."
+      : "출고 기록만 바뀌고 재고는 그대로입니다. 활동 기록에 내 이름으로 남습니다.",
+    op: { kind: "updateShipment", id: s.id, input },
+    done: { entity: "crm.shipment", action: "update", title: `출고 고침 ${s.code} · ${p.gelType ? variantProductLabel(p, v.conc, v.vol) : `${productLabel(p)} ${quantity}개`}` },
+  }
+}
+
+async function planDeleteShipment(args: Record<string, unknown>, port: CrmPort): Promise<CrmPlan> {
+  const T = "CRM 출고 지우기"
+  const t = await shipmentTarget(args, port, T)
+  if ("plan" in t) return t.plan
+  const s = t.v
+  const products = await port.products()
+  const p = products.find((x) => x.id === s.productId)
+  const e = s.ledger && p ? stockEffects([{ p, v: { conc: s.concentrationPct, vol: null }, delta: shippedAmount(p, s) }]) : { rows: [], warnings: [] }
+  const line = shipmentLine(s.date, s.org.name, p, { conc: s.concentrationPct, vol: s.volumeMl }, s.quantity, s.kind, s.status, s.note)
+  return {
+    title: T, target: `${s.code} · ${s.org.name}`,
+    changes: [
+      { label: "지울 출고", before: `${s.code} · ${line}`, after: "지움" },
+      ...e.rows,
+      ...(s.ledger ? [] : [{ label: "재고", before: null, after: "바뀌지 않음 — 엑셀에서 넘어온 「미반영」 출고입니다" }]),
+      ...(s.sampleCode ? [{ label: "샘플요청", before: null, after: `${s.sampleCode} 는 남고 이 출고와의 연결만 끊깁니다` }] : []),
+    ],
+    risk: `출고${s.ledger ? "와 그 출고에서 나온 재고 장부 줄을" : "를"} 지웁니다${s.ledger ? " — 재고가 출고 전으로 돌아옵니다" : ""}. 되돌릴 수 없습니다. 활동 기록에 내 이름으로 남습니다.`,
+    op: { kind: "deleteShipment", id: s.id },
+    done: { entity: "crm.shipment", action: "delete", title: `출고 지움 ${s.code} · ${s.org.name}` },
   }
 }
 

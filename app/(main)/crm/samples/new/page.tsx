@@ -32,7 +32,7 @@ export default async function NewSamplePage() {
             ? { id: o.memberships[0].id, discountAmount: o.memberships[0].discountAmount }
             : null,
         }))}
-        products={products.map((p) => ({ id: p.id, name: p.name, spec: p.spec, kind: p.kind }))}
+        products={products.map((p) => ({ id: p.id, name: p.name, spec: p.spec, kind: p.kind, gelType: p.gelType }))}
       />
     </>
   )

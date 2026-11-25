@@ -11,7 +11,7 @@ const WRITE_TOOLS = [
   "create_task", "write_omnis_card", "write_weekly_report", "save_company_record", "delete_company_record",
   "decide_record_proposal", "ask_omnis", "record_sample",
   // CRM 고치기 — 질문 경로에는 미리보기로만(ROUTE_PREVIEW_TOOLS) 열린다
-  "update_sample", "delete_sample", "create_org", "update_org", "record_stock", "record_production",
+  "update_sample", "delete_sample", "create_org", "update_org", "record_stock", "record_production", "update_production", "delete_production",
   "create_quote", "update_quote", "delete_quote", "record_shipment", "record_payment",
   // #248 묶음 1 — 질문 경로에는 미리보기로만
   "create_project", "merge_projects", "manage_room", "manage_notifications", "set_notification_prefs", "delete_weekly_report",

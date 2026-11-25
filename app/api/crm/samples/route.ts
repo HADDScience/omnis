@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { nextDatedCode } from "@/lib/crm"
 import { createWithUniqueCode } from "@/lib/crm-server"
-import { setSampleSent } from "@/lib/crm-ops"
+import { gelVariant, setSampleSent } from "@/lib/crm-ops"
 
 export const runtime = "nodejs"
 
@@ -16,6 +16,9 @@ const createSchema = z.object({
   request: z.string().trim().max(2000).optional().nullable(),
   referral: z.string().trim().max(200).optional().nullable(),
   note: z.string().trim().max(2000).optional().nullable(),
+  /** 젤 타입 제품이면 농도(필수) · 보낼 ml(선택, 총량) */
+  concentrationPct: z.union([z.number(), z.string()]).optional().nullable(),
+  volumeMl: z.union([z.number(), z.string()]).optional().nullable(),
 })
 
 export async function POST(req: Request) {
@@ -29,7 +32,15 @@ export async function POST(req: Request) {
       { status: 400 }
     )
   }
-  const { orgId, contactId, productId, requestedAt, ...rest } = parsed.data
+  const { orgId, contactId, productId, requestedAt, concentrationPct, volumeMl, ...rest } = parsed.data
+  let gel: { concentrationPct: number; volumeMl: number | null } | null = null
+  if (productId) {
+    const p = await prisma.crmProduct.findUnique({ where: { id: productId }, select: { gelType: true, name: true } })
+    if (!p) return NextResponse.json({ error: "제품을 찾을 수 없습니다" }, { status: 404 })
+    const g = gelVariant(p, { concentrationPct, volumeMl }, { needVolume: false })
+    if (!g.ok) return NextResponse.json({ error: g.error }, { status: 400 })
+    if (g.conc != null) gel = { concentrationPct: g.conc, volumeMl: g.volumeMl }
+  }
 
   const sample = await createWithUniqueCode(async () => {
     const codes = (await prisma.crmSampleRequest.findMany({ select: { code: true } })).map(
@@ -38,6 +49,7 @@ export async function POST(req: Request) {
     return prisma.crmSampleRequest.create({
       data: {
         ...rest,
+        ...(gel ?? {}),
         requestedAt,
         code: nextDatedCode(requestedAt, codes),
         org: { connect: { id: orgId } },

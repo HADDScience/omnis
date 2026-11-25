@@ -885,6 +885,13 @@ async function seedCrm(uploadedById: string) {
   const plate = await prisma.crmProduct.create({
     data: { code: "PRD003", name: "코팅 플레이트", spec: "24well", kind: "소모품", unitPrice: 120_000 },
   })
+  // 젤 타입 두 줄(2026-11-25) — 재고는 (타입, 농도) 마다 총 ml
+  const gelAdd = await prisma.crmProduct.create({
+    data: { code: "PRD004", name: "애드젤 (ADD GEL)", stockUnit: "ML", gelType: "ADDGEL", note: "젤 타입 — 재고는 (농도 %, 총 ml) 로 센다" },
+  })
+  await prisma.crmProduct.create({
+    data: { code: "PRD005", name: "라이브젤 (LiVEGEL)", stockUnit: "ML", gelType: "LIVEGEL", note: "젤 타입 — 재고는 (농도 %, 총 ml) 로 센다" },
+  })
 
   const quotes = [
     { code: "HADD260812-001", quotedAt: day("2026-08-12"), orgId: org.ORG001, contactId: contact.CT001, membershipId: membership.id, discountAmount: 400_000, status: "DONE" as const, taxInvoicedAt: day("2026-08-20"), items: [{ productId: kit.id, quantity: 4, unitPrice: 450_000 }] },
@@ -911,11 +918,15 @@ async function seedCrm(uploadedById: string) {
   await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-01"), productId: plate.id, direction: "IN", quantity: 50, note: "초기 재고" } })
   await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-01"), productId: material.id, direction: "IN", quantity: 500, note: "원료 입고 (g)" } })
 
+  // 생산 — 애드젤 1% 40ml, 원료 = 1/100 × 40ml = 0.4g(농도는 g/100ml). 개수는 세지 않는다
   const production = await prisma.crmProduction.create({
-    data: { code: "MFG260805-001", producedAt: day("2026-08-05"), productId: plate.id, quantity: 20, materialId: material.id, materialGrams: 40 },
+    data: {
+      code: "MFG001", producedAt: day("2026-08-05"), productId: gelAdd.id, concentrationPct: 1, totalMl: 40,
+      materialId: material.id, materialGrams: 0.4,
+    },
   })
-  await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-05"), productId: plate.id, direction: "IN", quantity: 20, productionId: production.id, note: "생산 입고" } })
-  await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-05"), productId: material.id, direction: "OUT", quantity: 40, productionId: production.id, note: "생산 투입 (g)" } })
+  await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-05"), productId: gelAdd.id, direction: "IN", quantity: 40, concentrationPct: 1, productionId: production.id, note: "생산 MFG001" } })
+  await prisma.crmStockMove.create({ data: { movedAt: day("2026-08-05"), productId: material.id, direction: "OUT", quantity: 0.4, productionId: production.id, note: "생산 MFG001" } })
 
   const shipments = [
     { code: "SH001", shippedAt: day("2026-08-21"), orgId: org.ORG001, productId: kit.id, quantity: 4, kind: "SALE" as const, status: "DELIVERED" as const, quoteId: quote["HADD260812-001"] },
@@ -923,7 +934,7 @@ async function seedCrm(uploadedById: string) {
   ]
   for (const s of shipments) {
     const shipment = await prisma.crmShipment.create({ data: s })
-    await prisma.crmStockMove.create({ data: { movedAt: s.shippedAt, productId: s.productId, direction: "OUT", quantity: s.quantity, shipmentId: shipment.id } })
+    await prisma.crmStockMove.create({ data: { movedAt: s.shippedAt, productId: s.productId, direction: "OUT", quantity: s.quantity!, shipmentId: shipment.id } })
   }
 
   const supplier = { supplierBizNo: "000-00-00000", supplierName: "데모바이오 (익명)" }
