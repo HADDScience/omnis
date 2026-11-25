@@ -1026,12 +1026,17 @@ model CrmProduct {
   stockUnit        CrmStockUnit @default(PIECE)
   /// 완제품 한 개의 용량(ml). 생산에 드는 원료량을 계산할 때 쓴다.
   volumeMl         Decimal?     @db.Decimal(10, 3)
-  /// 농도(wt%). 1wt% = 1ml 당 0.01g.
-  /// 애드젤이 1wt% 다. 모르는 품목은 비워 두고, 비어 있으면 소요량을 계산하지 않는다 —
+  /// 농도(%, g/100ml). 1% = 1ml 당 0.01g.
+  /// 애드젤이 1% 다. 모르는 품목은 비워 두고, 비어 있으면 소요량을 계산하지 않는다 —
   /// 숫자를 지어내느니 계산을 안 하는 편이 낫다.
   concentrationPct Decimal?     @db.Decimal(6, 3)
   note             String?
   archived         Boolean      @default(false)
+  /// 젤 제품 타입(2026-11-25). 애드젤 · 라이브젤 두 줄에만 있다. 이 줄은 규격별 행이 아니라 타입 하나이고,
+  /// 재고는 (타입, 농도 %) 마다 총 ml 로 센다(CrmStockMove.concentrationPct · quantity). 개수는 세지 않는다
+  gelType          CrmGelType?  @unique
+  /// 규격별 젤 행을 타입으로 옮겼을 때 옮겨 간 타입 제품. 이 행은 숨김(archived)이 되고 지난 기록의 원본으로 남는다
+  mergedIntoId     String?
 
   quoteItems        CrmQuoteItem[]
   sampleRequests    CrmSampleRequest[]
@@ -1076,16 +1081,21 @@ model CrmQuote {
 }
 
 model CrmQuoteItem {
-  id        String     @id @default(uuid())
-  quoteId   String
-  quote     CrmQuote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  productId String
-  product   CrmProduct @relation(fields: [productId], references: [id])
-  quantity  Int
+  id               String     @id @default(uuid())
+  quoteId          String
+  quote            CrmQuote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productId        String
+  product          CrmProduct @relation(fields: [productId], references: [id])
+  quantity         Int
   /// 견적 당시 단가의 사본. 제품 단가가 나중에 바뀌어도 지난 견적 금액은 그대로다.
-  unitPrice Int
-  note      String?
-  sortOrder Int        @default(0)
+  unitPrice        Int
+  note             String?
+  sortOrder        Int        @default(0)
+  /// 젤 타입 제품이면 농도(%) · 한 개 용량(ml). quantity 는 그 용량의 개수다(견적은 개수 × 단가로 남긴다)
+  concentrationPct Decimal?   @db.Decimal(6, 3)
+  volumeMl         Decimal?   @db.Decimal(10, 3)
+  /// 규격별 젤 행에서 옮겨 왔으면 원래 제품
+  legacyProductId  String?
 
   @@index([quoteId])
 }
@@ -1115,6 +1125,13 @@ enum CrmShipmentStatus {
 enum CrmStockUnit {
   PIECE // 개
   GRAM // g
+  ML // ml — 젤 타입. (타입, 농도) 마다 총 ml 로 센다
+}
+
+/// 젤 제품 타입. 규격(용량)마다 제품 행을 두지 않고 타입 둘로 고정한다(2026-11-25 결정)
+enum CrmGelType {
+  ADDGEL // 애드젤 (ADD GEL)
+  LIVEGEL // 라이브젤 (LiVEGEL)
 }
 
 /// 재고 장부의 방향. 현재고 = Σ IN − Σ OUT 로만 구한다 — 어딘가에 적힌 숫자를
@@ -1126,24 +1143,28 @@ enum CrmStockDirection {
 }
 
 model CrmSampleRequest {
-  id          String          @id @default(uuid())
-  code        String          @unique // HADD251202-001
-  requestedAt DateTime
-  orgId       String
-  org         CrmOrg          @relation(fields: [orgId], references: [id])
-  contactId   String?
-  contact     CrmContact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  productId   String?
-  product     CrmProduct?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  id               String          @id @default(uuid())
+  code             String          @unique // HADD251202-001
+  requestedAt      DateTime
+  orgId            String
+  org              CrmOrg          @relation(fields: [orgId], references: [id])
+  contactId        String?
+  contact          CrmContact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  productId        String?
+  product          CrmProduct?     @relation(fields: [productId], references: [id], onDelete: SetNull)
   /// 요청사항 원문. "라이브젤 샘플 및 카다로그 요청" 처럼 제품만으로는 안 담기는 말이 들어온다.
-  request     String?
+  request          String?
   /// 소개경로 — 학회·지인·QR·전화. 어디서 왔는지가 다음 영업의 단서다.
-  referral    String?
-  status      CrmSampleStatus @default(PENDING)
-  sentAt      DateTime?
-  note        String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  referral         String?
+  status           CrmSampleStatus @default(PENDING)
+  sentAt           DateTime?
+  note             String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  /// 젤 타입 제품이면 농도(%) · 보낼 ml(총량). 딸린 샘플 출고가 이 값을 따른다
+  concentrationPct Decimal?        @db.Decimal(6, 3)
+  volumeMl         Decimal?        @db.Decimal(10, 3)
+  legacyProductId  String?
 
   shipments CrmShipment[]
   inquiries WebsiteInquiry[]
@@ -1153,24 +1174,29 @@ model CrmSampleRequest {
 }
 
 model CrmShipment {
-  id              String            @id @default(uuid())
-  code            String            @unique // SH001
-  shippedAt       DateTime
-  kind            CrmShipmentKind   @default(SALE)
-  orgId           String
-  org             CrmOrg            @relation(fields: [orgId], references: [id])
-  productId       String
-  product         CrmProduct        @relation(fields: [productId], references: [id])
-  quantity        Int
-  status          CrmShipmentStatus @default(PREPARING)
+  id               String            @id @default(uuid())
+  code             String            @unique // SH001
+  shippedAt        DateTime
+  kind             CrmShipmentKind   @default(SALE)
+  orgId            String
+  org              CrmOrg            @relation(fields: [orgId], references: [id])
+  productId        String
+  product          CrmProduct        @relation(fields: [productId], references: [id])
+  /// 개수. 젤 타입 출고는 개수를 세지 않아 비어 있고, volumeMl 이 출고 ml 다
+  quantity         Int?
+  status           CrmShipmentStatus @default(PREPARING)
   /// 어느 견적/샘플요청에서 나온 출고인지. 엑셀은 견적번호를 문자열로 적어 뒀다.
-  quoteId         String?
-  quote           CrmQuote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  sampleRequestId String?
-  sampleRequest   CrmSampleRequest? @relation(fields: [sampleRequestId], references: [id], onDelete: SetNull)
-  note            String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  quoteId          String?
+  quote            CrmQuote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  sampleRequestId  String?
+  sampleRequest    CrmSampleRequest? @relation(fields: [sampleRequestId], references: [id], onDelete: SetNull)
+  note             String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  /// 젤 타입 제품이면 농도(%) · 출고 ml(총량). 재고에서는 그 농도 칸에서 volumeMl 만큼 빠진다
+  concentrationPct Decimal?          @db.Decimal(6, 3)
+  volumeMl         Decimal?          @db.Decimal(10, 3)
+  legacyProductId  String?
 
   stockMoves CrmStockMove[]
 
@@ -1183,23 +1209,29 @@ model CrmShipment {
 /// 단위는 품목이 정한다(CrmProduct.stockUnit) — 원료면 g, 완제품이면 개.
 /// 그램은 4.5 처럼 소수가 나오므로 정수로 두면 안 된다.
 model CrmStockMove {
-  id           String            @id @default(uuid())
-  movedAt      DateTime
-  productId    String
-  product      CrmProduct        @relation(fields: [productId], references: [id])
-  direction    CrmStockDirection
-  quantity     Decimal           @db.Decimal(12, 3)
-  note         String?
+  id               String            @id @default(uuid())
+  movedAt          DateTime
+  productId        String
+  product          CrmProduct        @relation(fields: [productId], references: [id])
+  direction        CrmStockDirection
+  quantity         Decimal           @db.Decimal(12, 3)
+  note             String?
   /// 출고에서 파생된 줄이면 그 출고를 가리킨다. 사람이 직접 적은 줄은 비어 있다.
-  shipmentId   String?
-  shipment     CrmShipment?      @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipmentId       String?
+  shipment         CrmShipment?      @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   /// 생산에서 파생된 줄. 한 번의 생산이 원료 OUT 과 완제품 IN 두 줄을 만든다.
-  productionId String?
-  production   CrmProduction?    @relation(fields: [productionId], references: [id], onDelete: Cascade)
-  createdAt    DateTime          @default(now())
+  productionId     String?
+  production       CrmProduction?    @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  createdAt        DateTime          @default(now())
+  /// 젤 타입(stockUnit ML)의 줄: 농도(%)가 재고 칸을 가른다. quantity 는 ml
+  concentrationPct Decimal?          @db.Decimal(6, 3)
+  /// 규격별 젤 행에서 옮겨 온 줄이면 원래 제품 · 원래 수량(개)
+  legacyProductId  String?
+  legacyQuantity   Decimal?          @db.Decimal(12, 3)
 
   @@index([productId])
   @@index([movedAt])
+  @@index([productId, concentrationPct])
 }
 
 /// 생산 기록. 원료를 써서 완제품 몇 개를 만들었는지.
@@ -1207,20 +1239,27 @@ model CrmStockMove {
 /// 이것이 원료와 완제품을 잇는 유일한 고리다. 이게 없으면 "DNA 를 썼는데 제품이
 /// 어디서 왔는지" 를 아무도 모른 채 두 장부가 따로 논다 — 엑셀이 그랬다.
 model CrmProduction {
-  id            String     @id @default(uuid())
-  code          String     @unique // MFG260904-001
-  producedAt    DateTime
+  id               String      @id @default(uuid())
+  code             String      @unique // MFG260904-001
+  producedAt       DateTime
   /// 만든 것
-  productId     String
-  product       CrmProduct @relation("ProducedProduct", fields: [productId], references: [id])
-  quantity      Int
-  /// 쓴 원료
-  materialId    String
-  material      CrmProduct @relation("ProductionMaterial", fields: [materialId], references: [id])
-  materialGrams Decimal    @db.Decimal(12, 3)
-  note          String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  productId        String
+  product          CrmProduct  @relation("ProducedProduct", fields: [productId], references: [id])
+  /// 만든 개수 — 지난 규격별 생산에만 있다. 젤 타입 생산은 개수를 세지 않아 비어 있고 totalMl 이 만든 양이다
+  quantity         Int?
+  /// 쓴 원료. 타입에 이어진 원료가 없으면 비어 있고 차감하지 않는다
+  materialId       String?
+  material         CrmProduct? @relation("ProductionMaterial", fields: [materialId], references: [id])
+  materialGrams    Decimal     @db.Decimal(12, 3)
+  note             String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  /// 젤 타입 생산(2026-11-25): 농도(%) · 만든 ml
+  concentrationPct Decimal?    @db.Decimal(6, 3)
+  totalMl          Decimal?    @db.Decimal(12, 3)
+  /// 사진(File.id) — POST /api/files 로 올린 공개 파일
+  photoFileIds     String[]    @default([])
+  legacyProductId  String?
 
   stockMoves CrmStockMove[]
 
@@ -1436,7 +1475,7 @@ model StaffProfile {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  assets StaffAsset[]
+  assets      StaffAsset[]
   /// 채용 지원서에서 입사 처리로 온 사람(3단계 — mydocs/plans/2026-11-24-hr-intake.md)
   application JobApplication?
 }
@@ -2222,7 +2261,7 @@ model JobApplication {
   email        String?
   portfolioUrl String?
   /// 「관심 있는 일」 — 공고의 tracks value(ai-bio · dev · grants …). 선택이라 비어 있어도 된다. 라벨은 lib/hr/rules.ts INTEREST_LABEL
-  interests    String[]            @default([])
+  interests    String[] @default([])
   motivation   String?
 
   consentAt      DateTime?

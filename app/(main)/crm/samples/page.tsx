@@ -1,3 +1,4 @@
+import { rowProductLabel } from "@/lib/crm-gel"
 import { Header } from "@/components/layout/header"
 import { CrmNav } from "@/components/crm/crm-nav"
 import { prisma } from "@/lib/db"
@@ -25,7 +26,7 @@ export default async function CrmSamplesPage() {
             orgName: s.org.name,
             orgId: s.orgId,
             contactName: s.contact?.name ?? null,
-            productName: s.product?.name ?? null,
+            productName: s.product ? rowProductLabel(s.product, s) : null,
             request: s.request,
             referral: s.referral,
             sent: s.status === "SENT",

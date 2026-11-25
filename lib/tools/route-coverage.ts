@@ -124,6 +124,8 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "crm/payments POST": ["record_payment"],
   "crm/payments/settle POST": ["settle_payments"],
   "crm/productions POST": ["record_production"],
+  "crm/productions/[productionId] PATCH": ["update_production"],
+  "crm/productions/[productionId] DELETE": ["delete_production"],
   "crm/quotes/[quoteId] PATCH": ["update_quote"],
   "crm/quotes/[quoteId] DELETE": ["delete_quote"],
   "crm/quotes POST": ["create_quote"],

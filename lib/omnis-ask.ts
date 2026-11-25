@@ -1,6 +1,7 @@
 // 옴니스 질문 — 화면(app/api/omnis/ask)과 MCP(hadd-omnis)가 같은 길을 쓴다.
 //
 // 검색(top-K) + 현황 전량(업무·지식재산권·CRM) + 생성. 라우트에서 그대로 옮겼다(2026-09-07).
+import { gelLots, lotText, variantLabel } from "@/lib/crm-gel"
 import { isUnassignedOpen } from "@/lib/task-unassigned"
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@/generated/prisma/client"
@@ -107,7 +108,9 @@ export async function buildCrmOverview(): Promise<string> {
     }),
   ])
   const materials = stockItems.filter((p) => p.isMaterial)
-  const goods = stockItems.filter((p) => !p.isMaterial)
+  const gels = stockItems.filter((p) => p.gelType)
+  const goods = stockItems.filter((p) => !p.isMaterial && !p.gelType)
+  const num = (v: unknown) => (v == null ? null : Number(v))
   if (stockItems.length === 0 && quotes.length === 0 && samples.length === 0) return ""
 
   const parts: string[] = ["[CRM 현황]"]
@@ -118,6 +121,17 @@ export async function buildCrmOverview(): Promise<string> {
       ...materials.map((m) => {
         const { inQty, outQty, balance } = stockBalance(m.stockMoves)
         return `- ${m.name}: 현재고 ${balance}g (입고 ${inQty}g · 출고 ${outQty}g)`
+      })
+    )
+  }
+
+  if (gels.length > 0) {
+    parts.push(
+      "",
+      "젤 재고 — (타입, 농도 %) 마다 총 ml 로 센다. 개수는 세지 않는다. 농도 % 는 g/100ml 라 원재료 차감 = 농도/100 × ml (g)",
+      ...gels.flatMap((g) => {
+        const lots = gelLots(g.stockMoves).filter((l) => l.ml !== 0)
+        return lots.length ? lots.map((l) => `- ${variantLabel(g.name, l.conc || null)}: ${lotText(l)}`) : [`- ${g.name}: 재고 없음`]
       })
     )
   }
@@ -140,8 +154,8 @@ export async function buildCrmOverview(): Promise<string> {
       `생산 기록 ${productions.length}건 (최근순)`,
       ...productions.map(
         (p) =>
-          `- ${p.code} ${p.producedAt.toISOString().slice(0, 10)} ${p.product.name}` +
-          `${p.product.spec ? `(${p.product.spec})` : ""} ${p.quantity}개 · ${p.material.name} ${Number(p.materialGrams)}g 사용`
+          `- ${p.code} ${p.producedAt.toISOString().slice(0, 10)} ${variantLabel(p.product.name, num(p.concentrationPct), num(p.totalMl))}` +
+          ` · ${p.material ? `${p.material.name} ${Number(p.materialGrams)}g 사용` : "원재료 차감 없음"}`
       )
     )
   }
@@ -151,10 +165,10 @@ export async function buildCrmOverview(): Promise<string> {
   if (recipes.length > 0) {
     parts.push(
       "",
-      "배합 (1wt% 는 1ml 당 0.01g)",
+      "배합 (1% 는 1ml 당 0.01g — g/100ml)",
       ...recipes.map((g) => {
         const per = (Number(g.volumeMl) * Number(g.concentrationPct)) / 100
-        return `- ${g.name}${g.spec ? ` (${g.spec})` : ""}: ${g.volumeMl}ml · ${g.concentrationPct}wt% → 1개에 ${per}g`
+        return `- ${g.name}${g.spec ? ` (${g.spec})` : ""}: ${g.volumeMl}ml · ${g.concentrationPct}% → 1개에 ${per}g`
       })
     )
   }
@@ -168,7 +182,7 @@ export async function buildCrmOverview(): Promise<string> {
       ...quotes.map((q, i) => {
         const t = totals[i]
         const items = q.items
-          .map((it) => `${it.product.name}${it.product.spec ? `(${it.product.spec})` : ""} ${it.quantity}개`)
+          .map((it) => `${it.product.gelType ? variantLabel(it.product.name, num(it.concentrationPct), num(it.volumeMl)) : `${it.product.name}${it.product.spec ? `(${it.product.spec})` : ""}`} ${it.quantity}개`)
           .join(", ")
         return `- ${q.code} ${q.quotedAt.toISOString().slice(0, 10)} ${q.org.name} · ${items} · ${QUOTE_STATUS_LABEL[q.status]} · ${t.total.toLocaleString()}원`
       })
@@ -183,7 +197,7 @@ export async function buildCrmOverview(): Promise<string> {
       ...samples.map(
         (s) =>
           `- ${s.code} ${s.requestedAt.toISOString().slice(0, 10)} ${s.org.name}` +
-          `${s.product ? ` · ${s.product.name}` : ""}` +
+          `${s.product ? ` · ${s.product.gelType ? variantLabel(s.product.name, num(s.concentrationPct), num(s.volumeMl)) : s.product.name}` : ""}` +
           `${s.request ? ` · ${s.request}` : ""}` +
           `${s.referral ? ` · 소개: ${s.referral}` : ""}` +
           ` · ${s.status === "SENT" ? "발송완료" : "미발송"}`

@@ -19,6 +19,8 @@ import { Step } from "./step"
 import { RecipientSteps } from "./recipient-steps"
 import { useRecipient, type OrgLite } from "./use-recipient"
 import { quoteTotals, won } from "@/lib/crm"
+import { ConcField, MlField, concOk, mlOk } from "./gel-fields"
+import { round3, type GelType } from "@/lib/crm-gel"
 import { cn } from "@/lib/utils"
 import { apiUrl } from "@/lib/base-path"
 
@@ -29,11 +31,23 @@ interface ProductLite {
   /** 시린지·바이알·세트… 이름을 통일한 뒤로는 이게 있어야 같은 이름끼리 갈린다 */
   kind: string | null
   unitPrice: number | null
+  /** 젤 타입이면 농도 · 한 개 용량을 줄마다 고른다 */
+  gelType?: GelType | null
 }
 interface Line {
   key: string
   productId: string | null
   quantity: number
+  unitPrice: number
+  conc: string
+  ml: string
+}
+
+/** 지난 규격별 젤 행의 단가 — 같은 (타입, 농도, 용량)을 고르면 그 값을 채워 둔다 */
+export interface GelPrice {
+  gelType: GelType
+  conc: number
+  volumeMl: number
   unitPrice: number
 }
 
@@ -42,15 +56,19 @@ const newLine = (): Line => ({
   productId: null,
   quantity: 1,
   unitPrice: 0,
+  conc: "",
+  ml: "",
 })
 
 export function QuoteComposer({
   orgs: initialOrgs,
   products,
+  gelPrices = [],
   initialOrgId = null,
 }: {
   orgs: OrgLite[]
   products: ProductLite[]
+  gelPrices?: GelPrice[]
   /** 샘플을 보낸 기관에서 이어 열면 그 기관이 골라진 채로 시작한다 */
   initialOrgId?: string | null
 }) {
@@ -72,7 +90,9 @@ export function QuoteComposer({
   const [pending, startTransition] = useTransition()
 
   const org = r.org
-  const filled = lines.filter((l) => l.productId)
+  const gelOf = (l: Line) => products.find((p) => p.id === l.productId)?.gelType ?? null
+  // 젤 타입 줄은 농도 · 용량까지 골라야 채워진 줄이다
+  const filled = lines.filter((l) => l.productId && (!gelOf(l) || (concOk(l.conc) && mlOk(l.ml))))
 
   // 어디까지 왔는지는 따로 세지 않고 채워진 값에서 끌어낸다.
   // 카운터를 따로 두면 값과 단계가 어긋나는 순간이 생긴다.
@@ -109,7 +129,17 @@ export function QuoteComposer({
 
   function pickProduct(key: string, productId: string | null) {
     const p = products.find((x) => x.id === productId)
-    setLine(key, { productId, unitPrice: p?.unitPrice ?? 0 })
+    setLine(key, { productId, unitPrice: p?.unitPrice ?? 0, conc: "", ml: "" })
+  }
+
+  /** 젤 줄의 농도 · 용량을 바꾸면 지난 규격의 단가가 있을 때 채운다(사람이 고친 단가는 두지 않고 덮는다 — 규격이 바뀌었으니) */
+  function setGel(l: Line, patch: { conc?: string; ml?: string }) {
+    const next = { ...l, ...patch }
+    const g = gelOf(next)
+    const hit = g && concOk(next.conc) && mlOk(next.ml)
+      ? gelPrices.find((x) => x.gelType === g && x.conc === round3(Number(next.conc)) && x.volumeMl === round3(Number(next.ml)))
+      : null
+    setLine(l.key, { ...patch, ...(hit ? { unitPrice: hit.unitPrice } : {}) })
   }
 
   const canSave = showFinish && !r.busy && !pending
@@ -133,6 +163,7 @@ export function QuoteComposer({
               productId: l.productId,
               quantity: l.quantity,
               unitPrice: l.unitPrice,
+              ...(gelOf(l) ? { concentrationPct: Number(l.conc), volumeMl: Number(l.ml) } : {}),
             })),
           }),
         })
@@ -190,8 +221,22 @@ export function QuoteComposer({
                   </Button>
                 </div>
 
+                {/* 젤 타입은 농도 · 한 개 용량을 고른다 — 출고할 때 그 칸의 재고에서 빠진다 */}
+                {l.productId && gelOf(l) && (
+                  <div className="mt-2 grid gap-3 rounded-xl border bg-card/60 p-3 sm:grid-cols-2" data-quote-gel={i}>
+                    <div>
+                      <span className="mb-1.5 block text-[12px] text-muted-foreground">농도</span>
+                      <ConcField gelType={gelOf(l)!} value={l.conc} onChange={(v) => setGel(l, { conc: v })} id={`q-conc-${i}`} />
+                    </div>
+                    <div>
+                      <span className="mb-1.5 block text-[12px] text-muted-foreground">한 개 용량</span>
+                      <MlField value={l.ml} onChange={(v) => setGel(l, { ml: v })} label={`${i + 1}번째 품목 한 개 용량(ml)`} />
+                    </div>
+                  </div>
+                )}
+
                 {/* 단가는 제품을 고른 뒤에만 의미가 있다 */}
-                {l.productId && (
+                {l.productId && (!gelOf(l) || (concOk(l.conc) && mlOk(l.ml))) && (
                   <div className="mt-1.5 flex items-center justify-end gap-2 pr-10 text-[12px] text-muted-foreground animate-in fade-in-0 duration-150 motion-reduce:animate-none">
                     <span>단가</span>
                     <Input

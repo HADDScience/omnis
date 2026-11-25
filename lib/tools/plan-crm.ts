@@ -1,22 +1,22 @@
 // 묶음 2(#248) 실행 — CRM 나머지. 정의는 lib/tools/defs-crm.ts.
 // 쓰기는 계획(WritePlan)을 세우고, run 은 화면 API 가 부르는 서버 함수(lib/crm-ops.ts · lib/tax-invoice-import.ts)를 그대로 부른다.
+import { rowProductLabel } from "@/lib/crm-gel"
 import { prisma } from "@/lib/db"
 import type { Caller } from "@/lib/omnis-mcp"
 import {
-  acceptInquiry, createContact, deletePayment, deleteShipment, deleteStockMove, deleteTaxInvoice, linkTaxInvoice,
-  rejectInquiry, settlePayments, updateShipment,
+  acceptInquiry, createContact, deletePayment, deleteStockMove, deleteTaxInvoice, linkTaxInvoice,
+  rejectInquiry, settlePayments,
 } from "@/lib/crm-ops"
 import { receivableChains } from "@/lib/crm-receivables"
 import { findVisibleFile } from "@/lib/file-access-server"
 import { openFileObject } from "@/lib/file-object"
 import { ImportUserError, importInvoices, readInvoiceSource, type ImportDecisions } from "@/lib/tax-invoice-import"
 import { loadOrgsForMatching, planInvoice, saveBlockers } from "@/lib/tax-invoice-save"
-import { blocked, clip, has, kstDate, str, type Planner } from "./planned"
+import { blocked, clip, kstDate, str, type Planner } from "./planned"
 import type { CrmMoreReadName, CrmMoreWriteName } from "./defs-crm"
 
 const won = (n: number | bigint) => `${Number(n).toLocaleString("ko-KR")}원`
 const isUuid = (k: string) => /^[0-9a-f-]{36}$/i.test(k)
-const SHIP_STATUS: Record<string, string> = { PREPARING: "준비중", SHIPPING: "배송중", DELIVERED: "배송완료" }
 const INQ_STATUS: Record<string, string> = { NEW: "검토 대기", ACCEPTED: "승인", REJECTED: "반려", SPAM: "스팸" }
 const OUTCOME: Record<string, string> = { quote: "빈 견적 만들기", sample: "샘플요청 만들기", none: "기관 · 담당자만 잇기" }
 
@@ -50,15 +50,15 @@ export async function runCrmMoreRead(name: CrmMoreReadName, args: Record<string,
       const rows = await prisma.crmStockMove.findMany({
         where: productIds ? { productId: { in: productIds } } : {},
         orderBy: [{ movedAt: "desc" }, { createdAt: "desc" }], take,
-        include: { product: { select: { name: true, spec: true, stockUnit: true } }, shipment: { select: { code: true } }, production: { select: { code: true } } },
+        include: { product: { select: { name: true, spec: true, stockUnit: true, gelType: true } }, shipment: { select: { code: true } }, production: { select: { code: true } } },
       })
       if (rows.length === 0) return { text: "재고 장부 줄이 없습니다." }
       return {
         text: [
           `재고 장부 ${rows.length}줄(최근 것부터) — 직접 적은 줄만 delete_stock_move 로 지운다(출고 · 생산 줄은 그 기록을 지운다).`,
           ...rows.map((m) => [
-            `- move_id=${m.id}`, kstDate(m.movedAt), `${m.product.name}${m.product.spec ? ` ${m.product.spec}` : ""}`,
-            `${m.direction === "IN" ? "+" : "−"}${Number(m.quantity)}${m.product.stockUnit !== "PIECE" ? "g" : "개"}`,
+            `- move_id=${m.id}`, kstDate(m.movedAt), rowProductLabel(m.product, m),
+            `${m.direction === "IN" ? "+" : "−"}${Number(m.quantity)}${m.product.stockUnit === "ML" ? "ml" : m.product.stockUnit !== "PIECE" ? "g" : "개"}`,
             m.shipment ? `출고 ${m.shipment.code}` : m.production ? `생산 ${m.production.code}` : "직접 적음",
             m.note ? clip(m.note, 60) : null,
           ].filter(Boolean).join(" · ")),
@@ -103,75 +103,21 @@ export async function runCrmMoreRead(name: CrmMoreReadName, args: Record<string,
 
 // ─── 쓰기 계획 ───
 
-const planUpdateShipment: Planner = async (args) => {
-  const T = "CRM 출고 고치기"
-  const s = str(args.shipment_id) ? await prisma.crmShipment.findUnique({ where: { id: str(args.shipment_id) }, include: { org: { select: { name: true } }, product: { select: { name: true, spec: true } } } }) : null
-  if (!s) return blocked(T, str(args.shipment_id) || "(ID 없음)", "출고를 찾지 못했습니다 — find_org 의 shipment_id 를 넣으세요")
-  const target = `${s.code} · ${s.org.name} · ${s.product.name}${s.product.spec ? ` ${s.product.spec}` : ""}`
-  const input: { status?: string; quantity?: number; note?: string | null } = {}
-  const changes = []
-  if (has(args, "status")) {
-    const st = str(args.status).toUpperCase()
-    if (!SHIP_STATUS[st]) return blocked(T, target, "status 는 PREPARING · SHIPPING · DELIVERED 중 하나입니다")
-    if (st !== s.status) { input.status = st; changes.push({ label: "상태", before: SHIP_STATUS[s.status], after: SHIP_STATUS[st] }) }
-  }
-  if (has(args, "quantity")) {
-    const q = Number(args.quantity)
-    if (!Number.isInteger(q) || q < 1) return blocked(T, target, "quantity 는 1 이상의 정수입니다")
-    if (q !== s.quantity) {
-      input.quantity = q
-      changes.push({ label: "수량", before: `${s.quantity}개`, after: `${q}개` }, { label: "재고", before: "지금", after: `${q > s.quantity ? "−" : "+"}${Math.abs(q - s.quantity)}개` })
-    }
-  }
-  if (has(args, "note")) {
-    const v = str(args.note).slice(0, 2000)
-    if (v !== (s.note ?? "")) { input.note = v || null; changes.push({ label: "비고", before: s.note || "(없음)", after: v || "(비움)" }) }
-  }
-  return {
-    title: T, target, changes,
-    risk: "출고가 바뀌고, 수량을 바꾸면 재고 장부의 출고 줄도 같이 바뀝니다.",
-    ...(changes.length === 0 ? { problem: "바뀌는 것이 없습니다 — status · quantity · note 를 주세요" } : {}),
-    run: async () => {
-      const r = await updateShipment(s.id, input)
-      return r.ok ? { ok: true, id: s.id, text: `고쳤습니다: 출고 ${s.code}` } : { ok: false, error: r.error }
-    },
-  }
-}
-
-const planDeleteShipment: Planner = async (args) => {
-  const T = "CRM 출고 지우기"
-  const s = str(args.shipment_id) ? await prisma.crmShipment.findUnique({ where: { id: str(args.shipment_id) }, include: { org: { select: { name: true } }, product: { select: { name: true, spec: true } } } }) : null
-  if (!s) return blocked(T, str(args.shipment_id) || "(ID 없음)", "출고를 찾지 못했습니다 — find_org 의 shipment_id 를 넣으세요")
-  return {
-    title: T, target: `${s.code} · ${s.org.name}`,
-    changes: [
-      { label: "지울 출고", before: `${kstDate(s.shippedAt)} · ${s.product.name}${s.product.spec ? ` ${s.product.spec}` : ""} ${s.quantity}개 · ${s.kind}`, after: "지움" },
-      { label: "재고", before: "지금", after: `+${s.quantity}개(되돌림)` },
-    ],
-    risk: "출고와 딸린 재고 줄이 함께 지워집니다. 되돌릴 수 없습니다.",
-    confirmLabel: "지우기",
-    run: async () => {
-      const r = await deleteShipment(s.id)
-      return r.ok ? { ok: true, id: s.id, text: `지웠습니다: 출고 ${r.value.code} — 재고가 돌아왔습니다.` } : { ok: false, error: r.error }
-    },
-  }
-}
-
 const planDeleteStockMove: Planner = async (args) => {
   const T = "재고 장부 줄 지우기"
-  const m = str(args.move_id) ? await prisma.crmStockMove.findUnique({ where: { id: str(args.move_id) }, include: { product: { select: { name: true, spec: true, stockUnit: true } } } }) : null
+  const m = str(args.move_id) ? await prisma.crmStockMove.findUnique({ where: { id: str(args.move_id) }, include: { product: { select: { name: true, spec: true, stockUnit: true, gelType: true } } } }) : null
   if (!m) return blocked(T, str(args.move_id) || "(ID 없음)", "장부 줄을 찾지 못했습니다 — list_stock_moves 의 move_id 를 넣으세요")
-  const unit = m.product.stockUnit !== "PIECE" ? "g" : "개"
+  const unit = m.product.stockUnit === "ML" ? "ml" : m.product.stockUnit !== "PIECE" ? "g" : "개"
   const q = Number(m.quantity)
   return {
-    title: T, target: `${m.product.name}${m.product.spec ? ` ${m.product.spec}` : ""}`,
+    title: T, target: rowProductLabel(m.product, m),
     changes: [
       { label: "지울 줄", before: `${kstDate(m.movedAt)} · ${m.direction === "IN" ? "+" : "−"}${q}${unit}${m.note ? ` · ${clip(m.note, 60)}` : ""}`, after: "지움" },
       { label: "재고", before: "지금", after: `${m.direction === "IN" ? "−" : "+"}${q}${unit}` },
     ],
     risk: "장부 줄이 지워지고 재고가 그만큼 바뀝니다. 되돌릴 수 없습니다.",
     confirmLabel: "지우기",
-    ...(m.shipmentId || m.productionId ? { problem: "생산 · 출고에서 나온 줄입니다. 그 기록(delete_shipment 등)을 지워야 함께 사라집니다" } : {}),
+    ...(m.shipmentId || m.productionId ? { problem: "생산 · 출고에서 나온 줄입니다. 그 기록(생산은 delete_production, 출고는 delete_shipment)을 지워야 함께 사라집니다" } : {}),
     run: async () => {
       const r = await deleteStockMove(m.id)
       return r.ok ? { ok: true, id: m.id, text: "장부 줄을 지웠습니다." } : { ok: false, error: r.error }
@@ -384,8 +330,6 @@ const planImportInvoice: Planner = async (args, caller) => {
 }
 
 export const CRM_MORE_PLANNERS: Record<CrmMoreWriteName, Planner> = {
-  update_shipment: planUpdateShipment,
-  delete_shipment: planDeleteShipment,
   delete_stock_move: planDeleteStockMove,
   delete_payment: planDeletePayment,
   settle_payments: planSettle,

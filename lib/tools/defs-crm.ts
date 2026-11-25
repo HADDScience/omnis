@@ -34,26 +34,6 @@ export const CRM_MORE_TOOLS = [
 
   // ─── 쓰기(계획 → 확인) ───
   {
-    name: "update_shipment",
-    description: "CRM 출고 한 건의 상태 · 수량 · 비고를 고친다 — 화면과 같다. 수량을 바꾸면 재고 장부도 따라간다. shipment_id 는 find_org 의 출고 줄에서.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        shipment_id: { type: "string" },
-        status: { type: "string", enum: ["PREPARING", "SHIPPING", "DELIVERED"], description: "준비중 · 배송중 · 배송완료" },
-        quantity: { type: "integer", description: "1 이상" },
-        note: { type: "string" },
-        confirm: CONFIRM_PROP,
-      },
-      required: ["shipment_id"],
-    },
-  },
-  {
-    name: "delete_shipment",
-    description: "CRM 출고 한 건을 지운다 — 딸린 재고 줄도 함께 사라져 재고가 돌아온다. 화면의 지우기와 같다.",
-    inputSchema: { type: "object", properties: { shipment_id: { type: "string" }, confirm: CONFIRM_PROP }, required: ["shipment_id"] },
-  },
-  {
     name: "delete_stock_move",
     description: "재고 장부 한 줄(직접 적은 입고 · 폐기 · 실사)을 지운다. 생산 · 출고에서 나온 줄은 그 기록을 지워야 한다. move_id 는 list_stock_moves 에서.",
     inputSchema: { type: "object", properties: { move_id: { type: "string" }, confirm: CONFIRM_PROP }, required: ["move_id"] },

@@ -14,12 +14,15 @@ import { Step } from "./step"
 import { RecipientSteps } from "./recipient-steps"
 import { useRecipient, type OrgLite } from "./use-recipient"
 import { apiUrl } from "@/lib/base-path"
+import { ConcField, MlField, concOk, mlOk } from "./gel-fields"
+import type { GelType } from "@/lib/crm-gel"
 
 interface ProductLite {
   id: string
   name: string
   spec: string | null
   kind: string | null
+  gelType?: GelType | null
 }
 
 /**
@@ -42,6 +45,10 @@ export function SampleComposer({
   const r = useRecipient(orgs)
   const [productId, setProductId] = useState<string | null>(null)
   const [productSkipped, setProductSkipped] = useState(false)
+  // 젤 타입이면 농도(필수) · 보낼 ml(선택). 개수는 세지 않는다
+  const [conc, setConc] = useState("")
+  const [ml, setMl] = useState("")
+  const gel = products.find((p) => p.id === productId)?.gelType ?? null
   const [request, setRequest] = useState("")
   const [referral, setReferral] = useState("")
   const [requestedAt, setRequestedAt] = useState(() => new Date().toISOString().slice(0, 10))
@@ -49,7 +56,7 @@ export function SampleComposer({
   const [pending, startTransition] = useTransition()
 
   const showProduct = Boolean(r.orgId) && (Boolean(r.contactId) || r.contactSkipped)
-  const showFinish = showProduct && (Boolean(productId) || productSkipped)
+  const showFinish = showProduct && ((Boolean(productId) && (!gel || concOk(conc))) || productSkipped)
 
   const productOptions: PickerOption[] = products.map((p) => ({
     id: p.id,
@@ -72,6 +79,7 @@ export function SampleComposer({
             orgId: r.orgId,
             contactId: r.contactId,
             productId,
+            ...(gel ? { concentrationPct: Number(conc), volumeMl: mlOk(ml) ? Number(ml) : null } : {}),
             request: request || null,
             referral: referral || null,
             note: note || null,
@@ -123,6 +131,18 @@ export function SampleComposer({
             placeholder="제품 이름 · 규격으로 찾기"
             emptyLabel={productSkipped ? "제품 없이 진행합니다" : "제품을 고르세요"}
           />
+          {gel && (
+            <div className="mt-3 grid gap-3 rounded-xl border bg-card/60 p-3 sm:grid-cols-2">
+              <div>
+                <span className="mb-1.5 block text-[12px] text-muted-foreground">농도</span>
+                <ConcField gelType={gel} value={conc} onChange={setConc} id="s-conc" />
+              </div>
+              <div>
+                <span className="mb-1.5 block text-[12px] text-muted-foreground">보낼 양(ml, 선택)</span>
+                <MlField value={ml} onChange={setMl} label="보낼 양(ml)" />
+              </div>
+            </div>
+          )}
         </Step>
 
         <Step show={showFinish} label="무엇을, 어디서 왔나요?">

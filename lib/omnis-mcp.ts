@@ -12,6 +12,7 @@
 // 권한
 //  Omnis 계정이 살아 있으면 누구나 붙는다. 지식재산권 도구만 ip.members 로 한 번 더 건다.
 //  Prisma 는 DB 소유자로 붙으므로 이 파일이 곧 권한 경계다.
+import { amountText, rowProductLabel } from "@/lib/crm-gel"
 import { ACTIVE_MEMBER_WHERE, isActiveMember } from "@/lib/active-members"
 import { NOT_EXTERNAL_WHERE } from "@/lib/external-speaker"
 import { visibleMessageWhere } from "@/lib/chat-rooms"
@@ -86,10 +87,12 @@ import { EXTRA_TOOLS } from "@/lib/tools/defs"
 import { plannerFor, readerFor } from "@/lib/tools/planned-index"
 import { runPlanned } from "@/lib/tools/planned"
 import {
+  productionListText,
   quoteListText,
   receivableListText,
   runCrmWrite,
   sampleListText,
+  shipmentListText,
 } from "@/lib/crm-write-tools"
 import {
   companyProfileText,
@@ -659,6 +662,7 @@ export const OMNIS_TOOLS = [
     name: "list_products",
     description:
       "CRM 제품 목록 — product_id · 코드 · 이름 · 영문 별칭 · 규격 · 현재 재고. 샘플 전달 등에서 제품이 나오면 먼저 이것으로 골라 record_sample 에 product_id 로 넣는다. " +
+      "애드젤 · 라이브젤은 젤 타입 한 줄씩이고 재고는 농도(%)별 총 ml 로 보인다(개수는 세지 않는다) — 이 제품을 쓰는 도구에는 concentration · volume_ml(ml) 를 함께 준다. " +
       "「2미리」 「ADDGEL」 처럼 적힌 말은 이름 · 별칭 · 규격을 보고 고르고, 규격이 여럿이면 사용자에게 후보를 보여 주고 묻는다.",
     inputSchema: {
       type: "object",
@@ -680,30 +684,13 @@ export const OMNIS_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        org: {
-          type: "string",
-          description: "기관 이름 또는 코드(ORG001). 일부여도 된다",
-        },
-        product_id: {
-          type: "string",
-          description:
-            "list_products 의 product_id(또는 코드 PRD001). 있으면 product 보다 먼저 쓴다",
-        },
-        product: {
-          type: "string",
-          description:
-            "CRM 제품 이름(규격까지 적으면 더 정확하다 — 예: 이름 5ml). product_id 가 없을 때만 쓴다",
-        },
-        quantity: {
-          type: "integer",
-          description:
-            "전달한 수량(개). product_id 또는 product 가 있어야 한다",
-        },
-        date: {
-          type: "string",
-          description:
-            "전달한 날 YYYY-MM-DD. 비우면 오늘(서울). 앞날은 안 된다",
-        },
+        org: { type: "string", description: "기관 이름 또는 코드(ORG001). 일부여도 된다" },
+        product_id: { type: "string", description: "list_products 의 product_id(또는 코드 PRD001). 있으면 product 보다 먼저 쓴다" },
+        product: { type: "string", description: "CRM 제품 이름(규격까지 적으면 더 정확하다 — 예: 이름 5ml). product_id 가 없을 때만 쓴다" },
+        quantity: { type: "integer", description: "전달한 수량(개). product_id 또는 product 가 있어야 한다. 젤 타입은 쓰지 않는다(volume_ml)" },
+        concentration: { type: "number", description: "젤 타입(애드젤 · 라이브젤)이면 농도 % (0.5~20)" },
+        volume_ml: { type: "number", description: "젤 타입이면 보낸 ml 전체(5ml 3개면 15). 주면 샘플 출고와 재고 출고가 함께 남는다" },
+        date: { type: "string", description: "전달한 날 YYYY-MM-DD. 비우면 오늘(서울). 앞날은 안 된다" },
         contact: { type: "string", description: "받은 사람(기관 담당자) 이름" },
         content: {
           type: "string",
@@ -2974,30 +2961,13 @@ export async function runTool(
             )
           )
         if (o.quotes.length) {
-          out.push(
-            `견적 ${o.quotes.length}건:`,
-            ...o.quotes.map((qt) => {
-              const t = quoteTotals(qt.items, qt.discountAmount, qt.vatRate)
-              return `- ${qt.code} ${kst(qt.quotedAt)} · ${qt.items.map((i) => `${i.product.name} ${i.quantity}개`).join(", ")} · ${QUOTE_STATUS_LABEL[qt.status]} · ${t.total.toLocaleString()}원`
-            })
-          )
+          out.push(`견적 ${o.quotes.length}건:`, ...o.quotes.map((qt) => {
+            const t = quoteTotals(qt.items, qt.discountAmount, qt.vatRate)
+            return `- ${qt.code} ${kst(qt.quotedAt)} · ${qt.items.map((i) => `${rowProductLabel(i.product, i)} ${i.quantity}개`).join(", ")} · ${QUOTE_STATUS_LABEL[qt.status]} · ${t.total.toLocaleString()}원`
+          }))
         }
-        if (o.sampleRequests.length)
-          out.push(
-            `샘플요청 ${o.sampleRequests.length}건:`,
-            ...o.sampleRequests.map(
-              (s) =>
-                `- ${s.code} ${kst(s.requestedAt)}${s.product ? ` · ${s.product.name}` : ""} · ${s.status === "SENT" ? "발송완료" : "미발송"}`
-            )
-          )
-        if (o.shipments.length)
-          out.push(
-            `출고 (최근 ${o.shipments.length}):`,
-            ...o.shipments.map(
-              (s) =>
-                `- ${s.code} ${kst(s.shippedAt)} · ${s.product.name} ${s.quantity}개 · ${s.kind} · ${s.status} · shipment_id=${s.id}`
-            )
-          )
+        if (o.sampleRequests.length) out.push(`샘플요청 ${o.sampleRequests.length}건:`, ...o.sampleRequests.map((s) => `- ${s.code} ${kst(s.requestedAt)}${s.product ? ` · ${rowProductLabel(s.product, s)}` : ""} · ${s.status === "SENT" ? "발송완료" : "미발송"}`))
+        if (o.shipments.length) out.push(`출고 (최근 ${o.shipments.length}):`, ...o.shipments.map((s) => `- ${s.code} ${kst(s.shippedAt)} · ${rowProductLabel(s.product, { concentrationPct: s.concentrationPct })} ${amountText(s, s.product.gelType)} · ${s.kind} · ${s.status} · shipment_id=${s.id}`))
         out.push("")
       }
       return { text: out.join("\n").trim() }
@@ -3028,16 +2998,26 @@ export async function runTool(
     case "list_receivables":
       return { text: await receivableListText(args) }
 
+    case "list_productions":
+      return { text: await productionListText(str(args.query) || undefined, Number(args.limit) || 20) }
+
+    case "list_shipments":
+      return { text: await shipmentListText(str(args.query) || undefined, Number(args.limit) || 20) }
+
     case "update_sample":
     case "delete_sample":
     case "create_org":
     case "update_org":
     case "record_stock":
     case "record_production":
+    case "update_production":
+    case "delete_production":
     case "create_quote":
     case "update_quote":
     case "delete_quote":
     case "record_shipment":
+    case "update_shipment":
+    case "delete_shipment":
     case "record_payment":
       if (!isCrmWriteTool(name)) return { error: `알 수 없는 도구: ${name}` }
       return runCrmWrite(name, args, caller.userId)

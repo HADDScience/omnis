@@ -1,3 +1,4 @@
+import { rowProductLabel } from "@/lib/crm-gel"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
@@ -107,9 +108,9 @@ export default async function QuoteDetailPage({
                       <tr key={it.id} className="border-b last:border-0">
                         <td className="py-2.5">
                           <div className="font-medium">{it.product.name}</div>
-                          {it.product.spec && (
+                          {(it.product.gelType || it.product.spec) && (
                             <div className="text-[11px] text-muted-foreground">
-                              {it.product.spec}
+                              {it.product.gelType ? rowProductLabel(it.product, it).slice(it.product.name.length + 3) : it.product.spec}
                             </div>
                           )}
                         </td>

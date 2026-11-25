@@ -130,6 +130,9 @@ export const quoteItemSchema = z.object({
   quantity: z.number().int().min(1, "수량은 1 이상이어야 합니다"),
   unitPrice: z.number().int().min(0),
   note: z.string().trim().max(500).optional().nullable(),
+  /** 젤 타입 제품이면 필수 — 농도(%) · 한 개 용량(ml). 견적만은 개수 × 단가로 남겨 quantity 가 그 용량의 개수다 */
+  concentrationPct: z.union([z.number(), z.string()]).optional().nullable(),
+  volumeMl: z.union([z.number(), z.string()]).optional().nullable(),
 })
 
 export const quoteCreateSchema = z.object({
@@ -191,8 +194,8 @@ export function stockBalance(
 /**
  * 완제품 한 개에 드는 원료(g).
  *
- * 농도 1wt% 는 1ml 당 0.01g 이다 — 0.4g / 20ml = 2wt% 라는 실제 배합에서 나온 값.
- * 그래서 10ml 짜리 1wt% 제품 한 개에 0.1g 이 들고, 4g 이면 40개가 나온다.
+ * 농도 % 는 g/100ml 다 — 1% 는 1ml 당 0.01g. 0.4g / 20ml = 2% 라는 실제 배합에서 나온 값.
+ * 그래서 10ml 짜리 1% 제품 한 개에 0.1g 이 들고, 4g 이면 40개가 나온다.
  *
  * 용량이나 농도가 비어 있으면 null 을 준다. 모르는 값을 1 로 가정하면 화면은
  * 그럴듯한 숫자를 보여 주지만 재고가 조용히 틀어진다.
@@ -229,7 +232,8 @@ export function quantityFromGrams(
 }
 
 /** 재고 단위 표기. 원료는 g, 완제품은 개. */
-export function formatStock(qty: number, unit: "PIECE" | "GRAM"): string {
+export function formatStock(qty: number, unit: "PIECE" | "GRAM" | "ML"): string {
+  if (unit === "ML") return `${Number(qty.toFixed(3))}ml`
   if (unit === "GRAM") {
     // 106.5g 처럼 소수가 있으면 보여 주고, 없으면 정수로
     return `${Number(qty.toFixed(3))}g`

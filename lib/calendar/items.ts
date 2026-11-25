@@ -11,6 +11,7 @@
  * - 웍스 캘린더: 관리자가 연 캘린더만. 관리자는 전부
  */
 
+import { amountText, mlText, rowProductLabel } from "@/lib/crm-gel"
 import { prisma } from "@/lib/db"
 import { configuredCalendarNames, davConfigFromEnv } from "@/lib/caldav/client"
 import { PROVIDER } from "@/lib/caldav/sync"
@@ -176,11 +177,11 @@ async function crmItems(range: Range): Promise<CalendarItem[]> {
     }),
     prisma.crmShipment.findMany({
       where: { shippedAt: range },
-      select: { id: true, shippedAt: true, quantity: true, org: { select: { name: true } }, product: { select: { name: true } } },
+      select: { id: true, shippedAt: true, quantity: true, concentrationPct: true, volumeMl: true, org: { select: { name: true } }, product: { select: { name: true, gelType: true } } },
     }),
     prisma.crmProduction.findMany({
       where: { producedAt: range },
-      select: { id: true, producedAt: true, quantity: true, product: { select: { name: true } } },
+      select: { id: true, producedAt: true, quantity: true, totalMl: true, product: { select: { name: true } } },
     }),
   ])
   return [
@@ -198,13 +199,13 @@ async function crmItems(range: Range): Promise<CalendarItem[]> {
     ),
     ...shipments.map((x) =>
       allDayItem(
-        { id: `shipment:${x.id}`, group: "crm", tag: "출고", title: `${x.org.name} · ${x.product.name} ${x.quantity}`, href: "/crm/inventory" },
+        { id: `shipment:${x.id}`, group: "crm", tag: "출고", title: `${x.org.name} · ${rowProductLabel(x.product, { concentrationPct: x.concentrationPct })} ${amountText(x, x.product.gelType)}`, href: "/crm/inventory" },
         x.shippedAt
       )
     ),
     ...productions.map((x) =>
       allDayItem(
-        { id: `production:${x.id}`, group: "crm", tag: "생산", title: `${x.product.name} ${x.quantity}`, href: "/crm/inventory" },
+        { id: `production:${x.id}`, group: "crm", tag: "생산", title: `${x.product.name}${x.totalMl != null ? ` ${mlText(Number(x.totalMl))}` : ` ${x.quantity}`}`, href: "/crm/inventory" },
         x.producedAt
       )
     ),

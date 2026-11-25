@@ -1,3 +1,4 @@
+import { rowProductLabel } from "@/lib/crm-gel"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
@@ -118,7 +119,7 @@ export default async function OrgDetailPage({
                     <span className="text-[12px] text-muted-foreground">
                       {q.quotedAt.toISOString().slice(0, 10)}
                     </span>
-                    <span className="truncate">{q.items[0]?.product.name ?? "—"}</span>
+                    <span className="truncate">{q.items[0] ? rowProductLabel(q.items[0].product, q.items[0]) : "—"}</span>
                     {q.items.length > 1 && (
                       <span className="text-[11px] text-muted-foreground">외 {q.items.length - 1}</span>
                     )}

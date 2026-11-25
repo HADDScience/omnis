@@ -1,3 +1,4 @@
+import { rowProductLabel } from "@/lib/crm-gel"
 import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { CrmNav } from "@/components/crm/crm-nav"
@@ -95,7 +96,7 @@ export default async function CrmQuotesPage() {
                     </div>
                     <div className="flex items-baseline gap-2 text-[13px]">
                       <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                        {q.items[0]?.product.name ?? "—"}
+                        {q.items[0] ? rowProductLabel(q.items[0].product, q.items[0]) : "—"}
                         {q.items.length > 1 && ` 외 ${q.items.length - 1}건`}
                       </span>
                       {t.discount > 0 && (
@@ -150,7 +151,7 @@ export default async function CrmQuotesPage() {
                           )}
                         </td>
                         <td className="max-w-[240px] px-3 py-2.5">
-                          <div className="truncate">{q.items[0]?.product.name ?? "—"}</div>
+                          <div className="truncate">{q.items[0] ? rowProductLabel(q.items[0].product, q.items[0]) : "—"}</div>
                           {q.items.length > 1 && (
                             <div className="text-[11px] text-muted-foreground">
                               외 {q.items.length - 1}건

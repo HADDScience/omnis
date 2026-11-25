@@ -5,12 +5,17 @@
 import { z } from "zod"
 import { prisma } from "@/lib/db"
 import { CrmQuoteStatus, CrmSampleStatus, CrmShipmentKind, CrmShipmentStatus, Prisma } from "@/generated/prisma"
-import { billingOrgProblem, contactCreateSchema, gramsForQuantity, nextCode, nextDatedCode, orgCreateSchema, orgUpdateSchema, quoteCreateSchema, quoteTotals } from "@/lib/crm"
+import { billingOrgProblem, contactCreateSchema, nextCode, nextDatedCode, orgCreateSchema, orgUpdateSchema, quoteCreateSchema, quoteTotals } from "@/lib/crm"
 import { createWithUniqueCode } from "@/lib/crm-server"
 import { createNotification } from "@/lib/notifications"
 import { receivableChains, SETTLE_NOTE } from "@/lib/crm-receivables"
 import { inquiryAcceptSchema, inquiryRejectSchema } from "@/lib/website-inquiry"
 import { writeActivity } from "@/lib/api"
+import {
+  GEL_TYPES, gelLots, gelMaterialGrams, lotMl, materialShortWarning,
+  parseConc, parseMl, round3, variantLabel, type GelType,
+} from "@/lib/crm-gel"
+import { gelProducts, materialForGel, materialsWithStock } from "@/lib/crm-gel-server"
 
 export type OpResult<T> =
   | { ok: true; value: T }
@@ -63,19 +68,48 @@ export const stockMoveSchema = z.object({
   movedAt: z.coerce.date(),
   productId: z.string().uuid(),
   direction: z.enum(["IN", "OUT"]),
+  /** 젤 타입은 ml */
   quantity: z.number().positive("수량은 0보다 커야 합니다"),
   note: z.string().trim().max(500).optional().nullable(),
+  /** 젤 타입 제품이면 필수 — 어느 농도 칸인가 */
+  concentrationPct: z.union([z.number(), z.string()]).optional().nullable(),
 })
 
-/** 재고 장부에 한 줄 직접 적는다 — 원료 입고, 폐기, 실사 보정 같은 것. */
+/** 젤 타입 제품의 농도 · ml 칸 — 젤이 아니면 빈 칸. 출고 · 견적 · 샘플이 같은 검사를 쓴다(출고 · 샘플은 총 ml, 견적은 한 개 용량) */
+export function gelVariant(
+  product: { gelType: string | null; name: string },
+  v: { concentrationPct?: unknown; volumeMl?: unknown },
+  opts: { needVolume: boolean },
+): { ok: true; conc: number | null; volumeMl: number | null } | { ok: false; error: string } {
+  if (!product.gelType) return { ok: true, conc: null, volumeMl: null }
+  const c = parseConc(v.concentrationPct)
+  if ("problem" in c) return { ok: false, error: `${product.name}: ${c.problem}` }
+  if (v.volumeMl === undefined || v.volumeMl === null || v.volumeMl === "") {
+    if (opts.needVolume) return { ok: false, error: `${product.name}: ml 를 적어 주세요.` }
+    return { ok: true, conc: c.conc, volumeMl: null }
+  }
+  const m = parseMl(v.volumeMl)
+  if ("problem" in m) return { ok: false, error: `${product.name}: ${m.problem}` }
+  return { ok: true, conc: c.conc, volumeMl: m.ml }
+}
+
+/** 재고 장부에 한 줄 직접 적는다 — 원료 입고, 폐기, 실사 보정 같은 것. 젤 타입이면 농도 칸에 ml 로 적는다 */
 export async function createStockMove(input: unknown): Promise<OpResult<Prisma.CrmStockMoveGetPayload<object>>> {
   const parsed = stockMoveSchema.safeParse(input)
   if (!parsed.success) return fail(firstIssue(parsed.error))
-  const { productId, ...rest } = parsed.data
+  const { productId, concentrationPct, ...rest } = parsed.data
   const product = await prisma.crmProduct.findUnique({ where: { id: productId } })
   if (!product) return fail("품목을 찾을 수 없습니다", 404)
+  const g = gelVariant(product, { concentrationPct }, { needVolume: false })
+  if (!g.ok) return fail(g.error)
   const move = await prisma.crmStockMove.create({
-    data: { ...rest, note: rest.note ?? null, product: { connect: { id: productId } } },
+    data: {
+      ...rest,
+      ...(g.conc != null ? { quantity: round3(rest.quantity) } : {}),
+      note: rest.note ?? null,
+      ...(g.conc != null ? { concentrationPct: g.conc } : {}),
+      product: { connect: { id: productId } },
+    },
   })
   return { ok: true, value: move }
 }
@@ -84,81 +118,192 @@ export async function createStockMove(input: unknown): Promise<OpResult<Prisma.C
 export async function deleteStockMove(id: string): Promise<OpResult<{ ok: true }>> {
   const move = await prisma.crmStockMove.findUnique({ where: { id } })
   if (!move) return fail("찾을 수 없습니다", 404)
-  if (move.productionId || move.shipmentId) return fail("생산·출고에서 나온 줄입니다. 그 기록을 지워야 함께 사라집니다")
+  if (move.productionId || move.shipmentId) return fail("생산·출고에서 나온 줄입니다. 생산 목록 · 출고에서 그 기록을 고치거나 지우면 함께 바뀝니다")
   await prisma.crmStockMove.delete({ where: { id } })
   return { ok: true, value: { ok: true } }
 }
 
 // ─── 생산 ───────────────────────────────────────────────────────────
+//
+// 2026-11-25: 생산은 젤 타입(애드젤 · 라이브젤) 단위로 적는다 — 타입 → 농도 → ml → 날짜 · 메모 · 사진. 개수는 세지 않는다.
+// 재고 장부에는 완제품 IN(ml) 한 줄, 원재료 OUT(농도/100 × ml, 농도는 g/100ml) 한 줄이 생긴다.
+// 고치면 그 생산에서 나온 장부 줄을 다시 만들고(재고 · 원재료 차감이 다시 계산된다), 지우면 함께 사라진다(되돌림).
 
 export const productionSchema = z.object({
   producedAt: z.coerce.date(),
-  productId: z.string().uuid(),
-  quantity: z.number().int().min(1, "생산 수량은 1 이상이어야 합니다"),
-  materialId: z.string().uuid(),
-  /** 실제로 쓴 그램. 비우면 용량·농도로 계산한다. */
-  materialGrams: z.number().positive().optional(),
+  /** 젤 타입 제품 id(또는 gelType 으로) */
+  productId: z.string().uuid().optional(),
+  gelType: z.enum(GEL_TYPES).optional(),
+  concentrationPct: z.union([z.number(), z.string()]),
+  /** 만든 양(ml) */
+  totalMl: z.union([z.number(), z.string()]),
+  /** 원재료를 바꿀 때만. 비우면 타입별 매핑(설정) — 'none' 이면 차감하지 않는다 */
+  materialId: z.union([z.string().uuid(), z.literal("none")]).optional().nullable(),
   note: z.string().trim().max(2000).optional().nullable(),
+  photoFileIds: z.array(z.string().uuid()).max(10, "사진은 10장까지입니다").optional(),
 })
 
-/** 생산에 쓸 원료 그램 — 보낸 값이 없으면 용량·농도로 계산한다. 둘 다 없으면 계산할 근거가 없다 */
-export async function productionGrams(input: z.infer<typeof productionSchema>): Promise<OpResult<{ grams: number; productName: string; materialName: string }>> {
-  const [product, material] = await Promise.all([
-    prisma.crmProduct.findUnique({ where: { id: input.productId } }),
-    prisma.crmProduct.findUnique({ where: { id: input.materialId } }),
-  ])
-  if (!product) return fail("제품을 찾을 수 없습니다", 404)
-  if (!material?.isMaterial) return fail("원료를 찾을 수 없습니다", 404)
-  const grams =
-    input.materialGrams ??
-    gramsForQuantity(
-      input.quantity,
-      product.volumeMl ? Number(product.volumeMl) : null,
-      product.concentrationPct ? Number(product.concentrationPct) : null
-    )
-  if (grams == null) {
-    return fail(`${product.name} 은 용량(ml) 또는 농도(wt%)가 비어 있어 소요량을 계산할 수 없습니다. 쓴 그램을 직접 입력하거나 제품 정보를 채워 주세요`)
-  }
-  return { ok: true, value: { grams, productName: product.name, materialName: material.name } }
+export interface ProductionPlanValue {
+  product: { id: string; code: string; name: string; gelType: GelType }
+  conc: number
+  totalMl: number
+  material: { id: string; code: string; name: string; grams: number } | null
+  materialGrams: number
+  /** 지금 그 농도 재고(ml) — 고치기면 이 생산분을 뺀 값 */
+  lotBeforeMl: number
+  warnings: string[]
 }
 
 /**
- * 생산 한 건. 원료를 빼고 완제품을 더한다.
- *
- * 두 장부가 한 트랜잭션에서 함께 움직인다 — 따로 두면 엑셀처럼 "DNA 는 줄었는데
- * 제품은 안 늘어난" 상태가 생긴다.
+ * 생산 입력을 읽고 계산한다(쓰지 않는다) — 화면 미리보기 · AI 확인 카드 · 실제 쓰기가 같은 답을 본다.
+ * excludeProductionId: 고치기일 때 그 생산이 만든 장부 줄은 빼고 본다.
  */
-export async function createProduction(input: unknown): Promise<OpResult<Omit<Prisma.CrmProductionGetPayload<object>, "materialGrams"> & { materialGrams: number }>> {
+export async function planProductionInput(input: unknown, excludeProductionId?: string): Promise<OpResult<ProductionPlanValue & { producedAt: Date; note: string | null; photoFileIds: string[] }>> {
   const parsed = productionSchema.safeParse(input)
   if (!parsed.success) return fail(firstIssue(parsed.error))
-  const g = await productionGrams(parsed.data)
-  if (!g.ok) return g
-  const { productId, materialId, quantity, producedAt, note } = parsed.data
-  const grams = g.value.grams
+  const d = parsed.data
+  const gels = await gelProducts()
+  const product = d.productId ? gels.find((g) => g.id === d.productId) : d.gelType ? gels.find((g) => g.gelType === d.gelType) : undefined
+  if (!product) return fail(d.productId ? "젤 타입 제품(애드젤 · 라이브젤)만 생산을 적을 수 있습니다" : "제품 타입(애드젤 · 라이브젤)을 골라 주세요", 400)
+  const c = parseConc(d.concentrationPct)
+  if ("problem" in c) return fail(c.problem)
+  const m = parseMl(d.totalMl)
+  if ("problem" in m) return fail(`만든 양: ${m.problem}`)
+  const totalMl = m.ml
+
+  let material: ProductionPlanValue["material"] = null
+  if (d.materialId === "none") material = null
+  else if (d.materialId) {
+    const mats = await materialsWithStock()
+    material = mats.find((m) => m.id === d.materialId) ?? null
+    if (!material) return fail("원재료를 찾을 수 없습니다", 404)
+  } else material = await materialForGel(product.gelType)
+
+  const moves = await prisma.crmStockMove.findMany({
+    where: { productId: product.id, ...(excludeProductionId ? { NOT: { productionId: excludeProductionId } } : {}) },
+    select: { direction: true, quantity: true, concentrationPct: true },
+  })
+  const lotBeforeMl = lotMl(gelLots(moves), c.conc)
+  const materialGrams = material ? gelMaterialGrams(c.conc, totalMl) : 0
+  let matBefore = material?.grams ?? 0
+  if (material && excludeProductionId) {
+    // 고치기: 이 생산이 이미 뺀 원료는 돌려놓고 본다
+    const own = await prisma.crmStockMove.findMany({ where: { productionId: excludeProductionId, productId: material.id }, select: { direction: true, quantity: true } })
+    matBefore = round3(matBefore + own.reduce((a, m) => a + (m.direction === "OUT" ? 1 : -1) * Number(m.quantity), 0))
+    material = { ...material, grams: matBefore }
+  }
+  const warnings = [
+    material ? materialShortWarning(material.name, matBefore, materialGrams) : `이 타입에 이어진 원재료가 없어 원재료를 차감하지 않습니다(설정 ${"crm_gel_material_map"}).`,
+  ].filter((w): w is string => Boolean(w))
+
+  const photoFileIds = [...new Set(d.photoFileIds ?? [])]
+  if (photoFileIds.length) {
+    const files = await prisma.file.findMany({ where: { id: { in: photoFileIds }, privateToUserId: null }, select: { id: true } })
+    if (files.length !== photoFileIds.length) return fail("사진 파일을 찾을 수 없습니다 — 다시 올려 주세요", 404)
+  }
+  return {
+    ok: true,
+    value: { product, conc: c.conc, totalMl, material, materialGrams, lotBeforeMl, warnings, producedAt: d.producedAt, note: d.note ?? null, photoFileIds },
+  }
+}
+
+type ProductionPlanned = ProductionPlanValue & { producedAt: Date; note: string | null; photoFileIds: string[] }
+
+/** 생산에서 나오는 장부 줄 — 완제품 IN(ml), 원재료 OUT(g) */
+function productionMoves(id: string, code: string, v: ProductionPlanned): Prisma.CrmStockMoveCreateManyInput[] {
+  return [
+    { movedAt: v.producedAt, productId: v.product.id, direction: "IN" as const, quantity: v.totalMl, concentrationPct: v.conc, note: `생산 ${code}`, productionId: id },
+    ...(v.material && v.materialGrams > 0
+      ? [{ movedAt: v.producedAt, productId: v.material.id, direction: "OUT" as const, quantity: v.materialGrams, note: `생산 ${code}`, productionId: id }]
+      : []),
+  ]
+}
+
+export interface ProductionResult {
+  id: string
+  code: string
+  totalMl: number
+  materialGrams: number
+  materialName: string | null
+  warnings: string[]
+  summary: string
+}
+
+const productionSummary = (v: ProductionPlanValue) => variantLabel(v.product.name, v.conc, v.totalMl)
+
+/**
+ * 생산 한 건. 완제품(타입 · 농도)이 늘고 원재료가 준다 — 두 장부가 한 트랜잭션에서 함께 움직인다.
+ * 따로 두면 엑셀처럼 "DNA 는 줄었는데 제품은 안 늘어난" 상태가 생긴다. 원재료가 모자라도 막지 않고 경고한다.
+ */
+export async function createProduction(input: unknown): Promise<OpResult<ProductionResult>> {
+  const p = await planProductionInput(input)
+  if (!p.ok) return p
+  const v = p.value
   const production = await createWithUniqueCode(() =>
     prisma.$transaction(async (tx) => {
-      const codes = (await tx.crmProduction.findMany({ select: { code: true } })).map((p) => p.code)
+      const codes = (await tx.crmProduction.findMany({ select: { code: true } })).map((x) => x.code)
       const created = await tx.crmProduction.create({
         data: {
           code: nextCode("MFG", codes),
-          producedAt,
-          quantity,
-          materialGrams: grams,
-          note: note ?? null,
-          product: { connect: { id: productId } },
-          material: { connect: { id: materialId } },
+          producedAt: v.producedAt,
+          concentrationPct: v.conc,
+          totalMl: v.totalMl,
+          materialGrams: v.materialGrams,
+          note: v.note,
+          photoFileIds: v.photoFileIds,
+          product: { connect: { id: v.product.id } },
+          ...(v.material ? { material: { connect: { id: v.material.id } } } : {}),
         },
       })
-      await tx.crmStockMove.createMany({
-        data: [
-          { movedAt: producedAt, productId: materialId, direction: "OUT", quantity: grams, note: `생산 ${created.code}`, productionId: created.id },
-          { movedAt: producedAt, productId, direction: "IN", quantity, note: `생산 ${created.code}`, productionId: created.id },
-        ],
-      })
+      await tx.crmStockMove.createMany({ data: productionMoves(created.id, created.code, v) })
       return created
     })
   )
-  return { ok: true, value: { ...production, materialGrams: grams } }
+  return {
+    ok: true,
+    value: { id: production.id, code: production.code, totalMl: v.totalMl, materialGrams: v.materialGrams, materialName: v.material?.name ?? null, warnings: v.warnings, summary: productionSummary(v) },
+  }
+}
+
+/** 생산 고치기 — 준 칸만이 아니라 생산 전체를 새 값으로 바꾼다(팝업이 전부 보낸다). 장부 줄을 다시 만들어 재고 · 원재료 차감이 다시 계산된다 */
+export async function updateProduction(id: string, input: unknown): Promise<OpResult<ProductionResult & { before: string }>> {
+  const before = await prisma.crmProduction.findUnique({ where: { id }, include: { product: true } })
+  if (!before) return fail("생산 기록을 찾을 수 없습니다", 404)
+  const p = await planProductionInput(input, id)
+  if (!p.ok) return p
+  const v = p.value
+  await prisma.$transaction(async (tx) => {
+    await tx.crmStockMove.deleteMany({ where: { productionId: id } })
+    await tx.crmProduction.update({
+      where: { id },
+      data: {
+        producedAt: v.producedAt,
+        quantity: null,
+        concentrationPct: v.conc,
+        totalMl: v.totalMl,
+        materialGrams: v.materialGrams,
+        note: v.note,
+        photoFileIds: v.photoFileIds,
+        product: { connect: { id: v.product.id } },
+        material: v.material ? { connect: { id: v.material.id } } : { disconnect: true },
+      },
+    })
+    await tx.crmStockMove.createMany({ data: productionMoves(id, before.code, v) })
+  })
+  const beforeText = variantLabel(before.product.name, before.concentrationPct != null ? Number(before.concentrationPct) : null, Number(before.totalMl ?? 0))
+  return {
+    ok: true,
+    value: { id, code: before.code, totalMl: v.totalMl, materialGrams: v.materialGrams, materialName: v.material?.name ?? null, warnings: v.warnings, summary: productionSummary(v), before: beforeText },
+  }
+}
+
+/** 생산 지우기 — 그 생산에서 나온 장부 줄(완제품 IN · 원재료 OUT)이 함께 사라져 재고가 생산 전으로 돌아간다(onDelete: Cascade) */
+export async function deleteProduction(id: string): Promise<OpResult<{ code: string; summary: string; materialGrams: number }>> {
+  const p = await prisma.crmProduction.findUnique({ where: { id }, include: { product: true } })
+  if (!p) return fail("생산 기록을 찾을 수 없습니다", 404)
+  await prisma.crmProduction.delete({ where: { id } })
+  const summary = variantLabel(p.product.name, p.concentrationPct != null ? Number(p.concentrationPct) : null, Number(p.totalMl ?? 0))
+  return { ok: true, value: { code: p.code, summary, materialGrams: Number(p.materialGrams) } }
 }
 
 // ─── 출고 ───────────────────────────────────────────────────────────
@@ -168,23 +313,30 @@ export const shipmentCreateSchema = z.object({
   kind: z.enum(CrmShipmentKind).default(CrmShipmentKind.SALE),
   orgId: z.string().uuid(),
   productId: z.string().uuid(),
-  quantity: z.number().int().min(1, "수량은 1 이상이어야 합니다"),
+  /** 개수 — 젤 타입이 아닌 제품만. 젤 타입은 volumeMl(출고 ml) */
+  quantity: z.number().int().min(1, "수량은 1 이상이어야 합니다").optional().nullable(),
   status: z.enum(CrmShipmentStatus).default(CrmShipmentStatus.PREPARING),
   quoteId: z.string().uuid().optional().nullable(),
   sampleRequestId: z.string().uuid().optional().nullable(),
   note: z.string().trim().max(2000).optional().nullable(),
+  /** 젤 타입 제품이면 필수 — 농도(%) · 출고 ml(총량). 개수는 세지 않는다 */
+  concentrationPct: z.union([z.number(), z.string()]).optional().nullable(),
+  volumeMl: z.union([z.number(), z.string()]).optional().nullable(),
 })
 
 /** 출고 한 줄 + 그만큼 재고 출고 — 트랜잭션 안에서(샘플 고치기가 같은 트랜잭션에서 부른다) */
-async function createShipmentTx(tx: Tx, d: z.infer<typeof shipmentCreateSchema>) {
-  const { orgId, productId, quoteId, sampleRequestId, quantity, shippedAt, ...rest } = d
+async function createShipmentTx(tx: Tx, d: Omit<z.infer<typeof shipmentCreateSchema>, "concentrationPct" | "volumeMl"> & { concentrationPct?: number | null; volumeMl?: number | null }) {
+  const { orgId, productId, quoteId, sampleRequestId, quantity, shippedAt, concentrationPct, volumeMl, ...rest } = d
   const codes = (await tx.crmShipment.findMany({ select: { code: true } })).map((s) => s.code)
+  const gel = concentrationPct != null && volumeMl != null ? { concentrationPct, volumeMl } : null
+  if (!gel && !quantity) throw new Error("createShipmentTx: 젤이 아닌 출고에 수량이 없다")
   const created = await tx.crmShipment.create({
     data: {
       ...rest,
+      ...(gel ?? {}),
       code: nextCode("SH", codes),
       shippedAt,
-      quantity,
+      quantity: gel ? null : quantity,
       org: { connect: { id: orgId } },
       product: { connect: { id: productId } },
       quote: quoteId ? { connect: { id: quoteId } } : undefined,
@@ -192,7 +344,11 @@ async function createShipmentTx(tx: Tx, d: z.infer<typeof shipmentCreateSchema>)
     },
   })
   await tx.crmStockMove.create({
-    data: { movedAt: shippedAt, productId, direction: "OUT", quantity, note: `출고 ${created.code}`, shipmentId: created.id },
+    data: {
+      movedAt: shippedAt, productId, direction: "OUT", note: `출고 ${created.code}`, shipmentId: created.id,
+      // 젤 타입은 그 농도 칸에서 ml 로 뺀다
+      ...(gel ? { quantity: gel.volumeMl, concentrationPct: gel.concentrationPct } : { quantity: quantity! }),
+    },
   })
   return created
 }
@@ -211,42 +367,140 @@ export async function createShipment(input: unknown): Promise<OpResult<Prisma.Cr
   if (!parsed.success) return fail(firstIssue(parsed.error))
   const product = await prisma.crmProduct.findUnique({ where: { id: parsed.data.productId } })
   if (!product) return fail("제품을 찾을 수 없습니다", 404)
-  const shipment = await createWithUniqueCode(() => prisma.$transaction((tx) => createShipmentTx(tx, parsed.data)))
+  const g = gelVariant(product, parsed.data, { needVolume: true })
+  if (!g.ok) return fail(g.error)
+  if (!product.gelType && !parsed.data.quantity) return fail("수량을 적어 주세요")
+  const shipment = await createWithUniqueCode(() =>
+    prisma.$transaction((tx) => createShipmentTx(tx, { ...parsed.data, concentrationPct: g.conc, volumeMl: g.volumeMl }))
+  )
   return { ok: true, value: shipment }
 }
 
 export const shipmentPatchSchema = z.object({
   status: z.enum(CrmShipmentStatus).optional(),
-  quantity: z.number().int().min(1).optional(),
+  kind: z.enum(CrmShipmentKind).optional(),
+  shippedAt: z.coerce.date().optional(),
+  orgId: z.string().uuid().optional(),
+  /** 제품을 바꿀 때 — 젤 타입이면 농도 · ml 도 함께(없으면 지금 값) */
+  productId: z.string().uuid().optional(),
+  /** 개수 — 젤 타입이 아닌 출고만 */
+  quantity: z.number().int().min(1, "수량은 1 이상이어야 합니다").optional(),
+  /** 농도(%) · 출고 ml — 젤 타입 출고만 */
+  concentrationPct: z.union([z.number(), z.string()]).optional(),
+  volumeMl: z.union([z.number(), z.string()]).optional(),
   note: z.string().trim().max(2000).nullable().optional(),
 })
 
-/** 출고 수량을 고치면 재고 장부도 따라간다. 안 그러면 둘이 어긋난 채 남는다. */
-async function shipmentQuantityTx(tx: Tx, shipmentId: string, before: number, quantity: number | undefined) {
-  if (quantity != null && quantity !== before) {
-    await tx.crmStockMove.updateMany({ where: { shipmentId }, data: { quantity } })
-  }
+/** 출고 양(개 · 젤은 ml)을 고치면 재고 장부도 따라간다. 안 그러면 둘이 어긋난 채 남는다. */
+async function shipmentAmountTx(tx: Tx, shipmentId: string, before: number | null, after: number | undefined) {
+  if (after != null && after !== before) await tx.crmStockMove.updateMany({ where: { shipmentId }, data: { quantity: after } })
 }
 
-export async function updateShipment(shipmentId: string, input: unknown): Promise<OpResult<Prisma.CrmShipmentGetPayload<object>>> {
+/** 출고 한 줄의 글 — "애드젤 (ADD GEL) · 10% · 5ml" · "고정제 3개" */
+export function shipmentSummary(product: { name: string; spec?: string | null; gelType: string | null }, s: { quantity: number | null; concentrationPct: unknown; volumeMl: unknown }) {
+  const n = (v: unknown) => (v == null ? null : Number(v))
+  if (product.gelType) return variantLabel(product.name, n(s.concentrationPct), n(s.volumeMl) ?? 0)
+  return `${product.name}${product.spec ? ` ${product.spec}` : ""} ${s.quantity ?? 0}개`
+}
+
+export interface ShipmentResult {
+  id: string
+  code: string
+  summary: string
+  /** 고치기 — 고치기 전 글 */
+  before?: string
+  /** 재고에 반영된 출고인가(엑셀에서 넘어온 지난 출고는 장부 줄이 없다) */
+  ledger: boolean
+  warnings: string[]
+}
+
+/**
+ * 출고 고치기 — 생산 고치기와 같은 수준. 제품 · 농도 · ml(개수) · 거래처 · 날짜 · 유형 · 상태 · 메모를 고칠 수 있다.
+ * 재고에 반영된 출고면 그 출고의 장부 줄을 새 값으로 다시 만든다(다른 칸 · 다른 제품으로 옮겨도 맞는다).
+ * 엑셀에서 넘어온 「미반영」 출고는 장부 줄을 새로 만들지 않는다 — 어느 생산분에서 나갔는지 모르는 채 빼면 숫자를 지어내는 셈이다.
+ * 샘플요청에서 나온 출고는 기관 · 제품을 여기서 바꾸지 않는다(샘플요청에서 고친다). 농도 · ml · 날짜는 그 요청에도 따라 적는다.
+ */
+export async function updateShipment(shipmentId: string, input: unknown): Promise<OpResult<ShipmentResult>> {
   const parsed = shipmentPatchSchema.safeParse(input)
   if (!parsed.success) return fail(firstIssue(parsed.error))
-  const before = await prisma.crmShipment.findUnique({ where: { id: shipmentId } })
-  if (!before) return fail("출고를 찾을 수 없습니다", 404)
-  const shipment = await prisma.$transaction(async (tx) => {
-    const updated = await tx.crmShipment.update({ where: { id: shipmentId }, data: parsed.data })
-    await shipmentQuantityTx(tx, shipmentId, before.quantity, parsed.data.quantity)
-    return updated
+  const before = await prisma.crmShipment.findUnique({
+    where: { id: shipmentId },
+    include: { product: { select: { id: true, gelType: true, name: true, spec: true } }, sampleRequest: { select: { id: true, code: true, orgId: true, _count: { select: { shipments: true } } } }, _count: { select: { stockMoves: true } } },
   })
-  return { ok: true, value: shipment }
+  if (!before) return fail("출고를 찾을 수 없습니다", 404)
+  const d = parsed.data
+  const sample = before.sampleRequest
+  if (sample && d.orgId && d.orgId !== before.orgId) return fail(`샘플요청 ${sample.code} 에서 나온 출고입니다 — 기관은 샘플요청에서 고쳐 주세요`)
+  if (sample && d.productId && d.productId !== before.productId) return fail(`샘플요청 ${sample.code} 에서 나온 출고입니다 — 제품은 샘플요청에서 고쳐 주세요`)
+  if (d.orgId && d.orgId !== before.orgId && !(await prisma.crmOrg.findUnique({ where: { id: d.orgId }, select: { id: true } }))) return fail("기관을 찾을 수 없습니다", 404)
+
+  const sameProduct = !d.productId || d.productId === before.productId
+  const product = sameProduct ? before.product : await prisma.crmProduct.findUnique({ where: { id: d.productId! }, select: { id: true, gelType: true, name: true, spec: true } })
+  if (!product) return fail("제품을 찾을 수 없습니다", 404)
+  const num = (v: unknown) => (v == null ? null : Number(v))
+
+  let quantity: number | null = null
+  let conc: number | null = null
+  let ml: number | null = null
+  if (product.gelType) {
+    if (d.quantity !== undefined) return fail(`${product.name} 출고는 개수를 세지 않습니다 — ml 로 고쳐 주세요`)
+    const g = gelVariant(product, {
+      concentrationPct: d.concentrationPct ?? (sameProduct ? num(before.concentrationPct) : null),
+      volumeMl: d.volumeMl ?? (sameProduct ? num(before.volumeMl) : null),
+    }, { needVolume: true })
+    if (!g.ok) return fail(g.error)
+    conc = g.conc
+    ml = g.volumeMl
+  } else {
+    if (d.volumeMl !== undefined || d.concentrationPct !== undefined) return fail("농도 · ml 는 젤 타입(애드젤 · 라이브젤) 출고에만 씁니다 — 수량으로 고쳐 주세요")
+    quantity = d.quantity ?? (sameProduct ? before.quantity : null)
+    if (!quantity) return fail(`${product.name} 은 개수로 셉니다 — 수량을 적어 주세요`)
+  }
+  const ledger = before._count.stockMoves > 0
+  const shippedAt = d.shippedAt ?? before.shippedAt
+  const beforeText = shipmentSummary(before.product, before)
+  const summary = shipmentSummary(product, { quantity, concentrationPct: conc, volumeMl: ml })
+
+  await prisma.$transaction(async (tx) => {
+    await tx.crmShipment.update({
+      where: { id: shipmentId },
+      data: {
+        ...(d.status ? { status: d.status } : {}),
+        ...(d.kind ? { kind: d.kind } : {}),
+        ...(d.note !== undefined ? { note: d.note } : {}),
+        ...(d.orgId ? { org: { connect: { id: d.orgId } } } : {}),
+        ...(sameProduct ? {} : { product: { connect: { id: product.id } } }),
+        shippedAt, quantity, concentrationPct: conc, volumeMl: ml,
+      },
+    })
+    if (ledger) {
+      // 이 출고에서 나온 장부 줄을 새 값으로 다시 만든다 — 젤은 그 농도 칸의 ml, 아니면 개
+      await tx.crmStockMove.deleteMany({ where: { shipmentId } })
+      await tx.crmStockMove.create({
+        data: {
+          movedAt: shippedAt, productId: product.id, direction: "OUT", note: `출고 ${before.code}`, shipmentId,
+          ...(product.gelType ? { quantity: ml!, concentrationPct: conc } : { quantity: quantity! }),
+        },
+      })
+    }
+    // 샘플요청에서 나온 젤 출고 하나뿐이면 요청의 농도 · 보낸 ml 도 같이 맞춘다(목록 · 집계가 요청 쪽 값을 읽는다)
+    if (sample && sample._count.shipments === 1) {
+      await tx.crmSampleRequest.update({
+        where: { id: sample.id },
+        data: { ...(product.gelType ? { concentrationPct: conc, volumeMl: ml } : {}), ...(d.shippedAt ? { requestedAt: d.shippedAt } : {}) },
+      })
+    }
+  })
+  const warnings = ledger ? [] : ["엑셀에서 넘어온 「미반영」 출고라 재고는 바꾸지 않았습니다."]
+  return { ok: true, value: { id: shipmentId, code: before.code, summary, before: beforeText, ledger, warnings } }
 }
 
-/** 출고를 지우면 딸린 재고 줄도 함께 사라진다 (스키마의 onDelete: Cascade). */
-export async function deleteShipment(shipmentId: string): Promise<OpResult<{ code: string }>> {
-  const s = await prisma.crmShipment.findUnique({ where: { id: shipmentId }, select: { code: true } })
+/** 출고를 지우면 딸린 재고 줄도 함께 사라진다 (스키마의 onDelete: Cascade) — 재고가 출고 전으로 돌아간다 */
+export async function deleteShipment(shipmentId: string): Promise<OpResult<ShipmentResult>> {
+  const s = await prisma.crmShipment.findUnique({ where: { id: shipmentId }, include: { product: { select: { name: true, spec: true, gelType: true } }, _count: { select: { stockMoves: true } } } })
   if (!s) return fail("출고를 찾을 수 없습니다", 404)
   await prisma.crmShipment.delete({ where: { id: shipmentId } })
-  return { ok: true, value: { code: s.code } }
+  return { ok: true, value: { id: shipmentId, code: s.code, summary: shipmentSummary(s.product, s), ledger: s._count.stockMoves > 0, warnings: [] } }
 }
 
 // ─── 샘플요청 ────────────────────────────────────────────────────────
@@ -286,8 +540,11 @@ export const sampleUpdateSchema = z.object({
   referral: z.string().trim().max(200).nullable().optional(),
   note: z.string().trim().max(2000).nullable().optional(),
   sent: z.boolean().optional(),
-  /** 샘플 출고 수량. 0 이면 딸린 출고를 지운다(재고가 돌아온다) */
+  /** 샘플 출고 수량(젤이 아닌 제품). 0 이면 딸린 출고를 지운다(재고가 돌아온다) — 젤 타입도 0 은 출고 지우기 */
   quantity: z.number().int().min(0).max(10000).optional(),
+  /** 젤 타입 제품이면 농도(%) · 보낸 ml(총량). 비우면 지금 값. 출고가 없을 때 ml 를 주면 샘플 출고를 만든다 */
+  concentrationPct: z.union([z.number(), z.string()]).nullable().optional(),
+  volumeMl: z.union([z.number(), z.string()]).nullable().optional(),
 })
 
 /**
@@ -295,26 +552,47 @@ export const sampleUpdateSchema = z.object({
  * 수량은 출고 수량 고치기(updateShipment 와 같은 규칙: 재고 줄이 따라간다), 제품을 바꾸면 출고 · 재고 줄의 제품도,
  * 날짜 · 기관을 바꾸면 출고 날짜 · 기관도. 출고가 둘 이상이면 어느 것을 고칠지 몰라 수량 · 제품은 고치지 않는다.
  */
-export async function updateSampleRequest(id: string, input: unknown): Promise<OpResult<{ code: string; shipment: { code: string; quantity: number } | null; removedShipment: string | null }>> {
+export async function updateSampleRequest(id: string, input: unknown): Promise<OpResult<{ code: string; shipment: { code: string; quantity: number | null; ml: number | null } | null; removedShipment: string | null }>> {
   const parsed = sampleUpdateSchema.safeParse(input)
   if (!parsed.success) return fail(firstIssue(parsed.error))
   const d = parsed.data
   const before = await prisma.crmSampleRequest.findUnique({
     where: { id },
-    include: { shipments: { select: { id: true, code: true, quantity: true, productId: true, kind: true } } },
+    include: { shipments: { select: { id: true, code: true, quantity: true, productId: true, kind: true, concentrationPct: true, volumeMl: true } } },
   })
   if (!before) return fail("샘플요청을 찾을 수 없습니다", 404)
-  const touchesShipment = d.quantity !== undefined || d.productId !== undefined
+  const touchesShipment = d.quantity !== undefined || d.productId !== undefined || d.volumeMl !== undefined
   if (touchesShipment && before.shipments.length > 1) {
     return fail(`이 샘플요청에 출고가 ${before.shipments.length}건(${before.shipments.map((s) => s.code).join(", ")}) 있습니다 — 수량 · 제품은 출고마다 CRM › 출고에서 고쳐 주세요`)
   }
   const productId = d.productId === undefined ? before.productId : d.productId
   const ship = before.shipments[0] ?? null
-  if (d.quantity && d.quantity > 0 && !ship && !productId) return fail("제품이 없어 샘플 출고를 만들 수 없습니다 — product_id 를 함께 주세요")
+  if (((d.quantity && d.quantity > 0) || (d.volumeMl != null && d.volumeMl !== "")) && !ship && !productId) return fail("제품이 없어 샘플 출고를 만들 수 없습니다 — product_id 를 함께 주세요")
   if (d.productId) {
     const p = await prisma.crmProduct.findUnique({ where: { id: d.productId }, select: { id: true } })
     if (!p) return fail("제품을 찾을 수 없습니다", 404)
   }
+  // 젤 타입이면 농도 · ml 가 있어야 출고를 ml 로 뺄 수 있다 — 준 값, 없으면 지금 값(요청 → 출고 순). 개수는 세지 않는다
+  const finalProduct = productId ? await prisma.crmProduct.findUnique({ where: { id: productId }, select: { gelType: true, name: true } }) : null
+  const num = (v: unknown) => (v == null ? null : Number(v))
+  const sameProduct = productId === before.productId
+  let gelConc: number | null = null
+  let gelVol: number | null = null
+  if (finalProduct?.gelType) {
+    const g = gelVariant(finalProduct, {
+      concentrationPct: d.concentrationPct ?? (sameProduct ? num(before.concentrationPct) ?? num(ship?.concentrationPct) : null),
+      volumeMl: d.volumeMl ?? (sameProduct ? num(before.volumeMl) ?? num(ship?.volumeMl) : null),
+    }, { needVolume: Boolean(ship) })
+    if (!g.ok) return fail(g.error)
+    if (d.quantity && d.quantity > 0) return fail(`${finalProduct.name} 은 젤 타입이라 개수를 세지 않습니다 — volume_ml(보낸 ml)로 적어 주세요`)
+    gelConc = g.conc
+    gelVol = g.volumeMl
+  }
+  // 젤 출고를 젤이 아닌 제품으로 바꾸면 개수가 있어야 한다 — 지난 젤 출고에는 개수가 없다
+  if (ship && productId && d.quantity !== 0 && !finalProduct?.gelType && !(d.quantity ?? ship.quantity)) {
+    return fail(`${finalProduct?.name ?? "제품"} 은 개수로 셉니다 — quantity 를 함께 주세요`)
+  }
+  const touchesGel = d.concentrationPct !== undefined || d.volumeMl !== undefined
   const orgId = d.orgId ?? before.orgId
   const at = d.requestedAt ?? before.requestedAt
 
@@ -330,12 +608,13 @@ export async function updateSampleRequest(id: string, input: unknown): Promise<O
           ...(d.request !== undefined ? { request: d.request } : {}),
           ...(d.referral !== undefined ? { referral: d.referral } : {}),
           ...(d.note !== undefined ? { note: d.note } : {}),
+          ...(finalProduct?.gelType ? { concentrationPct: gelConc, volumeMl: gelVol } : d.productId !== undefined ? { concentrationPct: null, volumeMl: null } : {}),
           ...(d.sent !== undefined
             ? { status: d.sent ? CrmSampleStatus.SENT : CrmSampleStatus.PENDING, sentAt: d.sent ? (before.sentAt ?? at) : null }
             : d.requestedAt && before.sentAt ? { sentAt: d.requestedAt } : {}),
         },
       })
-      let shipment: { code: string; quantity: number } | null = null
+      let shipment: { code: string; quantity: number | null; ml: number | null } | null = null
       let removedShipment: string | null = null
       if (ship) {
         // 수량 0 · 제품을 지움 → 출고째 지운다(재고 줄이 Cascade 로 사라져 재고가 돌아온다)
@@ -343,7 +622,9 @@ export async function updateSampleRequest(id: string, input: unknown): Promise<O
           await tx.crmShipment.delete({ where: { id: ship.id } })
           removedShipment = ship.code
         } else {
-          const quantity = d.quantity ?? ship.quantity
+          const gel = finalProduct?.gelType && gelConc != null && gelVol != null ? { concentrationPct: gelConc, volumeMl: gelVol } : null
+          // 젤이 아닌 제품으로 바꾸면 개수가 있어야 한다 — 지난 젤 출고에는 개수가 없다
+          const quantity = gel ? null : d.quantity ?? ship.quantity
           await tx.crmShipment.update({
             where: { id: ship.id },
             data: {
@@ -351,19 +632,28 @@ export async function updateSampleRequest(id: string, input: unknown): Promise<O
               ...(productId && productId !== ship.productId ? { productId } : {}),
               ...(d.orgId ? { orgId: d.orgId } : {}),
               ...(d.requestedAt ? { shippedAt: d.requestedAt } : {}),
+              ...(gel ?? (productId !== ship.productId ? { concentrationPct: null, volumeMl: null } : {})),
             },
           })
-          await shipmentQuantityTx(tx, ship.id, ship.quantity, quantity)
-          if (productId && productId !== ship.productId) await tx.crmStockMove.updateMany({ where: { shipmentId: ship.id }, data: { productId } })
+          if (gel || touchesGel || productId !== ship.productId) {
+            // 제품 · 농도 · ml 가 바뀌면 재고 줄을 통째로 다시 맞춘다(젤은 그 농도 칸의 ml, 아니면 개)
+            await tx.crmStockMove.updateMany({
+              where: { shipmentId: ship.id },
+              data: gel
+                ? { productId: productId!, quantity: gel.volumeMl, concentrationPct: gel.concentrationPct }
+                : { productId: productId!, quantity: quantity!, concentrationPct: null },
+            })
+          } else await shipmentAmountTx(tx, ship.id, ship.quantity, quantity ?? undefined)
           if (d.requestedAt) await tx.crmStockMove.updateMany({ where: { shipmentId: ship.id }, data: { movedAt: d.requestedAt } })
-          shipment = { code: ship.code, quantity }
+          shipment = { code: ship.code, quantity, ml: gel?.volumeMl ?? null }
         }
-      } else if (d.quantity && productId) {
+      } else if (productId && (finalProduct?.gelType ? gelVol != null && d.volumeMl != null && d.volumeMl !== "" : Boolean(d.quantity))) {
         const created = await createShipmentTx(tx, {
           shippedAt: at, kind: CrmShipmentKind.SAMPLE, status: CrmShipmentStatus.DELIVERED,
-          orgId, productId, quantity: d.quantity, sampleRequestId: id,
+          orgId, productId, quantity: finalProduct?.gelType ? null : d.quantity!, sampleRequestId: id,
+          concentrationPct: gelConc, volumeMl: gelVol,
         })
-        shipment = { code: created.code, quantity: d.quantity }
+        shipment = { code: created.code, quantity: created.quantity, ml: gelVol }
       }
       return { code: before.code, shipment, removedShipment }
     })
@@ -382,6 +672,16 @@ export async function createQuote(input: unknown): Promise<OpResult<Prisma.CrmQu
     const c = await prisma.crmContact.findUnique({ where: { id: contactId } })
     if (!c || c.orgId !== orgId) return fail("담당자가 이 기관 소속이 아닙니다")
   }
+  // 젤 타입 품목은 (농도, 한 개 용량) 이 있어야 한다 — 출고할 때 그 칸의 재고에서 빠진다
+  const products = await prisma.crmProduct.findMany({ where: { id: { in: items.map((it) => it.productId) } }, select: { id: true, gelType: true, name: true } })
+  const gelOf: { conc: number | null; volumeMl: number | null }[] = []
+  for (const [i, it] of items.entries()) {
+    const p = products.find((x) => x.id === it.productId)
+    if (!p) return fail(`${i + 1}번째 품목의 제품을 찾을 수 없습니다`, 404)
+    const g = gelVariant(p, it, { needVolume: true })
+    if (!g.ok) return fail(`${i + 1}번째 품목 — ${g.error}`)
+    gelOf.push({ conc: g.conc, volumeMl: g.volumeMl })
+  }
   const quote = await createWithUniqueCode(() =>
     prisma.$transaction(async (tx) => {
       const codes = (await tx.crmQuote.findMany({ select: { code: true } })).map((q) => q.code)
@@ -396,6 +696,7 @@ export async function createQuote(input: unknown): Promise<OpResult<Prisma.CrmQu
           items: {
             create: items.map((it, i) => ({
               quantity: it.quantity, unitPrice: it.unitPrice, note: it.note ?? null, sortOrder: i,
+              concentrationPct: gelOf[i].conc, volumeMl: gelOf[i].volumeMl,
               product: { connect: { id: it.productId } },
             })),
           },

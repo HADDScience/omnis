@@ -196,6 +196,8 @@ const ADDED_READ = [
   "list_samples",
   "list_quotes",
   "list_receivables",
+  "list_productions",
+  "list_shipments",
 ]
 // 2026-11-18 더한 CRM 고치기 — 앱 AI 쓰기(확인 카드) · 질문 경로 미리보기 · MCP confirm
 const ADDED_WRITE = [
@@ -210,6 +212,12 @@ const ADDED_WRITE = [
   "delete_quote",
   "record_shipment",
   "record_payment",
+  // 2026-11-25 생산 기록 고치기 · 지우기(젤 타입 재고 구조)
+  "update_production",
+  "delete_production",
+  // 2026-11-25 3차 출고 고치기 · 지우기 — 묶음 2(PW)에서 생산과 같은 계획(재고 전 → 뒤)으로 옮겼다
+  "update_shipment",
+  "delete_shipment",
 ]
 
 // #248 묶음 1 — 업무 · 프로젝트 · 채팅 방 · 알림 · 주간보고. 방 서랍은 질문 경로에 열지 않는다(단톡 · 1:1)
@@ -285,8 +293,6 @@ const CERT_READ = ["list_certifications"]
 // #248 묶음 2 — CRM 나머지
 const B2_READ = ["list_stock_moves", "list_payments", "list_inquiries"]
 const B2_WRITE = [
-  "update_shipment",
-  "delete_shipment",
   "delete_stock_move",
   "delete_payment",
   "settle_payments",
