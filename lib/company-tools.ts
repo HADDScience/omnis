@@ -21,6 +21,13 @@ import {
 import { CompanyRecordSchema } from "@/lib/schemas/company"
 import { recordData, recordDedupeKey } from "@/lib/company-edit"
 import { writeActivity } from "@/lib/api"
+import { readSetting } from "@/lib/app-settings"
+import {
+  TIPS_RULES_KEY,
+  asTipsRules,
+  isTipsItem,
+  readTipsBonus,
+} from "@/lib/grants-tips"
 import {
   AUTO_MIN_DECIDED,
   AUTO_MIN_RATE,
@@ -639,26 +646,46 @@ export async function certificationsText(
     : null
   const q = typeof args.query === "string" ? args.query.trim() : ""
   const detail = args.detail === true
-  const certs = await prisma.companyCertification.findMany({
-    where: {
-      ...(status ? { status } : {}),
-      ...(q
-        ? {
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { officialName: { contains: q, mode: "insensitive" } },
-              { issuer: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: [{ status: "asc" }, { priority: "asc" }, { name: "asc" }],
-    include: { record: { select: { title: true, startsOn: true } } },
-  })
+  const tipsOnly = args.tips === true
+  const [all, rulesRaw] = await Promise.all([
+    prisma.companyCertification.findMany({
+      where: {
+        ...(status ? { status } : {}),
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q, mode: "insensitive" } },
+                { officialName: { contains: q, mode: "insensitive" } },
+                { issuer: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ status: "asc" }, { priority: "asc" }, { name: "asc" }],
+      include: { record: { select: { title: true, startsOn: true } } },
+    }),
+    readSetting(TIPS_RULES_KEY),
+  ])
+  const certs = tipsOnly
+    ? all.filter((c) => isTipsItem(readTipsBonus(c.research)))
+    : all
   if (certs.length === 0) return "조건에 맞는 인증이 없습니다."
+  const rules = asTipsRules(rulesRaw)
   const out: string[] = [
-    `인증 ${certs.length}건 — 가점은 공고마다 다르니 지원 공고의 평가표로 다시 확인한다`,
+    `인증 ${certs.length}건${tipsOnly ? "(TIPS 가점표 항목)" : ""} — 가점은 공고마다 다르니 지원 공고의 평가표로 다시 확인한다`,
   ]
+  if (
+    rules &&
+    (tipsOnly ||
+      detail ||
+      certs.some((c) => isTipsItem(readTipsBonus(c.research))))
+  )
+    out.push(
+      `TIPS 가점 규칙: ${[rules.generalCap && `일반 ${rules.generalCap}`, rules.deeptechCap && `딥테크 ${rules.deeptechCap}`].filter(Boolean).join(" · ")}` +
+        `${rules.deeptechNote ? ` · ${rules.deeptechNote}` : ""}` +
+        `${rules.window ? ` · 접수 ${rules.window}` : ""}` +
+        `${rules.basisTitle ? ` · 근거 ${rules.basisTitle}${rules.basisUrl ? ` ${rules.basisUrl}` : ""}` : ""}`
+    )
   for (const s of CERT_STATUSES) {
     const list = certs.filter((c) => c.status === s)
     if (!list.length) continue
@@ -684,8 +711,26 @@ export async function certificationsText(
           `${c.acquiredOn ? ` · 취득 ${ymd(c.acquiredOn)}` : c.record ? ` · 취득 ${ymd(c.record.startsOn) ?? c.record.title}` : ""}` +
           `${c.validUntil ? ` · 유효 ${ymd(c.validUntil)} 까지` : ""}`
       )
+      const tips = readTipsBonus(c.research)
+      const tipsLine = isTipsItem(tips)
+        ? [
+            tips!.general.applies && `일반 ${tips!.general.points ?? "가점"}`,
+            tips!.deeptech.applies &&
+              `딥테크 ${tips!.deeptech.points ?? "가점"}`,
+            !tips!.deeptech.applies &&
+              tips!.deeptech.points &&
+              `딥테크 ${tips!.deeptech.points}`,
+            tips!.sole && `지금(개인): ${tips!.sole}`,
+            tips!.corp &&
+              tips!.corp !== tips!.sole &&
+              `법인 전환 뒤: ${tips!.corp}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : null
       const lines: [string, string | null][] = [
         ["판정 이유", str(r.our_status_reason)],
+        ["TIPS 가점", tipsLine],
         ["신청기간", str(r.window_2026_12_2027) ?? str(r.application_window)],
         ["걸리는 기간", str(r.time_to_issue)],
         ...(detail

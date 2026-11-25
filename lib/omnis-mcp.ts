@@ -197,7 +197,7 @@ export const INSTRUCTIONS = [
   "주간보고는 list_weekly_reports·write_weekly_report, 사내 지식 카드 작성은 write_omnis_card, 업무 밖 채팅은 list_chat 입니다.",
   "단톡방·1:1 대화는 list_rooms 로 내가 든 방을 보고 list_chat(view=room, room 또는 members)으로 읽습니다. 내가 참여자가 아닌 방은 누구도 읽을 수 없습니다.",
   "업무 카드의 상태·마감·우선순위는 update_task, 체크리스트는 update_checklist. 진행 보고라면 post_message 가 먼저입니다(담당자 확인과 AI 재구성이 따라옵니다).",
-  "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 인증·가점은 list_certifications, 국가과제 결정은 list_grant_decisions, 과제 후보 공고는 search_grant_notices, 국가과제 결정은 list_grant_decisions, 과제 후보 공고는 search_grant_notices, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
+  "회사 정보·재무는 company_profile, 연혁·수상·정부과제는 list_company_records, 인증·가점(TIPS 가점 포함)은 list_certifications, 국가과제 결정은 list_grant_decisions, 과제 후보 공고는 search_grant_notices, 세금계산서·기관별 매출은 list_tax_invoices, 인력·직함은 list_staff, 「X 와 엮인 것」 은 get_context. 매출의 확정·잠정·계획을 섞어 더하지 않습니다.",
   "웍스 캘린더 일정(행사·미팅·외근)은 list_calendar — 날짜는 서울 기준이고, 결과의 마지막 동기화 시각만큼 웍스와 늦을 수 있습니다.",
   "",
   IP_INSTRUCTIONS.replace(
@@ -903,7 +903,7 @@ export const OMNIS_TOOLS = [
   {
     name: "list_certifications",
     description:
-      "회사 인증 · 가점 — 보유 · 갱신 필요 · 취득 후보 · 자격 안 됨으로 나눠 가점(메디바이오 · 중기부), 우리 회사 충족 여부와 이유, 신청기간, 걸리는 기간을 준다. 「우리 가점 뭐 있어」「벤처기업 인증 있어」「받을 만한 인증」 을 물으면 쓴다. detail 이면 자격조건 · 비용 · 유효기간 · 근거 링크까지.",
+      "회사 인증 · 가점 — 보유 · 갱신 필요 · 취득 후보 · 자격 안 됨으로 나눠 가점(메디바이오 · 중기부), 우리 회사 충족 여부와 이유, 신청기간, 걸리는 기간을 준다. 「우리 가점 뭐 있어」「벤처기업 인증 있어」「받을 만한 인증」 을 물으면 쓴다. 인증마다 TIPS(팁스 R&D) 일반 · 딥테크 트랙 가점과 지금(개인) · 법인 전환 뒤 우리 판정, 가점 합산 상한 · 접수 시기도 준다 — 「팁스 가점」 을 물으면 tips 로. detail 이면 자격조건 · 비용 · 유효기간 · 근거 링크까지.",
     inputSchema: {
       type: "object",
       properties: {
@@ -918,6 +918,10 @@ export const OMNIS_TOOLS = [
           type: "boolean",
           description:
             "자격조건 · 비용 · 유효기간 · 메모 · 근거까지 (기본 false)",
+        },
+        tips: {
+          type: "boolean",
+          description: "TIPS 가점표(일반 · 딥테크)에 있는 항목만 (기본 false)",
         },
       },
     },

@@ -6,7 +6,8 @@
  *
  * 입력은 저장소 밖 `~/work/gov-grants-data/export/v1`(GRANTS_EXPORT_DIR 로 바꿀 수 있다) 과
  * 담당자 짧은 이름 대응 `~/work/gov-grants-data/notion_people.yaml`.
- * externalKey 로 upsert 하니 다시 돌려도 행이 늘지 않는다. 담당자는 이식 때마다 원천대로 다시 맞춘다.
+ * externalKey 로 upsert 하니 다시 돌려도 행이 늘지 않는다. 담당자는 처음 만들 때만 넣는다.
+ * 사람이 옴니스에서 고친 인증 상태 · 결정 단계 · 사유 · 메모(ActivityLog 에 남은 것)는 다시 이식해도 덮지 않는다.
  */
 import "dotenv/config"
 import { existsSync, readdirSync, readFileSync, statSync } from "fs"
@@ -24,13 +25,21 @@ import {
   type DecisionItem,
 } from "@/lib/grants-import"
 import { confidentFolder, rankFolders } from "@/lib/grants-match"
+import { TIPS_RULES_KEY, tipsRulesFrom } from "@/lib/grants-tips"
+import type { Prisma } from "@/generated/prisma/client"
 
 const APPLY = process.argv.includes("--apply")
 const DIR =
   process.env.GRANTS_EXPORT_DIR ??
   join(homedir(), "work/gov-grants-data/export/v1")
 
-type Export<T> = { generated_at?: string; count?: number; items: T[] }
+type Export<T> = {
+  generated_at?: string
+  count?: number
+  schema_revision?: number
+  tips_rules?: unknown
+  items: T[]
+}
 const read = <T>(f: string) =>
   JSON.parse(readFileSync(join(DIR, f), "utf8")) as Export<T>
 
@@ -90,6 +99,42 @@ function attachmentSizes(): Map<string, number> {
   return out
 }
 
+/** jsonb 는 키 순서를 바꿔 저장하니 키를 정렬해 비교한다 */
+const sorted = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(sorted)
+    : v && typeof v === "object"
+      ? Object.fromEntries(
+          Object.keys(v)
+            .sort()
+            .map((k) => [k, sorted((v as Record<string, unknown>)[k])])
+        )
+      : v
+const sameJson = (a: unknown, b: unknown) =>
+  JSON.stringify(sorted(a)) === JSON.stringify(sorted(b))
+
+/** 사람이 옴니스(화면 · 도구)에서 고친 칸 — ActivityLog 의 changed 가 label 로 시작하는 행의 entityId */
+async function humanEdited(
+  action: string,
+  label: string
+): Promise<Set<string>> {
+  const logs = await prisma.activityLog.findMany({
+    where: { action },
+    select: { entityId: true, metadata: true },
+  })
+  const out = new Set<string>()
+  for (const l of logs) {
+    const changed = (l.metadata as { changed?: unknown } | null)?.changed
+    if (
+      l.entityId &&
+      Array.isArray(changed) &&
+      changed.some((c) => typeof c === "string" && c.startsWith(label))
+    )
+      out.add(l.entityId)
+  }
+  return out
+}
+
 async function main() {
   const certs = read<CertItem>("certifications.json")
   const decisions = read<DecisionItem>("company_decisions.json")
@@ -104,52 +149,141 @@ async function main() {
   })
 
   const tally = {
-    cert: { new: 0, update: 0, linked: 0 },
-    decision: { new: 0, update: 0 },
+    cert: {
+      new: 0,
+      update: 0,
+      linked: 0,
+      tipsBonus: 0,
+      statusChanged: [] as string[],
+      statusKept: [] as string[],
+    },
+    decision: {
+      new: 0,
+      update: 0,
+      stageChanged: [] as string[],
+      stageKept: [] as string[],
+    },
+    tipsRules: "none" as "none" | "new" | "update" | "same",
     owners: 0,
     missingOwners: [] as string[],
   }
   const byStatus: Record<string, number> = {}
   const byStage: Record<string, number> = {}
 
-  const existingCerts = new Set(
+  const existingCerts = new Map(
     (
       await prisma.companyCertification.findMany({
-        select: { externalKey: true },
+        select: { id: true, externalKey: true, status: true },
       })
-    ).map((c) => c.externalKey)
+    ).map((c) => [c.externalKey, c])
+  )
+  const certStatusByUser = await humanEdited(
+    "company.certification.updated",
+    "상태"
   )
   for (const item of certs.items) {
     const row = certRow(item, researchedAt)
     byStatus[row.status] = (byStatus[row.status] ?? 0) + 1
+    if (item.research && "tips_bonus" in item.research) tally.cert.tipsBonus++
     const recordId =
       row.status === "HELD" ? matchMilestone(item.name, milestones) : null
     if (recordId) tally.cert.linked++
-    if (existingCerts.has(row.externalKey)) tally.cert.update++
+    const before = existingCerts.get(row.externalKey)
+    if (before) tally.cert.update++
     else tally.cert.new++
+    // 상태는 원천을 따르되, 사람이 옴니스에서 고친 적 있으면 그대로 둔다
+    let status: typeof row.status | undefined
+    if (before && before.status !== row.status) {
+      if (certStatusByUser.has(before.id))
+        tally.cert.statusKept.push(
+          `${row.name} (${before.status} 유지, 원천 ${row.status})`
+        )
+      else {
+        status = row.status
+        tally.cert.statusChanged.push(
+          `${row.name} ${before.status}→${row.status}`
+        )
+      }
+    }
     if (APPLY) {
-      // 사람이 화면에서 고친 상태 · 날짜 · 메모는 다시 이식해도 덮지 않는다 — 조사 칸만 새로 쓴다
-      const { status, note, ...research } = row
+      // 사람이 화면에서 고친 날짜 · 메모는 다시 이식해도 덮지 않는다 — 조사 칸만 새로 쓴다
+      const { status: _s, note: _n, ...research } = row
       await prisma.companyCertification.upsert({
         where: { externalKey: row.externalKey },
         create: { ...row, recordId },
-        update: { ...research, ...(recordId ? { recordId } : {}) },
+        update: {
+          ...research,
+          ...(status ? { status } : {}),
+          ...(recordId ? { recordId } : {}),
+        },
       })
-      void status
-      void note
+      void _s
+      void _n
     }
   }
 
-  const existingDecisions = new Set(
+  // TIPS 가점 공통 규칙(상한 · 접수 · 근거 공고) — 인증마다가 아니라 한 벌이라 AppSetting 에 둔다
+  const tipsRules = tipsRulesFrom(certs.tips_rules)
+  if (tipsRules) {
+    const prev = await prisma.appSetting.findUnique({
+      where: { key: TIPS_RULES_KEY },
+    })
+    tally.tipsRules = !prev
+      ? "new"
+      : sameJson(prev.value, tipsRules)
+        ? "same"
+        : "update"
+    if (APPLY && tally.tipsRules !== "same") {
+      const value = tipsRules as unknown as Prisma.InputJsonObject
+      await prisma.appSetting.upsert({
+        where: { key: TIPS_RULES_KEY },
+        create: { key: TIPS_RULES_KEY, value },
+        update: { value },
+      })
+    }
+  }
+
+  const existing = new Map(
     (
-      await prisma.grantDecision.findMany({ select: { externalKey: true } })
-    ).map((d) => d.externalKey)
+      await prisma.grantDecision.findMany({
+        select: { id: true, externalKey: true, stage: true, stageReason: true },
+      })
+    ).map((d) => [d.externalKey, d])
   )
+  const existingDecisions = new Set(existing.keys())
+  const stageByUser = await humanEdited("grant.decision.updated", "단계")
+  const reasonByUser = await humanEdited("grant.decision.updated", "사유")
+  const noteByUser = await humanEdited("grant.decision.updated", "메모")
   for (const item of decisions.items) {
     const row = decisionRow(item)
     byStage[row.stage] = (byStage[row.stage] ?? 0) + 1
-    if (existingDecisions.has(row.externalKey)) tally.decision.update++
+    const before = existing.get(row.externalKey)
+    if (before) tally.decision.update++
     else tally.decision.new++
+    // 단계 · 사유는 원천(메일로 확인한 제출 · 결과)을 따르되, 사람이 옴니스에서 고친 적 있으면 그대로 둔다
+    const stagePatch: {
+      stage?: typeof row.stage
+      stageReason?: string | null
+    } = {}
+    if (before && before.stage !== row.stage) {
+      if (stageByUser.has(before.id))
+        tally.decision.stageKept.push(
+          `${row.title} (${before.stage} 유지, 원천 ${row.stage})`
+        )
+      else {
+        stagePatch.stage = row.stage
+        tally.decision.stageChanged.push(
+          `${row.title} ${before.stage}→${row.stage}`
+        )
+      }
+    }
+    if (
+      before &&
+      (stagePatch.stage || before.stage === row.stage) &&
+      before.stageReason !== row.stageReason &&
+      !reasonByUser.has(before.id)
+    )
+      stagePatch.stageReason = row.stageReason
     const ownerIds = (item.owners ?? []).flatMap((o) => {
       const id =
         userByName.get(o.name) ?? userByName.get(alias[o.raw ?? ""] ?? "")
@@ -158,12 +292,15 @@ async function main() {
     })
     tally.owners += ownerIds.length
     if (APPLY) {
-      const { stage, stageReason, ...rest } = row
+      const { stage, stageReason, note, ...rest } = row
       const d = await prisma.grantDecision.upsert({
         where: { externalKey: row.externalKey },
         create: row,
-        // 단계는 사람이 옴니스에서 고치는 칸이라 처음 한 번만 넣는다
-        update: rest,
+        update: {
+          ...rest,
+          ...stagePatch,
+          ...(before && noteByUser.has(before.id) ? {} : { note }),
+        },
       })
       void stage
       void stageReason
