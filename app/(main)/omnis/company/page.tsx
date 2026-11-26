@@ -19,6 +19,8 @@ import { prisma } from "@/lib/db"
 import { won } from "@/lib/crm"
 import { BASIS_LABEL, invoiceRevenue, ymd } from "@/lib/company-context"
 import { isAdminSession } from "@/lib/company-edit"
+import { readSetting } from "@/lib/app-settings"
+import { TIPS_RULES_KEY, asTipsRules } from "@/lib/grants-tips"
 import type { ProfileForm, YearForm } from "@/lib/schemas/company"
 import type { CompanyProfile, CompanyYear } from "@/generated/prisma/client"
 
@@ -79,7 +81,7 @@ function yearForm(y: CompanyYear): YearForm {
  */
 export default async function CompanyPage() {
   const isAdmin = isAdminSession(await auth())
-  const [profile, years, certs] = await Promise.all([
+  const [profile, years, certs, tipsRules] = await Promise.all([
     prisma.companyProfile.findUnique({ where: { id: "hadd" } }),
     prisma.companyYear.findMany({
       orderBy: [{ year: "desc" }, { basis: "asc" }],
@@ -88,6 +90,7 @@ export default async function CompanyPage() {
       orderBy: [{ priority: "asc" }, { name: "asc" }],
       include: { record: { select: { title: true, startsOn: true } } },
     }),
+    readSetting(TIPS_RULES_KEY).then(asTipsRules),
   ])
 
   const confirmed = years
@@ -337,7 +340,7 @@ export default async function CompanyPage() {
           )}
         </section>
 
-        <CertSection certs={certs} />
+        <CertSection certs={certs} tipsRules={tipsRules} />
       </div>
     </>
   )

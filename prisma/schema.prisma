@@ -2388,6 +2388,10 @@ model GrantDecision {
   stageReason    String?
   /// 노션 원래 상태(가능성검토 · 지원기간마감 …)
   statusRaw      String?
+  /// NAS 「(2026) 예비 지원과제」 안의 이 과제 폴더 — /HADD Science/… 경로. 안의 파일은 /api/nas 로 연다
+  nasFolder      String?
+  /// nasFolder 를 정한 쪽 — auto(이식 때 이름 유사도) · user(화면 · 도구). user 면 이식이 다시 채우지 않는다
+  nasFolderBy    String?
   submittedTitle String?
   note           String?
   deadline       DateTime?
@@ -2421,3 +2425,42 @@ model GrantDecisionOwner {
 
   @@id([decisionId, userId])
 }
+
+/// 수집기 공고(대표 공고 · export/v1 notices.json). 판정 · 마감 · 지역으로 「과제 후보」 를 고른다.
+/// 수집기가 정본이라 이식 때마다 통째로 맞춘다 — 사람이 고치는 칸은 두지 않는다(올리면 GrantDecision 이 생긴다)
+model GrantNotice {
+  id           String    @id @default(uuid())
+  /// notice:… / group:… — 수집기 key. GrantDecision.noticeLinks 의 export_key 와 같다
+  externalKey  String    @unique
+  title        String
+  ministry     String?
+  agency       String?
+  url          String?
+  rcptStartAt  DateTime?
+  deadlineAt   DateTime?
+  deadlineRaw  String?
+  /// national · gyeonggi · gyeonggi_other · local · other_region · unknown
+  regionClass  String?
+  regionDetail String[]
+  fields       String[]
+  isRnd        Boolean?
+  /// 해당 · 애매 · 비해당 · 불명 — 개인사업자(지금) 기준과 법인 기준
+  verdictSole  String?
+  verdictCorp  String?
+  /// [{claim, quote}] — 판정 근거
+  reasonsSole  Json?
+  reasonsCorp  Json?
+  /// llm · rules
+  judgedBy     String?
+  /// 공고 첨부 [{name, type, size, url, page?}] — 기업마당(bizinfo) 첨부는 받을 때 새 토큰이 필요해 page(공고 페이지)를 함께 둔다
+  attachments  Json?
+  firstSeen    DateTime?
+  lastSeen     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([deadlineAt])
+  @@index([verdictSole])
+  @@index([regionClass])
+}
+

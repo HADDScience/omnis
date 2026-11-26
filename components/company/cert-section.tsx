@@ -1,6 +1,15 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
+import { CertEditor } from "@/components/company/cert-editor"
+import { seoulYmd } from "@/lib/grants-labels"
+import {
+  isTipsItem,
+  readTipsBonus,
+  tipsShort,
+  type TipsBonus,
+  type TipsRules,
+} from "@/lib/grants-tips"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowDown01Icon,
@@ -17,23 +26,55 @@ import type {
 } from "@/generated/prisma/client"
 
 /**
- * 회사 정보 화면의 「인증·가점」 구역(읽기). 위 묶음 전환으로 한 묶음씩, 인증마다 한 줄 요약 —
- * 줄을 누르면 판정 이유 · 자격조건 · 신청기간 · 비용 · 유효기간 · 근거가 펼쳐진다. 편집 · AI 도구는 다음 단계(PR #264)
+ * 회사 정보 화면의 「인증·가점」 구역. 위 묶음 전환으로 한 묶음씩, 인증마다 한 줄 요약 —
+ * 줄을 누르면 판정 이유 · 자격조건 · 신청기간 · 비용 · 유효기간 · 근거와 고치기(cert-editor)가 펼쳐진다.
  */
-/** lib/company-context 의 ymd 와 같다 — 그 모듈은 DB 를 읽어 클라이언트에서 못 쓴다 */
-const ymd = (d: Date | string | null | undefined) =>
-  d ? new Date(d).toISOString().slice(0, 10) : null
+/** 서울 날짜 — 이식한 연혁 · 고친 취득일 모두 서울 자정이다 */
+const ymd = seoulYmd
 
 type Cert = CompanyCertification & {
   record: { title: string; startsOn: Date | null } | null
 }
 
-const GROUPS: { key: string; status: CertStatus[]; label: string }[] = [
-  { key: "held", status: ["HELD"], label: "보유" },
-  { key: "candidate", status: ["CANDIDATE"], label: "취득 후보" },
-  { key: "ineligible", status: ["NOT_ELIGIBLE"], label: "자격 안 됨" },
-  { key: "renewal", status: ["RENEWAL_DUE", "EXPIRED"], label: "갱신 필요" },
+const GROUPS: {
+  key: string
+  label: string
+  pick: (c: Cert) => boolean
+}[] = [
+  { key: "held", label: "보유", pick: (c) => c.status === "HELD" },
+  {
+    key: "candidate",
+    label: "취득 후보",
+    pick: (c) => c.status === "CANDIDATE",
+  },
+  {
+    key: "ineligible",
+    label: "자격 안 됨",
+    pick: (c) => c.status === "NOT_ELIGIBLE",
+  },
+  {
+    key: "renewal",
+    label: "갱신 필요",
+    pick: (c) => c.status === "RENEWAL_DUE" || c.status === "EXPIRED",
+  },
+  // 상태와 따로 — TIPS 가점표(일반 · 딥테크)에 있는 항목
+  {
+    key: "tips",
+    label: "TIPS",
+    pick: (c) => isTipsItem(readTipsBonus(c.research)),
+  },
 ]
+
+/** TIPS 가점 숫자 — 처음 나오는 「N점」(일반 · 딥테크 중 큰 쪽). 없으면 0 */
+function tipsScore(t: TipsBonus | null): number {
+  if (!t) return 0
+  const first = (p: string | null) =>
+    Number(p?.match(/([\d.]+)\s*점/)?.[1] ?? 0)
+  return Math.max(
+    t.general.applies ? first(t.general.points) : 0,
+    t.deeptech.applies ? first(t.deeptech.points) : 0
+  )
+}
 
 const STATUS_CHIP: Record<CertStatus, { label: string; cls: string }> = {
   HELD: {
@@ -110,11 +151,27 @@ function sortCerts(list: Cert[]): Cert[] {
   )
 }
 
-export function CertSection({ certs }: { certs: Cert[] }) {
-  const groups = GROUPS.map((g) => ({
-    ...g,
-    list: sortCerts(certs.filter((c) => g.status.includes(c.status))),
-  }))
+export function CertSection({
+  certs,
+  tipsRules,
+}: {
+  certs: Cert[]
+  tipsRules: TipsRules | null
+}) {
+  const groups = GROUPS.map((g) => {
+    const list = sortCerts(certs.filter(g.pick))
+    return {
+      ...g,
+      list:
+        g.key === "tips"
+          ? [...list].sort(
+              (a, b) =>
+                tipsScore(readTipsBonus(b.research)) -
+                tipsScore(readTipsBonus(a.research))
+            )
+          : list,
+    }
+  }).filter((g) => g.key !== "tips" || g.list.length > 0)
   const [active, setActive] = useState(
     groups.find((g) => g.list.length)?.key ?? "held"
   )
@@ -170,6 +227,9 @@ export function CertSection({ certs }: { certs: Cert[] }) {
             aria-label={current.label}
             className="glass overflow-hidden rounded-2xl"
           >
+            {current.key === "tips" && tipsRules && (
+              <TipsRulesLine rules={tipsRules} />
+            )}
             {current.list.length === 0 ? (
               <p className="p-4 text-[13px] text-muted-foreground">
                 인증이 없습니다.
@@ -206,6 +266,8 @@ function CertRow({
   const b = (c.bonus ?? {}) as Bonus
   const chip = STATUS_CHIP[c.status]
   const bonus = bonusShort(b)
+  const tips = readTipsBonus(c.research)
+  const tipsLine = tipsShort(tips)
   const bonusRaw =
     [b.medibio && `메디바이오 ${b.medibio}`, b.mss && `중기부 ${b.mss}`]
       .filter(Boolean)
@@ -223,6 +285,7 @@ function CertRow({
     ["비용", r.cost],
     ["유효기간", c.validUntil ? `${ymd(c.validUntil)} 까지` : r.validity],
     ["가점", bonusRaw && <BonusValue text={bonusRaw} />],
+    ["TIPS 가점", isTipsItem(tips) && <TipsValue t={tips!} />],
     [
       "취득",
       c.acquiredOn
@@ -257,6 +320,9 @@ function CertRow({
           </span>
           <span className="mt-0.5 flex flex-wrap gap-x-2.5 text-[12px] text-muted-foreground">
             {bonus && <span className="text-foreground">{bonus}</span>}
+            {tipsLine && (
+              <span className="text-foreground">TIPS {tipsLine}</span>
+            )}
             {r.our_status && <span>자격 {r.our_status}</span>}
             <span>
               {timeShort(r.time_to_issue)
@@ -303,6 +369,7 @@ function CertRow({
               {c.researchedAt && <span>조사 {ymd(c.researchedAt)}</span>}
             </p>
           )}
+          <CertEditor cert={c} />
         </div>
       )}
     </li>
@@ -329,5 +396,75 @@ function BonusValue({ text }: { text: string }) {
         <TooltipContent>가점은 공고마다 다릅니다</TooltipContent>
       </Tooltip>
     </span>
+  )
+}
+
+/** TIPS 가점 — 트랙별 점수와 지금(개인) · 법인 전환 뒤 판정 */
+function TipsValue({ t }: { t: TipsBonus }) {
+  const rows: [string, string | null][] = [
+    ["일반", t.general.applies ? t.general.points : null],
+    ["딥테크", t.deeptech.points],
+    ["지금", t.sole],
+    ["법인 뒤", t.corp && t.corp !== t.sole ? t.corp : null],
+  ]
+  return (
+    <span className="block space-y-0.5">
+      {rows
+        .filter(([, v]) => v)
+        .map(([k, v]) => (
+          <span key={k} className="flex gap-1.5">
+            <span className="w-12 shrink-0 text-muted-foreground">{k}</span>
+            <span className="min-w-0">{v}</span>
+          </span>
+        ))}
+    </span>
+  )
+}
+
+/** TIPS 묶음 위 한 줄 — 트랙별 가점 합산 상한 · 접수 · 근거 공고 */
+function TipsRulesLine({ rules }: { rules: TipsRules }) {
+  const cap = (s: string | null) => s?.replace(/^가점 합산\s*/, "") ?? null
+  return (
+    <p className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 border-b border-[var(--glass-edge)] px-3 py-2 text-[12px] text-muted-foreground">
+      {rules.generalCap && (
+        <span>
+          일반 <span className="text-foreground">{cap(rules.generalCap)}</span>
+        </span>
+      )}
+      {rules.deeptechCap && (
+        <span className="inline-flex items-center gap-1">
+          딥테크{" "}
+          <span className="text-foreground">{cap(rules.deeptechCap)}</span>
+          {rules.deeptechNote && (
+            <Tooltip>
+              <TooltipTrigger
+                type="button"
+                aria-label="딥테크트랙 요건"
+                className="inline-flex shrink-0 cursor-help hover:text-foreground"
+              >
+                <HugeiconsIcon
+                  icon={InformationCircleIcon}
+                  strokeWidth={2}
+                  className="size-3.5"
+                />
+              </TooltipTrigger>
+              <TooltipContent>{rules.deeptechNote}</TooltipContent>
+            </Tooltip>
+          )}
+        </span>
+      )}
+      {rules.window && <span>{rules.window.split(".")[0]}</span>}
+      {rules.basisUrl && (
+        <a
+          href={rules.basisUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={rules.basisTitle ?? undefined}
+          className="hover:underline"
+        >
+          근거 공고
+        </a>
+      )}
+    </p>
   )
 }

@@ -18,15 +18,35 @@ const ITEMS: readonly Item[] = [
   {
     href: "/omnis",
     label: "지식 카드",
-    isActive: (p) => (p === "/omnis" || p.startsWith("/omnis/")) && !p.startsWith("/omnis/nas"),
+    isActive: (p) =>
+      (p === "/omnis" || p.startsWith("/omnis/")) &&
+      !p.startsWith("/omnis/nas") &&
+      !p.startsWith("/omnis/grants"),
   },
-  { href: "/omnis/nas", label: "시놀로지", isActive: (p) => p.startsWith("/omnis/nas") },
-  { href: "/ip", label: "지식재산권", isActive: (p) => p === "/ip" || p.startsWith("/ip/") },
-  { href: "/crm/quotes", label: "고객·견적", isActive: (p) => p.startsWith("/crm") },
+  {
+    href: "/omnis/grants",
+    label: "국가과제",
+    isActive: (p) => p.startsWith("/omnis/grants"),
+  },
+  {
+    href: "/omnis/nas",
+    label: "시놀로지",
+    isActive: (p) => p.startsWith("/omnis/nas"),
+  },
+  {
+    href: "/ip",
+    label: "지식재산권",
+    isActive: (p) => p === "/ip" || p.startsWith("/ip/"),
+  },
+  {
+    href: "/crm/quotes",
+    label: "고객·견적",
+    isActive: (p) => p.startsWith("/crm"),
+  },
 ]
 
 /**
- * 아카이브 탭 안에서 화면을 오간다 — 회사가 가진 것(지식·파일·권리·거래처)을 한 탭에 모았다.
+ * 아카이브 탭 안에서 화면을 오간다 — 회사가 가진 것(지식·국가과제·파일·권리·거래처)을 한 탭에 모았다.
  * 각 화면은 원래 경로 그대로고, 이 띠는 HADD DB(/omnis)와 CRM(/crm) 레이아웃이 함께 얹는다.
  */
 export function ArchiveNav() {
@@ -34,7 +54,7 @@ export function ArchiveNav() {
   return (
     <nav
       aria-label="아카이브"
-      className="flex shrink-0 gap-1 overflow-x-auto border-b bg-background px-3 [scrollbar-width:none]"
+      className="flex shrink-0 [scrollbar-width:none] gap-1 overflow-x-auto border-b bg-background px-3"
     >
       {ITEMS.map((item) => {
         const active = !item.external && (item.isActive?.(pathname) ?? false)
@@ -47,14 +67,30 @@ export function ArchiveNav() {
         )
         if (item.external) {
           return (
-            <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className={className}>
+            <a
+              key={item.href}
+              href={item.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={className}
+            >
               {item.label}
-              <HugeiconsIcon icon={LinkSquare02Icon} size={11} className="opacity-50" aria-label="새 탭에서 열림" />
+              <HugeiconsIcon
+                icon={LinkSquare02Icon}
+                size={11}
+                className="opacity-50"
+                aria-label="새 탭에서 열림"
+              />
             </a>
           )
         }
         return (
-          <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={className}>
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? "page" : undefined}
+            className={className}
+          >
             {item.label}
             <LinkPendingMark />
           </Link>
