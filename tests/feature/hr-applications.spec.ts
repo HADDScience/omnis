@@ -6,7 +6,8 @@
  * - 관리자라도 채용 담당이 아니면 목록 · 상세 · 파일이 모두 막힌다(거부되어야 하는 경우)
  * - 관리자가 운영 탭에서 담당을 고르면 그 사람(구성원이어도)이 마이 입구 · 목록 · 상세 · 파일을 본다
  * - 내려받은 파일이 올린 파일과 같다(이력서 9MB · 포트폴리오 12MB — 포트폴리오는 이력서 상한 10MB 를 넘어도 받는다)
- * - 홈페이지가 보낸 「관심 있는 일」 이 목록 · 상세에 라벨로 보인다
+ * - 홈페이지가 보낸 「관심 있는 일」 이 상세에 라벨로 보인다
+ * - 지원서함은 공고 목록 → 공고 보드(접수 · 서류 합격 · 최종 합격). 카드 메뉴로 단계를 바꾸면 이벤트 · 활동 기록이 남는다. 담당이 아니면 단계 API 도 403
  *
  * 가짜 NAS(scripts/e2e-fake-nas.mjs)와 지원서 비밀(WEBSITE_CAREER_SECRET · WEBSITE_CAREER_UPLOAD_KEY)이 있을 때만 돈다 — CI 는 둘 다 넣는다.
  */
@@ -110,7 +111,8 @@ test.describe("채용 지원서함 @hr", () => {
     await login(page, "팀장")
     await page.goto("/hr/applications")
     await expect(page.locator("[data-hr-denied]")).toBeVisible()
-    await expect(page.locator("[data-hr-application]")).toHaveCount(0)
+    await expect(page.locator("[data-hr-job]")).toHaveCount(0)
+    expect((await page.request.patch(`/api/hr/applications/${id}`, { data: { stage: "INTERVIEW" } })).status()).toBe(403)
     await page.goto(`/hr/applications/${id}`)
     await expect(page.locator("[data-hr-denied]")).toBeVisible()
     expect((await page.request.get(`/api/hr/applications/${id}/files/resume`)).status()).toBe(403)
@@ -138,8 +140,21 @@ test.describe("채용 지원서함 @hr", () => {
     await expect(page.locator("[data-hr-entry]")).toBeVisible()
     await page.locator("[data-hr-entry]").click()
     await expect(page).toHaveURL(/\/hr\/applications$/)
-    await expect(page.locator(`[data-hr-application="${code}"] [data-hr-interests]`)).toContainText("AI 기반 바이오 연구")
-    await page.locator(`[data-hr-application="${code}"]`).click()
+    // 공고 목록 → 보드. 마감이 지난 뒤에는 공고가 접힌 「마감된 공고」 안에 있다
+    const job = page.locator('[data-hr-job="suwon-anchor-practicum-intern-2026-winter"]')
+    await expect(page.locator("[data-hr-job]").first()).toBeVisible()
+    if (!(await job.isVisible())) await page.locator("[data-hr-closed-jobs] summary").click()
+    await job.click()
+    const card = page.locator(`[data-hr-column="received"] [data-hr-card="${code}"]`)
+    await expect(card).toBeVisible()
+    // 카드 메뉴로 서류 합격 — 열이 옮겨지고 기록이 남는다(지원자 메일은 접수 때만 나간다)
+    await card.getByRole("button", { name: /단계 바꾸기$/ }).click()
+    await page.getByRole("menuitem", { name: "서류 합격" }).click()
+    const moved = page.locator(`[data-hr-column="passed"] [data-hr-card="${code}"]`)
+    await expect(moved).toBeVisible()
+    await expect.poll(async () => (await prisma.jobApplication.findUniqueOrThrow({ where: { id } })).stage).toBe("INTERVIEW")
+    expect(await prisma.jobApplicationEvent.count({ where: { applicationId: id, fromStage: "RECEIVED", toStage: "INTERVIEW" } })).toBe(1)
+    await moved.locator("a").click()
     await expect(page.locator(`[data-hr-application-detail="${code}"]`)).toBeVisible()
     await expect(page.getByText("시험 지원자").first()).toBeVisible()
     await expect(page.getByText(email)).toBeVisible()
@@ -156,7 +171,7 @@ test.describe("채용 지원서함 @hr", () => {
     expect(md5(readFileSync((await (await pfDownload).path())!))).toBe(md5(portfolio))
 
     const logs = await prisma.activityLog.findMany({ where: { entityId: id }, select: { action: true } })
-    expect(logs.map((l) => l.action).sort()).toEqual(expect.arrayContaining(["hr.application.file_downloaded", "hr.application.viewed"]))
+    expect(logs.map((l) => l.action).sort()).toEqual(expect.arrayContaining(["hr.application.file_downloaded", "hr.application.viewed", "hr.application.stage"]))
     await ctx.close()
   })
 })

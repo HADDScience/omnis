@@ -14,6 +14,8 @@ import { feedbackReply, feedbackRequest } from "@/lib/feedback"
 import { canSeeSurveyResults, loadSurveyResults } from "@/lib/ai-survey/results"
 import { isHrReviewer } from "@/lib/hr/reviewers"
 import { applicationCounts, listApplications } from "@/lib/hr/queries"
+import { changeApplicationStage, isPickableStage } from "@/lib/hr/stage"
+import { loadJobs } from "@/lib/hr/jobs"
 import { STAGE_LABEL, interestLabel, type Stage } from "@/lib/hr/rules"
 import { blocked, clip, has, kstDate, str, type Planner } from "./planned"
 import type { AdminReadName, AdminWriteName } from "./defs-admin"
@@ -81,7 +83,8 @@ export async function runAdminRead(name: AdminReadName, args: Record<string, unk
       const stageArg = str(args.stage).toUpperCase()
       const stage = stageArg && stageArg !== "RECEIVING" && stageArg in STAGE_LABEL ? (stageArg as Stage) : undefined
       const job = str(args.job) || undefined
-      const [counts, rows] = await Promise.all([applicationCounts(), listApplications({ jobSlug: job, stage, take: 100 })])
+      const [counts, rows, jobs] = await Promise.all([applicationCounts(), listApplications({ jobSlug: job, stage, take: 100 }), loadJobs()])
+      const closes = new Map(jobs.map((j) => [j.slug, j.closesAt]))
       if (rows.length === 0 && counts.length === 0) return { text: "접수된 지원서가 없습니다." }
       const byJob = new Map<string, { title: string; parts: string[] }>()
       for (const c of counts) {
@@ -92,7 +95,7 @@ export async function runAdminRead(name: AdminReadName, args: Record<string, unk
       return {
         text: [
           "공고별 건수",
-          ...[...byJob.entries()].map(([slug, j]) => `- ${j.title} (${slug}): ${j.parts.join(" · ")}`),
+          ...[...byJob.entries()].map(([slug, j]) => `- ${j.title} (${slug}${closes.get(slug) ? ` · 마감 ${kstDateTime(closes.get(slug)!)}` : ""}): ${j.parts.join(" · ")}`),
           "",
           `지원서 ${rows.length}건${job || stage ? " (좁힌 결과)" : ""}`,
           ...rows.map((r) => `- ${r.code ?? "-"} · ${STAGE_LABEL[r.stage]} · ${r.purgedAt ? "(파기됨)" : `${r.name ?? "-"} · ${r.department ?? "-"} · ${r.grade ?? "-"}학년${r.interests.length ? ` · 관심: ${r.interests.map((v) => interestLabel(v)).join(", ")}` : ""}`} · 접수 ${r.receivedAt ? kstDate(r.receivedAt) : "-"} · ${r.jobTitle}`),
@@ -316,6 +319,43 @@ const planFeedback: Planner = async (args, caller) => {
   }
 }
 
+const kstDateTime = (iso: string) =>
+  new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "medium", timeStyle: "short" }).format(new Date(iso))
+
+const planApplicationStage: Planner = async (args, caller) => {
+  const T = "지원서 단계 바꾸기"
+  const ref = str(args.application)
+  if (!(await isHrReviewer(caller.userId))) return blocked(T, ref || "(지원서)", "채용 담당만 바꿀 수 있습니다 — 관리자 › 운영 › 채용 담당에 든 사람에게만 열린 일입니다.")
+  const stage = str(args.stage).toUpperCase()
+  if (!isPickableStage(stage)) return blocked(T, ref || "(지원서)", "stage 는 RECEIVED · SCREENING · INTERVIEW · OFFERED · HIRED · REJECTED · WITHDRAWN 중 하나입니다")
+  const found = ref
+    ? await prisma.jobApplication.findMany({
+        where: { stage: { not: "RECEIVING" }, OR: [{ code: ref.toUpperCase() }, { id: ref }, { name: ref }] },
+        select: { id: true, code: true, name: true, stage: true, jobTitle: true },
+        take: 3,
+      })
+    : []
+  if (found.length > 1) return blocked(T, ref, "같은 이름의 지원서가 여럿입니다 — 접수 번호로 주세요(list_applications)")
+  const a = found[0]
+  if (!a) return blocked(T, ref || "(지원서)", "없는 지원서입니다 — list_applications 로 접수 번호를 확인하세요")
+  const target = `${a.code ?? a.id} ${a.name ?? "(파기됨)"}`
+  if (a.stage === stage) return blocked(T, target, `이미 ${STAGE_LABEL[stage]} 단계입니다`)
+  const note = str(args.note)
+  return {
+    title: T,
+    target,
+    changes: [
+      { label: "단계", before: STAGE_LABEL[a.stage as Stage], after: STAGE_LABEL[stage] },
+      ...(note ? [{ label: "메모", before: null, after: clip(note, 200) }] : []),
+    ],
+    risk: "지원서함과 지원서 기록에 남습니다. 지원자에게 메일은 가지 않습니다.",
+    run: async () => {
+      const r = await changeApplicationStage(caller.userId, a.id, stage, { note })
+      return r.ok ? { ok: true, text: `바꿨습니다: ${target} → ${STAGE_LABEL[stage]}`, id: a.id } : { ok: false, error: r.error }
+    },
+  }
+}
+
 export const ADMIN_PLANNERS: Record<AdminWriteName, Planner> = {
   update_company_profile: planProfile,
   save_company_year: planSaveYear,
@@ -324,4 +364,5 @@ export const ADMIN_PLANNERS: Record<AdminWriteName, Planner> = {
   set_ai_budget: planBudget,
   set_feature_status: planFeatureStatus,
   send_feedback: planFeedback,
+  change_application_stage: planApplicationStage,
 }

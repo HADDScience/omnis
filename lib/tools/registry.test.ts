@@ -257,6 +257,8 @@ const B4_WRITE = [
   "set_ai_budget",
   "set_feature_status",
   "send_feedback",
+  // 채용 지원서 단계(2026-11-26) — 질문 경로 밖
+  "change_application_stage",
 ]
 // #248 묶음 5 — 지식재산권. 읽기는 질문 경로 밖(ip_overview 한 장)
 const B5_READ_NO_ASK = ["ip_records"]

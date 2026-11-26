@@ -60,7 +60,7 @@ test("planText — 전 → 뒤, 새 줄은 뒤만, 경고", () => {
 test("묶음 쓰기 도구는 모두 confirm 칸이 있고 레지스트리에서 confirm: param 이다", () => {
   const reads = new Set<string>([...WORK_READ_NAMES, ...CRM_MORE_READ_NAMES, ...CARD_READ_NAMES, ...ADMIN_READ_NAMES, ...IP_MORE_READ_NAMES, ...WEBSITE_READ_NAMES, ...FILE_READ_NAMES, ...GRANT_READ_NAMES])
   for (const t of EXTRA_TOOLS) {
-    const p = (TOOL_POLICY as Record<string, { confirm?: string; agent: unknown; ask: unknown }>)[t.name]
+    const p = (TOOL_POLICY as Record<string, { confirm?: string; agent: unknown; ask: unknown; why?: string }>)[t.name]
     assert.ok(p, `${t.name} 레지스트리`)
     if (reads.has(t.name)) {
       assert.equal(p.agent, "read", t.name)
@@ -69,6 +69,8 @@ test("묶음 쓰기 도구는 모두 confirm 칸이 있고 레지스트리에서
     assert.ok("confirm" in (t.inputSchema.properties as Record<string, unknown>), `${t.name} confirm 칸`)
     assert.equal(p.confirm, "param", t.name)
     assert.equal(p.agent, "write", t.name)
-    assert.equal(p.ask, "preview", t.name)
+    // 질문 경로 밖에 두는 쓰기(채용 지원서처럼 답이 여러 사람 앞에 붙으면 안 되는 것)는 까닭이 있어야 한다
+    if (p.ask === false) assert.ok(p.why && p.why.length > 5, `${t.name} 질문 경로 밖 까닭`)
+    else assert.equal(p.ask, "preview", t.name)
   }
 })

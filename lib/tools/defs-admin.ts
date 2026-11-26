@@ -26,7 +26,7 @@ export const ADMIN_TOOLS = [
     name: "list_applications",
     description: [
       "홈페이지 채용 지원서함 — 채용 담당만(관리자라도 담당이 아니면 거절). 화면 채용 › 지원서함과 같은 목록이다.",
-      "공고별 · 단계별 건수와 지원서마다 접수 번호 · 공고 · 단계 · 이름 · 학과 · 학년 · 관심 있는 일 · 접수일을 준다.",
+      "공고별 마감 · 단계별 건수와 지원서마다 접수 번호 · 공고 · 단계 · 이름 · 학과 · 학년 · 관심 있는 일 · 접수일을 준다.",
       "연락처 · 이메일 · 지원 동기 · 이력서 파일은 주지 않는다 — 화면에서 본다.",
     ].join(" "),
     inputSchema: {
@@ -133,6 +133,24 @@ export const ADMIN_TOOLS = [
         confirm: CONFIRM_PROP,
       },
       required: ["text"],
+    },
+  },
+  {
+    name: "change_application_stage",
+    description: [
+      "채용 지원서의 단계를 바꾼다 — 채용 담당만(지원서함과 같은 권한). 지원서함 보드에서 카드를 옮기는 것과 같다.",
+      "서류 합격은 INTERVIEW, 최종 합격은 HIRED, 접수로 되돌리기는 RECEIVED, 불합격 REJECTED, 지원 철회 WITHDRAWN. 지원자에게 메일은 가지 않는다.",
+      "application 은 접수 번호(APP261125-001) 또는 list_applications 의 이름.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        application: { type: "string", description: "접수 번호 또는 지원자 이름" },
+        stage: { type: "string", enum: ["RECEIVED", "SCREENING", "INTERVIEW", "OFFERED", "HIRED", "REJECTED", "WITHDRAWN"], description: "바꿀 단계" },
+        note: { type: "string", description: "기록에 남길 짧은 메모(선택)" },
+        confirm: CONFIRM_PROP,
+      },
+      required: ["application", "stage"],
     },
   },
 ] as const
