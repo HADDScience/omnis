@@ -151,6 +151,7 @@ export const TOOL_LABEL: Record<string, string> = {
   list_applications: "지원서함 보는 중",
   change_application_stage: "지원서 단계 바꾸기",
   get_interview_pack: "면접자료 주소",
+  update_job_posting: "공고 면접 정보 고치기",
   update_company_profile: "회사 정보 고치기",
   save_company_year: "연도별 재무",
   delete_company_year: "연도별 재무 지우기",

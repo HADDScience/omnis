@@ -3,7 +3,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { PDFDocument, StandardFonts } from "pdf-lib"
+import { PDFArray, PDFDocument, PDFName, PDFRawStream, StandardFonts } from "pdf-lib"
 import { buildApplicantPack, buildBundle, canPack, readOutline, wrap, type PackApplicant, type PackFonts } from "./interview-pack"
 
 const dir = join(process.cwd(), "assets/fonts")
@@ -86,4 +86,26 @@ test("줄 나누기 — 띄어쓰기에서 넘기고, 긴 낱말은 자른다", 
   assert.ok(lines.every((l) => f.widthOfTextAtSize(l, 10) <= 40))
   assert.ok(wrap(f, 10, "https://example.com/" + "x".repeat(80), 60).every((l) => f.widthOfTextAtSize(l, 10) <= 60))
   assert.deepEqual(wrap(f, 10, "이모지😀빼기", 500), ["이모지빼기"])
+})
+
+test("묶음 표지 — 적어 둔 면접 정보가 있으면 표지에 줄이 붙고, 없으면 지금과 같다(쪽수 · 책갈피는 그대로)", async () => {
+  const inputs = [{ applicant: who(1), files: [] }]
+  const at = new Date("2026-11-26T03:00:00Z")
+  const plain = await buildBundle(inputs, "[시험용] 인턴", fonts, at)
+  const none = await buildBundle(inputs, "[시험용] 인턴", fonts, at, [])
+  const withMeta = await buildBundle(inputs, "[시험용] 인턴", fonts, at, [
+    { label: "면접 일시", value: "2099-01-05(월) 11:00 · 10분씩" },
+    { label: "면접 장소", value: "가상시 가상구 시험로 1 시험센터 9층" },
+  ])
+  assert.equal(withMeta.pages, plain.pages)
+  assert.deepEqual(withMeta.outline, plain.outline)
+  // 표지 쪽의 그리기 명령 길이 — 글자는 글꼴 번호로 들어가 글로 찾을 수 없어서, 줄이 붙었는지만 본다
+  const coverBytes = async (b: Uint8Array) => {
+    const d = await PDFDocument.load(b)
+    const c = d.context.lookup(d.getPage(0).node.get(PDFName.of("Contents")))
+    const streams = c instanceof PDFArray ? c.asArray().map((r) => d.context.lookup(r)) : [c]
+    return streams.reduce((n, st) => n + ((st as PDFRawStream).contents?.length ?? 0), 0)
+  }
+  assert.equal(await coverBytes(none.bytes), await coverBytes(plain.bytes))
+  assert.ok((await coverBytes(withMeta.bytes)) > (await coverBytes(plain.bytes)))
 })

@@ -9,11 +9,13 @@
  * - 홈페이지가 보낸 「관심 있는 일」 이 상세에 라벨로 보인다
  * - 면접자료 PDF — 채용 담당만, 서류 합격 뒤에만(접수 단계는 403). 받은 PDF 는 요약 장 + 책갈피, 서류 합격 묶음은 표지가 앞에 붙는다
  * - 지원서함은 공고 목록 → 공고 보드(접수 · 서류 합격 · 최종 합격). 카드 메뉴로 단계를 바꾸면 이벤트 · 활동 기록이 남는다. 담당이 아니면 단계 API 도 403
+ * - 공고 보드 머리에서 면접 일시 · 장소 · 방식을 그 자리에서 고치면 저장되고(활동 기록), 고치기 전에 본 값이 낡았으면 409 · 담당이 아니면 403
  *
  * 가짜 NAS(scripts/e2e-fake-nas.mjs)와 지원서 비밀(WEBSITE_CAREER_SECRET · WEBSITE_CAREER_UPLOAD_KEY)이 있을 때만 돈다 — CI 는 둘 다 넣는다.
  */
 import { createHash } from "node:crypto"
-import { readFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
+import path from "node:path"
 import { expect, request, test } from "@playwright/test"
 import { PDFDocument } from "pdf-lib"
 import { PrismaClient } from "../../generated/prisma/client"
@@ -23,6 +25,9 @@ import { login } from "./_setup"
 const NAS = process.env.E2E_FAKE_NAS_URL
 const SECRET = process.env.WEBSITE_CAREER_SECRET
 const md5 = (b: Buffer) => createHash("md5").update(b).digest("hex")
+const JOB = "suwon-anchor-practicum-intern-2026-winter"
+// HR_SHOTS 에 절대 경로를 주면 보드 머리 · 묶음 PDF 를 남긴다(보고서 캡처용)
+const shots = process.env.HR_SHOTS
 
 test.describe("채용 지원서함 @hr", () => {
   test.skip(!NAS || !SECRET || !process.env.WEBSITE_CAREER_UPLOAD_KEY, "가짜 NAS 또는 지원서 비밀이 없다")
@@ -41,6 +46,7 @@ test.describe("채용 지원서함 @hr", () => {
 
   test.afterAll(async () => {
     await prisma.appSetting.deleteMany({ where: { key: { startsWith: "hr_" } } })
+    await prisma.jobPostingMeta.deleteMany({ where: { jobSlug: JOB } })
     if (id) await prisma.jobApplication.deleteMany({ where: { id } })
     await prisma.$disconnect()
   })
@@ -118,6 +124,7 @@ test.describe("채용 지원서함 @hr", () => {
     expect((await page.request.patch(`/api/hr/applications/${id}`, { data: { stage: "INTERVIEW" } })).status()).toBe(403)
     expect((await page.request.get(`/api/hr/applications/${id}/interview-pack`)).status()).toBe(403)
     expect((await page.request.get(`/api/hr/jobs/suwon-anchor-practicum-intern-2026-winter/interview-pack`)).status()).toBe(403)
+    expect((await page.request.patch(`/api/hr/jobs/${JOB}`, { data: { place: "막혀야 하는 값" } })).status()).toBe(403)
     await page.goto(`/hr/applications/${id}`)
     await expect(page.locator("[data-hr-denied]")).toBeVisible()
     expect((await page.request.get(`/api/hr/applications/${id}/files/resume`)).status()).toBe(403)
@@ -161,6 +168,51 @@ test.describe("채용 지원서함 @hr", () => {
     await expect(moved).toBeVisible()
     await expect.poll(async () => (await prisma.jobApplication.findUniqueOrThrow({ where: { id } })).stage).toBe("INTERVIEW")
     expect(await prisma.jobApplicationEvent.count({ where: { applicationId: id, fromStage: "RECEIVED", toStage: "INTERVIEW" } })).toBe(1)
+    // 공고 보드 머리 — 면접 장소 · 방식 · 일시를 그 자리에서 고친다(가짜 값)
+    const head = page.locator(`[data-hr-job-meta="${JOB}"]`)
+    await expect(head).toBeVisible()
+    const patched = () => page.waitForResponse((r) => r.url().endsWith(`/api/hr/jobs/${JOB}`) && r.request().method() === "PATCH")
+    await head.getByRole("button", { name: /^면접 장소/ }).click()
+    await head.getByLabel("면접 장소").fill("가상시 시험로 1 시험센터 9층")
+    let res = patched()
+    await head.getByLabel("면접 장소").press("Enter")
+    expect((await res).status()).toBe(200)
+    await expect(head.getByText("가상시 시험로 1 시험센터 9층")).toBeVisible()
+    await head.getByRole("button", { name: /^면접 방식/ }).click()
+    res = patched()
+    await head.getByLabel("면접 방식").selectOption("VIDEO")
+    expect((await res).status()).toBe(200)
+    await expect(head.getByRole("button", { name: /^화상 링크/ })).toBeVisible()
+    await head.getByRole("button", { name: /^면접 일시/ }).click()
+    await head.getByLabel("1번째 날짜").fill("2099-01-05")
+    await head.getByLabel("1번째 시작 시각").fill("11:00")
+    await head.getByLabel("1번째 한 사람 시간(분)").fill("10")
+    res = patched()
+    await head.getByLabel("1번째 한 사람 시간(분)").press("Enter")
+    expect((await res).status()).toBe(200)
+    await expect(head.locator("[data-hr-meta-slots]")).toHaveText("2099-01-05(월) 11:00 · 10분씩")
+    if (shots) {
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.screenshot({ path: path.join(shots, "01-board-head-pc.png") })
+      await head.getByRole("button", { name: /^면접 일시/ }).click()
+      await head.getByRole("button", { name: "일시 더하기" }).click()
+      await page.screenshot({ path: path.join(shots, "02-board-head-pc-editing.png") })
+      await head.getByLabel("2번째 날짜").press("Escape")
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.screenshot({ path: path.join(shots, "03-board-head-phone.png"), fullPage: true })
+      await head.getByRole("button", { name: /^면접 장소/ }).click()
+      await page.screenshot({ path: path.join(shots, "04-board-head-phone-editing.png") })
+      await head.getByLabel("면접 장소").press("Escape")
+      await page.setViewportSize({ width: 1280, height: 720 })
+    }
+    await expect
+      .poll(async () => prisma.jobPostingMeta.findUnique({ where: { jobSlug: JOB }, select: { interviewPlace: true, interviewMode: true, interviewSlots: true } }))
+      .toEqual({ interviewPlace: "가상시 시험로 1 시험센터 9층", interviewMode: "VIDEO", interviewSlots: [{ date: "2099-01-05", time: "11:00", minutesEach: 10 }] })
+    expect(await prisma.activityLog.count({ where: { action: "hr.job.meta", entityId: JOB } })).toBe(3)
+    // 고치기 전에 본 값이 낡았으면 덮지 않는다(거부되어야 하는 경우) · 모양이 틀린 값은 400
+    expect((await page.request.patch(`/api/hr/jobs/${JOB}`, { data: { place: "덮으면 안 되는 값", expect: { place: "옛 값" } } })).status()).toBe(409)
+    expect((await page.request.patch(`/api/hr/jobs/${JOB}`, { data: { videoUrl: "http://plain.example.invalid" } })).status()).toBe(400)
+    expect((await prisma.jobPostingMeta.findUniqueOrThrow({ where: { jobSlug: JOB } })).interviewPlace).toBe("가상시 시험로 1 시험센터 9층")
     // 면접자료 PDF — 지원자 한 명(시험 파일은 PDF 모양이 아니라 「못 넣음」 으로 요약 장에만 적힌다) · 서류 합격 묶음(표지 + 지원자)
     const one = await page.request.get(`/api/hr/applications/${id}/interview-pack`)
     expect(one.status()).toBe(200)
@@ -170,6 +222,7 @@ test.describe("채용 지원서함 @hr", () => {
     expect(readOutline(onePdf)).toEqual([{ title: "지원서 요약", page: 0 }])
     const all = await page.request.get(`/api/hr/jobs/suwon-anchor-practicum-intern-2026-winter/interview-pack`)
     expect(all.status()).toBe(200)
+    if (shots) writeFileSync(path.join(shots, "05-bundle.pdf"), await all.body())
     const allPdf = await PDFDocument.load(await all.body())
     const outline = readOutline(allPdf)
     expect(outline[0]).toEqual({ title: "표지", page: 0 })

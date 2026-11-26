@@ -189,6 +189,7 @@ export const TOOL_POLICY = {
   set_feature_status: PW,
   send_feedback: PW,
   change_application_stage: { ...PW, ask: false, why: "채용 담당만 바꾸는 지원자 단계 — 질문 경로의 미리보기도 여러 사람이 볼 수 있는 자리에 붙는다" },
+  update_job_posting: { ...PW, ask: false, why: "채용 담당만 고치는 공고 면접 정보 — 질문 경로의 미리보기도 여러 사람이 볼 수 있는 자리에 붙는다" },
 
   // ─── 묶음 5(#248) 지식재산권 — lib/tools/defs-ip.ts. 지식재산권 화면에 들어가는 사람만(실행이 caller.ip 를 본다) ───
   ip_records: R_NO_ASK("질문 경로는 지식재산권을 ip_overview 한 장으로 본다"),
