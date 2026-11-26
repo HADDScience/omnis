@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -19,6 +19,10 @@ import { MeAvatarLink } from "./current-user"
 import { useRightPanel } from "./right-panel-context"
 import { NotificationBell } from "./notification-bell"
 import { chatTabHref } from "@/lib/panel-chat-rules"
+import { apiUrl } from "@/lib/base-path"
+import { PENDING_HIGHLIGHT_MS, STUCK_RESCUE_MS, rescueAction, rscFailureMessage } from "@/lib/nav-rescue"
+import { flushQueuedReports, reportNavFailure } from "@/lib/report-client-error"
+import { markStalled, noteRscFailure, resetStall, routerStalled, setNavStatus } from "@/lib/nav-status"
 
 /**
  * 채팅 화면(홈)이 들어오기 전에는 채팅 탭이 오른쪽 채팅 패널을 열었다 — 「전체」 팀 채팅이 거기 있다.
@@ -100,15 +104,91 @@ export function FloatingNav() {
   // 누른 탭을 바로 켠다. 주소(pathname)는 새 화면이 다 그려진 뒤에야 바뀌어서, 그것만 보면 업무 보드처럼
   // 무거운 화면으로 갈 때 알약이 옛 탭에 한참 머물렀다. 주소가 바뀌면(도착하면) 누른 표시는 내려놓는다
   const [pending, setPending] = useState<{ key: string; from: string } | null>(null)
-  if (pending && pending.from !== pathname) setPending(null)
+  // 이동이 멈췄는지 보는 감시 — 누른 표시를 되돌린 뒤에도(8초) 새로 열기(10초)까지 남는다
+  const [watch, setWatch] = useState<{ href: string; from: string; id: number } | null>(null)
+  const [seenPath, setSeenPath] = useState(pathname)
+  if (seenPath !== pathname) {
+    // 도착했다 — 누른 표시 · 감시를 내려놓는다(「연결이 느립니다」 는 아래 effect 가 내린다)
+    setSeenPath(pathname)
+    setPending(null)
+    setWatch(null)
+  }
+  useEffect(() => {
+    setNavStatus("slow", false)
+    resetStall()
+  }, [pathname])
+  const online = useOnline()
   const routeKey =
     TABS.find((tab) =>
       tab.key === "chat" && !CHAT_HOME_READY ? rightPanel.open : isActive(tab, pathname)
     )?.key ?? null
   const activeKey = pending?.key ?? routeKey
-  const select = (key: string) => {
-    if (key !== routeKey) setPending({ key, from: pathname })
+  const select = (key: string, href: string) => {
+    if (key === routeKey) {
+      // 지금 탭을 다시 누르면 바로 원래대로. 라우터가 멈췄으면(RSC 실패 뒤 문서 이동이 안 끝남) React 가
+      // 다시 그리지 못하니 지금 화면을 새로 연다
+      if (routerStalled()) {
+        window.location.reload()
+        return
+      }
+      setPending(null)
+      setWatch(null)
+      setNavStatus("slow", false)
+      resetStall()
+      return
+    }
+    resetStall()
+    setPending({ key, from: pathname })
+    setWatch({ href, from: pathname, id: Date.now() })
+    setNavStatus("slow", false)
   }
+
+  // 오프라인이 되면 누른 표시를 거둔다(오프라인 띠가 대신 보인다)
+  const [wasOnline, setWasOnline] = useState(online)
+  if (wasOnline !== online) {
+    setWasOnline(online)
+    if (!online) setPending(null)
+  }
+
+  const rescue = useCallback((href: string) => {
+    const act = rescueAction({
+      target: apiUrl(href),
+      current: window.location.pathname,
+      online: navigator.onLine,
+      now: Date.now(),
+      store: safeSession(),
+    })
+    if (act === "reload") window.location.reload()
+    else if (act === "assign") window.location.assign(apiUrl(href))
+  }, [])
+
+  useEffect(() => {
+    if (!watch) return
+    const highlight = setTimeout(() => {
+      // React 가 멈췄을 수 있어 표시는 DOM · CSS 로도 거둔다
+      setPending(null)
+      markStalled()
+      setNavStatus("slow", true, watch.href)
+    }, PENDING_HIGHLIGHT_MS)
+    // 라우터가 멈췄으면(Next 의 문서 이동이 안 끝남) 브라우저 수준에서 그 화면을 새로 연다 — 한 번만
+    const stuck = setTimeout(() => rescue(watch.href), STUCK_RESCUE_MS)
+    return () => {
+      clearTimeout(highlight)
+      clearTimeout(stuck)
+    }
+  }, [watch, rescue])
+
+  // 다시 연결되면: 멈춘 이동이 있으면 새로 열고, 오프라인 동안 쌓인 오류 보고를 보낸다
+  useEffect(() => {
+    setNavStatus("offline", !online)
+    if (!online) return
+    flushQueuedReports()
+    if (watch) rescue(watch.href)
+    // watch 가 바뀔 때마다 새로 열지 않게 online 으로만 건다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online])
+
+  useRscFailureReport()
 
   return (
     <>
@@ -163,6 +243,49 @@ export function FloatingNav() {
   )
 }
 
+const subscribeOnline = (cb: () => void) => {
+  window.addEventListener("online", cb)
+  window.addEventListener("offline", cb)
+  return () => {
+    window.removeEventListener("online", cb)
+    window.removeEventListener("offline", cb)
+  }
+}
+/** navigator.onLine — 서버 · 첫 화면은 온라인으로 본다 */
+function useOnline() {
+  return useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true)
+}
+
+function safeSession() {
+  try {
+    return window.sessionStorage
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Next 의 RSC 요청 실패(「Failed to fetch RSC payload … Falling back to browser navigation.」)는 console.error 로만 남는다.
+ * 그 줄을 오류 보고로 옮긴다(오프라인이면 줄에 쌓았다가 online 때 보낸다). console 은 한 번만 감싼다.
+ */
+function useRscFailureReport() {
+  useEffect(() => {
+    flushQueuedReports()
+    const w = window as typeof window & { __omnisRscWatch?: boolean }
+    if (w.__omnisRscWatch) return
+    w.__omnisRscWatch = true
+    const original = console.error.bind(console)
+    console.error = (...args: unknown[]) => {
+      const msg = rscFailureMessage(args)
+      if (msg) {
+        noteRscFailure()
+        reportNavFailure(msg)
+      }
+      original(...args)
+    }
+  }, [])
+}
+
 /** 따로 뜬 동작 원. 탭 캡슐과 같은 높이(2.5rem) */
 const CIRCLE =
   "glass flex size-10 shrink-0 items-center justify-center rounded-full transition-transform duration-150 active:scale-[0.94] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -179,7 +302,7 @@ function TabCapsule({
   variant: "top" | "bottom"
   activeKey: string | null
   /** 탭을 누른 순간 — 도착을 기다리지 않고 알약을 옮긴다 */
-  onSelect: (key: string) => void
+  onSelect: (key: string, href: string) => void
 }) {
   const rightPanel = useRightPanel()
   const capsule = useRef<HTMLDivElement>(null)
@@ -286,7 +409,7 @@ function TabCapsule({
               if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
               // 탭을 옮길 때만 — 켜진 탭을 다시 누르는 것은 전환이 아니다
               if (variant === "bottom" && !active) tapHaptic()
-              onSelect(tab.key)
+              onSelect(tab.key, tab.href)
             }}
             title={variant === "top" ? tab.label : undefined}
             className={className}

@@ -6,6 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { Alert02Icon, Refresh01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { reportClientError } from "@/lib/report-client-error"
+import { isChunkLoadError } from "@/lib/nav-rescue"
 
 /**
  * 화면 한 곳이 터져도 사이드바와 나머지는 살아 있게 한다.
@@ -39,7 +40,11 @@ export default function MainError({
           </p>
         )}
         <div className="mt-5 flex justify-center gap-2">
-          <Button onClick={reset} className="gap-1.5">
+          {/* JS 조각을 못 받아 터졌으면(ChunkLoadError — 오프라인 중 아카이브) reset() 은 그 조각을 다시 받지 않는다. 문서를 새로 연다 */}
+          <Button
+            onClick={() => (isChunkLoadError(error) ? window.location.reload() : reset())}
+            className="gap-1.5"
+          >
             <HugeiconsIcon icon={Refresh01Icon} size={15} aria-hidden />
             다시 시도
           </Button>

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { reportClientError } from "@/lib/report-client-error"
+import { isChunkLoadError } from "@/lib/nav-rescue"
 
 /**
  * 루트 레이아웃까지 터졌을 때의 마지막 그물. 여기서는 레이아웃이 통째로
@@ -54,7 +55,7 @@ export default function GlobalError({
             </p>
           )}
           <button
-            onClick={reset}
+            onClick={() => (isChunkLoadError(error) ? window.location.reload() : reset())}
             style={{
               marginTop: 20,
               padding: "9px 18px",

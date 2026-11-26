@@ -13,7 +13,9 @@ const reportSchema = z.object({
   url: z.string().max(2000).optional(),
   scope: z.enum(["global", "page"]).default("page"),
   // 화면은 살아 있지만 일이 막힌 경우(2026-09-17) — lib/report-client-error.ts 의 reportIncident
-  kind: z.enum(["crash", "upload_too_large", "upload_failed", "send_failed"]).default("crash"),
+  kind: z.enum(["crash", "upload_too_large", "upload_failed", "send_failed", "nav_failed"]).default("crash"),
+  // 오프라인이라 줄에 담아 두었다가 늦게 보낸 보고 — 실제로 생긴 때
+  occurredAt: z.string().max(40).optional(),
   status: z.number().int().optional(),
   size: z.number().nonnegative().optional(),
   // 메일에만 적는다. 이슈 저장소가 공개다
@@ -25,6 +27,7 @@ const KIND_LABEL: Record<z.infer<typeof reportSchema>["kind"], string> = {
   upload_too_large: "첨부 상한 초과",
   upload_failed: "첨부 실패",
   send_failed: "메시지 전송 실패",
+  nav_failed: "탭 이동 실패",
 }
 
 /**
@@ -62,7 +65,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "잘못된 요청" }, { status: 400 })
   }
-  const { message, stack, digest, url, scope, kind, status, size, fileName } = parsed.data
+  const { message, stack, digest, url, scope, kind, status, size, fileName, occurredAt } = parsed.data
   const label = KIND_LABEL[kind]
 
   // 누가 겪었는지 알면 재현이 훨씬 쉽다. 로그인 전 오류도 받아야 하므로
@@ -73,7 +76,7 @@ export async function POST(req: Request) {
     : "비로그인"
 
   const body = [
-    `언제:   ${new Date().toISOString()}`,
+    `언제:   ${new Date().toISOString()}${occurredAt ? ` (생긴 때 ${occurredAt}, 오프라인이라 늦게 보냄)` : ""}`,
     `누가:   ${who}`,
     `어디:   ${url ?? "(알 수 없음)"}`,
     `종류:   ${label}`,
@@ -87,6 +90,9 @@ export async function POST(req: Request) {
 
   // 메일 설정이 없어도 로그는 남는다. Vercel 함수 로그에서 볼 수 있다.
   console.error(kind === "crash" ? "[client-error]" : "[client-incident]", body)
+
+  // 탭 이동 실패(RSC 요청 실패)는 오프라인이 될 때마다 생긴다 — 함수 로그에만 남기고 메일 · 이슈는 보내지 않는다
+  if (kind === "nav_failed") return NextResponse.json({ ok: true, mailed: false, reason: "로그만" })
 
   // 같은 오류를 묶는 기준. 사람·파일마다 달라지는 것(파일명·크기·ID)은 넣지 않는다
   const publicMessage = redactForPublic(message)
