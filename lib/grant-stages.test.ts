@@ -44,7 +44,7 @@ test("상태 7개 — 순서 · 이름표, 검토 · 불참은 없다", () => {
 
 test("마이그레이션 CHECK 와 도구 enum 이 이름표와 같은 값이다", () => {
   const sql = readFileSync(
-    new URL("../prisma/migrations/20261126120000_grant_stages_v2/migration.sql", import.meta.url),
+    new URL("../prisma/migrations/20261126190000_grant_stages_v2/migration.sql", import.meta.url),
     "utf8"
   )
   const check = /CHECK \("stage" IN \(([^)]*)\)\)/.exec(sql)![1]
