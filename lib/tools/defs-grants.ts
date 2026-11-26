@@ -149,6 +149,22 @@ export const GRANT_TOOLS = [
       required: ["notice"],
     },
   },
+  {
+    name: "remove_grant_decision",
+    description:
+      "「우리 결정」 에서 과제를 내린다 — 과제 후보에서 올린(add_grant_decision) 결정만, 담당자도 함께 빠지고 그 공고는 다시 후보로 돌아간다. 되돌릴 수 없다. 노션에서 옮겨 온 결정은 내리지 않으니 update_grant_decision 으로 단계를 DROPPED(불참)로 바꾼다. 화면 국가과제 › 우리 결정 › 고치기의 「내리기」 와 같다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        decision: {
+          type: "string",
+          description: "결정 id 또는 과제명 일부(list_grant_decisions)",
+        },
+        confirm: CONFIRM_PROP,
+      },
+      required: ["decision"],
+    },
+  },
 ] as const
 
 export const GRANT_READ_NAMES = [

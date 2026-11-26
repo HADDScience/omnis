@@ -5,13 +5,28 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowDown01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons"
+import {
+  ArrowDown01Icon,
+  Delete02Icon,
+  PencilEdit02Icon,
+} from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { send } from "@/components/grants/send"
 import {
   GrantFiles,
@@ -42,6 +57,8 @@ export interface DecisionView {
     key: string | null
   }[]
   nasFolder: string | null
+  /** 노션에서 옮겨 온 결정 — 내리지 않고 단계를 불참으로 바꾼다 */
+  imported: boolean
   /** 이 결정 · 같은 사업 공고의 첨부 */
   attachments: AttachmentView[]
 }
@@ -464,6 +481,9 @@ function DecisionEditor({
         />
       </div>
       <div className="flex justify-end gap-2 sm:col-span-2">
+        {!r.imported && (
+          <RemoveDecision r={r} disabled={saving} className="mr-auto" />
+        )}
         <Button
           type="button"
           variant="ghost"
@@ -479,5 +499,89 @@ function DecisionEditor({
         </Button>
       </div>
     </form>
+  )
+}
+
+/** 과제 후보에서 올린 결정 내리기 — 되돌릴 수 없어 확인 창을 한 번 거친다 */
+function RemoveDecision({
+  r,
+  disabled,
+  className,
+}: {
+  r: DecisionView
+  disabled: boolean
+  className?: string
+}) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function remove() {
+    setBusy(true)
+    try {
+      await send(`/api/grants/decisions/${r.id}`, "DELETE")
+      toast.success(`${r.title} · 우리 결정에서 내렸습니다`)
+      setOpen(false)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "내리지 못했습니다")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <AlertDialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
+      <AlertDialogTrigger
+        disabled={disabled}
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "text-muted-foreground hover:text-destructive",
+              className
+            )}
+          />
+        }
+      >
+        <HugeiconsIcon
+          icon={Delete02Icon}
+          strokeWidth={2}
+          data-icon="inline-start"
+        />
+        내리기
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>우리 결정에서 내릴까요?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {r.title} — 되돌릴 수 없습니다.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <ul className="flex flex-col gap-1 text-[13px] break-keep text-muted-foreground">
+          <li className="flex gap-1.5">
+            <span aria-hidden>·</span>
+            <span>담당 · 메모도 함께 지워집니다</span>
+          </li>
+          <li className="flex gap-1.5">
+            <span aria-hidden>·</span>
+            <span>과제 후보에는 다시 「올리기」 로 남습니다</span>
+          </li>
+        </ul>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>그만두기</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={remove}
+            disabled={busy}
+            className="gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20"
+          >
+            {busy && <Spinner />}
+            내리기
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

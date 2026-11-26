@@ -6,6 +6,8 @@ import {
   createDecisionFromNotice,
   decidedNoticeKeys,
   decisionsForNotices,
+  isImportedDecision,
+  removeGrantDecision,
   updateCertification,
   updateGrantDecision,
 } from "@/lib/grants"
@@ -521,8 +523,51 @@ const planAddDecision: Planner = async (args, caller: Caller) => {
   }
 }
 
+const planRemoveDecision: Planner = async (args, caller: Caller) => {
+  const T = "국가과제 결정 내리기"
+  const d = await findDecision(str(args.decision))
+  if (d === "many")
+    return blocked(
+      T,
+      str(args.decision),
+      "과제명이 여러 줄에 맞습니다 — list_grant_decisions 의 id 를 주세요"
+    )
+  if (!d)
+    return blocked(
+      T,
+      str(args.decision),
+      "없는 과제 결정입니다 — list_grant_decisions 로 확인하세요"
+    )
+  if (isImportedDecision(d))
+    return blocked(
+      T,
+      d.title,
+      "노션에서 옮겨 온 과제라 내리지 않습니다 — update_grant_decision 으로 stage 를 DROPPED(불참)로 바꿉니다"
+    )
+  return {
+    title: T,
+    target: d.title,
+    changes: [
+      { label: "우리 결정", before: GRANT_STAGE_LABEL[d.stage], after: "내림" },
+      {
+        label: "담당",
+        before: d.owners.map((o) => o.user.name).join("·") || "(없음)",
+        after: "(함께 빠짐)",
+      },
+    ],
+    risk: "되돌릴 수 없습니다. 과제 후보에서는 다시 「올리기」 로 보입니다. 활동 기록에 남습니다.",
+    run: async () => {
+      const r = await removeGrantDecision(caller.userId, d.id)
+      return r.ok
+        ? { ok: true, text: `내렸습니다: ${d.title}`, id: d.id }
+        : { ok: false, error: r.error }
+    },
+  }
+}
+
 export const GRANT_PLANNERS: Record<GrantWriteName, Planner> = {
   update_certification: planUpdateCert,
   update_grant_decision: planUpdateDecision,
   add_grant_decision: planAddDecision,
+  remove_grant_decision: planRemoveDecision,
 }

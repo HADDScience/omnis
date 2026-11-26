@@ -296,6 +296,7 @@ const GRANT_WRITE = [
   "update_certification",
   "update_grant_decision",
   "add_grant_decision",
+  "remove_grant_decision",
 ]
 // #248 묶음 2 — CRM 나머지
 const B2_READ = ["list_stock_moves", "list_payments", "list_inquiries"]

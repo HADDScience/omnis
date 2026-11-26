@@ -352,3 +352,55 @@ export async function decisionsForNotices(
 export async function decidedNoticeKeys(keys: string[]): Promise<Set<string>> {
   return new Set((await decisionsForNotices(keys)).keys())
 }
+
+/** 노션에서 옮겨 온 결정 — 원천(노션 · 수집기 내보내기)에 남아 있어 지워도 다음 이식이 되살린다. 지우지 않고 불참으로 돌린다 */
+export const isImportedDecision = (d: { externalKey: string }) =>
+  d.externalKey.startsWith("notion:")
+
+type RemoveDb = Pick<typeof prisma, "grantDecision" | "$transaction">
+
+/**
+ * 과제 후보에서 올린 결정을 내린다 — 담당자 줄도 함께 지우고, 누가 내렸는지 활동 기록에 남긴다.
+ * 권한은 고치기와 같다(구성원이면 누구나). 노션에서 옮겨 온 결정은 지우지 않는다(409 — 불참으로 바꾸게 한다).
+ * 내리면 그 공고는 과제 후보 목록에서 다시 「올리기」 로 돌아온다(올림 표시는 결정 행에서 계산한다).
+ */
+export async function removeGrantDecision(
+  userId: string | null | undefined,
+  id: string,
+  db: RemoveDb = prisma
+): Promise<OpResult<{ id: string; title: string }>> {
+  if (!userId) return fail(401, "인증 필요")
+  const before = await db.grantDecision.findUnique({
+    where: { id },
+    include: { owners: { include: { user: { select: { name: true } } } } },
+  })
+  if (!before) return fail(404, "없는 과제 결정입니다")
+  if (isImportedDecision(before))
+    return fail(
+      409,
+      "노션에서 옮겨 온 과제라 내리지 않습니다 — 단계를 「불참」 으로 바꿔 주세요"
+    )
+  await db.$transaction(async (tx) => {
+    await tx.grantDecisionOwner.deleteMany({ where: { decisionId: id } })
+    await tx.grantDecision.delete({ where: { id } })
+    await tx.activityLog.create({
+      data: {
+        userId,
+        action: "grant.decision.removed",
+        entity: "GRANT_DECISION",
+        entityId: id,
+        title: `국가과제 결정 내림: ${before.title}`,
+        metadata: {
+          externalKey: before.externalKey,
+          stage: before.stage,
+          owners: before.owners.map((o) => o.user.name),
+        },
+      },
+    })
+  })
+  return {
+    ok: true,
+    changed: ["우리 결정에서 내림"],
+    value: { id, title: before.title },
+  }
+}

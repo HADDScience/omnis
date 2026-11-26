@@ -151,6 +151,7 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "files POST": ["upload_file", "create_upload_link"],
   "gemini-usage GET": system(TELEMETRY),
   "grants/decisions/[decisionId] PATCH": ["update_grant_decision"],
+  "grants/decisions/[decisionId] DELETE": ["remove_grant_decision"],
   "grants/decisions POST": ["add_grant_decision"],
   "grants/notices/[noticeId]/files/[index] GET": system(UPLOAD),
   "health GET": system(CRON),

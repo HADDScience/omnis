@@ -190,6 +190,7 @@ export const TOOL_LABEL: Record<string, string> = {
   update_certification: "인증 고치기",
   update_grant_decision: "국가과제 결정 고치기",
   add_grant_decision: "국가과제 결정에 올리기",
+  remove_grant_decision: "국가과제 결정 내리기",
   list_record_proposals: "기록 제안",
   list_tax_invoices: "세금계산서",
   list_staff: "인력",
