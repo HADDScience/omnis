@@ -38,6 +38,22 @@ export const ADMIN_TOOLS = [
     },
   },
 
+  {
+    name: "get_interview_pack",
+    description: [
+      "서류 합격한 지원자의 면접자료 PDF 받을 주소 — 채용 담당만. 지원서함 상세 · 보드의 「면접자료 PDF」 와 같다.",
+      "application(접수 번호 · 이름)을 주면 그 지원자(지원서 요약 · 이력서 · 포트폴리오), job(공고 slug)을 주면 서류 합격 열 전체 묶음(표지 포함).",
+      "PDF 내용은 주지 않는다 — 주소를 사용자에게 전한다.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        application: { type: "string", description: "접수 번호(APP261125-001) 또는 지원자 이름" },
+        job: { type: "string", description: "공고 slug — 서류 합격 묶음" },
+      },
+    },
+  },
+
   // ─── 쓰기(계획 → 확인) ───
   {
     name: "update_company_profile",
@@ -155,6 +171,6 @@ export const ADMIN_TOOLS = [
   },
 ] as const
 
-export const ADMIN_READ_NAMES = ["ai_budget", "list_feature_requests", "ai_survey_results", "list_applications"] as const
+export const ADMIN_READ_NAMES = ["ai_budget", "list_feature_requests", "ai_survey_results", "list_applications", "get_interview_pack"] as const
 export type AdminReadName = (typeof ADMIN_READ_NAMES)[number]
 export type AdminWriteName = Exclude<(typeof ADMIN_TOOLS)[number]["name"], AdminReadName>

@@ -71,6 +71,8 @@ const nextConfig = {
    */
   outputFileTracingIncludes: {
     "/.well-known/workflow/**": ["./generated/prisma/**/*.node", "./generated/prisma/schema.prisma"],
+    // 면접자료 PDF(lib/hr/interview-pack-server.ts)가 읽는 글꼴 — fs 로 읽어 파일 추적이 따라가지 못한다
+    "/api/hr/**": ["./assets/fonts/*.ttf"],
   },
   typescript: {
     ignoreBuildErrors: false,

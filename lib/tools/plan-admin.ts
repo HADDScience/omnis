@@ -15,6 +15,7 @@ import { canSeeSurveyResults, loadSurveyResults } from "@/lib/ai-survey/results"
 import { isHrReviewer } from "@/lib/hr/reviewers"
 import { applicationCounts, listApplications } from "@/lib/hr/queries"
 import { changeApplicationStage, isPickableStage } from "@/lib/hr/stage"
+import { BUNDLE_STAGES, canPack } from "@/lib/hr/stage-label"
 import { loadJobs } from "@/lib/hr/jobs"
 import { STAGE_LABEL, interestLabel, type Stage } from "@/lib/hr/rules"
 import { blocked, clip, has, kstDate, str, type Planner } from "./planned"
@@ -101,6 +102,29 @@ export async function runAdminRead(name: AdminReadName, args: Record<string, unk
           ...rows.map((r) => `- ${r.code ?? "-"} · ${STAGE_LABEL[r.stage]} · ${r.purgedAt ? "(파기됨)" : `${r.name ?? "-"} · ${r.department ?? "-"} · ${r.grade ?? "-"}학년${r.interests.length ? ` · 관심: ${r.interests.map((v) => interestLabel(v)).join(", ")}` : ""}`} · 접수 ${r.receivedAt ? kstDate(r.receivedAt) : "-"} · ${r.jobTitle}`),
         ].join("\n"),
       }
+    }
+    case "get_interview_pack": {
+      // 화면과 같은 권한 — 채용 담당만. PDF 는 만들지 않고 받을 주소만 준다(누르면 그때 만들어 받는다 · 활동 기록)
+      if (!(await isHrReviewer(caller.userId))) return { error: "채용 담당만 받을 수 있습니다 — 관리자 › 운영 › 채용 담당에 든 사람에게만 열린 일입니다." }
+      const origin = (process.env.PUBLIC_URL || "https://omnis.haddscience.com").replace(/\/+$/, "")
+      const job = str(args.job)
+      const ref = str(args.application)
+      if (!job && !ref) return { error: "application(접수 번호 · 이름) 또는 job(공고 slug) 중 하나를 주세요" }
+      if (ref) {
+        const found = await prisma.jobApplication.findMany({
+          where: { stage: { not: "RECEIVING" }, purgedAt: null, OR: [{ code: ref.toUpperCase() }, { id: ref }, { name: ref }] },
+          select: { id: true, code: true, name: true, stage: true },
+          take: 3,
+        })
+        if (found.length > 1) return { error: "같은 이름의 지원서가 여럿입니다 — 접수 번호로 주세요(list_applications)" }
+        const a = found[0]
+        if (!a) return { error: "없는 지원서입니다 — list_applications 로 접수 번호를 확인하세요" }
+        if (!canPack(a.stage)) return { error: `${a.code} 은 ${STAGE_LABEL[a.stage as Stage]} 단계입니다 — 서류 합격한 지원자만 면접자료를 받습니다` }
+        return { text: `${a.code} ${a.name} 면접자료 PDF(지원서 요약 · 이력서 · 포트폴리오): ${origin}/api/hr/applications/${a.id}/interview-pack\n채용 담당이 로그인한 브라우저에서 열립니다.` }
+      }
+      const n = await prisma.jobApplication.count({ where: { jobSlug: job, stage: { in: [...BUNDLE_STAGES] }, purgedAt: null } })
+      if (n === 0) return { error: "그 공고에 서류 합격한 지원자가 없습니다 — list_applications 로 확인하세요" }
+      return { text: `서류 합격 ${n}명 면접자료 묶음 PDF(표지 · 지원자별): ${origin}/api/hr/jobs/${job}/interview-pack\n채용 담당이 로그인한 브라우저에서 열립니다.` }
     }
   }
 }
