@@ -2387,14 +2387,6 @@ model CompanyCertification {
   @@index([status])
 }
 
-enum GrantStage {
-  REVIEW // 검토
-  PREPARING // 준비
-  SUBMITTED // 제출
-  SELECTED // 선정
-  REJECTED // 미선정
-  DROPPED // 불참
-}
 
 /// 국가과제에 대한 우리 결정(노션 「지원사업」 51건에서 시작). 공고 본문은 수집기 내보내기가 정본
 model GrantDecision {
@@ -2402,7 +2394,9 @@ model GrantDecision {
   /// notion:<페이지ID> 또는 수집기 key(group:… / notice:…) — 이식 멱등 키
   externalKey    String               @unique
   title          String
-  stage          GrantStage
+  /// 상태 — PREPARING 준비 · SUBMITTED 제출 완료 · SELECTED 선정됨 · REJECTED 미선정 · IN_PROGRESS 수행 중 · COMPLETED 완료 · STOPPED 중단.
+  /// enum 이 아니라 text + CHECK(GrantDecision_stage_check) — 이름표 · 순서는 lib/grants-labels.ts
+  stage          String
   /// 불참 사유(자격 미달 · 접수 기간 지남), 선정의 「수행 완료」
   stageReason    String?
   /// 노션 원래 상태(가능성검토 · 지원기간마감 …)
@@ -2416,6 +2410,15 @@ model GrantDecision {
   deadline       DateTime?
   /// 지원금액 원문
   amount         String?
+  /// 선정됨 — 선정 통보일 · 확정 지원금(원)
+  selectedOn     DateTime?
+  awardedAmount  BigInt?
+  /// 수행 중 — 협약일 · 수행 시작일 · 수행 종료일
+  agreementOn    DateTime?
+  startsOn       DateTime?
+  endsOn         DateTime?
+  /// 완료 — 완료일
+  completedOn    DateTime?
   /// 조사 결과 원문(자격조건 · 2027 신청기간 · 선정까지 기간)
   research       Json?
   /// 수집기 공고 연결 [{relation, notice, export_key, title, date}]

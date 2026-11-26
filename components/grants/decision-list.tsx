@@ -42,8 +42,16 @@ import {
   type AttachmentView,
 } from "@/components/grants/grant-files"
 import { NasFolderPicker } from "@/components/grants/nas-folder-picker"
-import { GRANT_STAGES, GRANT_STAGE_LABEL, seoulYmd } from "@/lib/grants-labels"
-import type { GrantStage } from "@/generated/prisma/client"
+import {
+  GRANT_STAGES,
+  GRANT_STAGE_FIELD_LABEL,
+  GRANT_STAGE_LABEL,
+  seoulYmd,
+  stageFieldShown,
+  won,
+  type GrantStage,
+} from "@/lib/grants-labels"
+
 import { sameSet, sameText } from "@/lib/inline-field"
 import { cn } from "@/lib/utils"
 
@@ -67,7 +75,14 @@ export interface DecisionView {
     key: string | null
   }[]
   nasFolder: string | null
-  /** 노션에서 옮겨 온 결정 — 내리지 않고 단계를 불참으로 바꾼다 */
+  /** 상태별 칸 — 날짜는 ISO, 확정 지원금은 원 단위 숫자 문자열 */
+  selectedOn: string | null
+  awardedAmount: string | null
+  agreementOn: string | null
+  startsOn: string | null
+  endsOn: string | null
+  completedOn: string | null
+  /** 노션에서 옮겨 온 결정 — 내리지 않고 단계를 중단으로 바꾼다 */
   imported: boolean
   /** 이 결정 · 같은 사업 공고의 첨부 */
   attachments: AttachmentView[]
@@ -76,12 +91,13 @@ export interface DecisionView {
 type Opt = { id: string; name: string }
 
 export const STAGE_CHIP: Record<GrantStage, string> = {
-  REVIEW: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
   PREPARING: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
   SUBMITTED: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   SELECTED: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
   REJECTED: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-  DROPPED: "bg-muted text-muted-foreground",
+  IN_PROGRESS: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  COMPLETED: "bg-teal-500/15 text-teal-700 dark:text-teal-300",
+  STOPPED: "bg-muted text-muted-foreground",
 }
 
 const RELATION_LABEL: Record<string, string> = {
@@ -154,7 +170,17 @@ function DecisionRow({
   projects: Opt[]
 }) {
   const left = daysLeft(r.deadline)
-  const due = dueText(r.deadline)
+  // 수행 중 · 완료는 마감 대신 수행 종료일 · 완료일을 짧게
+  const due =
+    r.stage === "IN_PROGRESS"
+      ? r.endsOn
+        ? `~ ${seoulYmd(r.endsOn)}`
+        : null
+      : r.stage === "COMPLETED"
+        ? r.completedOn
+          ? `완료 ${seoulYmd(r.completedOn)}`
+          : null
+        : dueText(r.deadline)
 
   return (
     <li>
@@ -176,7 +202,9 @@ function DecisionRow({
             {due && (
               <span
                 className={cn(
-                  left !== null &&
+                  r.stage !== "IN_PROGRESS" &&
+                    r.stage !== "COMPLETED" &&
+                    left !== null &&
                     left >= 0 &&
                     left <= 7 &&
                     "font-medium text-foreground"
@@ -410,6 +438,48 @@ function DecisionDetail({
             save={saver("amount")}
             editor={(p) => <TextEditor {...p} />}
           />
+          {(
+            [
+              "selectedOn",
+              "awardedAmount",
+              "agreementOn",
+              "startsOn",
+              "endsOn",
+              "completedOn",
+            ] as const
+          )
+            .filter((key) => stageFieldShown(key, r.stage, r[key] !== null))
+            .map((key) =>
+              key === "awardedAmount" ? (
+                <InlineField<string>
+                  key={key}
+                  label={GRANT_STAGE_FIELD_LABEL[key]}
+                  value={r.awardedAmount ?? ""}
+                  display={(v) => (v ? won(Number(v)) : null)}
+                  save={saver(key)}
+                  editor={({ draft, setDraft, bind }) => (
+                    <Input
+                      {...bind()}
+                      inputMode="numeric"
+                      value={draft}
+                      onChange={(e) =>
+                        setDraft(e.target.value.replace(/[^\d]/g, ""))
+                      }
+                      className="h-8 w-full text-[12px] tabular-nums sm:w-48 md:text-[12px]"
+                    />
+                  )}
+                />
+              ) : (
+                <InlineField<string>
+                  key={key}
+                  label={GRANT_STAGE_FIELD_LABEL[key]}
+                  value={seoulYmd(r[key]) ?? ""}
+                  display={(v) => v || null}
+                  save={saver(key)}
+                  editor={(p) => <DateEditor {...p} />}
+                />
+              )
+            )}
           {r.statusRaw && <ReadOnly label="노션 상태" value={r.statusRaw} />}
           {r.submittedTitle && (
             <ReadOnly label="제출 과제명" value={r.submittedTitle} />
@@ -529,6 +599,18 @@ function DecisionDetail({
         <RemoveDecision r={r} open={removing} onOpenChange={setRemoving} />
       )}
     </div>
+  )
+}
+
+function DateEditor({ draft, setDraft, bind }: EditorProps<string>) {
+  return (
+    <Input
+      {...bind()}
+      type="date"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      className="h-8 w-full text-[12px] sm:w-48 md:text-[12px]"
+    />
   )
 }
 

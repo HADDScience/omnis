@@ -58,7 +58,7 @@ const raised: Row = {
   id: "d-raised",
   title: "2026 경기 바이오 실증 지원",
   externalKey: "notice:bizinfo:PBLN_000123",
-  stage: "REVIEW",
+  stage: "PREPARING",
   owners: [{ user: { name: "정우창" } }],
 }
 const imported: Row = {
@@ -84,14 +84,14 @@ test("올린 결정 — 담당자 · 결정을 지우고, 누가 내렸는지 �
   assert.deepEqual((logs[0].metadata as { owners: string[] }).owners, ["정우창"])
 })
 
-test("노션에서 옮겨 온 결정 — 지우지 않고 불참을 권한다", async () => {
+test("노션에서 옮겨 온 결정 — 지우지 않고 중단을 권한다", async () => {
   assert.equal(isImportedDecision(imported), true)
   assert.equal(isImportedDecision(raised), false)
   const { db, calls } = fakeDb(imported)
   const r = await removeGrantDecision("u-1", imported.id, db)
   assert.ok(!r.ok)
   assert.equal(r.status, 409)
-  assert.match(r.error, /불참/)
+  assert.match(r.error, /중단/)
   assert.deepEqual(calls, ["decision.findUnique:d-notion"])
 })
 

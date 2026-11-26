@@ -2,7 +2,8 @@
  * 수집기 내보내기(export/v1) → 옴니스 인증 · 과제 결정 행. DB 를 건드리지 않는 변환만 둔다 —
  * scripts/import-grants.ts 가 이것으로 건식 대조와 실제 쓰기를 한다.
  */
-import type { CertStatus, GrantStage, Prisma } from "@/generated/prisma/client"
+import type { CertStatus, Prisma } from "@/generated/prisma/client"
+import type { GrantStage } from "@/lib/grants-labels"
 
 export type CertItem = {
   key: string
@@ -35,13 +36,24 @@ export type DecisionItem = {
   notice_links?: unknown[]
 }
 
+/**
+ * 노션 · 수집기 단계 문자열 → 상태(v2, 2026-11-26). 옛 이름(검토 · 불참 · 제출 · 선정)과 새 이름표 둘 다 받는다.
+ * 검토는 없어져 준비로, 불참은 중단으로 간다
+ */
 const STAGES: Record<string, GrantStage> = {
-  검토: "REVIEW",
+  검토: "PREPARING",
   준비: "PREPARING",
   제출: "SUBMITTED",
+  "제출 완료": "SUBMITTED",
   선정: "SELECTED",
+  선정됨: "SELECTED",
   미선정: "REJECTED",
-  불참: "DROPPED",
+  "수행 중": "IN_PROGRESS",
+  수행중: "IN_PROGRESS",
+  완료: "COMPLETED",
+  "수행 완료": "COMPLETED",
+  불참: "STOPPED",
+  중단: "STOPPED",
 }
 
 /** 보유 → HELD, 조사에서 미충족 → NOT_ELIGIBLE, 나머지(충족 · 확인 필요) → 취득 후보 */

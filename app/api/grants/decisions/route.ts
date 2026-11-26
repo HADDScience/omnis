@@ -1,4 +1,4 @@
-// 과제 후보(공고)를 「우리 결정」 에 올린다 — 검토 단계, 올린 사람이 담당.
+// 과제 후보(공고)를 「우리 결정」 에 올린다 — 준비 단계, 올린 사람이 담당.
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { apiError, parseJson } from "@/lib/api"

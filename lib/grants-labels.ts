@@ -1,5 +1,5 @@
 // 인증 · 국가과제 화면과 도구가 같이 쓰는 이름표. 데이터만 둔다(화면 · 시험 어디서든 읽게).
-import type { CertStatus, GrantStage } from "@/generated/prisma/client"
+import type { CertStatus } from "@/generated/prisma/client"
 
 export const CERT_STATUS_LABEL: Record<CertStatus, string> = {
   HELD: "보유",
@@ -10,15 +10,60 @@ export const CERT_STATUS_LABEL: Record<CertStatus, string> = {
 }
 export const CERT_STATUSES = Object.keys(CERT_STATUS_LABEL) as CertStatus[]
 
-export const GRANT_STAGE_LABEL: Record<GrantStage, string> = {
-  REVIEW: "검토",
+/**
+ * 국가과제 결정 상태(2026-11-26 v2) — 화면 · 도구 · 이식이 이 순서를 쓴다.
+ * 준비 → 제출 완료 → 선정됨 / 미선정, 선정됨 → 수행 중 → 완료, 어디서든 → 중단.
+ * DB 는 text + CHECK(GrantDecision_stage_check) — 값을 바꾸면 마이그레이션의 CHECK 도 같이 바꾼다.
+ */
+export const GRANT_STAGE_LABEL = {
   PREPARING: "준비",
-  SUBMITTED: "제출",
-  SELECTED: "선정",
+  SUBMITTED: "제출 완료",
+  SELECTED: "선정됨",
   REJECTED: "미선정",
-  DROPPED: "불참",
-}
+  IN_PROGRESS: "수행 중",
+  COMPLETED: "완료",
+  STOPPED: "중단",
+} as const
+export type GrantStage = keyof typeof GRANT_STAGE_LABEL
 export const GRANT_STAGES = Object.keys(GRANT_STAGE_LABEL) as GrantStage[]
+export const isGrantStage = (v: unknown): v is GrantStage =>
+  typeof v === "string" && (GRANT_STAGES as string[]).includes(v)
+/** DB 값(text) → 이름표. 모르는 값은 그대로 */
+export const stageLabel = (s: string) =>
+  isGrantStage(s) ? GRANT_STAGE_LABEL[s] : s
+/** DB 값(text) → 상태. CHECK 가 막지만 모르는 값이면 준비로 본다 */
+export const asStage = (s: string): GrantStage =>
+  isGrantStage(s) ? s : "PREPARING"
+/** 과제 후보 「올리기」 · 직접 등록이 시작하는 상태 */
+export const GRANT_START_STAGE: GrantStage = "PREPARING"
+
+/** 상태별 칸 — 이 상태들에서 의미가 있다(값이 이미 있으면 다른 상태에서도 보인다) */
+export const GRANT_STAGE_FIELDS = {
+  selectedOn: ["SELECTED", "IN_PROGRESS", "COMPLETED"],
+  awardedAmount: ["SELECTED", "IN_PROGRESS", "COMPLETED"],
+  agreementOn: ["IN_PROGRESS", "COMPLETED"],
+  startsOn: ["IN_PROGRESS", "COMPLETED"],
+  endsOn: ["IN_PROGRESS", "COMPLETED"],
+  completedOn: ["COMPLETED"],
+} as const satisfies Record<string, readonly GrantStage[]>
+export type GrantStageField = keyof typeof GRANT_STAGE_FIELDS
+export const GRANT_STAGE_FIELD_LABEL: Record<GrantStageField, string> = {
+  selectedOn: "선정 통보일",
+  awardedAmount: "확정 지원금",
+  agreementOn: "협약일",
+  startsOn: "수행 시작일",
+  endsOn: "수행 종료일",
+  completedOn: "완료일",
+}
+export const stageFieldShown = (
+  field: GrantStageField,
+  stage: GrantStage,
+  hasValue: boolean
+) => hasValue || (GRANT_STAGE_FIELDS[field] as readonly string[]).includes(stage)
+
+/** 원 단위 정수 → 「120,000,000원」 */
+export const won = (n: number | bigint | null | undefined) =>
+  n === null || n === undefined ? null : `${Number(n).toLocaleString("ko-KR")}원`
 
 export const VERDICTS = ["해당", "애매", "비해당"] as const
 export type Verdict = (typeof VERDICTS)[number]

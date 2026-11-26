@@ -7,6 +7,7 @@ import {
   decidedNoticeKeys,
   decisionsForNotices,
   isImportedDecision,
+  parseWon,
   removeGrantDecision,
   updateCertification,
   updateGrantDecision,
@@ -17,6 +18,11 @@ import {
   GRANT_STAGE_LABEL,
   REGION_GROUPS,
   seoulYmd,
+  stageLabel,
+  GRANT_STAGES,
+  GRANT_STAGE_FIELD_LABEL,
+  GRANT_START_STAGE,
+  won,
 } from "@/lib/grants-labels"
 import {
   NOTICE_ORDER,
@@ -24,7 +30,7 @@ import {
   readNoticeFilter,
   readStage,
 } from "@/lib/grants-query"
-import type { CertStatus, GrantStage } from "@/generated/prisma/client"
+import type { CertStatus } from "@/generated/prisma/client"
 import { blocked, clip, has, str, type Planner } from "./planned"
 import type { GrantReadName, GrantWriteName } from "./defs-grants"
 
@@ -59,6 +65,22 @@ function attachmentsOf(
   return out.slice(0, 8)
 }
 
+/** 상태별 칸 — 값이 있는 것만 「 · 선정 통보일 2026-12-01」 처럼 */
+function stageFieldsText(r: {
+  selectedOn: Date | null
+  awardedAmount: bigint | null
+  agreementOn: Date | null
+  startsOn: Date | null
+  endsOn: Date | null
+  completedOn: Date | null
+}): string {
+  const parts: string[] = []
+  for (const key of ["selectedOn", "agreementOn", "startsOn", "endsOn", "completedOn"] as const)
+    if (r[key]) parts.push(`${GRANT_STAGE_FIELD_LABEL[key]} ${seoulYmd(r[key])}`)
+  if (r.awardedAmount !== null) parts.push(`확정 지원금 ${won(r.awardedAmount)}`)
+  return parts.map((p) => ` · ${p}`).join("")
+}
+
 export async function runGrantRead(
   name: GrantReadName,
   args: Record<string, unknown>
@@ -85,7 +107,6 @@ export async function runGrantRead(
             : {}),
         },
         orderBy: [
-          { stage: "asc" },
           { deadline: { sort: "asc", nulls: "last" } },
           { title: "asc" },
         ],
@@ -127,7 +148,7 @@ export async function runGrantRead(
         ])
       )
       const out = [`국가과제 결정 ${rows.length}건`]
-      for (const s of Object.keys(GRANT_STAGE_LABEL) as GrantStage[]) {
+      for (const s of GRANT_STAGES) {
         const list = rows.filter((r) => r.stage === s)
         if (!list.length) continue
         out.push("", `# ${GRANT_STAGE_LABEL[s]} ${list.length}`)
@@ -143,6 +164,7 @@ export async function runGrantRead(
               `${r.deadline ? ` · 마감 ${seoulYmd(r.deadline)}` : ""}` +
               `${r.owners.length ? ` · 담당 ${r.owners.map((o) => o.user.name).join("·")}` : ""}` +
               `${r.stageReason ? ` · ${r.stageReason}` : ""}` +
+              stageFieldsText(r) +
               `${r.task ? ` · 업무 #${r.task.slug}` : ""}${r.project ? ` · 프로젝트 ${r.project.name}` : ""}` +
               ` · id ${r.id}`
           )
@@ -351,12 +373,12 @@ const planUpdateDecision: Planner = async (args, caller: Caller) => {
       return blocked(
         T,
         d.title,
-        "단계는 REVIEW · PREPARING · SUBMITTED · SELECTED · REJECTED · DROPPED 중 하나입니다"
+        `단계는 ${GRANT_STAGES.join(" · ")} 중 하나입니다`
       )
     if (s !== d.stage)
       changes.push({
         label: "단계",
-        before: GRANT_STAGE_LABEL[d.stage],
+        before: stageLabel(d.stage),
         after: GRANT_STAGE_LABEL[s],
       })
     patch.stage = s
@@ -380,6 +402,40 @@ const planUpdateDecision: Planner = async (args, caller: Caller) => {
         after: v || "(지움)",
       })
     patch.deadline = v
+  }
+  for (const [arg, key] of [
+    ["selected_on", "selectedOn"],
+    ["agreement_on", "agreementOn"],
+    ["starts_on", "startsOn"],
+    ["ends_on", "endsOn"],
+    ["completed_on", "completedOn"],
+  ] as const) {
+    if (!has(args, arg)) continue
+    const v = str(args[arg])
+    if ((v || null) !== seoulYmd(d[key]))
+      changes.push({
+        label: GRANT_STAGE_FIELD_LABEL[key],
+        before: seoulYmd(d[key]) ?? "(없음)",
+        after: v || "(지움)",
+      })
+    patch[key] = v
+  }
+  if (has(args, "awarded_amount")) {
+    const v = str(args.awarded_amount)
+    const n = parseWon(v)
+    if (n === undefined)
+      return blocked(
+        T,
+        d.title,
+        "확정 지원금은 원 단위 숫자 문자열입니다(예: \"120000000\")"
+      )
+    if (n !== d.awardedAmount)
+      changes.push({
+        label: "확정 지원금",
+        before: won(d.awardedAmount) ?? "(없음)",
+        after: won(n) ?? "(지움)",
+      })
+    patch.awardedAmount = v
   }
   if (has(args, "owners")) {
     const names = Array.isArray(args.owners)
@@ -505,7 +561,7 @@ const planAddDecision: Planner = async (args, caller: Caller) => {
     title: T,
     target: n.title,
     changes: [
-      { label: "단계", before: null, after: "검토" },
+      { label: "단계", before: null, after: GRANT_STAGE_LABEL[GRANT_START_STAGE] },
       { label: "담당", before: null, after: caller.name },
       {
         label: "마감",
@@ -542,13 +598,13 @@ const planRemoveDecision: Planner = async (args, caller: Caller) => {
     return blocked(
       T,
       d.title,
-      "노션에서 옮겨 온 과제라 내리지 않습니다 — update_grant_decision 으로 stage 를 DROPPED(불참)로 바꿉니다"
+      "노션에서 옮겨 온 과제라 내리지 않습니다 — update_grant_decision 으로 stage 를 STOPPED(중단)로 바꿉니다"
     )
   return {
     title: T,
     target: d.title,
     changes: [
-      { label: "우리 결정", before: GRANT_STAGE_LABEL[d.stage], after: "내림" },
+      { label: "우리 결정", before: stageLabel(d.stage), after: "내림" },
       {
         label: "담당",
         before: d.owners.map((o) => o.user.name).join("·") || "(없음)",
