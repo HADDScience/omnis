@@ -122,12 +122,19 @@ test.describe("탭 이동 멈춤 풀기 @nav", () => {
   // 지키는 것: 응답이 늦을 때 지금 탭을 다시 누르면 바로 원래대로 — 「연결이 느립니다」 도 새로 열기도 없다
   test("지금 탭을 누르면 바로 원래대로", async ({ page }) => {
     await recordErrors(page)
-    // /tasks 의 RSC 는 응답하지 않는다(느린 망) — 라우터는 멈추지 않고 기다린다
+    // 누른 이동의 /tasks RSC 는 응답하지 않는다(느린 망) — 라우터는 멈추지 않고 기다린다.
+    // 미리 받기는 실패시킨다: 걸어 두면 networkidle 에 닿지 않고(CI 운영 빌드), 받아 두면 눌러도 요청이 안 나간다
     let documents = 0
     await page.route(
       (u) => u.pathname === "/tasks",
       async (route) => {
-        if (route.request().isNavigationRequest()) documents++
+        const req = route.request()
+        if (req.isNavigationRequest()) {
+          documents++
+          return
+        }
+        const h = await req.allHeaders()
+        if (h["next-router-prefetch"] || h["next-router-segment-prefetch"]) return route.abort("internetdisconnected")
         // 응답 없이 둔다
       }
     )
