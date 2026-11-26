@@ -248,6 +248,7 @@ const B4_READ_NO_ASK = [
   "list_feature_requests",
   "ai_survey_results",
   "list_applications",
+  "get_interview_pack",
 ]
 const B4_WRITE = [
   "update_company_profile",

@@ -55,7 +55,7 @@ export default async function HrJobBoardPage({ params }: Props) {
           <h1 className="min-w-0 text-base font-semibold break-keep">{title}</h1>
           <p className="text-[12.5px] text-muted-foreground tabular-nums">{closesLabel(job?.closesAt ?? null)}</p>
         </div>
-        <ApplicationBoard cards={cards} />
+        <ApplicationBoard cards={cards} jobSlug={slug} />
       </div>
     </>
   )

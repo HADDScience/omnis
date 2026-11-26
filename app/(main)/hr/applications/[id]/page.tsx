@@ -11,6 +11,7 @@ import { apiUrl } from "@/lib/base-path"
 import { isHrReviewer } from "@/lib/hr/reviewers"
 import { getApplication } from "@/lib/hr/queries"
 import { SLOT_LABEL, STAGE_LABEL, interestLabel, purgeDeadline, slotParam } from "@/lib/hr/rules"
+import { canPack } from "@/lib/hr/stage-label"
 
 export const metadata: Metadata = { title: "지원서" }
 export const dynamic = "force-dynamic"
@@ -73,7 +74,20 @@ export default async function HrApplicationPage({ params }: Props) {
             <h1 id="hr-app-title" className="min-w-0 text-base font-semibold break-keep">
               {purged ? "(파기된 지원서)" : app.name} <span className="text-[12.5px] font-normal text-muted-foreground">{app.code}</span>
             </h1>
-            <span className="glass-pill rounded-full px-2.5 py-0.5 text-[12px] font-medium" data-hr-stage={app.stage}>{STAGE_LABEL[app.stage]}</span>
+            <span className="flex items-center gap-2">
+              {!purged && canPack(app.stage) && (
+                <a
+                  href={apiUrl(`/api/hr/applications/${app.id}/interview-pack`)}
+                  download
+                  data-hr-interview-pack
+                  className="glass-pill touch-target inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-colors hover:bg-foreground/[0.06]"
+                >
+                  <HugeiconsIcon icon={Download04Icon} size={14} strokeWidth={2} aria-hidden />
+                  면접자료 PDF
+                </a>
+              )}
+              <span className="glass-pill rounded-full px-2.5 py-0.5 text-[12px] font-medium" data-hr-stage={app.stage}>{STAGE_LABEL[app.stage]}</span>
+            </span>
           </div>
           <p className="mt-1 text-[12.5px] text-muted-foreground break-keep">
             {app.jobTitle} · 접수 {app.receivedAt ? dateTime.format(app.receivedAt) : "-"} · {app.lang === "en" ? "영문" : "국문"} 페이지

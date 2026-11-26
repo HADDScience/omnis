@@ -17,7 +17,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowDown01Icon, Attachment01Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons"
+import { ArrowDown01Icon, Attachment01Icon, Download04Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons"
 
 import {
   DropdownMenu,
@@ -25,12 +25,13 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { apiUrl } from "@/lib/base-path"
 import { BOARD_COLUMNS, columnOf, type BoardColumnKey } from "@/lib/hr/jobs"
 import { receivedLabel } from "@/lib/hr/format"
-import { STAGE_LABEL, type Stage } from "@/lib/hr/stage-label"
+import { STAGE_LABEL, canPack, type Stage } from "@/lib/hr/stage-label"
 import { cn } from "@/lib/utils"
 
 export interface BoardCard {
@@ -71,7 +72,7 @@ const DEFAULT_OF: Record<string, Stage> = { received: "RECEIVED", passed: "INTER
  * 바꾸면 화면이 먼저 움직이고 서버(PATCH /api/hr/applications/[id])가 거절하면 되돌린다. 지원자에게 메일은 가지 않는다.
  * 폰은 끌기 대신 메뉴 — 터치 끌기는 열을 가로로 넘기는 손짓과 겹친다.
  */
-export function ApplicationBoard({ cards: initial }: { cards: BoardCard[] }) {
+export function ApplicationBoard({ cards: initial, jobSlug }: { cards: BoardCard[]; jobSlug: string }) {
   const router = useRouter()
   const [cards, setCards] = useState(initial)
   const [dragging, setDragging] = useState<BoardCard | null>(null)
@@ -125,7 +126,13 @@ export function ApplicationBoard({ cards: initial }: { cards: BoardCard[] }) {
         data-hr-columns
       >
         {BOARD_COLUMNS.map((col) => (
-          <Column key={col.key} id={col.key} label={col.label} count={cards.filter((c) => columnOf(c.stage) === col.key).length}>
+          <Column
+            key={col.key}
+            id={col.key}
+            label={col.label}
+            count={cards.filter((c) => columnOf(c.stage) === col.key).length}
+            bundleHref={col.key === "passed" ? `/api/hr/jobs/${jobSlug}/interview-pack` : undefined}
+          >
             {cards
               .filter((c) => columnOf(c.stage) === col.key)
               .map((c) => (
@@ -154,7 +161,7 @@ export function ApplicationBoard({ cards: initial }: { cards: BoardCard[] }) {
   )
 }
 
-function Column({ id, label, count, children }: { id: string; label: string; count: number; children: React.ReactNode }) {
+function Column({ id, label, count, bundleHref, children }: { id: string; label: string; count: number; bundleHref?: string; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id })
   return (
     <section
@@ -166,9 +173,22 @@ function Column({ id, label, count, children }: { id: string; label: string; cou
         isOver && "ring-2 ring-primary/40",
       )}
     >
-      <h2 className="mb-2 flex items-baseline gap-1.5 px-1.5 pt-0.5 text-[13px] font-semibold">
-        {label} <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
-      </h2>
+      <div className="mb-2 flex min-h-8 items-center justify-between gap-2 px-1.5">
+        <h2 className="flex items-baseline gap-1.5 text-[13px] font-semibold">
+          {label} <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
+        </h2>
+        {bundleHref && count > 0 && (
+          <a
+            href={apiUrl(bundleHref)}
+            download
+            data-hr-bundle
+            className="glass-pill touch-target inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[12px] font-medium transition-colors hover:bg-foreground/[0.06]"
+          >
+            <HugeiconsIcon icon={Download04Icon} size={13} strokeWidth={2} aria-hidden />
+            면접자료 PDF
+          </a>
+        )}
+      </div>
       <ul className="flex min-h-24 flex-col gap-2">{children}</ul>
     </section>
   )
@@ -218,6 +238,15 @@ function Card({
               </DropdownMenuItem>
             ))}
           </DropdownMenuGroup>
+          {canPack(card.stage) && !card.purged && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => window.location.assign(apiUrl(`/api/hr/applications/${card.id}/interview-pack`))}>
+                <HugeiconsIcon icon={Download04Icon} size={14} strokeWidth={2} aria-hidden />
+                면접자료 PDF
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </li>
