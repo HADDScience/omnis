@@ -23,8 +23,9 @@ import {
 import { DraftSchema, RecordItemSchema, RecordItemsSchema, draftAsFile, evidenceSnippet, mailCopyText, type RecordItem } from "./output-rules"
 import type { AgentToolSpec, PreviewChange, WritePreview } from "./tools"
 import { findOpenFeature, parseFeatureInput, submitFeatureRequest } from "@/lib/feature-requests"
+import { WORKBENCH_TOOLS, WORKBENCH_TOOL_SPECS, isWorkbenchTool, workbenchPreview, executeWorkbench } from "@/lib/workbench/cards"
 
-export const OUTPUT_TOOLS = ["draft_document", "create_file", "propose_records", "request_feature"] as const
+export const OUTPUT_TOOLS = ["draft_document", "create_file", "propose_records", "request_feature", ...WORKBENCH_TOOLS] as const
 export type OutputTool = (typeof OUTPUT_TOOLS)[number]
 export const isOutputTool = (name: string): name is OutputTool => (OUTPUT_TOOLS as readonly string[]).includes(name)
 
@@ -32,7 +33,7 @@ const WRITE_SUFFIX = " — 쓰기 도구다. 부르면 바로 실행되지 않�
 
 const cellSchema = { type: ["string", "number", "boolean", "null"] }
 
-export const OUTPUT_TOOL_SPECS: AgentToolSpec[] = [
+const BASE_OUTPUT_SPECS: AgentToolSpec[] = [
   {
     name: "draft_document",
     description:
@@ -321,9 +322,13 @@ async function recordsPreview(args: Record<string, unknown>, roomId: string): Pr
   }
 }
 
+/** 작업용 컴퓨터(lib/workbench/cards.ts) 도구는 켜진 사람에게만 보인다 — agentToolSpecs 가 거른다 */
+export const OUTPUT_TOOL_SPECS: AgentToolSpec[] = [...BASE_OUTPUT_SPECS, ...WORKBENCH_TOOL_SPECS]
+
 // ─── 카드 · 실행 ─────────────────────────────────────────────────────
 
-export async function buildOutputPreview(name: OutputTool, args: Record<string, unknown>, ctx: { roomId: string }): Promise<WritePreview> {
+export async function buildOutputPreview(name: OutputTool, args: Record<string, unknown>, ctx: { roomId: string; userId: string }): Promise<WritePreview> {
+  if (isWorkbenchTool(name)) return workbenchPreview(name, args, ctx)
   if (name === "draft_document") return draftPreview(args)
   if (name === "create_file") return filePreview(args)
   if (name === "request_feature") return featurePreview(args)
@@ -414,6 +419,7 @@ export async function saveFileToRoom(spec: FileSpec, ctx: OutputCtx, note: strin
 }
 
 export async function executeOutput(name: OutputTool, args: Record<string, unknown>, ctx: OutputCtx): Promise<{ ok: boolean; text: string }> {
+  if (isWorkbenchTool(name)) return executeWorkbench(name, args, ctx)
   if (name === "create_file") {
     const p = FileSpecSchema.safeParse(args)
     if (!p.success) return { ok: false, text: specProblem(args) ?? "파일 형식이 맞지 않습니다" }

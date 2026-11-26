@@ -11,6 +11,7 @@ import {
   TOOLS,
   randomToken,
   resolveCaller,
+  toolsFor,
   runTool,
   saveUpload,
   sha256,
@@ -512,7 +513,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  if (method === "tools/list") return reply(id, { tools: TOOLS })
+  if (method === "tools/list") return reply(id, { tools: toolsFor(caller) })
 
   if (method === "tools/call") {
     const name = params?.name as string

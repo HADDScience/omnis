@@ -228,6 +228,10 @@ export const TOOL_POLICY = {
   create_file: { mcp: false, agent: "write", ask: false, confirm: "card", why: "결과물(파일) 카드 — 앱 화면에서만. MCP 는 upload_file. lib/agent/outputs.ts" },
   propose_records: { mcp: false, agent: "write", ask: false, confirm: "card", why: "기록 제안 카드 — 앱 화면에서만. MCP 는 save_company_record. lib/agent/outputs.ts" },
   request_feature: { mcp: false, agent: "write", ask: false, confirm: "card", why: "앱 AI 가 못 하는 일을 개발자에게 넘기는 카드 — MCP 클라이언트에는 자기 경로가 있다. lib/agent/outputs.ts" },
+  // 작업용 컴퓨터 0단계(2026-11-26) — 켜진 사람(WORKBENCH_USER_IDS)에게만 보인다. lib/workbench/cards.ts
+  start_workbench: { mcp: false, agent: "write", ask: false, confirm: "card", why: "작업용 컴퓨터(Claude Managed Agents)로 넘기는 카드 — 결과가 이 방에 붙어 앱 화면에서만. MCP 클라이언트는 그 자체가 작업용 컴퓨터다" },
+  continue_workbench: { mcp: false, agent: "write", ask: false, confirm: "card", why: "작업용 컴퓨터 상한 뒤 이어 가기 카드 — start_workbench 와 같은 까닭" },
+  stop_workbench: { mcp: false, agent: "write", ask: false, confirm: "card", why: "작업용 컴퓨터 멈춤 카드 — start_workbench 와 같은 까닭" },
 } as const satisfies Record<string, ToolPolicy>
 
 export type ToolName = keyof typeof TOOL_POLICY

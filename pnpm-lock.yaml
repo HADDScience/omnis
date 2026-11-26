@@ -124,6 +124,9 @@ importers:
       '@ai-sdk/workflow':
         specifier: 2.0.72
         version: 2.0.72(workflow@5.2.2(@aws-sdk/credential-provider-web-identity@3.972.49)(@nestjs/common@12.3.2(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/core@12.3.2(@nestjs/common@12.3.2(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.10.0)(@swc/cli@0.8.1(@swc/core@1.15.3)(chokidar@5.0.0)(supports-color@8.1.1))(@swc/core@1.15.3)(next@16.1.7(@babel/core@7.29.7(supports-color@8.1.1))(@opentelemetry/api@1.10.0)(@playwright/test@1.63.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(supports-color@8.1.1)(typescript@5.9.3)(ws@8.22.0))(zod@4.6.5)
+      '@anthropic-ai/sdk':
+        specifier: 1.3.0
+        version: 1.3.0(zod@4.6.5)
       '@auth/prisma-adapter':
         specifier: ^2.11.1
         version: 2.11.3(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(nodemailer@7.0.13)
@@ -299,9 +302,6 @@ importers:
         specifier: ^4.4.3
         version: 4.6.5
     devDependencies:
-      '@anthropic-ai/sdk':
-        specifier: 1.3.0
-        version: 1.3.0(zod@4.6.5)
       '@eslint/eslintrc':
         specifier: ^3
         version: 3.3.7(supports-color@8.1.1)

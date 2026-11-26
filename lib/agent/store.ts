@@ -63,7 +63,7 @@ export async function loadContext(runId: string): Promise<AgentContext | { ok: f
     model,
     modelKey: modelKey(model),
     providerOptions: providerOptionsFor(model),
-    tools: await agentToolSpecs(),
+    tools: await agentToolSpecs({ userId: run.userId }),
     limits,
     spent: { turns: run.turns, krw: Number(run.costKrw) },
   }
