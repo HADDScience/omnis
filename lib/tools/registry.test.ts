@@ -364,3 +364,17 @@ test("재설계 전과 노출이 같다(새 도구만 더함) — 앱 AI 읽기 
     "create_upload_link",
   ])
 })
+
+// Gemini 는 enum 에 문자열만 받는다 — 숫자 enum 하나가 질문 경로(ask_omnis) 전체를 400 으로 막았다(website_stats, 2026-11-26)
+test("도구 입력 스키마의 enum 은 모두 문자열", () => {
+  const bad: string[] = []
+  const walk = (tool: string, path: string, node: unknown) => {
+    if (!node || typeof node !== "object") return
+    const o = node as Record<string, unknown>
+    if (Array.isArray(o.enum) && o.enum.some((v) => typeof v !== "string"))
+      bad.push(`${tool}${path}`)
+    for (const [k, v] of Object.entries(o)) if (k !== "enum") walk(tool, `${path}.${k}`, v)
+  }
+  for (const t of TOOLS) walk(t.name, "", (t as { inputSchema?: unknown }).inputSchema)
+  assert.deepEqual(bad, [])
+})

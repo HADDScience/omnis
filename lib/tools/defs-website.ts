@@ -15,7 +15,7 @@ export const WEBSITE_TOOLS = [
   {
     name: "website_stats",
     description: "홈페이지 방문 통계 — 관리 화면과 같다. days 7 · 30 · 90(기본 30). 아직 옮겨지지 않은 방문 수(pending)는 숫자에 없다.",
-    inputSchema: { type: "object", properties: { days: { type: "integer", enum: [7, 30, 90] } } },
+    inputSchema: { type: "object", properties: { days: { type: "integer", description: "7 · 30 · 90 중 하나(기본 30)" } } },
   },
   {
     name: "list_column_keywords",
