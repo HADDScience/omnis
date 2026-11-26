@@ -695,6 +695,38 @@ export interface GeminiFunctionDeclaration {
   parameters?: Record<string, unknown>
 }
 
+/** Gemini functionDeclarations 가 아는 스키마 칸(OpenAPI 부분집합). 나머지는 보내면 요청 전체가 400 이다 */
+const GEMINI_SCHEMA_KEYS = new Set([
+  "type", "format", "title", "description", "nullable", "enum", "properties", "required", "items",
+  "minItems", "maxItems", "minimum", "maximum", "minLength", "maxLength", "pattern", "anyOf", "default", "example", "propertyOrdering",
+])
+
+/**
+ * 도구 입력 스키마(JSON Schema, MCP 와 같이 쓴다)를 Gemini 가 받는 모양으로 줄인다 —
+ * 모르는 칸(additionalProperties · $schema …)은 빼고, 문자열이 아닌 enum 은 설명으로 옮긴다.
+ * 도구 하나의 칸 하나 때문에 질문 경로 전체가 400 이 났다(2026-11-26: website_stats enum, set_ai_budget additionalProperties).
+ */
+export function geminiSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(geminiSchema)
+  if (!node || typeof node !== "object") return node
+  const src = node as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(src)) {
+    if (!GEMINI_SCHEMA_KEYS.has(k)) continue
+    if (k === "properties" && v && typeof v === "object") {
+      out[k] = Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([name, sub]) => [name, geminiSchema(sub)]))
+    } else if (k === "enum" && Array.isArray(v) && v.some((x) => typeof x !== "string")) {
+      const desc = typeof src.description === "string" ? `${src.description} ` : ""
+      out.description = `${desc}(${v.map(String).join(" · ")} 중 하나)`
+    } else if (k === "items" || k === "anyOf") {
+      out[k] = geminiSchema(v)
+    } else if (k !== "description" || !("description" in out)) {
+      out[k] = v
+    }
+  }
+  return out
+}
+
 export interface GeminiToolCall {
   name: string
   args: Record<string, unknown>
@@ -774,7 +806,7 @@ export async function runGeminiToolLoop(
     const body = JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents,
-      tools: [{ functionDeclarations: tools }],
+      tools: [{ functionDeclarations: tools.map((t) => (t.parameters ? { ...t, parameters: geminiSchema(t.parameters) as Record<string, unknown> } : t)) }],
       toolConfig: { functionCallingConfig: { mode: "AUTO" } },
       generationConfig,
     })
