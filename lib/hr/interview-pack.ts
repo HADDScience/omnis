@@ -479,8 +479,17 @@ export async function buildApplicantPack(input: PackInput, jobTitle: string, fon
   return { bytes: await doc.save(), pages: doc.getPageCount(), outline: placed.sections }
 }
 
-/** 묶음 — 표지(공고 · 지원자 이름과 시작 쪽) + 지원자별 자료. 면접 일시 · 장소는 옴니스에 입력할 곳이 없어 표지에 넣지 않는다 */
-export async function buildBundle(inputs: PackInput[], jobTitle: string, fonts: PackFonts, now = new Date()): Promise<PackResult> {
+/**
+ * 묶음 — 표지(공고 · 면접 일시 · 장소 · 방식 · 지원자 이름과 시작 쪽) + 지원자별 자료.
+ * 면접 정보(interview)는 공고 보드 머리에 적은 값(lib/hr/job-meta.ts metaLines) — 비어 있는 칸은 줄째 뺀다.
+ */
+export async function buildBundle(
+  inputs: PackInput[],
+  jobTitle: string,
+  fonts: PackFonts,
+  now = new Date(),
+  interview: { label: string; value: string }[] = [],
+): Promise<PackResult> {
   const doc = await PDFDocument.create()
   const f = await embedFonts(doc, fonts)
   const placed: Placed[] = []
@@ -490,6 +499,16 @@ export async function buildBundle(inputs: PackInput[], jobTitle: string, fonts: 
   const pen = new Pen(cover, f)
   band(pen, "HADD SCIENCE · 면접 자료", ["면접 지원자 묶음"], jobTitle, 22 * MM, 12 * MM)
   const sc = SCALES[0]
+  if (interview.length) {
+    heading(pen, "면접", sc)
+    const th = 27 * MM
+    for (const it of interview) {
+      row(pen, sc, [
+        { x: MARGIN, w: th, lines: [it.label], font: f.b, color: SUB, bg: TH_BG },
+        { x: MARGIN + th, w: CONTENT_W - th, lines: wrap(f.r, sc.fs, it.value, CONTENT_W - th - 6 * MM), font: f.r },
+      ])
+    }
+  }
   heading(pen, `지원자 ${placed.length}명`, sc)
   const big: Scale = { fs: 13, gap: 7, cell: 3.5 }
   for (const pl of placed) {

@@ -9,6 +9,8 @@ import { isHrReviewer } from "@/lib/hr/reviewers"
 import { listApplications } from "@/lib/hr/queries"
 import { loadJobs } from "@/lib/hr/jobs"
 import { closesLabel } from "@/lib/hr/format"
+import { loadJobMeta } from "@/lib/hr/job-meta-server"
+import { JobMetaHeader } from "@/components/hr/job-meta-header"
 
 export const metadata: Metadata = { title: "지원서함" }
 export const dynamic = "force-dynamic"
@@ -30,7 +32,7 @@ export default async function HrJobBoardPage({ params }: Props) {
   }
   const { slug } = await params
   if (!/^[a-z0-9-]{3,100}$/.test(slug)) notFound()
-  const [rows, jobs] = await Promise.all([listApplications({ jobSlug: slug, take: 500 }), loadJobs()])
+  const [rows, jobs, meta] = await Promise.all([listApplications({ jobSlug: slug, take: 500 }), loadJobs(), loadJobMeta(slug)])
   const job = jobs.find((j) => j.slug === slug)
   if (!job && rows.length === 0) notFound()
   const title = job?.title ?? rows[0].jobTitle
@@ -55,6 +57,7 @@ export default async function HrJobBoardPage({ params }: Props) {
           <h1 className="min-w-0 text-base font-semibold break-keep">{title}</h1>
           <p className="text-[12.5px] text-muted-foreground tabular-nums">{closesLabel(job?.closesAt ?? null)}</p>
         </div>
+        <JobMetaHeader meta={meta} />
         <ApplicationBoard cards={cards} jobSlug={slug} />
       </div>
     </>

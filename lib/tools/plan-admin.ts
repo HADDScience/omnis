@@ -18,6 +18,9 @@ import { changeApplicationStage, isPickableStage } from "@/lib/hr/stage"
 import { BUNDLE_STAGES, canPack } from "@/lib/hr/stage-label"
 import { loadJobs } from "@/lib/hr/jobs"
 import { STAGE_LABEL, interestLabel, type Stage } from "@/lib/hr/rules"
+import { JOB_SLUG, loadJobMeta, loadJobMetas, updateJobMeta } from "@/lib/hr/job-meta-server"
+import { metaLines, modeLabel, parseSlotText, slotLabel } from "@/lib/hr/job-meta"
+import type { InterviewSlot } from "@/lib/schemas/hr-job"
 import { blocked, clip, has, kstDate, str, type Planner } from "./planned"
 import type { AdminReadName, AdminWriteName } from "./defs-admin"
 
@@ -86,6 +89,7 @@ export async function runAdminRead(name: AdminReadName, args: Record<string, unk
       const job = str(args.job) || undefined
       const [counts, rows, jobs] = await Promise.all([applicationCounts(), listApplications({ jobSlug: job, stage, take: 100 }), loadJobs()])
       const closes = new Map(jobs.map((j) => [j.slug, j.closesAt]))
+      const metas = await loadJobMetas([...new Set(counts.map((c) => c.jobSlug))])
       if (rows.length === 0 && counts.length === 0) return { text: "접수된 지원서가 없습니다." }
       const byJob = new Map<string, { title: string; parts: string[] }>()
       for (const c of counts) {
@@ -96,7 +100,10 @@ export async function runAdminRead(name: AdminReadName, args: Record<string, unk
       return {
         text: [
           "공고별 건수",
-          ...[...byJob.entries()].map(([slug, j]) => `- ${j.title} (${slug}${closes.get(slug) ? ` · 마감 ${kstDateTime(closes.get(slug)!)}` : ""}): ${j.parts.join(" · ")}`),
+          ...[...byJob.entries()].map(([slug, j]) => {
+            const m = metaLines(metas.get(slug) ?? null)
+            return `- ${j.title} (${slug}${closes.get(slug) ? ` · 마감 ${kstDateTime(closes.get(slug)!)}` : ""}): ${j.parts.join(" · ")}${m.length ? `\n  ${m.map((x) => `${x.label} ${x.value}`).join(" · ")}` : "\n  면접 정보 없음"}`
+          }),
           "",
           `지원서 ${rows.length}건${job || stage ? " (좁힌 결과)" : ""}`,
           ...rows.map((r) => `- ${r.code ?? "-"} · ${STAGE_LABEL[r.stage]} · ${r.purgedAt ? "(파기됨)" : `${r.name ?? "-"} · ${r.department ?? "-"} · ${r.grade ?? "-"}학년${r.interests.length ? ` · 관심: ${r.interests.map((v) => interestLabel(v)).join(", ")}` : ""}`} · 접수 ${r.receivedAt ? kstDate(r.receivedAt) : "-"} · ${r.jobTitle}`),
@@ -380,6 +387,58 @@ const planApplicationStage: Planner = async (args, caller) => {
   }
 }
 
+const planJobPosting: Planner = async (args, caller) => {
+  const T = "공고 면접 정보 고치기"
+  const slug = str(args.job)
+  if (!(await isHrReviewer(caller.userId))) return blocked(T, slug || "(공고)", "채용 담당만 고칠 수 있습니다 — 관리자 › 운영 › 채용 담당에 든 사람에게만 열린 일입니다.")
+  if (!JOB_SLUG.test(slug)) return blocked(T, slug || "(공고)", "job 은 공고 slug 입니다 — list_applications 의 괄호 안")
+  const [jobs, known] = await Promise.all([loadJobs(), prisma.jobApplication.count({ where: { jobSlug: slug } })])
+  const title = jobs.find((j) => j.slug === slug)?.title
+  if (!title && known === 0) return blocked(T, slug, "모르는 공고입니다 — list_applications 로 slug 를 확인하세요")
+  const patch: Record<string, unknown> = {}
+  if (has(args, "slots")) {
+    if (!Array.isArray(args.slots)) return blocked(T, slug, 'slots 는 "2026-12-01 11:00" 같은 글의 목록입니다')
+    const out: InterviewSlot[] = []
+    for (const t of args.slots) {
+      const r = parseSlotText(String(t))
+      if ("error" in r) return blocked(T, slug, r.error)
+      out.push(r.slot)
+    }
+    patch.slots = out
+  }
+  if (has(args, "place")) patch.place = str(args.place)
+  if (has(args, "mode")) {
+    const m = str(args.mode).toUpperCase()
+    if (m && m !== "NONE" && m !== "IN_PERSON" && m !== "VIDEO") return blocked(T, slug, "mode 는 IN_PERSON(대면) · VIDEO(화상) · NONE(지움)")
+    patch.mode = m === "NONE" ? "" : m
+  }
+  if (has(args, "video_url")) patch.videoUrl = str(args.video_url)
+  if (has(args, "memo")) patch.memo = str(args.memo)
+  if (Object.keys(patch).length === 0) return blocked(T, slug, "고칠 칸(slots · place · mode · video_url · memo)을 하나 이상 주세요")
+  const now = await loadJobMeta(slug)
+  const show = (v: string | null | undefined) => (v ? v : null)
+  const slotsText = (s: InterviewSlot[]) => (s.length ? s.map(slotLabel).join(", ") : null)
+  const changes = [
+    ...(patch.slots ? [{ label: "면접 일시", before: slotsText(now.slots), after: slotsText(patch.slots as InterviewSlot[]) ?? "(지움)" }] : []),
+    ...(patch.place !== undefined ? [{ label: "면접 장소", before: show(now.place), after: show(patch.place as string) ?? "(지움)" }] : []),
+    ...(patch.mode !== undefined ? [{ label: "면접 방식", before: modeLabel(now.mode), after: (patch.mode ? modeLabel(patch.mode as "IN_PERSON" | "VIDEO") : null) ?? "(지움)" }] : []),
+    ...(patch.videoUrl !== undefined ? [{ label: "화상 링크", before: show(now.videoUrl), after: show(patch.videoUrl as string) ?? "(지움)" }] : []),
+    ...(patch.memo !== undefined ? [{ label: "메모", before: show(now.memo), after: show(clip(patch.memo as string, 300)) ?? "(지움)" }] : []),
+  ]
+  const target = `${title ?? slug} (${slug})`
+  return {
+    title: T,
+    target,
+    changes,
+    risk: "지원서함 공고 보드 머리와 서류 합격 묶음 면접자료 PDF 표지에 바로 보입니다. 지원자에게 알림 · 메일은 가지 않습니다.",
+    run: async () => {
+      const r = await updateJobMeta(caller.userId, slug, patch)
+      if (!r.ok) return { ok: false, error: r.error }
+      return { ok: true, id: slug, text: r.changed.length ? `고쳤습니다: ${target}` : "바뀐 칸이 없습니다 — 지금 값과 같습니다." }
+    },
+  }
+}
+
 export const ADMIN_PLANNERS: Record<AdminWriteName, Planner> = {
   update_company_profile: planProfile,
   save_company_year: planSaveYear,
@@ -389,4 +448,5 @@ export const ADMIN_PLANNERS: Record<AdminWriteName, Planner> = {
   set_feature_status: planFeatureStatus,
   send_feedback: planFeedback,
   change_application_stage: planApplicationStage,
+  update_job_posting: planJobPosting,
 }

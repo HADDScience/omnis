@@ -2327,6 +2327,25 @@ model JobApplicationEvent {
   @@index([applicationId, createdAt])
 }
 
+/// 공고마다 옴니스가 따로 갖는 면접 정보(2026-11-26). 공고 자체(이름 · 마감)는 홈페이지 원문이 정본이라(lib/hr/jobs.ts)
+/// 여기에는 홈페이지에 없는 칸만 둔다. 줄이 없으면 아직 아무도 적지 않은 것이다. 모양 검사는 lib/schemas/hr-job.ts
+model JobPostingMeta {
+  /// 홈페이지 공고 slug(JobApplication.jobSlug 와 같은 값)
+  jobSlug        String   @id
+  /// [{ date: "2026-12-01", time: "11:00", minutesEach?: 10 }] — 날짜순. 비면 []
+  interviewSlots Json     @default("[]")
+  interviewPlace String?
+  /// IN_PERSON(대면) · VIDEO(화상) — 비면 정하지 않음
+  interviewMode  String?
+  /// 화상 면접 링크(https) — 대면이면 비운다
+  videoUrl       String?
+  memo           String?
+  /// User.id — 마지막으로 고친 사람
+  updatedById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 // ─── 인증 · 국가과제 결정 (2026-11-25) ─────────────────────────
 // 설계: omnis-reports/gov-grants/omnis-cert-decision-proposal-261125.md. 이식 원천은 수집기 export/v1
 

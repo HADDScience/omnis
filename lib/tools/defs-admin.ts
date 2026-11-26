@@ -169,6 +169,31 @@ export const ADMIN_TOOLS = [
       required: ["application", "stage"],
     },
   },
+  {
+    name: "update_job_posting",
+    description: [
+      "채용 공고의 면접 정보(일시 · 장소 · 방식 · 화상 링크 · 메모)를 고친다 — 채용 담당만. 지원서함 공고 보드 머리와 같은 칸이고, 서류 합격 묶음 면접자료 PDF 표지에 들어간다.",
+      "준 칸만 바뀐다. 빈 문자열이면 그 칸을 지운다. slots 는 목록 전체를 바꾼다(빈 목록이면 지움). 지금 값은 list_applications 의 공고 줄.",
+      "job 은 공고 slug(list_applications 의 괄호 안).",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        job: { type: "string", description: "공고 slug" },
+        slots: {
+          type: "array",
+          items: { type: "string" },
+          description: '면접 일시 목록 — "2026-12-01 11:00" 또는 한 사람씩 나눌 때 "2026-12-01 11:00 10분씩"',
+        },
+        place: TEXT,
+        mode: { type: "string", enum: ["IN_PERSON", "VIDEO", "NONE"], description: "IN_PERSON 대면 · VIDEO 화상 · NONE 이면 지움" },
+        video_url: { type: "string", description: "화상 면접 링크(https://…). 빈 문자열이면 지움" },
+        memo: TEXT,
+        confirm: CONFIRM_PROP,
+      },
+      required: ["job"],
+    },
+  },
 ] as const
 
 export const ADMIN_READ_NAMES = ["ai_budget", "list_feature_requests", "ai_survey_results", "list_applications", "get_interview_pack"] as const

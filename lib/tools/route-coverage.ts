@@ -159,6 +159,7 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "hr/applications/[id] PATCH": ["change_application_stage"],
   "hr/applications/[id]/interview-pack GET": ["get_interview_pack"],
   "hr/jobs/[slug]/interview-pack GET": ["get_interview_pack"],
+  "hr/jobs/[slug] PATCH": ["update_job_posting"],
   "hr/reviewers GET": system(HRACCESS),
   "hr/reviewers PUT": system(HRACCESS),
   "ip-mcp/[[...path]] GET": system(PUBLIC),
