@@ -146,7 +146,7 @@ function SlotsEditor({ id, draft, setDraft, commit, cancel }: EditorProps<DraftS
             aria-label={`${i + 1}번째 시작 시각`}
             value={r.time}
             onChange={(e) => put(i, { time: e.target.value })}
-            className="h-8 w-[7rem] text-[12.5px] md:text-[12.5px]"
+            className="h-8 w-[8.5rem] text-[12.5px] md:text-[12.5px]"
           />
           <label className="inline-flex items-center gap-1 text-muted-foreground">
             <Input
