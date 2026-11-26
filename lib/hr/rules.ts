@@ -35,17 +35,7 @@ export const slotParam = (db: SlotDb): SlotParam => (db === "RESUME" ? "resume" 
 export const slotMaxBytes = (slot: SlotParam) => (slot === "resume" ? APPLICATION_FILE_MAX_BYTES : PORTFOLIO_FILE_MAX_BYTES)
 export const parseSlot = (v: string): SlotParam | null => ((SLOTS as readonly string[]).includes(v) ? (v as SlotParam) : null)
 
-export const STAGE_LABEL = {
-  RECEIVING: "올리는 중",
-  RECEIVED: "접수",
-  SCREENING: "서류",
-  INTERVIEW: "면접",
-  OFFERED: "합격",
-  REJECTED: "불합격",
-  WITHDRAWN: "지원 취소",
-  HIRED: "입사",
-} as const
-export type Stage = keyof typeof STAGE_LABEL
+export { STAGE_LABEL, type Stage } from "./stage-label"
 
 // ─── 관심 있는 일 ───
 //

@@ -149,6 +149,7 @@ export const TOOL_LABEL: Record<string, string> = {
   list_feature_requests: "기능 요청 보는 중",
   ai_survey_results: "설문 합계 보는 중",
   list_applications: "지원서함 보는 중",
+  change_application_stage: "지원서 단계 바꾸기",
   update_company_profile: "회사 정보 고치기",
   save_company_year: "연도별 재무",
   delete_company_year: "연도별 재무 지우기",

@@ -156,6 +156,7 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "grants/notices/[noticeId]/files/[index] GET": system(UPLOAD),
   "health GET": system(CRON),
   "hr/applications/[id]/files/[slot] GET": system(HRFILE),
+  "hr/applications/[id] PATCH": ["change_application_stage"],
   "hr/reviewers GET": system(HRACCESS),
   "hr/reviewers PUT": system(HRACCESS),
   "ip-mcp/[[...path]] GET": system(PUBLIC),
