@@ -14,7 +14,8 @@
  * 가짜 NAS(scripts/e2e-fake-nas.mjs)와 지원서 비밀(WEBSITE_CAREER_SECRET · WEBSITE_CAREER_UPLOAD_KEY)이 있을 때만 돈다 — CI 는 둘 다 넣는다.
  */
 import { createHash } from "node:crypto"
-import { readFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
+import path from "node:path"
 import { expect, request, test } from "@playwright/test"
 import { PDFDocument } from "pdf-lib"
 import { PrismaClient } from "../../generated/prisma/client"
@@ -25,6 +26,8 @@ const NAS = process.env.E2E_FAKE_NAS_URL
 const SECRET = process.env.WEBSITE_CAREER_SECRET
 const md5 = (b: Buffer) => createHash("md5").update(b).digest("hex")
 const JOB = "suwon-anchor-practicum-intern-2026-winter"
+// HR_SHOTS 에 절대 경로를 주면 보드 머리 · 묶음 PDF 를 남긴다(보고서 캡처용)
+const shots = process.env.HR_SHOTS
 
 test.describe("채용 지원서함 @hr", () => {
   test.skip(!NAS || !SECRET || !process.env.WEBSITE_CAREER_UPLOAD_KEY, "가짜 NAS 또는 지원서 비밀이 없다")
@@ -188,6 +191,20 @@ test.describe("채용 지원서함 @hr", () => {
     await head.getByLabel("1번째 한 사람 시간(분)").press("Enter")
     expect((await res).status()).toBe(200)
     await expect(head.locator("[data-hr-meta-slots]")).toHaveText("2099-01-05(월) 11:00 · 10분씩")
+    if (shots) {
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.screenshot({ path: path.join(shots, "01-board-head-pc.png") })
+      await head.getByRole("button", { name: /^면접 일시/ }).click()
+      await head.getByRole("button", { name: "일시 더하기" }).click()
+      await page.screenshot({ path: path.join(shots, "02-board-head-pc-editing.png") })
+      await head.getByLabel("2번째 날짜").press("Escape")
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.screenshot({ path: path.join(shots, "03-board-head-phone.png"), fullPage: true })
+      await head.getByRole("button", { name: /^면접 장소/ }).click()
+      await page.screenshot({ path: path.join(shots, "04-board-head-phone-editing.png") })
+      await head.getByLabel("면접 장소").press("Escape")
+      await page.setViewportSize({ width: 1280, height: 720 })
+    }
     await expect
       .poll(async () => prisma.jobPostingMeta.findUnique({ where: { jobSlug: JOB }, select: { interviewPlace: true, interviewMode: true, interviewSlots: true } }))
       .toEqual({ interviewPlace: "가상시 시험로 1 시험센터 9층", interviewMode: "VIDEO", interviewSlots: [{ date: "2099-01-05", time: "11:00", minutesEach: 10 }] })
@@ -205,6 +222,7 @@ test.describe("채용 지원서함 @hr", () => {
     expect(readOutline(onePdf)).toEqual([{ title: "지원서 요약", page: 0 }])
     const all = await page.request.get(`/api/hr/jobs/suwon-anchor-practicum-intern-2026-winter/interview-pack`)
     expect(all.status()).toBe(200)
+    if (shots) writeFileSync(path.join(shots, "05-bundle.pdf"), await all.body())
     const allPdf = await PDFDocument.load(await all.body())
     const outline = readOutline(allPdf)
     expect(outline[0]).toEqual({ title: "표지", page: 0 })
