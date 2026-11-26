@@ -1,5 +1,5 @@
 // 과제 후보 · 우리 결정 찾기 조건 — 화면(아카이브 › 국가과제)과 도구(search_grant_notices · list_grant_decisions)가 같이 쓴다.
-import type { GrantStage, Prisma } from "@/generated/prisma/client"
+import type { Prisma } from "@/generated/prisma/client"
 import {
   DEADLINE_FILTERS,
   GRANT_STAGES,
@@ -8,6 +8,7 @@ import {
   type DeadlineFilter,
   type RegionGroup,
   type Verdict,
+  type GrantStage,
 } from "@/lib/grants-labels"
 
 const DAY = 86_400_000

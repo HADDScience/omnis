@@ -2,7 +2,7 @@
 // expect 를 안 보내는 호출(AI 도구 등)은 전과 같이 그대로 덮어쓴다.
 import { seoulYmd } from "@/lib/grants-labels"
 
-export type ExpectKind = "text" | "id" | "ymd" | "ids"
+export type ExpectKind = "text" | "id" | "ymd" | "ids" | "int"
 
 const norm = (kind: ExpectKind, v: unknown): string | null => {
   switch (kind) {
@@ -14,6 +14,11 @@ const norm = (kind: ExpectKind, v: unknown): string | null => {
       return v === null || v === undefined || v === ""
         ? null
         : seoulYmd(v as Date | string)
+    case "int": {
+      if (v === null || v === undefined || v === "") return null
+      const t = String(v).replace(/[,\s원]/g, "")
+      return /^\d+$/.test(t) ? BigInt(t).toString() : t
+    }
     case "ids":
       return Array.isArray(v)
         ? [...new Set(v.map(String))].sort().join(",")

@@ -8,6 +8,8 @@
  * - 그새 다른 사람이 같은 칸을 바꿨으면(409) 알려 주고 새 값을 보인다
  * - 「내리기」 는 펼친 화면의 더보기 메뉴에 있고 확인 창을 거친다. 노션에서 옮겨 온 결정에는 없다
  * - 폰에서도 칸을 눌러 고친다
+ * - 상태 v2: 단계 선택지는 준비 · 제출 완료 · 선정됨 · 미선정 · 수행 중 · 완료 · 중단(검토 · 불참 없음).
+ *   선정됨이면 선정 통보일 · 확정 지원금이, 수행 중이면 협약일 · 수행 기간이 나타나고, 목록에는 「~ 수행 종료일」
  */
 import { expect, test, type Page } from "@playwright/test"
 import { PrismaClient } from "../../generated/prisma/client"
@@ -26,7 +28,7 @@ test.beforeAll(async () => {
     data: {
       externalKey: `notice:e2e-inline-${stamp}`,
       title: RAISED,
-      stage: "REVIEW",
+      stage: "PREPARING",
       note: "처음 메모",
       deadline: new Date("2027-03-02T00:00:00+09:00"),
       owners: { create: [{ userId: owner.id }] },
@@ -36,7 +38,7 @@ test.beforeAll(async () => {
     data: {
       externalKey: `notion:e2e-inline-${stamp}`,
       title: IMPORTED,
-      stage: "REVIEW",
+      stage: "PREPARING",
     },
   })
   raisedId = raised.id
@@ -149,6 +151,40 @@ test.describe("국가과제 제자리 편집 @archive", () => {
     expect(d.note).toBe("다른 사람이 쓴 메모")
   })
 
+  // 지키는 것: 상태를 바꾸면 그 상태의 칸이 나타나고 고칠 수 있다. 수행 중이면 목록에 「~ 수행 종료일」
+  test("상태별 칸 — 선정됨 · 수행 중", async ({ page }) => {
+    await login(page, "팀장")
+    await openDecision(page, RAISED)
+    await field(page, RAISED, "단계").click()
+    const options = await page.getByLabel("단계", { exact: true }).locator("option").allTextContents()
+    expect(options).toEqual(["준비", "제출 완료", "선정됨", "미선정", "수행 중", "완료", "중단"])
+    await expect(field(page, RAISED, "선정 통보일")).toHaveCount(0)
+    await page.getByLabel("단계", { exact: true }).selectOption("SELECTED")
+    await expect(field(page, RAISED, "선정 통보일")).toBeVisible()
+    await expect(field(page, RAISED, "협약일")).toHaveCount(0)
+
+    await field(page, RAISED, "확정 지원금").click()
+    const money = page.getByLabel("확정 지원금", { exact: true })
+    await money.fill("120000000")
+    await money.press("Enter")
+    await expect(field(page, RAISED, "확정 지원금")).toContainText("120,000,000원")
+
+    await field(page, RAISED, "단계").click()
+    await page.getByLabel("단계", { exact: true }).selectOption("IN_PROGRESS")
+    await field(page, RAISED, "수행 종료일").click()
+    const ends = page.getByLabel("수행 종료일", { exact: true })
+    await ends.fill("2027-12-31")
+    await ends.press("Enter")
+    await expect(page.getByRole("button", { name: `${RAISED} 접기` })).toContainText("~ 2027-12-31")
+
+    await expect
+      .poll(async () => {
+        const d = await prisma.grantDecision.findUniqueOrThrow({ where: { id: raisedId } })
+        return [d.stage, d.awardedAmount?.toString(), d.endsOn?.toISOString()]
+      })
+      .toEqual(["IN_PROGRESS", "120000000", new Date("2027-12-31T00:00:00+09:00").toISOString()])
+  })
+
   // 지키는 것: 내리기는 더보기 메뉴 → 확인 창. 노션에서 옮겨 온 결정에는 메뉴가 없다
   test("내리기는 더보기 메뉴에서", async ({ page }) => {
     await login(page, "팀장")
@@ -173,10 +209,10 @@ test.describe("국가과제 제자리 편집 — 폰 @mobile", () => {
     await login(page, "팀장")
     await openDecision(page, IMPORTED)
     await field(page, IMPORTED, "단계").tap()
-    await page.getByLabel("단계", { exact: true }).selectOption("PREPARING")
-    await expect(field(page, IMPORTED, "단계")).toContainText("준비")
+    await page.getByLabel("단계", { exact: true }).selectOption("SUBMITTED")
+    await expect(field(page, IMPORTED, "단계")).toContainText("제출 완료")
     await expect
       .poll(async () => (await prisma.grantDecision.findUniqueOrThrow({ where: { id: importedId } })).stage)
-      .toBe("PREPARING")
+      .toBe("SUBMITTED")
   })
 })

@@ -3,14 +3,18 @@
 import { prisma } from "@/lib/db"
 import { writeActivity } from "@/lib/api"
 import { normalizeNasPath } from "@/lib/nas"
-import type { CertStatus, GrantStage, Prisma } from "@/generated/prisma/client"
+import type { CertStatus, Prisma } from "@/generated/prisma/client"
 import {
   CERT_STATUSES,
   CERT_STATUS_LABEL,
-  GRANT_STAGES,
   GRANT_STAGE_LABEL,
   parseYmd,
   seoulYmd,
+  isGrantStage,
+  stageLabel,
+  GRANT_STAGE_FIELD_LABEL,
+  GRANT_START_STAGE,
+  won,
 } from "@/lib/grants-labels"
 import { staleFields, type ExpectKind } from "@/lib/grants-expect"
 
@@ -136,6 +140,13 @@ export interface DecisionPatch {
   nasFolder?: unknown
   /** 지원금액 원문(「최대 2억 원」 같은 글) */
   amount?: unknown
+  /** 상태별 칸 — 날짜는 YYYY-MM-DD(빈 값이면 지운다), 확정 지원금은 원 단위 정수(문자열 숫자도 받는다) */
+  selectedOn?: unknown
+  awardedAmount?: unknown
+  agreementOn?: unknown
+  startsOn?: unknown
+  endsOn?: unknown
+  completedOn?: unknown
   /** 화면이 고치기 전에 본 값 — 주면 그새 바뀐 칸이 있는지 보고 409 */
   expect?: unknown
 }
@@ -150,6 +161,12 @@ const DECISION_KINDS: Record<string, ExpectKind> = {
   taskId: "id",
   projectId: "id",
   nasFolder: "text",
+  selectedOn: "ymd",
+  awardedAmount: "int",
+  agreementOn: "ymd",
+  startsOn: "ymd",
+  endsOn: "ymd",
+  completedOn: "ymd",
 }
 const DECISION_LABELS: Record<string, string> = {
   stage: "단계",
@@ -161,9 +178,10 @@ const DECISION_LABELS: Record<string, string> = {
   taskId: "신청 업무",
   projectId: "과제 프로젝트",
   nasFolder: "NAS 폴더",
+  ...GRANT_STAGE_FIELD_LABEL,
 }
 
-/** 과제 결정 고치기 — 단계 · 사유 · 메모 · 지원금액 · 마감 · 담당자 · 신청 업무 · 선정 과제 프로젝트 · NAS 폴더. 준 칸만 바꾼다 */
+/** 과제 결정 고치기 — 단계 · 사유 · 메모 · 지원금액 · 상태별 칸(선정 · 협약 · 수행 · 완료) · 마감 · 담당자 · 신청 업무 · 선정 과제 프로젝트 · NAS 폴더. 준 칸만 바꾼다 */
 export async function updateGrantDecision(
   userId: string,
   id: string,
@@ -189,12 +207,12 @@ export async function updateGrantDecision(
   const changed: string[] = []
 
   if (patch.stage !== undefined) {
-    if (!GRANT_STAGES.includes(patch.stage as GrantStage))
+    if (!isGrantStage(patch.stage))
       return fail(400, "단계가 올바르지 않습니다")
     if (patch.stage !== before.stage) {
-      data.stage = patch.stage as GrantStage
+      data.stage = patch.stage
       changed.push(
-        `단계 ${GRANT_STAGE_LABEL[before.stage]} → ${GRANT_STAGE_LABEL[patch.stage as GrantStage]}`
+        `단계 ${stageLabel(before.stage)} → ${GRANT_STAGE_LABEL[patch.stage]}`
       )
     }
   }
@@ -221,6 +239,35 @@ export async function updateGrantDecision(
       data.deadline = d
       changed.push(
         `마감 ${seoulYmd(before.deadline) ?? "없음"} → ${seoulYmd(d) ?? "지움"}`
+      )
+    }
+  }
+  for (const key of [
+    "selectedOn",
+    "agreementOn",
+    "startsOn",
+    "endsOn",
+    "completedOn",
+  ] as const) {
+    if (patch[key] === undefined) continue
+    const label = GRANT_STAGE_FIELD_LABEL[key]
+    const d = parseYmd(patch[key])
+    if (d === undefined) return fail(400, `${label}은 YYYY-MM-DD 로 적습니다`)
+    if (seoulYmd(d) !== seoulYmd(before[key])) {
+      data[key] = d
+      changed.push(
+        `${label} ${seoulYmd(before[key]) ?? "없음"} → ${seoulYmd(d) ?? "지움"}`
+      )
+    }
+  }
+  if (patch.awardedAmount !== undefined) {
+    const n = parseWon(patch.awardedAmount)
+    if (n === undefined)
+      return fail(400, "확정 지원금은 원 단위 숫자로 적습니다(예: 120000000)")
+    if (n !== before.awardedAmount) {
+      data.awardedAmount = n
+      changed.push(
+        `확정 지원금 ${won(before.awardedAmount) ?? "없음"} → ${won(n) ?? "지움"}`
       )
     }
   }
@@ -323,7 +370,18 @@ export async function updateGrantDecision(
   return { ok: true, changed, value: { id, title: row.title } }
 }
 
-/** 과제 후보를 「우리 결정」 에 올린다 — 검토 단계로. 같은 공고는 한 번만 */
+/** 원 단위 정수 — 숫자 · 문자열 숫자(쉼표 · 「원」 허용). 빈 값은 null, 틀린 값은 undefined */
+export function parseWon(v: unknown): bigint | null | undefined {
+  if (v === null || v === "") return null
+  if (typeof v === "number")
+    return Number.isSafeInteger(v) && v >= 0 ? BigInt(v) : undefined
+  if (typeof v !== "string") return undefined
+  const t = v.replace(/[,\s원]/g, "")
+  if (!/^\d{1,15}$/.test(t)) return undefined
+  return BigInt(t)
+}
+
+/** 과제 후보를 「우리 결정」 에 올린다 — 준비 단계로(상태 v2 의 시작). 같은 공고는 한 번만 */
 export async function createDecisionFromNotice(
   userId: string,
   noticeId: string
@@ -339,7 +397,7 @@ export async function createDecisionFromNotice(
     data: {
       externalKey: notice.externalKey,
       title: notice.title,
-      stage: "REVIEW",
+      stage: GRANT_START_STAGE,
       deadline: notice.deadlineAt,
       noticeLinks: [
         {
@@ -363,7 +421,7 @@ export async function createDecisionFromNotice(
   })
   return {
     ok: true,
-    changed: ["검토 단계로 추가", "담당: 올린 사람"],
+    changed: ["준비 단계로 추가", "담당: 올린 사람"],
     value: { id: row.id, title: row.title },
   }
 }
@@ -422,7 +480,7 @@ export async function decidedNoticeKeys(keys: string[]): Promise<Set<string>> {
   return new Set((await decisionsForNotices(keys)).keys())
 }
 
-/** 노션에서 옮겨 온 결정 — 원천(노션 · 수집기 내보내기)에 남아 있어 지워도 다음 이식이 되살린다. 지우지 않고 불참으로 돌린다 */
+/** 노션에서 옮겨 온 결정 — 원천(노션 · 수집기 내보내기)에 남아 있어 지워도 다음 이식이 되살린다. 지우지 않고 중단으로 돌린다 */
 export const isImportedDecision = (d: { externalKey: string }) =>
   d.externalKey.startsWith("notion:")
 
@@ -430,7 +488,7 @@ type RemoveDb = Pick<typeof prisma, "grantDecision" | "$transaction">
 
 /**
  * 과제 후보에서 올린 결정을 내린다 — 담당자 줄도 함께 지우고, 누가 내렸는지 활동 기록에 남긴다.
- * 권한은 고치기와 같다(구성원이면 누구나). 노션에서 옮겨 온 결정은 지우지 않는다(409 — 불참으로 바꾸게 한다).
+ * 권한은 고치기와 같다(구성원이면 누구나). 노션에서 옮겨 온 결정은 지우지 않는다(409 — 중단으로 바꾸게 한다).
  * 내리면 그 공고는 과제 후보 목록에서 다시 「올리기」 로 돌아온다(올림 표시는 결정 행에서 계산한다).
  */
 export async function removeGrantDecision(
@@ -447,7 +505,7 @@ export async function removeGrantDecision(
   if (isImportedDecision(before))
     return fail(
       409,
-      "노션에서 옮겨 온 과제라 내리지 않습니다 — 단계를 「불참」 으로 바꿔 주세요"
+      "노션에서 옮겨 온 과제라 내리지 않습니다 — 단계를 「중단」 으로 바꿔 주세요"
     )
   await db.$transaction(async (tx) => {
     await tx.grantDecisionOwner.deleteMany({ where: { decisionId: id } })

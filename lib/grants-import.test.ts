@@ -34,10 +34,14 @@ test("인증 상태 — 보유 · 미충족 · 나머지는 후보", () => {
   )
 })
 
-test("단계 6개 — 모르는 단계는 던진다", () => {
+test("단계 — 옛 이름(검토 → 준비, 불참 → 중단)과 새 이름표 둘 다, 모르는 단계는 던진다", () => {
   assert.deepEqual(
     ["검토", "준비", "제출", "선정", "미선정", "불참"].map(grantStage),
-    ["REVIEW", "PREPARING", "SUBMITTED", "SELECTED", "REJECTED", "DROPPED"]
+    ["PREPARING", "PREPARING", "SUBMITTED", "SELECTED", "REJECTED", "STOPPED"]
+  )
+  assert.deepEqual(
+    ["제출 완료", "선정됨", "수행 중", "완료", "중단"].map(grantStage),
+    ["SUBMITTED", "SELECTED", "IN_PROGRESS", "COMPLETED", "STOPPED"]
   )
   assert.throws(() => grantStage("보류"))
 })

@@ -9,9 +9,17 @@ const YMD = {
 } as const
 const STAGE = {
   type: "string",
-  enum: ["REVIEW", "PREPARING", "SUBMITTED", "SELECTED", "REJECTED", "DROPPED"],
+  enum: [
+    "PREPARING",
+    "SUBMITTED",
+    "SELECTED",
+    "REJECTED",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "STOPPED",
+  ],
   description:
-    "REVIEW 검토 · PREPARING 준비 · SUBMITTED 제출 · SELECTED 선정 · REJECTED 미선정 · DROPPED 불참",
+    "PREPARING 준비 · SUBMITTED 제출 완료 · SELECTED 선정됨 · REJECTED 미선정 · IN_PROGRESS 수행 중 · COMPLETED 완료 · STOPPED 중단(지원하지 않거나 도중에 그만둠, 어느 단계에서든)",
 } as const
 
 export const GRANT_TOOLS = [
@@ -19,7 +27,7 @@ export const GRANT_TOOLS = [
   {
     name: "list_grant_decisions",
     description: [
-      "국가과제 「우리 결정」 — 검토 · 준비 · 제출 · 선정 · 미선정 · 불참 단계, 담당자, 마감, 사유, 연결된 수집기 공고.",
+      "국가과제 「우리 결정」 — 준비 → 제출 완료 → 선정됨 / 미선정, 선정됨 → 수행 중 → 완료, 어디서든 중단. 담당자, 마감, 사유, 선정 통보일 · 확정 지원금 · 협약일 · 수행 기간 · 완료일, 연결된 수집기 공고.",
       "「이번 달 마감 과제」「아리 박사님 담당 과제」「제출한 과제」 를 물으면 쓴다. 과제마다 NAS 폴더(신청서 · 제출 서류)와 이어진 공고의 첨부(공고문 · 양식)도 보인다. update_grant_decision 의 decision 을 여기서 고른다.",
     ].join(" "),
     inputSchema: {
@@ -99,7 +107,7 @@ export const GRANT_TOOLS = [
   {
     name: "update_grant_decision",
     description: [
-      "국가과제 결정 한 줄을 고친다 — 단계 · 사유 · 메모 · 마감 · 담당자 · 신청 업무 · 선정 과제 프로젝트. 준 칸만 바뀐다.",
+      "국가과제 결정 한 줄을 고친다 — 단계 · 사유 · 메모 · 마감 · 담당자 · 신청 업무 · 선정 과제 프로젝트 · 상태별 칸(선정 통보일 · 확정 지원금 · 협약일 · 수행 시작일 · 수행 종료일 · 완료일). 준 칸만 바뀐다.",
       "owners 를 주면 담당자를 그 목록으로 바꾼다(정식 이름). task 는 업무 슬러그 또는 id, project 는 프로젝트 id 또는 이름, nas_folder 는 NAS 폴더 경로 — 빈 문자열이면 연결을 푼다.",
     ].join(" "),
     inputSchema: {
@@ -112,10 +120,19 @@ export const GRANT_TOOLS = [
         stage: STAGE,
         stage_reason: {
           type: "string",
-          description: "불참 사유(자격 미달 · 접수 기간 지남) 등",
+          description: "단계를 바꾼 이유 — 중단 사유(자격 미달 · 접수 기간 지남) 등",
         },
         note: TEXT,
         deadline: YMD,
+        selected_on: { ...YMD, description: "선정 통보일 YYYY-MM-DD. 빈 문자열이면 지운다" },
+        awarded_amount: {
+          type: "string",
+          description: "확정 지원금 — 원 단위 숫자 문자열(예: \"120000000\"). 빈 문자열이면 지운다",
+        },
+        agreement_on: { ...YMD, description: "협약일 YYYY-MM-DD. 빈 문자열이면 지운다" },
+        starts_on: { ...YMD, description: "수행 시작일 YYYY-MM-DD. 빈 문자열이면 지운다" },
+        ends_on: { ...YMD, description: "수행 종료일 YYYY-MM-DD. 빈 문자열이면 지운다" },
+        completed_on: { ...YMD, description: "완료일 YYYY-MM-DD. 빈 문자열이면 지운다" },
         owners: {
           type: "array",
           items: { type: "string" },
@@ -136,7 +153,7 @@ export const GRANT_TOOLS = [
   {
     name: "add_grant_decision",
     description:
-      "과제 후보(공고)를 「우리 결정」 에 올린다 — 검토 단계로, 부른 사람이 담당. 같은 공고는 한 번만 올라간다. 화면 국가과제 › 과제 후보의 「올리기」 와 같다.",
+      "과제 후보(공고)를 「우리 결정」 에 올린다 — 준비 단계로, 부른 사람이 담당. 같은 공고는 한 번만 올라간다. 화면 국가과제 › 과제 후보의 「올리기」 와 같다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -152,7 +169,7 @@ export const GRANT_TOOLS = [
   {
     name: "remove_grant_decision",
     description:
-      "「우리 결정」 에서 과제를 내린다 — 과제 후보에서 올린(add_grant_decision) 결정만, 담당자도 함께 빠지고 그 공고는 다시 후보로 돌아간다. 되돌릴 수 없다. 노션에서 옮겨 온 결정은 내리지 않으니 update_grant_decision 으로 단계를 DROPPED(불참)로 바꾼다. 화면 국가과제 › 우리 결정 › 고치기의 「내리기」 와 같다.",
+      "「우리 결정」 에서 과제를 내린다 — 과제 후보에서 올린(add_grant_decision) 결정만, 담당자도 함께 빠지고 그 공고는 다시 후보로 돌아간다. 되돌릴 수 없다. 노션에서 옮겨 온 결정은 내리지 않으니 update_grant_decision 으로 단계를 STOPPED(중단)로 바꾼다. 화면 국가과제 › 우리 결정 펼침 더보기의 「내리기」 와 같다.",
     inputSchema: {
       type: "object",
       properties: {

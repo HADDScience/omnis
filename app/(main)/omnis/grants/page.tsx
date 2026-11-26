@@ -15,6 +15,7 @@ import {
   VERDICTS,
   type DeadlineFilter,
   type RegionGroup,
+  asStage,
 } from "@/lib/grants-labels"
 import {
   NOTICE_ORDER,
@@ -216,7 +217,7 @@ async function Decisions({ sp }: { sp: SP }) {
   const view: DecisionView[] = rows.map((r) => ({
     id: r.id,
     title: r.title,
-    stage: r.stage,
+    stage: asStage(r.stage),
     stageReason: r.stageReason,
     statusRaw: r.statusRaw,
     submittedTitle: r.submittedTitle,
@@ -244,6 +245,12 @@ async function Decisions({ sp }: { sp: SP }) {
       key: l.export_key ?? null,
     })),
     nasFolder: r.nasFolder,
+    selectedOn: r.selectedOn?.toISOString() ?? null,
+    awardedAmount: r.awardedAmount?.toString() ?? null,
+    agreementOn: r.agreementOn?.toISOString() ?? null,
+    startsOn: r.startsOn?.toISOString() ?? null,
+    endsOn: r.endsOn?.toISOString() ?? null,
+    completedOn: r.completedOn?.toISOString() ?? null,
     imported: isImportedDecision(r),
     attachments: filesOf(r),
   }))
