@@ -66,7 +66,11 @@ const AGENT_DESCRIPTIONS: Record<string, string> = {
 
 const WRITE_SUFFIX = " — 쓰기 도구다. 부르면 바로 실행되지 않고 사용자에게 확인 카드가 뜬다. 사용자가 확인한 뒤에만 실행된다."
 
-export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
+/**
+ * 앱 AI 에 여는 도구. forUser 를 주면 그 사람에게 켜진 것만 — 작업용 컴퓨터(WORKBENCH_USER_IDS)는 0단계라 정우창 계정에서만 보인다.
+ * 주지 않으면 전부(레지스트리 시험 · 일치 시험이 이것과 대조한다).
+ */
+export async function agentToolSpecs(forUser?: { userId: string }): Promise<AgentToolSpec[]> {
   const { OMNIS_TOOLS, TOOLS } = await import("@/lib/omnis-mcp")
   const byName = new Map<string, (typeof TOOLS)[number]>(TOOLS.map((t) => [t.name, t]))
   const specs: AgentToolSpec[] = [
@@ -110,7 +114,10 @@ export async function agentToolSpecs(): Promise<AgentToolSpec[]> {
   }
   // 4단계 결과물 — 문서 초안 · 파일 · 기록 제안
   const { OUTPUT_TOOL_SPECS } = await import("./outputs")
-  specs.push(...OUTPUT_TOOL_SPECS)
+  const { isWorkbenchTool } = await import("@/lib/workbench/cards")
+  const { workbenchEnabledFor } = await import("@/lib/workbench/config")
+  const workbench = !forUser || workbenchEnabledFor(forUser.userId)
+  specs.push(...OUTPUT_TOOL_SPECS.filter((s) => workbench || !isWorkbenchTool(s.name)))
   return specs
 }
 

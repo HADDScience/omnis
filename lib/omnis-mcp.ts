@@ -20,6 +20,7 @@ import { listTasksWhere } from "@/lib/task-unassigned"
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto"
 
 import { prisma } from "@/lib/db"
+import { WORKBENCH_MCP_TOOLS } from "@/lib/workbench/definitions"
 import { putObject, objectKeyFor, MAX_UPLOAD_BYTES } from "@/lib/storage"
 import { openFileObject } from "@/lib/file-object"
 import { TASK_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/constants"
@@ -143,6 +144,11 @@ export interface Caller {
   role: "ADMIN" | "MEMBER"
   /** 지식재산권 구성원일 때만. 아니면 IP 도구는 거절된다. */
   ip: IpMembership | null
+  /**
+   * 작업용 컴퓨터(lib/workbench)가 받은 단기 토큰이면 "workbench" — 허용 목록(WORKBENCH_MCP_TOOLS)의 읽기 도구만 연다.
+   * 쓰기 · 발송 · NAS 저장은 사람이 옴니스 승인 카드로 한다(계획 v3 2-1).
+   */
+  scope?: "workbench"
 }
 
 /**
@@ -160,15 +166,15 @@ export async function resolveCaller(
   if (!token) return null
   const hash = sha256(token)
 
-  const rows = token.startsWith("hadd_")
+  const rows: { user_id: string; client_id?: string }[] = token.startsWith("hadd_")
     ? await prisma.$queryRaw<{ user_id: string }[]>`
         UPDATE ip.mcp_tokens SET last_used_at = now()
          WHERE token_hash = ${hash} AND revoked_at IS NULL
          RETURNING user_id`
-    : await prisma.$queryRaw<{ user_id: string }[]>`
+    : await prisma.$queryRaw<{ user_id: string; client_id?: string }[]>`
         UPDATE ip.oauth_tokens SET last_used_at = now()
          WHERE access_hash = ${hash} AND revoked_at IS NULL AND expires_at > now()
-         RETURNING user_id`
+         RETURNING user_id, client_id`
   if (rows.length === 0) return null
 
   const user = await prisma.user.findUnique({
@@ -182,7 +188,17 @@ export async function resolveCaller(
     name: user.name,
     role: user.role,
     ip: await getIpAccess(user.id),
+    ...(rows[0].client_id === WORKBENCH_CLIENT_ID ? { scope: "workbench" as const } : {}),
   }
+}
+
+/** 작업용 컴퓨터 토큰의 발급처 — lib/workbench/store.ts 와 같은 값(마이그레이션 20261126180000_workbench 가 행을 만든다) */
+const WORKBENCH_CLIENT_ID = "omnis-workbench"
+const WORKBENCH_TOOL_SET = new Set(WORKBENCH_MCP_TOOLS)
+
+/** 이 사람(토큰)에게 보일 도구 목록 — 작업용 컴퓨터 토큰이면 허용 목록만 */
+export function toolsFor(caller: Caller) {
+  return caller.scope === "workbench" ? TOOLS.filter((t) => WORKBENCH_TOOL_SET.has(t.name)) : TOOLS
 }
 
 // ─── 지침 ───────────────────────────────────────────────────────────
@@ -1758,6 +1774,13 @@ export async function runTool(
   caller: Caller,
   ctx: { base: string } = { base: "" }
 ): Promise<ToolResult> {
+  if (caller.scope === "workbench" && !WORKBENCH_TOOL_SET.has(name)) {
+    return {
+      error:
+        `작업용 컴퓨터에서는 ${name} 을(를) 쓸 수 없습니다 — 읽기 도구만 열려 있습니다. ` +
+        "기록을 바꾸거나 보내야 하면 /mnt/session/outputs/requests.md 에 요청으로 남기세요. 사람이 옴니스 승인 카드로 실행합니다.",
+    }
+  }
   if (IP_TOOL_NAMES.has(name)) {
     if (!caller.ip) {
       return {
