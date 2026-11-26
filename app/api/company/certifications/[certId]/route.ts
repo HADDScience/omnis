@@ -19,6 +19,7 @@ export async function PATCH(
     note: body.note,
     acquiredOn: body.acquiredOn,
     validUntil: body.validUntil,
+    expect: body.expect,
   })
   if (!r.ok) return apiError(r.status, r.error)
   return NextResponse.json({ id: certId, changed: r.changed })

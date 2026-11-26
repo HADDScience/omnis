@@ -1,18 +1,17 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowDown01Icon,
+  ArrowUpRight01Icon,
   Delete02Icon,
-  PencilEdit02Icon,
+  MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
@@ -25,9 +24,19 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { send } from "@/components/grants/send"
+import {
+  InlineField,
+  useFieldSaver,
+  type EditorProps,
+} from "@/components/grants/inline-field"
 import {
   GrantFiles,
   type AttachmentView,
@@ -35,6 +44,7 @@ import {
 import { NasFolderPicker } from "@/components/grants/nas-folder-picker"
 import { GRANT_STAGES, GRANT_STAGE_LABEL, seoulYmd } from "@/lib/grants-labels"
 import type { GrantStage } from "@/generated/prisma/client"
+import { sameSet, sameText } from "@/lib/inline-field"
 import { cn } from "@/lib/utils"
 
 export interface DecisionView {
@@ -143,32 +153,8 @@ function DecisionRow({
   tasks: (Opt & { slug: string })[]
   projects: Opt[]
 }) {
-  const [editing, setEditing] = useState(false)
   const left = daysLeft(r.deadline)
-  const due =
-    r.deadline === null
-      ? null
-      : left! < 0
-        ? `마감 ${seoulYmd(r.deadline)}`
-        : left === 0
-          ? "오늘 마감"
-          : `D-${left} · ${seoulYmd(r.deadline)}`
-  const detail: [string, React.ReactNode][] = [
-    ["사유", r.stageReason],
-    ["노션 상태", r.statusRaw],
-    ["제출 과제명", r.submittedTitle],
-    ["지원금액", r.amount],
-    ["메모", r.note],
-    [
-      "신청 업무",
-      r.task && (
-        <Link href={`/tasks/${r.task.id}`} className="hover:underline">
-          #{r.task.slug} {r.task.name}
-        </Link>
-      ),
-    ],
-    ["과제 프로젝트", r.project?.name],
-  ]
+  const due = dueText(r.deadline)
 
   return (
     <li>
@@ -181,14 +167,7 @@ function DecisionRow({
       >
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-1.5 py-px text-[11px] font-medium",
-                STAGE_CHIP[r.stage]
-              )}
-            >
-              {GRANT_STAGE_LABEL[r.stage]}
-            </span>
+            <StageChip stage={r.stage} />
             <span className="truncate text-[13.5px] font-semibold">
               {r.title}
             </span>
@@ -227,293 +206,376 @@ function DecisionRow({
         />
       </button>
       {open && (
-        <div className="px-3 pb-3">
-          {detail.some(([, v]) => v) && (
-            <dl className="grid grid-cols-1 gap-x-3 gap-y-1.5 rounded-xl bg-background/50 p-3 text-[12px] sm:grid-cols-[84px_1fr]">
-              {detail
-                .filter(([, v]) => v)
-                .map(([k, v]) => (
-                  <div key={k} className="contents">
-                    <dt className="text-muted-foreground">{k}</dt>
-                    <dd className="break-words whitespace-pre-line">{v}</dd>
-                  </div>
-                ))}
-            </dl>
-          )}
-          {r.noticeLinks.length > 0 && (
-            <ul className="mt-2 space-y-1 text-[12px]">
-              {r.noticeLinks.map((l, i) => (
-                <li key={i} className="flex flex-wrap gap-x-2">
-                  <span className="text-muted-foreground">
-                    {RELATION_LABEL[l.relation ?? ""] ?? "공고"}
-                  </span>
-                  <span>{l.title}</span>
-                  {l.date && (
-                    <span className="text-muted-foreground tabular-nums">
-                      {l.date}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
-          {editing ? (
-            <DecisionEditor
-              r={r}
-              members={members}
-              tasks={tasks}
-              projects={projects}
-              onDone={() => setEditing(false)}
-            />
-          ) : (
-            <div className="mt-2 flex justify-end">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="glass h-8 rounded-full px-3"
-                onClick={() => setEditing(true)}
-              >
-                <HugeiconsIcon
-                  icon={PencilEdit02Icon}
-                  strokeWidth={2}
-                  data-icon="inline-start"
-                />
-                고치기
-              </Button>
-            </div>
-          )}
-        </div>
+        <DecisionDetail
+          r={r}
+          members={members}
+          tasks={tasks}
+          projects={projects}
+        />
       )}
     </li>
   )
 }
 
-function DecisionEditor({
+function StageChip({ stage }: { stage: GrantStage }) {
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-1.5 py-px text-[11px] font-medium",
+        STAGE_CHIP[stage]
+      )}
+    >
+      {GRANT_STAGE_LABEL[stage]}
+    </span>
+  )
+}
+
+function dueText(iso: string | null): string | null {
+  if (!iso) return null
+  const left = daysLeft(iso)!
+  return left < 0
+    ? `마감 ${seoulYmd(iso)}`
+    : left === 0
+      ? `오늘 마감 · ${seoulYmd(iso)}`
+      : `D-${left} · ${seoulYmd(iso)}`
+}
+
+const text = (v: string) => v.trim() || null
+const focusOnMount = (el: HTMLElement | null) => el?.focus()
+
+/** 펼친 결정 — 보이는 칸을 그 자리에서 고친다. 칸 하나씩 PATCH(고치기 전 값을 expect 로) */
+function DecisionDetail({
   r,
   members,
   tasks,
   projects,
-  onDone,
 }: {
   r: DecisionView
   members: Opt[]
   tasks: (Opt & { slug: string })[]
   projects: Opt[]
-  onDone: () => void
 }) {
-  const router = useRouter()
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    stage: r.stage,
-    stageReason: r.stageReason ?? "",
-    deadline: seoulYmd(r.deadline) ?? "",
-    note: r.note ?? "",
-    ownerIds: r.owners.map((o) => o.id),
-    taskId: r.task?.id ?? "",
-    projectId: r.project?.id ?? "",
-    nasFolder: r.nasFolder ?? "",
-  })
+  const saver = useFieldSaver(`/api/grants/decisions/${r.id}`)
+  const [removing, setRemoving] = useState(false)
   // 지금 담당인데 재직 목록에 없는 사람도 칩으로 남긴다
   const people = [
     ...members,
     ...r.owners.filter((o) => !members.some((m) => m.id === o.id)),
   ]
+  const name = new Map(people.map((p) => [p.id, p.name]))
   const taskOpts =
     r.task && !tasks.some((t) => t.id === r.task!.id)
       ? [r.task, ...tasks]
       : tasks
+  const taskOf = new Map(taskOpts.map((t) => [t.id, t]))
+  const projectOpts =
+    r.project && !projects.some((p) => p.id === r.project!.id)
+      ? [r.project, ...projects]
+      : projects
+  const projectOf = new Map(projectOpts.map((p) => [p.id, p.name]))
 
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      // NAS 폴더는 바꿨을 때만 보낸다 — 보내면 「사람이 정한 것」 으로 남아 이식이 다시 채우지 않는다
-      const { nasFolder, ...rest } = form
-      const body = nasFolder === (r.nasFolder ?? "") ? rest : form
-      const res = await send(`/api/grants/decisions/${r.id}`, "PATCH", body)
-      toast.success(`${r.title} · ${res.changed?.join(" · ") ?? "저장"}`)
-      onDone()
-      router.refresh()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "저장하지 못했습니다")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const id = (k: string) => `gd-${r.id}-${k}`
   return (
-    <form
-      onSubmit={submit}
-      aria-label={`${r.title} 고치기`}
-      className="mt-2 grid grid-cols-1 gap-2.5 rounded-xl bg-background/60 p-3 sm:grid-cols-2"
-    >
-      <div>
-        <Label htmlFor={id("stage")} className="mb-1 block text-[12px]">
-          단계
-        </Label>
-        <NativeSelect
-          id={id("stage")}
-          className="w-full"
-          value={form.stage}
-          onChange={(e) =>
-            setForm({ ...form, stage: e.target.value as GrantStage })
-          }
-        >
-          {GRANT_STAGES.map((s) => (
-            <NativeSelectOption key={s} value={s}>
-              {GRANT_STAGE_LABEL[s]}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-      </div>
-      <div>
-        <Label htmlFor={id("deadline")} className="mb-1 block text-[12px]">
-          마감
-        </Label>
-        <Input
-          id={id("deadline")}
-          type="date"
-          value={form.deadline}
-          onChange={(e) => setForm({ ...form, deadline: e.target.value })}
-        />
-      </div>
-      <fieldset className="sm:col-span-2">
-        <legend className="mb-1 text-[12px] font-medium">담당</legend>
-        <div className="flex flex-wrap gap-1.5">
-          {people.map((m) => {
-            const on = form.ownerIds.includes(m.id)
-            return (
-              <button
-                key={m.id}
-                type="button"
-                aria-pressed={on}
-                onClick={() =>
-                  setForm({
-                    ...form,
-                    ownerIds: on
-                      ? form.ownerIds.filter((x) => x !== m.id)
-                      : [...form.ownerIds, m.id],
-                  })
-                }
-                className={cn(
-                  "touch-target inline-flex h-8 cursor-pointer items-center rounded-full px-3 text-[12.5px] transition-colors",
-                  on
-                    ? "bg-foreground text-background"
-                    : "glass text-foreground hover:bg-foreground/[0.04]"
-                )}
-              >
-                {m.name}
-              </button>
-            )
-          })}
-        </div>
-      </fieldset>
-      <div className="sm:col-span-2">
-        <Label htmlFor={id("reason")} className="mb-1 block text-[12px]">
-          사유
-        </Label>
-        <Input
-          id={id("reason")}
-          value={form.stageReason}
-          onChange={(e) => setForm({ ...form, stageReason: e.target.value })}
-        />
-      </div>
-      <div>
-        <Label htmlFor={id("task")} className="mb-1 block text-[12px]">
-          신청 업무
-        </Label>
-        <NativeSelect
-          id={id("task")}
-          className="w-full"
-          value={form.taskId}
-          onChange={(e) => setForm({ ...form, taskId: e.target.value })}
-        >
-          <NativeSelectOption value="">없음</NativeSelectOption>
-          {taskOpts.map((t) => (
-            <NativeSelectOption key={t.id} value={t.id}>
-              #{t.slug} {t.name}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-      </div>
-      <div>
-        <Label htmlFor={id("project")} className="mb-1 block text-[12px]">
-          과제 프로젝트
-        </Label>
-        <NativeSelect
-          id={id("project")}
-          className="w-full"
-          value={form.projectId}
-          onChange={(e) => setForm({ ...form, projectId: e.target.value })}
-        >
-          <NativeSelectOption value="">없음</NativeSelectOption>
-          {projects.map((p) => (
-            <NativeSelectOption key={p.id} value={p.id}>
-              {p.name}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-      </div>
-      <div className="sm:col-span-2">
-        <Label htmlFor={id("nas")} className="mb-1 block text-[12px]">
-          NAS 폴더
-        </Label>
-        <NasFolderPicker
-          id={id("nas")}
-          value={form.nasFolder}
-          title={r.title}
-          extraTitles={r.noticeLinks.map((l) => l.title)}
-          onChange={(nasFolder) => setForm({ ...form, nasFolder })}
-        />
-      </div>
-      <div className="sm:col-span-2">
-        <Label htmlFor={id("note")} className="mb-1 block text-[12px]">
-          메모
-        </Label>
-        <Textarea
-          id={id("note")}
-          rows={3}
-          value={form.note}
-          onChange={(e) => setForm({ ...form, note: e.target.value })}
-        />
-      </div>
-      <div className="flex justify-end gap-2 sm:col-span-2">
+    <div className="px-3 pb-3">
+      <div className="relative rounded-xl bg-background/50 p-3 text-[12px]">
         {!r.imported && (
-          <RemoveDecision r={r} disabled={saving} className="mr-auto" />
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={`${r.title} 더보기`}
+              className="touch-target absolute top-1.5 right-1.5 z-10 flex size-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+            >
+              <HugeiconsIcon
+                icon={MoreHorizontalIcon}
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-36">
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => setRemoving(true)}
+              >
+                <HugeiconsIcon
+                  icon={Delete02Icon}
+                  size={14}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                내리기
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onDone}
-          disabled={saving}
+        <dl
+          aria-label={`${r.title} 칸`}
+          className={cn(
+            "grid grid-cols-1 gap-x-3 gap-y-0.5 sm:grid-cols-[84px_1fr]",
+            !r.imported && "pr-8"
+          )}
         >
-          취소
-        </Button>
-        <Button type="submit" size="sm" disabled={saving}>
-          {saving && <Spinner data-icon="inline-start" />}
-          저장
-        </Button>
+          <InlineField<GrantStage>
+            label="단계"
+            value={r.stage}
+            display={(v) => <StageChip stage={v} />}
+            save={saver("stage")}
+            editor={({ draft, commit, bind }) => (
+              <NativeSelect
+                {...bind()}
+                size="sm"
+                className="w-full sm:w-48"
+                value={draft}
+                onChange={(e) => commit(e.target.value as GrantStage)}
+              >
+                {GRANT_STAGES.map((s) => (
+                  <NativeSelectOption key={s} value={s}>
+                    {GRANT_STAGE_LABEL[s]}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            )}
+          />
+          <InlineField<string>
+            label="사유"
+            value={r.stageReason ?? ""}
+            equals={sameText}
+            display={text}
+            save={saver("stageReason")}
+            editor={(p) => <TextEditor {...p} />}
+          />
+          <InlineField<string>
+            label="마감"
+            value={seoulYmd(r.deadline) ?? ""}
+            display={(v) => (v ? dueText(v) : null)}
+            save={saver("deadline")}
+            editor={({ draft, setDraft, bind }) => (
+              <Input
+                {...bind()}
+                type="date"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                className="h-8 w-full text-[12px] sm:w-48 md:text-[12px]"
+              />
+            )}
+          />
+          <InlineField<string[]>
+            label="담당"
+            value={r.owners.map((o) => o.id)}
+            equals={sameSet}
+            display={(ids) =>
+              ids.length ? ids.map((i) => name.get(i) ?? "?").join(" · ") : null
+            }
+            save={saver("ownerIds")}
+            editor={({ draft, setDraft, bind }) => (
+              <div
+                {...bind()}
+                // div 는 autoFocus 가 듣지 않는다 — 처음 그릴 때 한 번 포커스
+                ref={focusOnMount}
+                tabIndex={-1}
+                role="group"
+                className="flex flex-wrap gap-1.5 rounded-md py-0.5 outline-none"
+              >
+                {people.map((m) => {
+                  const on = draft.includes(m.id)
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-pressed={on}
+                      // 누를 때 포커스를 옮기지 않는다 — 칸을 벗어난 것으로 보고 저장하지 않게
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() =>
+                        setDraft(
+                          on ? draft.filter((x) => x !== m.id) : [...draft, m.id]
+                        )
+                      }
+                      className={cn(
+                        "touch-target inline-flex h-7 cursor-pointer items-center rounded-full px-2.5 text-[12px] transition-colors",
+                        on
+                          ? "bg-foreground text-background"
+                          : "glass text-foreground hover:bg-foreground/[0.04]"
+                      )}
+                    >
+                      {m.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          />
+          <InlineField<string>
+            label="지원금액"
+            value={r.amount ?? ""}
+            equals={sameText}
+            display={text}
+            save={saver("amount")}
+            editor={(p) => <TextEditor {...p} />}
+          />
+          {r.statusRaw && <ReadOnly label="노션 상태" value={r.statusRaw} />}
+          {r.submittedTitle && (
+            <ReadOnly label="제출 과제명" value={r.submittedTitle} />
+          )}
+          <InlineField<string>
+            label="신청 업무"
+            value={r.task?.id ?? ""}
+            display={(v) => {
+              const t = taskOf.get(v)
+              return t ? `#${t.slug} ${t.name}` : null
+            }}
+            after={
+              r.task && (
+                <Link
+                  href={`/tasks/${r.task.id}`}
+                  aria-label={`#${r.task.slug} 업무 열기`}
+                  className="touch-target flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+                >
+                  <HugeiconsIcon
+                    icon={ArrowUpRight01Icon}
+                    size={14}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                </Link>
+              )
+            }
+            save={saver("taskId")}
+            editor={({ draft, commit, bind }) => (
+              <NativeSelect
+                {...bind()}
+                size="sm"
+                className="w-full"
+                value={draft}
+                onChange={(e) => commit(e.target.value)}
+              >
+                <NativeSelectOption value="">없음</NativeSelectOption>
+                {taskOpts.map((t) => (
+                  <NativeSelectOption key={t.id} value={t.id}>
+                    #{t.slug} {t.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            )}
+          />
+          <InlineField<string>
+            label="과제 프로젝트"
+            value={r.project?.id ?? ""}
+            display={(v) => projectOf.get(v) ?? null}
+            save={saver("projectId")}
+            editor={({ draft, commit, bind }) => (
+              <NativeSelect
+                {...bind()}
+                size="sm"
+                className="w-full"
+                value={draft}
+                onChange={(e) => commit(e.target.value)}
+              >
+                <NativeSelectOption value="">없음</NativeSelectOption>
+                {projectOpts.map((p) => (
+                  <NativeSelectOption key={p.id} value={p.id}>
+                    {p.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            )}
+          />
+          <InlineField<string>
+            label="NAS 폴더"
+            value={r.nasFolder ?? ""}
+            display={(v) => (v ? v.split("/").pop() : null)}
+            save={saver("nasFolder")}
+            editor={({ id, draft, commit, bind }) => {
+              const { id: _id, ...selectProps } = bind()
+              void _id
+              return (
+                <NasFolderPicker
+                  id={id}
+                  value={draft}
+                  title={r.title}
+                  extraTitles={r.noticeLinks.map((l) => l.title)}
+                  onChange={(v) => commit(v)}
+                  selectProps={selectProps}
+                />
+              )
+            }}
+          />
+          <InlineField<string>
+            label="메모"
+            value={r.note ?? ""}
+            equals={sameText}
+            display={text}
+            save={saver("note")}
+            editor={(p) => <TextEditor {...p} multiline />}
+          />
+        </dl>
       </div>
-    </form>
+      {r.noticeLinks.length > 0 && (
+        <ul className="mt-2 space-y-1 text-[12px]">
+          {r.noticeLinks.map((l, i) => (
+            <li key={i} className="flex flex-wrap gap-x-2">
+              <span className="text-muted-foreground">
+                {RELATION_LABEL[l.relation ?? ""] ?? "공고"}
+              </span>
+              <span>{l.title}</span>
+              {l.date && (
+                <span className="text-muted-foreground tabular-nums">
+                  {l.date}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
+      {!r.imported && (
+        <RemoveDecision r={r} open={removing} onOpenChange={setRemoving} />
+      )}
+    </div>
+  )
+}
+
+function TextEditor({
+  draft,
+  setDraft,
+  bind,
+  multiline = false,
+}: EditorProps<string> & { multiline?: boolean }) {
+  return multiline ? (
+    <Textarea
+      {...bind({ multiline: true })}
+      rows={3}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      className="min-h-16 text-[12px] md:text-[12px]"
+    />
+  ) : (
+    <Input
+      {...bind()}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      className="h-8 text-[12px] md:text-[12px]"
+    />
+  )
+}
+
+function ReadOnly({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="contents">
+      <dt className="pt-1 text-muted-foreground">{label}</dt>
+      <dd className="py-1 break-words whitespace-pre-line">{value}</dd>
+    </div>
   )
 }
 
 /** 과제 후보에서 올린 결정 내리기 — 되돌릴 수 없어 확인 창을 한 번 거친다 */
 function RemoveDecision({
   r,
-  disabled,
-  className,
+  open,
+  onOpenChange: setOpen,
 }: {
   r: DecisionView
-  disabled: boolean
-  className?: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
   async function remove() {
@@ -532,27 +594,6 @@ function RemoveDecision({
 
   return (
     <AlertDialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
-      <AlertDialogTrigger
-        disabled={disabled}
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "text-muted-foreground hover:text-destructive",
-              className
-            )}
-          />
-        }
-      >
-        <HugeiconsIcon
-          icon={Delete02Icon}
-          strokeWidth={2}
-          data-icon="inline-start"
-        />
-        내리기
-      </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>우리 결정에서 내릴까요?</AlertDialogTitle>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ComponentProps } from "react"
 import {
   NativeSelect,
   NativeSelectOptGroup,
@@ -29,12 +29,15 @@ export function NasFolderPicker({
   title,
   extraTitles,
   onChange,
+  selectProps,
 }: {
   id: string
   value: string
   title: string
   extraTitles: string[]
   onChange: (path: string) => void
+  /** 제자리 편집 — 자동 포커스 · 칸 벗어남 · 키 */
+  selectProps?: Omit<ComponentProps<"select">, "id" | "value" | "onChange" | "size">
 }) {
   const [folders, setFolders] = useState<
     { name: string; path: string }[] | null
@@ -65,6 +68,7 @@ export function NasFolderPicker({
   const known = value === "" || folders.some((f) => f.path === value)
   return (
     <NativeSelect
+      {...selectProps}
       id={id}
       className="w-full"
       value={value}
