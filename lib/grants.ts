@@ -12,6 +12,7 @@ import {
   parseYmd,
   seoulYmd,
 } from "@/lib/grants-labels"
+import { staleFields, type ExpectKind } from "@/lib/grants-expect"
 
 export type OpResult<T = unknown> =
   | { ok: true; changed: string[]; value: T }
@@ -20,6 +21,34 @@ export type OpResult<T = unknown> =
 const fail = (status: number, error: string) =>
   ({ ok: false, status, error }) as const
 
+/** 화면이 본 값(expect)과 지금 값이 다르면 409 — 그새 다른 사람이 고친 칸 */
+function conflict(
+  expect: unknown,
+  current: Record<string, unknown>,
+  kinds: Record<string, ExpectKind>,
+  labels: Record<string, string>
+) {
+  const stale = staleFields(expect, current, kinds)
+  if (stale.length === 0) return null
+  return fail(
+    409,
+    `그새 다른 사람이 ${stale.map((k) => labels[k] ?? k).join(" · ")}을(를) 바꿨습니다`
+  )
+}
+
+const CERT_KINDS: Record<string, ExpectKind> = {
+  status: "id",
+  note: "text",
+  acquiredOn: "ymd",
+  validUntil: "ymd",
+}
+const CERT_LABELS: Record<string, string> = {
+  status: "상태",
+  note: "메모",
+  acquiredOn: "취득일",
+  validUntil: "유효기간",
+}
+
 // ─── 인증 ───
 
 export interface CertPatch {
@@ -27,6 +56,8 @@ export interface CertPatch {
   note?: unknown
   acquiredOn?: unknown
   validUntil?: unknown
+  /** 화면이 고치기 전에 본 값 — 주면 그새 바뀐 칸이 있는지 보고 409 */
+  expect?: unknown
 }
 
 /** 인증 상태 · 메모 · 취득일 · 유효기간 고치기. 준 칸만 바꾼다 */
@@ -37,6 +68,8 @@ export async function updateCertification(
 ): Promise<OpResult<{ id: string; name: string }>> {
   const before = await prisma.companyCertification.findUnique({ where: { id } })
   if (!before) return fail(404, "없는 인증입니다")
+  const clash = conflict(patch.expect, before, CERT_KINDS, CERT_LABELS)
+  if (clash) return clash
   const data: Prisma.CompanyCertificationUpdateInput = {}
   const changed: string[] = []
 
@@ -101,9 +134,36 @@ export interface DecisionPatch {
   projectId?: unknown
   /** NAS 폴더 경로(/HADD Science/…). 빈 문자열이면 연결을 푼다 — 어느 쪽이든 사람이 정한 것으로 남긴다 */
   nasFolder?: unknown
+  /** 지원금액 원문(「최대 2억 원」 같은 글) */
+  amount?: unknown
+  /** 화면이 고치기 전에 본 값 — 주면 그새 바뀐 칸이 있는지 보고 409 */
+  expect?: unknown
 }
 
-/** 과제 결정 고치기 — 단계 · 사유 · 메모 · 마감 · 담당자 · 신청 업무 · 선정 과제 프로젝트 */
+const DECISION_KINDS: Record<string, ExpectKind> = {
+  stage: "id",
+  stageReason: "text",
+  note: "text",
+  amount: "text",
+  deadline: "ymd",
+  ownerIds: "ids",
+  taskId: "id",
+  projectId: "id",
+  nasFolder: "text",
+}
+const DECISION_LABELS: Record<string, string> = {
+  stage: "단계",
+  stageReason: "사유",
+  note: "메모",
+  amount: "지원금액",
+  deadline: "마감",
+  ownerIds: "담당",
+  taskId: "신청 업무",
+  projectId: "과제 프로젝트",
+  nasFolder: "NAS 폴더",
+}
+
+/** 과제 결정 고치기 — 단계 · 사유 · 메모 · 지원금액 · 마감 · 담당자 · 신청 업무 · 선정 과제 프로젝트 · NAS 폴더. 준 칸만 바꾼다 */
 export async function updateGrantDecision(
   userId: string,
   id: string,
@@ -118,6 +178,13 @@ export async function updateGrantDecision(
     },
   })
   if (!before) return fail(404, "없는 과제 결정입니다")
+  const clash = conflict(
+    patch.expect,
+    { ...before, ownerIds: before.owners.map((o) => o.userId) },
+    DECISION_KINDS,
+    DECISION_LABELS
+  )
+  if (clash) return clash
   const data: Prisma.GrantDecisionUncheckedUpdateInput = {}
   const changed: string[] = []
 
@@ -134,11 +201,13 @@ export async function updateGrantDecision(
   for (const [key, label] of [
     ["stageReason", "사유"],
     ["note", "메모"],
+    ["amount", "지원금액"],
   ] as const) {
     if (patch[key] === undefined) continue
     const v =
       typeof patch[key] === "string"
-        ? (patch[key] as string).trim().slice(0, 2000) || null
+        ? (patch[key] as string).trim().slice(0, key === "amount" ? 200 : 2000) ||
+          null
         : null
     if (v !== before[key]) {
       data[key] = v

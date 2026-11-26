@@ -1,4 +1,5 @@
-// 국가과제 결정 한 줄 고치기(PATCH) — 단계 · 사유 · 메모 · 마감 · 담당자 · 업무/프로젝트 · NAS 폴더 연결.
+// 국가과제 결정 고치기(PATCH) — 단계 · 사유 · 메모 · 지원금액 · 마감 · 담당자 · 업무/프로젝트 · NAS 폴더 연결.
+// 화면은 칸 하나씩 보내고 expect(고치기 전에 본 값)를 붙인다 — 그새 바뀌었으면 409.
 // 내리기(DELETE) — 과제 후보에서 올린 결정만. 노션에서 옮겨 온 결정은 409(불참으로 바꾼다). 둘 다 구성원 누구나, 활동 기록에 남는다.
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
@@ -24,6 +25,8 @@ export async function PATCH(
     nasFolder: body.nasFolder,
     taskId: body.taskId,
     projectId: body.projectId,
+    amount: body.amount,
+    expect: body.expect,
   })
   if (!r.ok) return apiError(r.status, r.error)
   return NextResponse.json({ id: decisionId, changed: r.changed })

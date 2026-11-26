@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { CertEditor } from "@/components/company/cert-editor"
+import { CertFields } from "@/components/company/cert-editor"
 import { seoulYmd } from "@/lib/grants-labels"
 import {
   isTipsItem,
@@ -27,7 +27,7 @@ import type {
 
 /**
  * 회사 정보 화면의 「인증·가점」 구역. 위 묶음 전환으로 한 묶음씩, 인증마다 한 줄 요약 —
- * 줄을 누르면 판정 이유 · 자격조건 · 신청기간 · 비용 · 유효기간 · 근거와 고치기(cert-editor)가 펼쳐진다.
+ * 줄을 누르면 판정 이유 · 자격조건 · 신청기간 · 비용 · 근거와, 그 자리에서 고치는 상태 · 취득일 · 유효기간 · 메모(cert-editor)가 펼쳐진다.
  */
 /** 서울 날짜 — 이식한 연혁 · 고친 취득일 모두 서울 자정이다 */
 const ymd = seoulYmd
@@ -283,19 +283,9 @@ function CertRow({
     ["신청기간", r.window_2026_12_2027 || r.application_window],
     ["걸리는 기간", r.time_to_issue],
     ["비용", r.cost],
-    ["유효기간", c.validUntil ? `${ymd(c.validUntil)} 까지` : r.validity],
     ["가점", bonusRaw && <BonusValue text={bonusRaw} />],
     ["TIPS 가점", isTipsItem(tips) && <TipsValue t={tips!} />],
-    [
-      "취득",
-      c.acquiredOn
-        ? ymd(c.acquiredOn)
-        : c.record
-          ? `${c.record.title} ${ymd(c.record.startsOn) ?? ""}`
-          : null,
-    ],
     ["발급", c.issuer],
-    ["메모", c.note],
   ]
 
   return (
@@ -340,15 +330,24 @@ function CertRow({
       </button>
       {open && (
         <div className="px-3 pb-3">
-          <dl className="grid grid-cols-1 gap-x-3 gap-y-1.5 rounded-xl bg-background/50 p-3 text-[12px] sm:grid-cols-[84px_1fr]">
+          <dl className="grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-xl bg-background/50 p-3 text-[12px] sm:grid-cols-[84px_1fr]">
             {detail
               .filter(([, v]) => v)
               .map(([k, v]) => (
                 <div key={k} className="contents">
-                  <dt className="text-muted-foreground">{k}</dt>
-                  <dd className="break-words whitespace-pre-line">{v}</dd>
+                  <dt className="pt-1 text-muted-foreground">{k}</dt>
+                  <dd className="py-1 break-words whitespace-pre-line">{v}</dd>
                 </div>
               ))}
+            <CertFields
+              cert={c}
+              acquiredHint={
+                c.record
+                  ? `${c.record.title} ${ymd(c.record.startsOn) ?? ""}`.trim()
+                  : null
+              }
+              validityHint={r.validity}
+            />
           </dl>
           {(r.sources?.length || c.researchedAt) && (
             <p className="mt-1.5 flex flex-wrap gap-x-2.5 text-[11.5px] text-muted-foreground">
@@ -369,7 +368,6 @@ function CertRow({
               {c.researchedAt && <span>조사 {ymd(c.researchedAt)}</span>}
             </p>
           )}
-          <CertEditor cert={c} />
         </div>
       )}
     </li>

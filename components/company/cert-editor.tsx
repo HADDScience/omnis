@@ -1,18 +1,15 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { PencilEdit02Icon } from "@hugeicons/core-free-icons"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Spinner } from "@/components/ui/spinner"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
-import { send } from "@/components/grants/send"
+import {
+  InlineField,
+  useFieldSaver,
+  type EditorProps,
+} from "@/components/grants/inline-field"
 import { CERT_STATUSES, CERT_STATUS_LABEL, seoulYmd } from "@/lib/grants-labels"
+import { sameText } from "@/lib/inline-field"
 import type { CertStatus } from "@/generated/prisma/client"
 
 type Editable = {
@@ -24,139 +21,87 @@ type Editable = {
   validUntil: Date | string | null
 }
 
-/** 인증 한 줄 고치기 — 상태 · 취득일 · 유효기간 · 메모. 펼친 칸 아래에 붙는다 */
-export function CertEditor({ cert }: { cert: Editable }) {
-  const router = useRouter()
-  const [editing, setEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState(() => initial(cert))
-
-  if (!editing) {
-    return (
-      <div className="mt-2 flex justify-end">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="glass h-8 rounded-full px-3"
-          onClick={() => {
-            setForm(initial(cert))
-            setEditing(true)
-          }}
-        >
-          <HugeiconsIcon
-            icon={PencilEdit02Icon}
-            strokeWidth={2}
-            data-icon="inline-start"
-          />
-          고치기
-        </Button>
-      </div>
-    )
-  }
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      const r = await send(
-        `/api/company/certifications/${cert.id}`,
-        "PATCH",
-        form
-      )
-      toast.success(`${cert.name} · ${r.changed?.join(" · ") ?? "저장"}`)
-      setEditing(false)
-      router.refresh()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "저장하지 못했습니다")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const id = (k: string) => `cert-${cert.id}-${k}`
+/**
+ * 인증 한 줄의 고칠 수 있는 칸 — 상태 · 취득일 · 유효기간 · 메모. 펼친 칸의 dl 안에 그 자리에서 고친다.
+ * 비어 있으면 조사 원문(acquiredHint · validityHint)을 흐리게 보인다.
+ */
+export function CertFields({
+  cert,
+  acquiredHint,
+  validityHint,
+}: {
+  cert: Editable
+  acquiredHint?: string | null
+  validityHint?: string | null
+}) {
+  const saver = useFieldSaver(`/api/company/certifications/${cert.id}`)
+  const hint = (t: string | null | undefined) =>
+    t ? <span className="text-muted-foreground">{t}</span> : null
   return (
-    <form
-      onSubmit={submit}
-      className="mt-2 grid grid-cols-1 gap-2.5 rounded-xl bg-background/60 p-3 sm:grid-cols-3"
-      aria-label={`${cert.name} 고치기`}
-    >
-      <div>
-        <Label htmlFor={id("status")} className="mb-1 block text-[12px]">
-          상태
-        </Label>
-        <NativeSelect
-          id={id("status")}
-          className="w-full"
-          value={form.status}
-          onChange={(e) =>
-            setForm({ ...form, status: e.target.value as CertStatus })
-          }
-        >
-          {CERT_STATUSES.map((s) => (
-            <NativeSelectOption key={s} value={s}>
-              {CERT_STATUS_LABEL[s]}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-      </div>
-      <div>
-        <Label htmlFor={id("acquired")} className="mb-1 block text-[12px]">
-          취득일
-        </Label>
-        <Input
-          id={id("acquired")}
-          type="date"
-          value={form.acquiredOn}
-          onChange={(e) => setForm({ ...form, acquiredOn: e.target.value })}
-        />
-      </div>
-      <div>
-        <Label htmlFor={id("valid")} className="mb-1 block text-[12px]">
-          유효기간
-        </Label>
-        <Input
-          id={id("valid")}
-          type="date"
-          value={form.validUntil}
-          onChange={(e) => setForm({ ...form, validUntil: e.target.value })}
-        />
-      </div>
-      <div className="sm:col-span-3">
-        <Label htmlFor={id("note")} className="mb-1 block text-[12px]">
-          메모
-        </Label>
-        <Textarea
-          id={id("note")}
-          rows={3}
-          value={form.note}
-          onChange={(e) => setForm({ ...form, note: e.target.value })}
-        />
-      </div>
-      <div className="flex justify-end gap-2 sm:col-span-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setEditing(false)}
-          disabled={saving}
-        >
-          취소
-        </Button>
-        <Button type="submit" size="sm" disabled={saving}>
-          {saving && <Spinner data-icon="inline-start" />}
-          저장
-        </Button>
-      </div>
-    </form>
+    <>
+      <InlineField<CertStatus>
+        label="상태"
+        value={cert.status}
+        display={(v) => CERT_STATUS_LABEL[v]}
+        save={saver("status")}
+        editor={({ draft, commit, bind }) => (
+          <NativeSelect
+            {...bind()}
+            size="sm"
+            className="w-full sm:w-48"
+            value={draft}
+            onChange={(e) => commit(e.target.value as CertStatus)}
+          >
+            {CERT_STATUSES.map((s) => (
+              <NativeSelectOption key={s} value={s}>
+                {CERT_STATUS_LABEL[s]}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        )}
+      />
+      <InlineField<string>
+        label="취득일"
+        value={seoulYmd(cert.acquiredOn) ?? ""}
+        display={(v) => v || hint(acquiredHint)}
+        save={saver("acquiredOn")}
+        editor={(p) => <DateEditor {...p} />}
+      />
+      <InlineField<string>
+        label="유효기간"
+        value={seoulYmd(cert.validUntil) ?? ""}
+        display={(v) => (v ? `${v} 까지` : hint(validityHint))}
+        save={saver("validUntil")}
+        editor={(p) => <DateEditor {...p} />}
+      />
+      <InlineField<string>
+        label="메모"
+        value={cert.note ?? ""}
+        equals={sameText}
+        display={(v) => v.trim() || null}
+        save={saver("note")}
+        editor={({ draft, setDraft, bind }) => (
+          <Textarea
+            {...bind({ multiline: true })}
+            rows={3}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="min-h-16 text-[12px] md:text-[12px]"
+          />
+        )}
+      />
+    </>
   )
 }
 
-function initial(c: Editable) {
-  return {
-    status: c.status,
-    note: c.note ?? "",
-    acquiredOn: seoulYmd(c.acquiredOn) ?? "",
-    validUntil: seoulYmd(c.validUntil) ?? "",
-  }
+function DateEditor({ draft, setDraft, bind }: EditorProps<string>) {
+  return (
+    <Input
+      {...bind()}
+      type="date"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      className="h-8 w-full text-[12px] sm:w-48 md:text-[12px]"
+    />
+  )
 }
