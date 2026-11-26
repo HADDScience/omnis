@@ -3,7 +3,7 @@ import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
-import { decisionsForNotices } from "@/lib/grants"
+import { decisionsForNotices, isImportedDecision } from "@/lib/grants"
 import type { NoticeAttachment } from "@/lib/grants-import"
 import { apiUrl } from "@/lib/base-path"
 import type { AttachmentView } from "@/components/grants/grant-files"
@@ -244,6 +244,7 @@ async function Decisions({ sp }: { sp: SP }) {
       key: l.export_key ?? null,
     })),
     nasFolder: r.nasFolder,
+    imported: isImportedDecision(r),
     attachments: filesOf(r),
   }))
 

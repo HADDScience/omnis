@@ -88,6 +88,7 @@ export const TOOL_POLICY = {
   update_certification: PW,
   update_grant_decision: PW,
   add_grant_decision: PW,
+  remove_grant_decision: PW,
   list_record_proposals: R,
   list_tax_invoices: R,
   list_staff: R,
