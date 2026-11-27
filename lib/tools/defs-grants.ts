@@ -35,7 +35,11 @@ export const GRANT_TOOLS = [
       properties: {
         stage: STAGE,
         owner: { type: "string", description: "담당자 정식 이름" },
-        query: { type: "string", description: "과제명 일부" },
+        q: {
+          type: "string",
+          description: "찾는 말 — 화면 검색과 같은 규칙(띄어쓰기 무시 · 부분 일치 · 여러 낱말은 모두 포함). 제목 · 기관 · 사업명 · 메모 · 사유 · 담당 · 공고 판정 근거 · 가점 항목 · 첨부 파일 이름을 본다",
+        },
+        query: { type: "string", description: "옛 이름 — q 와 같다" },
         due_within_days: {
           type: "integer",
           description: "오늘부터 이 날수 안에 마감인 것만(지난 것 제외)",
@@ -85,7 +89,11 @@ export const GRANT_TOOLS = [
           enum: ["national", "gyeonggi", "other"],
           description: "national 전국 · gyeonggi 경기 · other 그 밖",
         },
-        query: { type: "string", description: "공고명 · 부처 · 기관 일부" },
+        q: {
+          type: "string",
+          description: "찾는 말 — 화면 검색과 같은 규칙(띄어쓰기 무시 · 부분 일치 · 여러 낱말은 모두 포함). 제목 · 기관 · 사업명 · 메모 · 사유 · 담당 · 공고 판정 근거 · 가점 항목 · 첨부 파일 이름을 본다",
+        },
+        query: { type: "string", description: "옛 이름 — q 와 같다" },
         profile: {
           type: "string",
           enum: ["sole", "corp"],

@@ -32,6 +32,7 @@ import {
 } from "@/lib/grants-query"
 import type { CertStatus } from "@/generated/prisma/client"
 import { bonusMatchText, totalsLabel } from "@/lib/grant-bonus"
+import { searchDecisionIds, searchNoticeIds, searchTerms } from "@/lib/grants-search"
 import {
   BONUS_NOTICE_SELECT,
   bonusMatchOf,
@@ -95,14 +96,16 @@ export async function runGrantRead(
   switch (name) {
     case "list_grant_decisions": {
       const stage = readStage(args.stage)
-      const q = str(args.query)
+      // 찾는 말 — 화면 검색(lib/grants-search.ts)과 같은 규칙. query 는 옛 이름
+      const terms = searchTerms(str(args.q) || str(args.query))
+      const found = terms.length ? await searchDecisionIds(terms) : null
       const owner = str(args.owner)
       const days = Number(args.due_within_days)
       const now = new Date()
       const rows = await prisma.grantDecision.findMany({
         where: {
           ...(stage ? { stage } : {}),
-          ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
+          ...(found ? { id: { in: found } } : {}),
           ...(owner ? { owners: { some: { user: { name: owner } } } } : {}),
           ...(Number.isInteger(days) && days > 0
             ? {
@@ -195,9 +198,11 @@ export async function runGrantRead(
       return { text: out.join("\n") }
     }
     case "search_grant_notices": {
-      const f = readNoticeFilter(args)
+      const f = readNoticeFilter({ ...args, query: str(args.q) || str(args.query) })
+      const terms = searchTerms(f.query)
+      const found = terms.length ? await searchNoticeIds(terms) : null
       const limit = Math.min(Math.max(Number(args.limit) || 30, 1), 100)
-      const where = noticeWhere(f)
+      const where = noticeWhere(f, new Date(), found)
       const [total, rows] = await Promise.all([
         prisma.grantNotice.count({ where }),
         prisma.grantNotice.findMany({

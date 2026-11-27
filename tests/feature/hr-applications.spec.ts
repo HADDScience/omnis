@@ -153,9 +153,12 @@ test.describe("채용 지원서함 @hr", () => {
     await page.locator("[data-hr-entry]").click()
     await expect(page).toHaveURL(/\/hr\/applications$/)
     // 공고 목록 → 보드. 마감이 지난 뒤에는 공고가 접힌 「마감된 공고」 안에 있다
+    // 마감(2026-11-27 17:00 KST)이 지나면 열린 공고가 하나도 없을 수 있다 — 열린 공고나 「마감된 공고」 접힌 칸 중 하나가 뜰 때까지 기다린다
+    // (2026-11-27 CI 45963968609: 마감 뒤 첫 공고가 접힌 칸 안에 숨어 실패)
     const job = page.locator('[data-hr-job="suwon-anchor-practicum-intern-2026-winter"]')
-    await expect(page.locator("[data-hr-job]").first()).toBeVisible()
-    if (!(await job.isVisible())) await page.locator("[data-hr-closed-jobs] summary").click()
+    const closedJobs = page.locator("[data-hr-closed-jobs] summary")
+    await expect(job.or(closedJobs).first()).toBeVisible()
+    if (!(await job.isVisible())) await closedJobs.click()
     await job.click()
     const card = page.locator(`[data-hr-column="received"] [data-hr-card="${code}"]`)
     await expect(card).toBeVisible()
