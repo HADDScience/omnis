@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { apiUrl } from "@/lib/base-path"
 import { formatBytes } from "@/lib/room-drawer"
 import type { NasEntry } from "@/lib/nas"
+import { attLine, type AttView } from "@/lib/grant-attachments"
 
 export interface AttachmentView {
   name: string
@@ -32,16 +33,25 @@ function TypeBadge({ type }: { type: string | null }) {
 export function AttachmentList({
   title,
   items,
+  status,
 }: {
   title: string
   items: AttachmentView[]
+  /** 수집기가 원문에서 확인한 첨부 상태(있음 · 없음 · 확인 불가)와 다 읽지 못한 첨부 */
+  status?: AttView | null
 }) {
-  if (items.length === 0) return null
+  const line = attLine(status ?? null)
+  if (items.length === 0 && !line) return null
   return (
     <div>
       <h4 className="mb-1 text-[11.5px] font-medium text-muted-foreground">
         {title}
       </h4>
+      {line && (
+        <p className="mb-1 px-1.5 text-[11.5px] text-muted-foreground" data-grant-att-status={status?.status}>
+          {line}
+        </p>
+      )}
       <ul className="space-y-0.5">
         {items.map((a, i) => (
           <li key={`${a.name}-${i}`}>
@@ -55,6 +65,11 @@ export function AttachmentList({
               <span className="min-w-0 flex-1 truncate group-hover:underline">
                 {a.name}
               </span>
+              {status?.byName[a.name] && (
+                <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-px text-[10.5px] text-amber-700 dark:text-amber-300" data-grant-att-unread>
+                  {status.byName[a.name]}
+                </span>
+              )}
               {a.size !== null && (
                 <span className="shrink-0 text-[11.5px] text-muted-foreground tabular-nums">
                   {formatBytes(a.size)}
@@ -205,14 +220,16 @@ export function NasFolderFiles({ path }: { path: string }) {
 export function GrantFiles({
   attachments,
   nasFolder,
+  status,
 }: {
   attachments: AttachmentView[]
   nasFolder: string | null
+  status?: AttView | null
 }) {
-  if (attachments.length === 0 && !nasFolder) return null
+  if (attachments.length === 0 && !nasFolder && !attLine(status ?? null)) return null
   return (
     <div className="mt-2 grid grid-cols-1 gap-3 rounded-xl bg-background/50 p-2.5 md:grid-cols-2">
-      <AttachmentList title="공고 첨부" items={attachments} />
+      <AttachmentList title="공고 첨부" items={attachments} status={status} />
       {nasFolder && <NasFolderFiles path={nasFolder} />}
     </div>
   )

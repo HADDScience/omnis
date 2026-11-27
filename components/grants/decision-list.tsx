@@ -42,8 +42,9 @@ import {
   type AttachmentView,
 } from "@/components/grants/grant-files"
 import { NasFolderPicker } from "@/components/grants/nas-folder-picker"
-import { BonusTable } from "@/components/grants/bonus-table"
+import { BonusEmpty, BonusTable } from "@/components/grants/bonus-table"
 import type { BonusView } from "@/lib/grant-bonus-view"
+import type { AttView } from "@/lib/grant-attachments"
 import {
   GRANT_STAGES,
   GRANT_STAGE_FIELD_LABEL,
@@ -90,6 +91,10 @@ export interface DecisionView {
   attachments: AttachmentView[]
   /** 이어진 공고의 가점 × 우리 인증 — 뽑은 항목이 없으면 null */
   bonus: BonusView | null
+  /** 첨부 상태(수집기 원문 확인) — 들이지 않았으면 null */
+  att: AttView | null
+  /** 가점 표가 비었을 때 그 까닭(「가점 항목 없음 · 첨부 없음(원문 확인 …)」), 뽑지 않았으면 null */
+  bonusEmpty: string | null
 }
 
 type Opt = { id: string; name: string }
@@ -598,8 +603,8 @@ function DecisionDetail({
           ))}
         </ul>
       )}
-      {r.bonus && <BonusTable bonus={r.bonus} />}
-      <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
+      {r.bonus ? <BonusTable bonus={r.bonus} /> : r.bonusEmpty && <BonusEmpty text={r.bonusEmpty} />}
+      <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} status={r.att} />
       {!r.imported && (
         <RemoveDecision r={r} open={removing} onOpenChange={setRemoving} />
       )}

@@ -31,7 +31,8 @@ import {
   readStage,
 } from "@/lib/grants-query"
 import type { CertStatus } from "@/generated/prisma/client"
-import { bonusMatchText, totalsLabel } from "@/lib/grant-bonus"
+import { bonusMatchText, readBonusItems, totalsLabel } from "@/lib/grant-bonus"
+import { attLine, attView, bonusEmptyReason } from "@/lib/grant-attachments"
 import {
   BONUS_NOTICE_SELECT,
   bonusMatchOf,
@@ -272,7 +273,11 @@ async function grantBonusMatch(
       select: BONUS_NOTICE_SELECT,
     })
     const n = pickDecisionNotice(d, new Map(notices.map((x) => [x.externalKey, x])))
-    if (!n) return { text: `${d.title} — 이어진 공고에서 뽑은 가점 항목이 없습니다.` }
+    if (!n) {
+      // 가점이 있는 공고가 없으면 올린 공고(없으면 이어진 첫 공고)로 까닭을 보인다 — 첨부 없음 · 못 읽음 · 가점 없음
+      const first = keys.map((k) => notices.find((x) => x.externalKey === k)).find((x) => !!x)
+      return { text: first ? noticeBonusText(first, certs, `${d.title} (공고: ${first.title})`) : `${d.title} — 이어진 공고가 없습니다.` }
+    }
     return { text: noticeBonusText(n, certs, n.title !== d.title ? `${d.title} (공고: ${n.title})` : d.title) }
   }
   const limit = Math.min(Math.max(Number(args.limit) || 15, 1), 50)
@@ -306,10 +311,14 @@ function noticeBonusText(
   certs: Awaited<ReturnType<typeof loadOurCerts>>,
   title = n.title
 ): string {
-  if (n.bonusStatus === null) return `${title} — 아직 가점 항목을 뽑지 않은 공고입니다.`
+  const att = attView(n)
+  const attText = attLine(att)
+  const tail = `${attText ? `\n${attText}` : ""}\n기준일 ${n.deadlineAt ? `공고 마감 ${seoulYmd(n.deadlineAt)}` : "오늘"} · 공고 id ${n.id}`
+  if (n.bonusStatus === null) return `${title} — 아직 가점 항목을 뽑지 않은 공고입니다.${attText ? `\n${attText}` : ""}`
   const m = bonusMatchOf(n, certs)
-  if (!m) return `${title} — 인증 · 자격 가점 항목이 없습니다.`
-  return `${bonusMatchText(title, m)}\n기준일 ${n.deadlineAt ? `공고 마감 ${seoulYmd(n.deadlineAt)}` : "오늘"} · 공고 id ${n.id}`
+  // 표가 비면 그 까닭 — 가점이 없는지, 첨부가 없거나 못 읽어 모르는지
+  if (!m) return `${title} — ${bonusEmptyReason(n.bonusStatus, readBonusItems(n.bonusItems).length, att) ?? "인증 · 자격 가점 항목이 없습니다."}${tail}`
+  return `${bonusMatchText(title, m)}${tail}`
 }
 
 // ─── 찾기 도우미 ───

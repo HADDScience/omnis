@@ -6,16 +6,16 @@
  *                                           [--force] [--dry] [--out 결과.json] [--prod]
  *
  * --dry  저장하지 않는다(모델은 부르고 AiUsage 는 남는다). --out 은 발췌 · 항목 · 버린 수를 파일로(정확도 확인용).
+ * --max-krw 3000  비용 상한(원). 지금까지 쓴 돈 + 건당 평균(처음에는 25원)이 상한을 넘으면 멈춘다.
  * --plan 모델을 부르지 않고 발췌 수 · 글자 수 · 예상 비용만 센다.
  * --prod DATABASE_URL 이 로컬이 아닐 때 필요하다 — 운영 쓰기는 승인 뒤에만.
  * 모델 · 비용: lib/ai-models.ts grant_bonus(옴니스 기본 gpt-6.1-sol, 추론 low). 공고 하나에 발췌 최대 1.8만 자.
  */
 import fs from "node:fs"
 import os from "node:os"
-import path from "node:path"
-import { DatabaseSync } from "node:sqlite"
 import { prisma } from "@/lib/db"
-import { bonusExcerpt, type TextPart } from "@/lib/grant-bonus"
+import { bonusExcerpt } from "@/lib/grant-bonus"
+import { defaultDataDir, openCollector } from "./_collector"
 import { excerptHash, extractNoticeBonus } from "@/lib/grant-bonus-extract"
 
 const argv = process.argv.slice(2)
@@ -25,12 +25,14 @@ const opt = (n: string) => {
   return i >= 0 ? argv[i + 1] : undefined
 }
 
-const dataDir = (opt("data") ?? process.env.GOV_GRANTS_DATA ?? path.join(os.homedir(), "work/gov-grants-data")).replace(/^~/, os.homedir())
+const dataDir = (opt("data") ?? defaultDataDir()).replace(/^~/, os.homedir())
 const limit = Number(opt("limit") ?? 0) || Infinity
 const keys = opt("key")?.split(",").map((s) => s.trim()).filter(Boolean)
 const dry = flag("dry")
 const force = flag("force")
 const out = opt("out")
+/** 비용 상한(원) — 다음 호출까지 더하면 넘을 것 같으면 그 자리에서 멈춘다 */
+const maxKrw = Number(opt("max-krw") ?? 0) || Infinity
 
 const host = new URL(process.env.DATABASE_URL ?? "postgres://x@localhost/x").hostname
 console.log(`대상 DB: ${host}${dry ? " (저장 안 함)" : ""} · 수집기: ${dataDir}`)
@@ -39,46 +41,19 @@ if (!["localhost", "127.0.0.1", "::1"].includes(host) && !flag("prod")) {
   process.exit(1)
 }
 
-const db = new DatabaseSync(path.join(dataDir, "gov-grants.sqlite3"), { readOnly: true })
-type Row = Record<string, string | number | null>
-const q = (sql: string, ...args: (string | number)[]) => db.prepare(sql).all(...args) as Row[]
+const collector = openCollector(dataDir)
+const { memberIds, partsOf } = collector
+const db = { close: collector.close }
 
-/** 수집기 key → 구성 공고 id */
-function memberIds(key: string): number[] {
-  if (key.startsWith("group:"))
-    return q("SELECT notice_id FROM group_members WHERE group_id = ? ORDER BY notice_id", key.slice(6)).map((r) => Number(r.notice_id))
-  const m = key.match(/^notice:([^:]+):(.+)$/)
-  if (!m) return []
-  return q("SELECT id FROM notices WHERE source = ? AND source_id = ?", m[1], m[2]).map((r) => Number(r.id))
-}
-
-/** 본문(출처별) + 받은 첨부 텍스트(같은 파일은 한 번) */
-function partsOf(ids: number[]): TextPart[] {
-  const parts: TextPart[] = []
-  const seen = new Set<string>()
-  for (const id of ids) {
-    const n = q("SELECT source, body_text FROM notices WHERE id = ?", id)[0]
-    if (n?.body_text) parts.push({ source: `본문(${n.source})`, text: String(n.body_text) })
-  }
-  for (const id of ids) {
-    for (const a of q(
-      "SELECT name, sha256, text FROM attachments WHERE notice_id = ? AND extract_status IN ('ok','partial') AND text IS NOT NULL ORDER BY id",
-      id
-    )) {
-      const k = String(a.sha256 ?? a.name)
-      if (seen.has(k)) continue
-      seen.add(k)
-      parts.push({ source: `첨부: ${a.name}`, text: String(a.text) })
-    }
-  }
-  return parts
-}
-
-const notices = await prisma.grantNotice.findMany({
+const rows = await prisma.grantNotice.findMany({
   where: keys ? { externalKey: { in: keys } } : {},
-  select: { id: true, externalKey: true, title: true, bonusTextHash: true, bonusStatus: true },
+  select: { id: true, externalKey: true, title: true, bonusTextHash: true, bonusStatus: true, deadlineAt: true },
   orderBy: [{ deadlineAt: { sort: "asc", nulls: "last" } }],
 })
+// 접수 중(마감이 오늘 이후거나 없음)을 먼저 — 비용 상한에서 멈춰도 쓸모 있는 공고부터 뽑힌다
+const today = new Date(`${new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 10)}T00:00:00+09:00`)
+const isOpen = (n: (typeof rows)[number]) => !n.deadlineAt || n.deadlineAt >= today
+const notices = [...rows.filter(isOpen), ...rows.filter((n) => !isOpen(n))]
 
 if (flag("plan")) {
   let withText = 0
@@ -114,7 +89,14 @@ for (const n of notices) {
     sum.skipped++
     continue
   }
-  if (excerpt) calls++
+  if (excerpt) {
+    const perCall = sum.calls ? sum.krw / sum.calls : 25
+    if (sum.krw + perCall > maxKrw) {
+      console.log(`비용 상한 ${maxKrw}원 — 지금 ${sum.krw.toFixed(1)}원 · 건당 약 ${perCall.toFixed(1)}원이라 여기서 멈춘다(남은 공고는 다음에 이어서)`)
+      break
+    }
+    calls++
+  }
   try {
     const r = await extractNoticeBonus(n.id, excerpt, { dryRun: dry })
     sum[r.status]++

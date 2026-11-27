@@ -27,6 +27,10 @@ export const BONUS_NOTICE_SELECT = {
   bonusStatus: true,
   bonusItems: true,
   bonusCap: true,
+  attStatus: true,
+  attCheckedAt: true,
+  attNote: true,
+  attFiles: true,
 } as const
 
 export interface BonusNotice {
@@ -35,6 +39,10 @@ export interface BonusNotice {
   bonusStatus: string | null
   bonusItems: unknown
   bonusCap: unknown
+  attStatus: string | null
+  attCheckedAt: Date | null
+  attNote: string | null
+  attFiles: unknown
 }
 
 /** 기준일 — 공고 마감(그날 유효해야 인정), 없으면 오늘 */
