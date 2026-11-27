@@ -60,6 +60,7 @@ export const TOOL_POLICY = {
   get_task: R,
   read_file: R,
   list_notifications: R,
+  home_suggestions: R,
   list_projects: R,
   list_members: R,
   crm_overview: R,

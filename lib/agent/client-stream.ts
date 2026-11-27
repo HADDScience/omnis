@@ -185,6 +185,7 @@ export const TOOL_LABEL: Record<string, string> = {
   list_weekly_reports: "주간보고",
   list_chat: "채팅",
   list_notifications: "알림",
+  home_suggestions: "지금 할 일",
   company_profile: "회사 정보",
   list_company_records: "회사 기록",
   list_certifications: "인증·가점",

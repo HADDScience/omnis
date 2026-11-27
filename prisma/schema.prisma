@@ -2793,3 +2793,47 @@ model ObjectRevision {
   @@index([proposalId])
   @@index([changeId])
 }
+
+/// 첫 화면 「지금 할 일」 제안 한 번 만든 것(lib/home-suggestions). 정책: 하루 첫 접속 · 후보가 바뀌었을 때만 AI, 30분 간격,
+/// 사용자당 하루 6회 · 회사 하루 50회. source 가 "code" 면 AI 를 부르지 않고 코드 순서로 만든 것이다
+model HomeSuggestionRun {
+  id             String   @id @default(uuid())
+  userId         String
+  /// 서울 기준 날짜 YYYY-MM-DD — 하루 첫 접속 · 하루 한도를 이 값으로 센다
+  day            String
+  /// first_visit | candidates_changed | fallback(한도 · 실패 · 30분 안이라 코드 순서)
+  trigger        String
+  /// ai | code
+  source         String
+  /// 후보 집합의 해시(종류:대상 id 를 정렬해 이은 것)
+  candidateHash  String
+  candidateCount Int
+  /// 보여 줄 카드 [{ key, kind, title, line, action }]
+  items          Json
+  model          String?
+  costKrw        Decimal  @default(0) @db.Decimal(12, 4)
+  error          String?
+  createdAt      DateTime @default(now())
+
+  events HomeSuggestionEvent[]
+
+  @@index([userId, createdAt])
+  @@index([day, source])
+}
+
+/// 제안 카드 노출 · 클릭. trigger 는 그 카드를 만든 실행의 것을 그대로 옮겨 둔다 — 2주 뒤 trigger 별 클릭률을 비교한다
+model HomeSuggestionEvent {
+  id        String            @id @default(uuid())
+  runId     String
+  run       HomeSuggestionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  userId    String
+  /// impression | click
+  kind      String
+  itemKey   String
+  trigger   String
+  source    String
+  createdAt DateTime          @default(now())
+
+  @@unique([runId, itemKey, kind])
+  @@index([createdAt, trigger])
+}

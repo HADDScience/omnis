@@ -209,6 +209,7 @@ export const INSTRUCTIONS = [
   "업무에 지시·보고를 남길 때는 post_message 에 task 를 함께 줍니다. 그러면 화면에서 #슬러그 로 쓴 것과 똑같이 업무 카드가 AI 로 재구성되고 담당자에게 알림이 갑니다.",
   "사람 이름은 list_members 의 정식 이름을 씁니다. 업무는 슬러그·ID·이름 일부 어느 것으로든 찾습니다 — 사용자에게 ID 를 되묻지 않습니다.",
   "파일은 upload_file(텍스트·작은 파일) 또는 create_upload_link(셸에서 curl 로 올리는 링크)로 올리고, 받은 파일 ID 를 post_message 의 files 에 넣어 채팅·업무 스레드에 붙입니다. 첨부를 읽을 때는 get_task 에 보이는 파일 ID 로 read_file.",
+  "「오늘 뭐 해야 해」「지금 할 일」은 home_suggestions — 옴니스 첫 화면 카드와 같은 목록입니다.",
   "「나한테 온 거」는 list_notifications. 업무 수락·완료 확인은 respond_notification 으로 — 사용자 본인에게 온 알림에만 응답할 수 있습니다.",
   "주간보고는 list_weekly_reports·write_weekly_report, 사내 지식 카드 작성은 write_omnis_card, 업무 밖 채팅은 list_chat 입니다.",
   "단톡방·1:1 대화는 list_rooms 로 내가 든 방을 보고 list_chat(view=room, room 또는 members)으로 읽습니다. 내가 참여자가 아닌 방은 누구도 읽을 수 없습니다.",
@@ -449,6 +450,15 @@ export const OMNIS_TOOLS = [
         },
       },
     },
+  },
+  {
+    name: "home_suggestions",
+    description: [
+      "사용자가 지금 해야 할 일 제안 — 옴니스 첫 화면 카드와 같은 것.",
+      "응답 대기 알림(수락 · 완료 확인), 오늘 · 내일 마감인 내 업무, 아직 답하지 않은 나를 부른 글, 내가 맡은 국가과제 마감, 새 지원서(채용 담당만)를 모아 먼저 할 순서로 보여준다.",
+      "「오늘 뭐 해야 해?」「지금 할 일」에 쓴다. 항목마다 열 화면 주소나 옴니스에게 물을 질문이 붙는다.",
+    ].join(" "),
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "respond_notification",
@@ -2314,6 +2324,15 @@ export async function runTool(
         return { text: `${head}\n\n${clip(body)}` }
       }
       return { text: `${head}\n\n${clip(buf.toString("utf8"))}` }
+    }
+
+    case "home_suggestions": {
+      const { getHomeSuggestions } = await import("@/lib/home-suggestions/server")
+      const r = await getHomeSuggestions(caller.userId)
+      if (r.items.length === 0) return { text: "지금 제안할 일이 없습니다 — 응답 대기 알림 · 오늘 · 내일 마감 업무 · 답하지 않은 부른 글 · 다가온 과제 마감 · 새 지원서가 모두 없습니다." }
+      const base = (ctx.base || process.env.PUBLIC_URL || "").replace(/\/$/, "")
+      const lines = r.items.map((it, i) => `${i + 1}. ${it.line}${it.action.type === "link" ? ` — ${base}${it.action.href}` : ` — 물어보기: 「${it.action.prompt}」`}`)
+      return { text: [`지금 할 일 ${r.items.length}개 (${r.source === "ai" ? "옴니스가 순서를 정함" : "마감 가까운 순"})`, ...lines].join("\n") }
     }
 
     case "list_notifications": {
