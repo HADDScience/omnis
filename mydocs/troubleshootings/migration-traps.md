@@ -275,3 +275,23 @@ The migration from the database are not found locally in prisma/migrations:
 마이그레이션의 표를 손으로 지운 뒤 다시 적용하려고 부르면 `cannot be rolled back because it is not in a failed state` 로
 거절된다. 그럴 때는 `_prisma_migrations` 에서 그 이름의 줄을 지워야 다음 `migrate deploy` 가 다시 적용한다 —
 `prisma/rollbacks/20261127200000_object_definitions.down.sql` 이 표와 그 줄을 한 트랜잭션에서 지운다.
+
+---
+
+## Prisma 대화형 트랜잭션은 기본 5초다 — 로컬에서 되는 일괄 쓰기가 운영에서 통째로 되돌려진다
+
+2026-11-27 PR #282(공통 층 P2)의 `objects:sync --apply --prod` 에서 실제로 이랬다.
+
+- 스크립트는 정의 82건을 `prisma.$transaction(async (tx) => …)` 하나 안에서 **한 건씩 차례로** 썼다.
+- 로컬 Postgres 에서는 금방 끝났다. 운영 Neon 에서는 칸을 쓰던 중에 `P2028 Transaction API error: Transaction not found` 로
+  실패했고, 트랜잭션이 통째로 되돌려져 쓴 행이 0 이었다.
+- 원인은 대화형 트랜잭션의 기본 `timeout` **5,000ms** 다. 운영 왕복을 재 보니(읽기 전용 트랜잭션 안 `SELECT 1` × 30)
+  최소 73ms · **중앙 79ms** · p90 103ms · 최대 173ms 였다. 82건 × 79ms ≈ 6.5초로 5초를 넘긴다.
+
+**대응.**
+
+- 운영에 여러 건을 한 트랜잭션으로 쓰는 스크립트는 `$transaction(fn, { timeout: 60_000, maxWait: 10_000 })` 처럼 시간을 준다.
+  #282 는 이것만으로 82건을 11초에 썼다.
+- 더 줄이려면 표마다 `createMany` 로 묶어 왕복 수를 줄인다(82번 → 표 수만큼).
+- 로컬에서 「잘 된다」는 것은 운영 시간의 근거가 아니다. 한 트랜잭션 안의 왕복 수 × 약 80ms 로 먼저 어림한다.
+- 실패해도 트랜잭션이라 반쯤 쓰인 상태는 남지 않는다. 고친 뒤 건식 → `--apply` → 다시 건식 0건 순서로 다시 돈다.
