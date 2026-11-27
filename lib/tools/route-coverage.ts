@@ -192,6 +192,8 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "notification-prefs GET": ["list_notifications"],
   "notification-prefs PATCH": ["set_notification_prefs"],
   "notifications GET": ["list_notifications"],
+  "home/suggestions GET": ["home_suggestions"],
+  "home/suggestions/events POST": system(TELEMETRY),
   "notifications PATCH": ["respond_notification", "manage_notifications"],
   "notifications DELETE": ["manage_notifications"],
   "omnis/[cardId]/restore POST": ["restore_omnis_card"],
