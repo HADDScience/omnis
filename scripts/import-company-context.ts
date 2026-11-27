@@ -14,7 +14,8 @@
  * 멱등이다. 연혁은 dedupeKey, 인력·시장기업은 이름, 연도는 (연도, 단계) 로 upsert.
  * 설계와 결정: mydocs/plans/2026-09-14-company-context.md
  */
-import "dotenv/config"
+// 쓴 쪽 = source(이식) — prisma 보다 먼저 둔다. 공통 층 트리거가 이식을 사람(screen)으로 세지 않게(lib/import-actor.ts)
+import "@/lib/import-actor-env"
 import { readFileSync, existsSync, readdirSync } from "fs"
 import { execFileSync } from "child_process"
 import { createHash } from "crypto"
@@ -23,6 +24,7 @@ import { join } from "path"
 import * as XLSXModule from "xlsx"
 import type { WorkBook } from "xlsx"
 import { prisma } from "@/lib/db"
+import { assertSourceActor } from "@/lib/import-actor"
 import type { Prisma, RecordKind } from "@/generated/prisma/client"
 import { putStaffAsset, sniffImage, staffAssetKey } from "@/lib/staff-assets"
 import { readInvoice, type ParsedInvoice } from "@/lib/tax-invoice"
@@ -618,6 +620,7 @@ async function importInvoices() {
 // ─── 실행 ─────────────────────────────────────────────────────
 
 async function main() {
+  await assertSourceActor(prisma)
   const db = (await prisma.$queryRaw<{ db: string }[]>`select current_database() db`)[0].db
   console.log(`${APPLY ? "APPLY" : "DRY-RUN"} · DB ${db} · 입력 ${IMPORT_DIR}`)
   if (APPLY && db === "omnis" && !args.includes("--i-know-this-is-shared")) {

@@ -9,12 +9,14 @@
  * externalKey 로 upsert 하니 다시 돌려도 행이 늘지 않는다. 담당자는 처음 만들 때만 넣는다.
  * 사람이 옴니스에서 고친 인증 상태 · 결정 단계 · 사유 · 메모(ActivityLog 에 남은 것)는 다시 이식해도 덮지 않는다.
  */
-import "dotenv/config"
+// 쓴 쪽 = source(이식) — prisma 보다 먼저 둔다. 공통 층 트리거가 이식을 사람(screen)으로 세지 않게(lib/import-actor.ts)
+import "@/lib/import-actor-env"
 import { existsSync, readdirSync, readFileSync, statSync } from "fs"
 import { DatabaseSync } from "node:sqlite"
 import { homedir } from "os"
 import { join } from "path"
 import { prisma } from "@/lib/db"
+import { assertSourceActor } from "@/lib/import-actor"
 import {
   noticeRow,
   type NoticeItem,
@@ -136,6 +138,7 @@ async function humanEdited(
 }
 
 async function main() {
+  await assertSourceActor(prisma)
   const certs = read<CertItem>("certifications.json")
   const decisions = read<DecisionItem>("company_decisions.json")
   const researchedAt = certs.generated_at ? new Date(certs.generated_at) : null

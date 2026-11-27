@@ -8,6 +8,7 @@
 // 계산서를 견적에 다시 잇는 일은 하지 않는다. 견적 상세의 「이 세금계산서가 맞아요」 로 사람이 한다.
 import "dotenv/config"
 import { existsSync, readFileSync } from "fs"
+import { assertSourceActor, applySourceActor } from "../lib/import-actor"
 
 const args = process.argv.slice(2)
 const flag = (k: string) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined }
@@ -30,10 +31,13 @@ if (target === "prod") {
   throw new Error("로컬 대상인데 DATABASE_URL 이 localhost 가 아니다")
 }
 
+// 쓴 쪽 = source(이식) — 대상 주소를 정한 뒤, prisma 를 들이기 전에 단다(lib/import-actor.ts)
+console.log(`쓴 쪽 표시: ${applySourceActor()} 연결에 omnis.actor_kind=source`)
 const { prisma } = await import("../lib/db")
 const { billingOrgProblem } = await import("../lib/crm")
 
 async function main() {
+  await assertSourceActor(prisma)
   console.log(`대상 ${target}${apply ? "" : " — 찍기만 (--apply 없음)"}`)
   for (const [fromName, toName] of PAIRS) {
     const [from, to] = await Promise.all([
