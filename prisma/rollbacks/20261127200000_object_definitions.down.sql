@@ -11,6 +11,9 @@
 -- 코드에서도 빼려면 schema.prisma 의 다섯 모델과 마이그레이션 폴더를 지우는 PR 을 낸다. 폴더를 남기면 다음
 -- migrate deploy 가 표를 다시 만든다(마이그레이션이 멱등이라 실패하지는 않는다).
 --
+-- P3(20261127230000_object_evidence) 가 적용된 DB 에서는 그 되돌리기를 먼저 돌린다 — Proposal · ObjectRevision 이
+-- ObjectType 을 가리켜(ON DELETE RESTRICT) 이 파일의 DROP TABLE "ObjectType" 이 막힌다.
+--
 -- 대상 DB 를 먼저 찍고 확인한다(mydocs/manual/ai-pairing.md 「DB 를 건드리기 전에」). 운영은 작업지시자 승인 뒤에만.
 
 BEGIN;

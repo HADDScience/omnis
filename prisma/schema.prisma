@@ -2568,9 +2568,12 @@ model ObjectType {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  fields   ObjectField[]
-  actions  ActionType[]
-  versions ObjectTypeVersion[]
+  fields    ObjectField[]
+  actions   ActionType[]
+  versions  ObjectTypeVersion[]
+  /// P3 — 이 유형에 대한 AI 제안 · 값 이력
+  proposals Proposal[]
+  revisions ObjectRevision[]
 }
 
 /// 유형의 칸
@@ -2665,4 +2668,128 @@ model ObjectTypeVersion {
   publishedAt DateTime   @default(now())
 
   @@unique([typeKey, version])
+}
+
+// ─── 공통 층 근거 · 이력 · 제안 (2026-11-27, P3) — mydocs/plans/2026-11-27-ontology-phase1.md §2-3 · §5 ───
+// 새 표 셋. 아직 쓰는 코드가 없다(P7 제안 통합 · P10 run_action 이 처음 쓴다).
+// 기존 표(User · ChatMessage · Task …)로 가는 외래키는 두지 않는다 — 기존 모델을 건드리지 않고, 원천이 지워져도
+// 판단 기록이 남게 한다. 값 칸(status · op · authorKind · sourceKind)은 text + CHECK(마이그레이션 SQL).
+// 되돌리기: prisma/rollbacks/20261127230000_object_evidence.down.sql
+
+/// AI 제안 한 건 — 옛 RecordProposal · CardProposal 도 P7 에서 이 표로 옮긴다(결정 기록 Q1 (b))
+model Proposal {
+  id             String           @id @default(uuid())
+  typeKey        String
+  type           ObjectType       @relation(fields: [typeKey], references: [key], onDelete: Restrict)
+  /// create | update
+  op             String
+  /// update 의 대상, create 는 채택 뒤 생긴 대상. 지금 테이블의 행 ID
+  objectId       String?
+  /// pending | accepted | rejected | auto_applied | superseded | stale
+  status         String           @default("pending")
+  /// 칸 키 → 값. 사람이 고쳐 채택하면 고친 값
+  payload        Json
+  /// AI 원안 그대로 — 고쳐도 남긴다(정확도 · 자동 승인 근거)
+  original       Json
+  /// 사람이 원안을 고쳐 채택했다
+  edited         Boolean          @default(false)
+  title          String
+  /// 왜 이 제안인지 한 줄(이유 칸을 먼저 쓰게 한다)
+  reason         String
+  /// 0~1 모델 확신
+  confidence     Float?
+  /// 만들 때의 유형 버전(ObjectType.version) — 옛 버전이면 upcast 하거나 stale
+  schemaVersion  Int
+  /// 근거들의 공개 범위 토큰을 합친 것(§2-4)
+  visibility     String[]         @default([])
+  /// 유형 고정 범위보다 근거 범위가 좁다 — 늘 사람이 본다
+  needsWiden     Boolean          @default(false)
+  /// 자동 승인 묶음 키(유형의 autoApply.groupBy 값) — "kind=award"
+  autoGroup      String?
+  /// 무엇이 불렀나 — task_done · chat_daily · weekly · manual · seed · classify
+  trigger        String
+  /// "task:<id>" · "room:<id>:<yyyy-mm-dd>"
+  triggerRef     String?
+  /// 같은 대상의 새 제안이 이 제안을 대신했다
+  supersededById String?
+  supersededBy   Proposal?        @relation("ProposalSupersede", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes     Proposal[]       @relation("ProposalSupersede")
+  /// 판단한 사람(User.id). 외래키를 두지 않는다 — 사람이 지워져도 판단 기록은 남는다
+  decidedById    String?
+  decidedAt      DateTime?
+  /// 자동 반영 · 채택을 사람이 되돌린 시각
+  revertedAt     DateTime?
+  /// P7 이전의 멱등 키 — "record:<RecordProposal.id>" · "card:<CardProposal.id>"
+  legacyRef      String?          @unique
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  evidence  Evidence[]
+  revisions ObjectRevision[]
+
+  @@index([status, createdAt])
+  @@index([typeKey, status])
+  @@index([typeKey, objectId])
+  @@index([autoGroup, status])
+}
+
+/// 근거 한 줄 — 값(또는 대상 전체)이 어느 원문의 어디에서 나왔나
+model Evidence {
+  id         String    @id @default(uuid())
+  proposalId String?
+  proposal   Proposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  typeKey    String
+  /// 승인 뒤 생긴 대상. 제안 단계에서는 비어 있을 수 있다
+  objectId   String?
+  /// null 이면 대상 전체의 근거
+  fieldKey   String?
+  /// chat_message | task | weekly_report | file | ip_communication | email | import_row
+  sourceKind String
+  sourceId   String
+  /// 서버가 원문에서 quote 를 찾은 위치(모델이 센 위치는 믿지 않는다)
+  spanStart  Int?
+  spanEnd    Int?
+  /// 원문 조각(최대 300자, 결정 기록 Q7). 원천이 지워지거나 가려지면 비운다
+  quote      String?
+  /// 정규화한 원문 조각의 sha256 — 원문이 바뀌었는지 대조
+  quoteHash  String
+  /// 근거를 잡을 때 원천의 공개 범위 토큰(§2-4)
+  visibility String[]  @default([])
+  capturedAt DateTime  @default(now())
+  /// 원천이 지워지거나 가려진 시각
+  goneAt     DateTime?
+
+  @@index([sourceKind, sourceId])
+  @@index([typeKey, objectId])
+  @@index([proposalId])
+}
+
+/// 공통 층이 아는 값 변경 한 줄. 칸 하나 = 한 줄(대상 전체 생성 · 삭제는 fieldKey null)
+model ObjectRevision {
+  id            String     @id @default(uuid())
+  typeKey       String
+  type          ObjectType @relation(fields: [typeKey], references: [key], onDelete: Restrict)
+  objectId      String
+  /// null 이면 대상 전체(create · delete)
+  fieldKey      String?
+  /// create | update | delete | widen | revert
+  op            String
+  value         Json?
+  prevValue     Json?
+  schemaVersion Int
+  /// ai | human | screen | source
+  authorKind    String
+  /// 쓴 사람(User.id). human 일 때만. 외래키를 두지 않는다
+  actorId       String?
+  proposalId    String?
+  proposal      Proposal?  @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  /// 화면 변경이면 그 ObjectChange.id(P4)
+  changeId      BigInt?
+  createdAt     DateTime   @default(now())
+  revertedAt    DateTime?
+  revertedById  String?
+
+  @@index([typeKey, objectId, fieldKey, createdAt])
+  @@index([proposalId])
+  @@index([changeId])
 }

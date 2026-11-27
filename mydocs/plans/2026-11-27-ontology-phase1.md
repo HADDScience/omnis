@@ -171,7 +171,9 @@ model Evidence {
 }
 ```
 
-옛 제안 표를 `Proposal` 로 옮기므로(Q1 (b)) 설계 보고서 초안의 `legacyProposal` 칸은 두지 않는다. 이전 방법은 P7 에서 정한다.
+옛 제안 표를 `Proposal` 로 옮기므로(Q1 (b)) 설계 보고서 초안의 `Evidence.legacyProposal` 칸은 두지 않는다. 대신 `Proposal.legacyRef`(`record:<id>` · `card:<id>`, 유일)를 P3 에 두어 P7 이전을 다시 돌려도 겹치지 않게 한다. 이전 방법은 P7 에서 정한다.
+
+`Proposal` 의 칸(P3): `typeKey` · `op`(create · update) · `objectId` · `status`(pending · accepted · rejected · auto_applied · superseded · stale) · `payload`(칸 키 → 값) · `original`(AI 원안) · `edited` · `title` · `reason` · `confidence` · `schemaVersion` · `visibility` · `needsWiden` · `autoGroup` · `trigger` · `triggerRef` · `supersededById` · `decidedById` · `decidedAt` · `revertedAt` · `legacyRef`. 옛 두 표의 칸은 이 안에 들어간다(연혁 `grade` · `confidential` 은 `payload`, 카드 `content` 는 `payload`).
 
 ### 2-4. 공개 범위 상속 + 음성 권한 시험
 
@@ -592,7 +594,7 @@ model ObjectChange {
 | **P0** | 이 문서 | 없음 | 문서 | revert | frontmatter |
 | **P1** | `lib/objects/` 데이터 모듈: `defineType`, 유형 3개(`record` · `grant_decision` · `org`), 선택지(enum · text 매핑), Action 정의(기존 도구 이름만). DMMF 대조 시험 · 키 형식 시험 | 없음 | 코드만, 동작 변화 없음 | revert | `pnpm run verify` · `test:unit`. 아무 데서도 import 하지 않음 · 맞춤 화면 diff 0 |
 | **P2** | 정의 표 5개 + `objects:sync` + 맞춤 화면 경로 CI 검사(`scripts/guard-custom-screens.txt`) | 새 표만(`20261127200000_object_definitions`, 다시 돌려도 되게) | `db:deploy` → `objects:sync -- --apply --prod` → 머지 | `prisma/rollbacks/20261127200000_object_definitions.down.sql`(표와 마이그레이션 기록 줄을 지운다 — `migrate resolve --rolled-back` 은 성공한 마이그레이션에 통하지 않는다) | sync 두 번째가 변화 0(멱등) |
-| **P3** | `Evidence` · `ObjectRevision` · `Proposal` + `lib/tenant.ts` 껍데기 | 새 표만 | `db:deploy` → 머지 | DROP | verify · test:unit |
+| **P3** | `Evidence` · `ObjectRevision` · `Proposal` + `lib/tenant.ts` 껍데기(`objects:sync` 를 감싼다) | 새 표만(`20261127230000_object_evidence`, 다시 돌려도 되게). 기존 표로 가는 외래키는 두지 않는다 — 사람 · 원천이 지워져도 판단 기록이 남게 | `db:deploy` → 머지 | `prisma/rollbacks/20261127230000_object_evidence.down.sql`. P2 되돌리기보다 먼저 돌린다(ObjectType 을 가리킨다) | verify · test:unit · 로컬 복제 DB 에서 CHECK · 외래키 · 되돌리기 왕복 |
 | **P4** | `ObjectChange` + 트리거 + 등록 3유형 테이블과 `ChatMessage` 에 트리거. `EmbeddingChunk.typeKey` · `visibility` · enum `OBJECT`(마이그레이션 둘). 소비기, backfill | **기존 표에 트리거 · 칼럼** | `db:deploy` → backfill → 머지. 쓰기 지연 실측 | 트리거 DROP 마이그레이션 | 로컬 스냅숏에서 맞춤 화면으로 고쳐 조각 갱신 확인. 트리거 전후 쓰기 p50 · p95(기준 +5ms, 추정). 연혁 · 국가과제 · CRM e2e |
 | **P5** | `describe_type` · `list_objects` · `get_object` + `canSee` + 음성 권한 시험. MCP · 앱 AI 에만 | 없음 | 머지 · 배포 | registry 줄 삭제 | 음성 시험 · 도구 수 상한 |
 | **P6** | 질문 경로 「핵심 + 검색」, 도구 임베딩, `scripts/eval-tools.mts`, `askTier` | 없음 | 머지(기본 `all`) → 회귀 통과 → env `core_search` → 재배포 | env `all` | 회귀 표를 PR 에 |
