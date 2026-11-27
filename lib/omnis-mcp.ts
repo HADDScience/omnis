@@ -455,7 +455,7 @@ export const OMNIS_TOOLS = [
     name: "home_suggestions",
     description: [
       "사용자가 지금 해야 할 일 제안 — 옴니스 첫 화면 카드와 같은 것.",
-      "응답 대기 알림(수락 · 완료 확인), 오늘 · 내일 마감인 내 업무, 아직 답하지 않은 나를 부른 글, 내가 맡은 국가과제 마감, 새 지원서(채용 담당만)를 모아 먼저 할 순서로 보여준다.",
+      "응답 대기 알림(수락 · 완료 확인), 오늘 · 내일 마감인 내 업무와 담당은 아니지만 최근 글을 남긴 업무, 아직 답하지 않은 나를 부른 글(@ · 본문 이름 · 호칭), 내가 맡은 국가과제 마감, 새 지원서(채용 담당만)를 모아 먼저 할 순서로 보여준다. 없으면 쉬어 가는 제안을 보여준다.",
       "「오늘 뭐 해야 해?」「지금 할 일」에 쓴다. 항목마다 열 화면 주소나 옴니스에게 물을 질문이 붙는다.",
     ].join(" "),
     inputSchema: { type: "object", properties: {} },
@@ -2332,7 +2332,10 @@ export async function runTool(
       if (r.items.length === 0) return { text: "지금 제안할 일이 없습니다 — 응답 대기 알림 · 오늘 · 내일 마감 업무 · 답하지 않은 부른 글 · 다가온 과제 마감 · 새 지원서가 모두 없습니다." }
       const base = (ctx.base || process.env.PUBLIC_URL || "").replace(/\/$/, "")
       const lines = r.items.map((it, i) => `${i + 1}. ${it.line}${it.action.type === "link" ? ` — ${base}${it.action.href}` : ` — 물어보기: 「${it.action.prompt}」`}`)
-      return { text: [`지금 할 일 ${r.items.length}개 (${r.source === "ai" ? "옴니스가 순서를 정함" : "마감 가까운 순"})`, ...lines].join("\n") }
+      const head = r.source === "rest"
+        ? "지금 급한 일은 없습니다 — 응답 대기 알림 · 오늘 · 내일 마감 업무 · 답하지 않은 부른 글 · 다가온 과제 마감 · 새 지원서가 없습니다. 첫 화면에는 쉬어 가는 카드가 보입니다:"
+        : `지금 할 일 ${r.items.length}개 (${r.source === "ai" ? "옴니스가 순서를 정함" : "마감 가까운 순"})`
+      return { text: [head, ...lines].join("\n") }
     }
 
     case "list_notifications": {
