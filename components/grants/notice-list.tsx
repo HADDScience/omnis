@@ -17,8 +17,9 @@ import {
   GrantFiles,
   type AttachmentView,
 } from "@/components/grants/grant-files"
-import { BonusTable } from "@/components/grants/bonus-table"
+import { BonusEmpty, BonusTable } from "@/components/grants/bonus-table"
 import type { BonusView } from "@/lib/grant-bonus-view"
+import type { AttView } from "@/lib/grant-attachments"
 import { seoulYmd } from "@/lib/grants-labels"
 import { cn } from "@/lib/utils"
 
@@ -42,6 +43,10 @@ export interface NoticeView {
   nasFolder: string | null
   /** 공고 가점 × 우리 인증 — 뽑은 항목이 없으면 null */
   bonus: BonusView | null
+  /** 첨부 상태(수집기 원문 확인) — 들이지 않았으면 null */
+  att: AttView | null
+  /** 가점 표가 비었을 때 그 까닭(「가점 항목 없음 · 첨부 없음(원문 확인 …)」), 뽑지 않았으면 null */
+  bonusEmpty: string | null
 }
 
 const VERDICT_CHIP: Record<string, string> = {
@@ -232,8 +237,8 @@ function NoticeRow({
               <dd>{r.judgedBy === "llm" ? "공고 본문 검토" : "규칙"}</dd>
             </dl>
           </div>
-          {r.bonus && <BonusTable bonus={r.bonus} />}
-          <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
+          {r.bonus ? <BonusTable bonus={r.bonus} /> : r.bonusEmpty && <BonusEmpty text={r.bonusEmpty} />}
+          <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} status={r.att} />
           {r.url && (
             <a
               href={r.url}

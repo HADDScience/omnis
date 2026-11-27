@@ -86,3 +86,12 @@ export function BonusTable({ bonus }: { bonus: BonusView }) {
     </section>
   )
 }
+
+/** 가점 표가 빈 공고 — 까닭 한 줄(가점 항목 없음 · 첨부 없음 / 첨부를 못 읽음) */
+export function BonusEmpty({ text }: { text: string }) {
+  return (
+    <p className="mt-2 rounded-xl bg-background/50 px-3 py-2 text-[12px] text-muted-foreground" data-grant-bonus-empty>
+      <span className="font-semibold text-foreground">가점</span> · {text.replace(/^가점 /, "")}
+    </p>
+  )
+}

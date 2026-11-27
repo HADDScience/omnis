@@ -35,6 +35,8 @@ import {
   type DecisionView,
 } from "@/components/grants/decision-list"
 import { NoticeList, type NoticeView } from "@/components/grants/notice-list"
+import { attView, bonusEmptyReason, type AttView } from "@/lib/grant-attachments"
+import { readBonusItems } from "@/lib/grant-bonus"
 import {
   BONUS_NOTICE_SELECT,
   bonusMatchOf,
@@ -291,6 +293,20 @@ async function Decisions({ sp }: { sp: SP }) {
   const filesByKey = new Map(
     linked.map((n) => [n.externalKey, attachmentViews(n.id, n.attachments)])
   )
+  // 첨부 상태 — 결정이 올라온 공고가 먼저, 없으면 이어진 첫 공고. 파일별 표시는 이어진 공고를 모두 합친다
+  const attOf = (r: (typeof rows)[number]): AttView | null => {
+    const views = linkKeysOf(r)
+      .map((k) => noticeByKey.get(k))
+      .filter((n): n is NonNullable<typeof n> => !!n)
+      .map((n) => attView(n))
+      .filter((v): v is AttView => !!v)
+    if (!views.length) return null
+    return { ...views[0], byName: Object.assign({}, ...views.map((v) => v.byName)) }
+  }
+  const bonusEmptyOf = (r: (typeof rows)[number]) => {
+    const n = linkKeysOf(r).map((k) => noticeByKey.get(k)).find((x) => !!x)
+    return n ? bonusEmptyReason(n.bonusStatus, readBonusItems(n.bonusItems).length, attView(n)) : null
+  }
   const filesOf = (r: (typeof rows)[number]) => {
     const seen = new Set<string>()
     return linkKeysOf(r)
@@ -338,6 +354,8 @@ async function Decisions({ sp }: { sp: SP }) {
     imported: isImportedDecision(r),
     attachments: filesOf(r),
     bonus: bonusOf(r),
+    att: attOf(r),
+    bonusEmpty: bonusEmptyOf(r),
   }))
 
   return (
@@ -466,6 +484,8 @@ async function Notices({ sp }: { sp: SP }) {
     attachments: attachmentViews(r.id, r.attachments),
     nasFolder: decided.get(r.externalKey)?.nasFolder ?? null,
     bonus: bonusView(bonusMatchOf(r, certs)),
+    att: attView(r),
+    bonusEmpty: bonusEmptyReason(r.bonusStatus, readBonusItems(r.bonusItems).length, attView(r)),
   }))
   const toggleVerdict = (v: (typeof VERDICTS)[number]) => {
     const has = f.verdicts.includes(v)

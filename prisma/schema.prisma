@@ -2540,6 +2540,13 @@ model GrantNotice {
   bonusModel       String?
   /// 모델에 보낸 발췌의 sha256 — 같으면 다시 뽑지 않는다
   bonusTextHash    String?
+  /// 첨부 상태 — 수집기가 원문에서 확인한 present(있음) · none(없음) · unknown(확인 불가). scripts/import-grant-attachment-status.ts
+  attStatus        String?
+  attCheckedAt     DateTime?
+  /// 「없음」 근거나 확인 불가 이유(원문)
+  attNote          String?
+  /// {total, items: [{name, reason}]} — 첨부 수와, 다 읽지 못한 첨부만(lib/grant-attachments.ts)
+  attFiles         Json?
   firstSeen        DateTime?
   lastSeen         DateTime?
   createdAt        DateTime  @default(now())
@@ -2695,21 +2702,21 @@ model ObjectTypeVersion {
 
 /// AI 제안 한 건 — 옛 RecordProposal · CardProposal 도 P7 에서 이 표로 옮긴다(결정 기록 Q1 (b))
 model Proposal {
-  id             String           @id @default(uuid())
+  id             String     @id @default(uuid())
   typeKey        String
-  type           ObjectType       @relation(fields: [typeKey], references: [key], onDelete: Restrict)
+  type           ObjectType @relation(fields: [typeKey], references: [key], onDelete: Restrict)
   /// create | update
   op             String
   /// update 의 대상, create 는 채택 뒤 생긴 대상. 지금 테이블의 행 ID
   objectId       String?
   /// pending | accepted | rejected | auto_applied | superseded | stale
-  status         String           @default("pending")
+  status         String     @default("pending")
   /// 칸 키 → 값. 사람이 고쳐 채택하면 고친 값
   payload        Json
   /// AI 원안 그대로 — 고쳐도 남긴다(정확도 · 자동 승인 근거)
   original       Json
   /// 사람이 원안을 고쳐 채택했다
-  edited         Boolean          @default(false)
+  edited         Boolean    @default(false)
   title          String
   /// 왜 이 제안인지 한 줄(이유 칸을 먼저 쓰게 한다)
   reason         String
@@ -2718,9 +2725,9 @@ model Proposal {
   /// 만들 때의 유형 버전(ObjectType.version) — 옛 버전이면 upcast 하거나 stale
   schemaVersion  Int
   /// 근거들의 공개 범위 토큰을 합친 것(§2-4)
-  visibility     String[]         @default([])
+  visibility     String[]   @default([])
   /// 유형 고정 범위보다 근거 범위가 좁다 — 늘 사람이 본다
-  needsWiden     Boolean          @default(false)
+  needsWiden     Boolean    @default(false)
   /// 자동 승인 묶음 키(유형의 autoApply.groupBy 값) — "kind=award"
   autoGroup      String?
   /// 무엇이 불렀나 — task_done · chat_daily · weekly · manual · seed · classify
@@ -2729,17 +2736,17 @@ model Proposal {
   triggerRef     String?
   /// 같은 대상의 새 제안이 이 제안을 대신했다
   supersededById String?
-  supersededBy   Proposal?        @relation("ProposalSupersede", fields: [supersededById], references: [id], onDelete: SetNull)
-  supersedes     Proposal[]       @relation("ProposalSupersede")
+  supersededBy   Proposal?  @relation("ProposalSupersede", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes     Proposal[] @relation("ProposalSupersede")
   /// 판단한 사람(User.id). 외래키를 두지 않는다 — 사람이 지워져도 판단 기록은 남는다
   decidedById    String?
   decidedAt      DateTime?
   /// 자동 반영 · 채택을 사람이 되돌린 시각
   revertedAt     DateTime?
   /// P7 이전의 멱등 키 — "record:<RecordProposal.id>" · "card:<CardProposal.id>"
-  legacyRef      String?          @unique
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  legacyRef      String?    @unique
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   evidence  Evidence[]
   revisions ObjectRevision[]
