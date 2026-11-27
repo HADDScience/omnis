@@ -8,6 +8,7 @@ import {
   readBonusCap,
   readBonusItems,
   type BonusMatch,
+  type BonusTotal,
   type OurCert,
   type OurState,
 } from "@/lib/grant-bonus"
@@ -60,8 +61,8 @@ export interface BonusView {
     note: string | null
     counted: boolean
   }[]
-  expected: number
-  possible: number
+  /** 단위별 합계 — 점이 먼저, 단위가 다른 항목은 섞어 더하지 않는다 */
+  totals: BonusTotal[]
   capText: string | null
   unknownPoints: boolean
   /** 결정 펼침에서 이어진 공고가 결정 이름과 다를 때 그 공고 이름 */
@@ -82,8 +83,7 @@ export function bonusView(m: BonusMatch | null, noticeTitle: string | null = nul
       note: r.note,
       counted: r.counted,
     })),
-    expected: m.expected,
-    possible: m.possible,
+    totals: m.totals,
     capText: m.cap?.text ?? null,
     unknownPoints: m.unknownPoints,
     noticeTitle,

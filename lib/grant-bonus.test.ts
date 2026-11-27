@@ -13,6 +13,8 @@ import {
   readableQuote,
   readableSource,
   stateOf,
+  totalsLabel,
+  unitOf,
   type BonusItem,
   type OurCert,
 } from "./grant-bonus"
@@ -195,4 +197,83 @@ test("점수 칸 — 숫자만 있으면 「점」 을 붙이고, 원문이 없�
   assert.equal(pointsLabel({ points: 2, pointsText: "2<br>(배점한도)" }), "2 (배점한도)")
   assert.equal(pointsLabel({ points: 1.5, pointsText: null }), "1.5점")
   assert.equal(pointsLabel({ points: null, pointsText: null }), "—")
+})
+
+test("단위 읽기 — %p · %포인트 · % · 점, 표시가 없으면 null", () => {
+  assert.equal(unitOf("10%p"), "%p")
+  assert.equal(unitOf("5 %P"), "%p")
+  assert.equal(unitOf("최대 5%포인트"), "%p")
+  assert.equal(unitOf("10％p"), "%p")
+  assert.equal(unitOf("20%"), "%")
+  assert.equal(unitOf("자부담 10퍼센트 감면"), "%")
+  assert.equal(unitOf("가점 최대3점"), "점")
+  assert.equal(unitOf("2<br>(배점한도)"), null)
+  assert.equal(unitOf("10"), null)
+  assert.equal(unitOf(null), null)
+})
+
+// 2026-11-27 운영 IP투자연계 공고 — 우대가 %p 라 「예상 10점」 으로 보이던 것
+test("단위가 %p 인 공고 — 점으로 적지 않고 점 합계에 섞지 않는다", () => {
+  const m = matchBonus(
+    [
+      item("벤처기업", 5, { pointsText: "5%p" }),
+      item("여성기업", 5, { pointsText: "5%p" }),
+      item("이노비즈기업", 5, { pointsText: "5%p" }),
+      item("지식재산공제 가입기업", 10, { pointsText: null }),
+    ],
+    { points: 10, text: "최대 10%p", quote: "우대 최대 10%p" },
+    [cert("벤처기업 확인", "HELD"), cert("여성기업 확인", "HELD"), cert("이노비즈", "NOT_ELIGIBLE")],
+    REF
+  )
+  assert.deepEqual(m.rows.map((r) => r.unit), ["%p", "%p", "%p", "%p"])
+  assert.equal(m.capUnit, "%p")
+  assert.deepEqual(m.totals, [{ unit: "%p", expected: 10, possible: 10 }])
+  // 점 단위 항목이 없으니 점 합계는 0 — 목록 정렬이 %p 를 점으로 세지 않는다
+  assert.equal(m.expected, 0)
+  assert.equal(m.possible, 0)
+  assert.equal(totalsLabel(m.totals), "예상 10%p / 최대 10%p")
+  const t = bonusMatchText("IP투자연계", m)
+  assert.ok(t.startsWith("IP투자연계 — 가점 4개 · 예상 10%p / 최대 10%p (상한: 최대 10%p)"), t)
+  // 머리 줄(합계)에 「N점」 이 없다 — 근거 칸은 원문 그대로라 따지지 않는다
+  assert.doesNotMatch(t.split("\n")[0], /\d점/)
+  assert.ok(t.includes("| 지식재산공제 가입기업 | 10%p |"), t)
+})
+
+test("점 · %p 가 섞인 공고 — 단위마다 따로 더하고 상한은 같은 단위에만", () => {
+  const m = matchBonus(
+    [
+      item("벤처기업", 2, { pointsText: "2점" }),
+      item("여성기업", 1, { pointsText: "1점" }),
+      item("이노비즈기업", 5, { pointsText: "5%p" }),
+      item("가족친화인증", 3, { pointsText: "3%p" }),
+    ],
+    { points: 2.5, text: "가점은 최대 2.5점", quote: "가점은 최대 2.5점" },
+    [cert("벤처기업 확인", "HELD"), cert("여성기업 확인", "HELD"), cert("가족친화인증", "HELD")],
+    REF
+  )
+  assert.deepEqual(m.totals, [
+    { unit: "점", expected: 2.5, possible: 2.5 },
+    { unit: "%p", expected: 3, possible: 8 },
+  ])
+  assert.equal(m.expected, 2.5)
+  assert.equal(totalsLabel(m.totals), "예상 2.5점 / 최대 2.5점 · 예상 3%p / 최대 8%p")
+  assert.ok(bonusMatchText("섞인 공고", m).includes("단위가 달라 따로 셈"))
+})
+
+test("단위 표시가 없는 점수 — 공고의 다른 항목이 모두 같은 단위면 그 단위, 아니면 점", () => {
+  const same = matchBonus([item("벤처기업", 5, { pointsText: "5%p" }), item("여성기업", 5, { pointsText: "5" })], null, [], REF)
+  assert.deepEqual(same.rows.map((r) => [r.unit, pointsLabel(r)]), [["%p", "5%p"], ["%p", "5%p"]])
+  const mixed = matchBonus(
+    [item("벤처기업", 5, { pointsText: "5%p" }), item("여성기업", 1, { pointsText: "1점" }), item("이노비즈", 2, { pointsText: "2" })],
+    null,
+    [],
+    REF
+  )
+  assert.deepEqual(mixed.rows.map((r) => r.unit), ["%p", "점", "점"])
+  // 예전 자료(단위 표시 없음)는 그대로 점
+  const old = matchBonus([item("벤처기업", 2, { pointsText: "2" })], null, [], REF)
+  assert.deepEqual(old.totals, [{ unit: "점", expected: 0, possible: 2 }])
+  assert.equal(pointsLabel(old.rows[0]), "2점")
+  // 점수를 하나도 모르면 점 0 / 0 한 줄
+  assert.deepEqual(matchBonus([item("벤처기업", null)], null, [], REF).totals, [{ unit: "점", expected: 0, possible: 0 }])
 })

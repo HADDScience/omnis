@@ -28,11 +28,14 @@ export function BonusTable({ bonus }: { bonus: BonusView }) {
           )}
         </h3>
         <p className="tabular-nums" data-grant-bonus-total>
-          예상 <strong className="text-[13px] font-semibold">{bonus.expected}점</strong>
-          <span className="text-muted-foreground">
-            {" "}
-            / 최대 {bonus.possible}점{bonus.capText ? ` · 상한 ${bonus.capText}` : ""}
-          </span>
+          {bonus.totals.map((t, i) => (
+            <span key={t.unit} data-grant-bonus-unit={t.unit}>
+              {i > 0 && <span className="text-muted-foreground"> · </span>}
+              예상 <strong className="text-[13px] font-semibold">{t.expected}{t.unit}</strong>
+              <span className="text-muted-foreground"> / 최대 {t.possible}{t.unit}</span>
+            </span>
+          ))}
+          {bonus.capText && <span className="text-muted-foreground"> · 상한 {bonus.capText}</span>}
         </p>
       </div>
       <table className="w-full border-collapse">

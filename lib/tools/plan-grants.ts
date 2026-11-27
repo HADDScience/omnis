@@ -31,7 +31,7 @@ import {
   readStage,
 } from "@/lib/grants-query"
 import type { CertStatus } from "@/generated/prisma/client"
-import { bonusMatchText } from "@/lib/grant-bonus"
+import { bonusMatchText, totalsLabel } from "@/lib/grant-bonus"
 import {
   BONUS_NOTICE_SELECT,
   bonusMatchOf,
@@ -284,13 +284,17 @@ async function grantBonusMatch(
   const ranked = rows
     .map((n) => ({ n, m: bonusMatchOf(n, certs) }))
     .filter((x): x is { n: (typeof rows)[number]; m: NonNullable<typeof x.m> } => !!x.m)
-    .sort((a, b) => b.m.expected - a.m.expected || a.m.possible - b.m.possible)
+    // 점 단위 예상이 먼저, 같으면 다른 단위(%p · %)의 예상이 있는 쪽 — 단위끼리 더하지 않는다
+    .sort((a, b) => {
+      const other = (m: NonNullable<ReturnType<typeof bonusMatchOf>>) => m.totals.filter((t) => t.unit !== "점").reduce((s, t) => s + t.expected, 0)
+      return b.m.expected - a.m.expected || other(b.m) - other(a.m) || a.m.possible - b.m.possible
+    })
   if (!ranked.length) return { text: "가점 항목을 뽑아 둔 접수 중 공고가 없습니다." }
   const out = [`가점 항목이 있는 접수 중 공고 ${ranked.length}건 — 예상 가점 높은 순 · 공고마다 grant_bonus_match(notice=id)로 표를 본다`]
   for (const { n, m } of ranked.slice(0, limit)) {
     const got = m.rows.filter((r) => r.counted).map((r) => r.label)
     out.push(
-      `- 예상 ${m.expected}점 / 최대 ${m.possible}점 · ${n.title} · 마감 ${n.deadlineAt ? seoulYmd(n.deadlineAt) : "미정"} · id ${n.id}` +
+      `- ${totalsLabel(m.totals)} · ${n.title} · 마감 ${n.deadlineAt ? seoulYmd(n.deadlineAt) : "미정"} · id ${n.id}` +
         (got.length ? `\n  - 받는 항목: ${clip(got.join(" · "), 200)}` : "")
     )
   }
