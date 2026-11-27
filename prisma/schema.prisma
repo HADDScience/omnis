@@ -2533,3 +2533,136 @@ model GrantNotice {
   @@index([regionClass])
 }
 
+// ─── 공통 층 유형 정의 (2026-11-27, P2) — mydocs/plans/2026-11-27-ontology-phase1.md §3-1 ───
+// 정본은 코드(lib/objects/types)다. 이 표들은 `pnpm run objects:sync` 가 옮긴 결과일 뿐이고, 아직 읽는 코드가 없다.
+// 값 칸(storage · dataType · kind · risk …)은 enum 대신 text + CHECK 다(마이그레이션 SQL 에 직접 쓴다).
+// 되돌리기: prisma/rollbacks/20261127200000_object_definitions.down.sql
+
+/// 유형 정의 한 줄
+model ObjectType {
+  /// 바뀌지 않는 키. ^[a-z][a-z0-9_]{1,39}$. 회사가 만든 유형(2단계)은 c_ 로 시작
+  key              String    @id
+  label            String
+  labelPlural      String?
+  /// product | company(2단계)
+  origin           String    @default("product")
+  /// table | ledger | generic(2단계)
+  storage          String
+  /// table · ledger: "public.CompanyRecord" · "ip.trademarks"
+  backing          String?
+  version          Int       @default(1)
+  /// 정규화한 정의(칸 · 선택지 · Action 포함)의 sha256
+  defHash          String
+  llmDescription   String
+  /// [{ text, note? }] — 1개 이상
+  examples         Json
+  /// fixed | inherit | column
+  visibilityPolicy String
+  visibilityFixed  String[]  @default([])
+  aiPropose        Boolean   @default(false)
+  /// { groupBy, minDecided, minRate, streak } — null 이면 늘 사람이 본다
+  autoApply        Json?
+  /// [{ key, label, toType, via }]
+  links            Json      @default("[]")
+  hiddenAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  fields   ObjectField[]
+  actions  ActionType[]
+  versions ObjectTypeVersion[]
+}
+
+/// 유형의 칸
+model ObjectField {
+  id             String     @id @default(uuid())
+  typeKey        String
+  type           ObjectType @relation(fields: [typeKey], references: [key], onDelete: Cascade)
+  key            String
+  label          String
+  /// text | longtext | number | money_krw | date | datetime | bool | option | multi_option | ref | person | file | url
+  dataType       String
+  optionSetKey   String?
+  refTypeKey     String?
+  /// file 칸: { multiple, accept: ["image/*", "application/pdf"] }
+  fileRule       Json?
+  /// 공통 틀 칸: title | startsOn | endsOn | owner | org | visibility
+  frame          String?
+  /// table · ledger: 기대는 칼럼(Prisma 필드 이름)
+  column         String?
+  readOnly       Boolean    @default(false)
+  required       Boolean    @default(false)
+  filterable     Boolean    @default(false)
+  sortable       Boolean    @default(false)
+  aiExtract      Boolean    @default(false)
+  llmDescription String?
+  maxLength      Int?
+  /// 이 칸이 처음 생긴 유형 버전
+  sinceVersion   Int        @default(1)
+  /// 코드에서 빠지면 지우지 않고 숨긴다
+  hiddenAt       DateTime?
+
+  @@unique([typeKey, key])
+}
+
+/// 선택지 한 줄 — 여러 칸이 같은 묶음(setKey)을 쓸 수 있다
+model OptionValue {
+  id          String    @id @default(uuid())
+  setKey      String
+  /// 묶음 이름표(묶음 안 모든 줄이 같다)
+  setLabel    String
+  key         String
+  label       String
+  sortOrder   Int       @default(0)
+  /// 기존 enum · text 값 — "GRANT", "PREPARING"
+  legacyValue String?
+  hiddenAt    DateTime?
+
+  @@unique([setKey, key])
+  @@unique([setKey, legacyValue])
+}
+
+/// 유형의 동작 — 1단계는 모두 기존 도구(runTool)를 감싼다
+model ActionType {
+  id            String     @id @default(uuid())
+  typeKey       String
+  type          ObjectType @relation(fields: [typeKey], references: [key], onDelete: Cascade)
+  key           String
+  label         String
+  /// create | update | upsert | delete | transition | custom
+  kind          String
+  /// 감싼 기존 도구(lib/tools/registry.ts 의 이름)
+  tool          String?
+  /// 공통 층 칸 키 → 도구 인자(P10 에서 채운다)
+  argMap        Json       @default("{}")
+  inputSchema   Json       @default("{}")
+  /// read | write | ledger | destructive
+  risk          String
+  /// card | param (lib/tools/registry.ts 와 같은 뜻 — sync 가 레지스트리에서 옮긴다)
+  confirm       String?
+  /// { mcp, agent, ask } (P10 에서 채운다)
+  expose        Json       @default("{}")
+  maxRows       Int        @default(1)
+  transactional Boolean    @default(true)
+  aiAutoApply   Boolean    @default(false)
+  sinceVersion  Int        @default(1)
+  hiddenAt      DateTime?
+
+  @@unique([typeKey, key])
+}
+
+/// 유형 정의가 바뀔 때마다 한 줄 — 그때의 정의 전체
+model ObjectTypeVersion {
+  id          String     @id @default(uuid())
+  typeKey     String
+  type        ObjectType @relation(fields: [typeKey], references: [key], onDelete: Cascade)
+  version     Int
+  defHash     String
+  definition  Json
+  /// 칸 숨김 · 선택지 숨김 · 필수로 바꿈 · maxLength 줄임
+  breaking    Boolean    @default(false)
+  summary     String
+  publishedAt DateTime   @default(now())
+
+  @@unique([typeKey, version])
+}

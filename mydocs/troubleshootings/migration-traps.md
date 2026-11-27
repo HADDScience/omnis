@@ -2,7 +2,7 @@
 kind: reference
 status: active
 canonical: mydocs/troubleshootings/supabase-limits.md
-last_verified: 2026-09-02
+last_verified: 2026-11-27
 ---
 
 # 이 작업에서 실제로 밟은 함정
@@ -242,3 +242,36 @@ The migration from the database are not found locally in prisma/migrations:
 
 **남는 것:** 이 어긋남은 그 PR 이 머지되면 저절로 사라진다. 오래 열어 둔 PR 이 여럿이면
 그만큼 오래 남는다.
+
+---
+
+## push 한 마이그레이션 폴더 이름을 바꾸지 않는다 — 데모 미리보기가 이미 적용했다
+
+데모 프로젝트(`omnis-demo`)의 빌드 명령은 `prisma migrate deploy && pnpm run build` 다. **PR 브랜치의 미리보기 빌드도
+공용 데모 DB 에 마이그레이션을 건다.** 운영(`omnis-hadd`)은 `pnpm run build` 만 해서 미리보기가 운영 DB 를 바꾸지 않는다.
+그래서 push 하는 순간 데모 DB 에는 그 마이그레이션이 그 이름으로 적용된다.
+
+2026-11-26 PR #274(국가과제 상태 v2)에서 실제로 이랬다.
+
+1. `20261126120000_grant_stages_v2` 로 push 했다. 데모 미리보기가 데모 DB 에 적용했다(`GrantStage` enum 을 text 로 바꾸고 `DROP TYPE "GrantStage"`).
+2. 그 사이 운영에 먼저 적용된 `20261126180000_job_posting_meta` 뒤에 오게 하려고 폴더 이름을 `20261126190000_grant_stages_v2` 로 바꿨다.
+3. 데모 DB 는 새 이름을 처음 보는 마이그레이션으로 알고 같은 SQL 을 다시 돌렸다. `DROP TYPE "GrantStage"` 가
+   `42704 type "GrantStage" does not exist` 로 멈췄다(P3018).
+4. 실패한 마이그레이션이 데모 DB 기록에 남아, 그 뒤의 데모 배포가 브랜치와 상관없이 전부 **P3009**(실패한 마이그레이션이 있다)로 막혔다.
+
+**대응.**
+
+- **마이그레이션 이름은 처음부터 최종 이름으로 짓고, push 한 뒤에는 바꾸지 않는다.** 운영 적용 순서가 걱정되면 처음부터
+  늦은 시각(그날 다른 마이그레이션보다 뒤)으로 짓는다.
+- **SQL 은 다시 돌려도 같은 결과가 되게 쓴다.** `CREATE TABLE IF NOT EXISTS` · `CREATE INDEX IF NOT EXISTS` ·
+  `ADD COLUMN IF NOT EXISTS` · `DROP TYPE IF EXISTS`, 제약은 `DROP CONSTRAINT IF EXISTS` 다음에 `ADD CONSTRAINT`.
+  #274 는 이렇게 고쳐 통과했다. 공통 층 P2(`20261127200000_object_definitions`)도 처음부터 이렇게 썼고,
+  `lib/objects/sync.test.ts` 가 그 파일의 CREATE · ADD CONSTRAINT 를 검사한다.
+- **이미 막혔으면** 데모 DB 를 직접 푼다. 데모 env 는 `vercel env pull --project omnis-demo` 로 받는다.
+  실패한 줄은 `pnpm exec prisma migrate resolve --rolled-back <이름>` 으로 「되돌림」 처리하고, 옛 이름의 기록 줄을 정리한 뒤
+  다시 배포한다.
+
+**곁들여 알게 된 것(2026-11-27).** `migrate resolve --rolled-back` 은 **실패한** 마이그레이션에만 통한다. 성공한
+마이그레이션의 표를 손으로 지운 뒤 다시 적용하려고 부르면 `cannot be rolled back because it is not in a failed state` 로
+거절된다. 그럴 때는 `_prisma_migrations` 에서 그 이름의 줄을 지워야 다음 `migrate deploy` 가 다시 적용한다 —
+`prisma/rollbacks/20261127200000_object_definitions.down.sql` 이 표와 그 줄을 한 트랜잭션에서 지운다.

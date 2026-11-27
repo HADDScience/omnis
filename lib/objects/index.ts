@@ -1,5 +1,6 @@
 // 공통 층 유형 레지스트리 — 등록한 유형과 선택지 묶음. 데이터만 둔다.
-// P1(2026-11-27): 아직 아무 데서도 import 하지 않는다. P5 의 일반 읽기 도구(describe_type · list_objects · get_object)가 처음 쓴다.
+// 앱(화면 · 도구)은 아직 쓰지 않는다. 쓰는 곳은 scripts/objects-sync.ts(P2, DB 정의 표로 옮긴다)뿐이고,
+// P5 의 일반 읽기 도구(describe_type · list_objects · get_object)가 앱에서 처음 쓴다.
 // 계획: mydocs/plans/2026-11-27-ontology-phase1.md
 import type { OptionSetDef, TypeDef } from "./define"
 import { OPTION_SETS } from "./options"
