@@ -15,6 +15,7 @@ import { OBJECT_TYPES, OPTION_SET_MAP, PLANNED_TYPES } from "@/lib/objects/index
 import { OPTION_SETS } from "@/lib/objects/options"
 import { planSync, summarizeOps, type DbState, type Json, type SyncOp } from "@/lib/objects/sync"
 import { TOOL_POLICY } from "@/lib/tools/registry"
+import { DEFAULT_TENANT, runForTenant } from "@/lib/tenant"
 import { Prisma } from "@/generated/prisma/client"
 
 const APPLY = process.argv.includes("--apply")
@@ -131,7 +132,8 @@ async function main() {
   console.log(`썼다 — 유형 ${after.types.length} · 칸 ${after.fields.length} · 선택지 ${after.options.length} · Action ${after.actions.length} · 버전 ${after.latestVersions.length}`)
 }
 
-main()
+// 요청 밖 진입점은 회사 한 겹으로 감싼다(계획 §2-7). 1단계는 default 하나
+runForTenant(DEFAULT_TENANT, main)
   .catch((e) => {
     console.error(e)
     process.exitCode = 1
