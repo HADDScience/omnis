@@ -296,7 +296,7 @@ const B7_WRITE = ["link_nas_file"]
 // 2026-11-25 인증 · 가점 — 세 경로 모두에 연다
 const CERT_READ = ["list_certifications"]
 // 2026-11-25 국가과제 — 읽기는 세 경로, 쓰기는 앱 AI 확인 카드 · 질문 경로 미리보기 · MCP confirm
-const GRANT_READ = ["list_grant_decisions", "search_grant_notices"]
+const GRANT_READ = ["list_grant_decisions", "search_grant_notices", "grant_bonus_match"]
 // 2026-11-27 첫 화면 「지금 할 일」 제안 — 화면 카드와 같은 것(lib/home-suggestions)
 const HOME_READ = ["home_suggestions"]
 const GRANT_WRITE = [

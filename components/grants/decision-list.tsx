@@ -42,6 +42,8 @@ import {
   type AttachmentView,
 } from "@/components/grants/grant-files"
 import { NasFolderPicker } from "@/components/grants/nas-folder-picker"
+import { BonusTable } from "@/components/grants/bonus-table"
+import type { BonusView } from "@/lib/grant-bonus-view"
 import {
   GRANT_STAGES,
   GRANT_STAGE_FIELD_LABEL,
@@ -86,6 +88,8 @@ export interface DecisionView {
   imported: boolean
   /** 이 결정 · 같은 사업 공고의 첨부 */
   attachments: AttachmentView[]
+  /** 이어진 공고의 가점 × 우리 인증 — 뽑은 항목이 없으면 null */
+  bonus: BonusView | null
 }
 
 type Opt = { id: string; name: string }
@@ -594,6 +598,7 @@ function DecisionDetail({
           ))}
         </ul>
       )}
+      {r.bonus && <BonusTable bonus={r.bonus} />}
       <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
       {!r.imported && (
         <RemoveDecision r={r} open={removing} onOpenChange={setRemoving} />

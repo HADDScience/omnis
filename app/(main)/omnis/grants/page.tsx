@@ -35,6 +35,13 @@ import {
   type DecisionView,
 } from "@/components/grants/decision-list"
 import { NoticeList, type NoticeView } from "@/components/grants/notice-list"
+import {
+  BONUS_NOTICE_SELECT,
+  bonusMatchOf,
+  bonusView,
+  loadOurCerts,
+  pickDecisionNotice,
+} from "@/lib/grant-bonus-view"
 import { DecisionBoard } from "@/components/grants/decision-board"
 import {
   BoardSkeleton,
@@ -269,10 +276,18 @@ async function Decisions({ sp }: { sp: SP }) {
       .filter((l) => l.relation !== "related" && l.export_key)
       .map((l) => l.export_key!),
   ]
-  const linked = await prisma.grantNotice.findMany({
-    where: { externalKey: { in: [...new Set(rows.flatMap(linkKeysOf))] } },
-    select: { id: true, externalKey: true, attachments: true },
-  })
+  const [linked, certs] = await Promise.all([
+    prisma.grantNotice.findMany({
+      where: { externalKey: { in: [...new Set(rows.flatMap(linkKeysOf))] } },
+      select: { ...BONUS_NOTICE_SELECT, attachments: true },
+    }),
+    loadOurCerts(),
+  ])
+  const noticeByKey = new Map(linked.map((n) => [n.externalKey, n]))
+  const bonusOf = (r: (typeof rows)[number]) => {
+    const n = pickDecisionNotice(r, noticeByKey)
+    return n ? bonusView(bonusMatchOf(n, certs), n.title !== r.title ? n.title : null) : null
+  }
   const filesByKey = new Map(
     linked.map((n) => [n.externalKey, attachmentViews(n.id, n.attachments)])
   )
@@ -322,6 +337,7 @@ async function Decisions({ sp }: { sp: SP }) {
     completedOn: r.completedOn?.toISOString() ?? null,
     imported: isImportedDecision(r),
     attachments: filesOf(r),
+    bonus: bonusOf(r),
   }))
 
   return (
@@ -423,7 +439,10 @@ async function Notices({ sp }: { sp: SP }) {
       take: PAGE,
     }),
   ])
-  const decided = await decisionsForNotices(rows.map((r) => r.externalKey))
+  const [decided, certs] = await Promise.all([
+    decisionsForNotices(rows.map((r) => r.externalKey)),
+    loadOurCerts(),
+  ])
   const view: NoticeView[] = rows.map((r) => ({
     id: r.id,
     key: r.externalKey,
@@ -446,6 +465,7 @@ async function Notices({ sp }: { sp: SP }) {
     decided: decided.has(r.externalKey),
     attachments: attachmentViews(r.id, r.attachments),
     nasFolder: decided.get(r.externalKey)?.nasFolder ?? null,
+    bonus: bonusView(bonusMatchOf(r, certs)),
   }))
   const toggleVerdict = (v: (typeof VERDICTS)[number]) => {
     const has = f.verdicts.includes(v)

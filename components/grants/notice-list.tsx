@@ -17,6 +17,8 @@ import {
   GrantFiles,
   type AttachmentView,
 } from "@/components/grants/grant-files"
+import { BonusTable } from "@/components/grants/bonus-table"
+import type { BonusView } from "@/lib/grant-bonus-view"
 import { seoulYmd } from "@/lib/grants-labels"
 import { cn } from "@/lib/utils"
 
@@ -38,6 +40,8 @@ export interface NoticeView {
   attachments: AttachmentView[]
   /** 이 공고가 이어진 결정의 NAS 폴더 */
   nasFolder: string | null
+  /** 공고 가점 × 우리 인증 — 뽑은 항목이 없으면 null */
+  bonus: BonusView | null
 }
 
 const VERDICT_CHIP: Record<string, string> = {
@@ -228,6 +232,7 @@ function NoticeRow({
               <dd>{r.judgedBy === "llm" ? "공고 본문 검토" : "규칙"}</dd>
             </dl>
           </div>
+          {r.bonus && <BonusTable bonus={r.bonus} />}
           <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
           {r.url && (
             <a

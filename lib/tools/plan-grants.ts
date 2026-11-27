@@ -31,6 +31,13 @@ import {
   readStage,
 } from "@/lib/grants-query"
 import type { CertStatus } from "@/generated/prisma/client"
+import { bonusMatchText } from "@/lib/grant-bonus"
+import {
+  BONUS_NOTICE_SELECT,
+  bonusMatchOf,
+  loadOurCerts,
+  pickDecisionNotice,
+} from "@/lib/grant-bonus-view"
 import { blocked, clip, has, str, type Planner } from "./planned"
 import type { GrantReadName, GrantWriteName } from "./defs-grants"
 
@@ -234,7 +241,71 @@ export async function runGrantRead(
       }
       return { text: out.join("\n") }
     }
+    case "grant_bonus_match":
+      return grantBonusMatch(args)
   }
+}
+
+/** grant_bonus_match — 공고 하나 · 결정 하나의 표, 또는 예상 가점 높은 접수 중 공고 목록 */
+async function grantBonusMatch(
+  args: Record<string, unknown>
+): Promise<{ text: string } | { error: string }> {
+  const certs = await loadOurCerts()
+  const noticeRef = str(args.notice)
+  const decisionRef = str(args.decision)
+  if (noticeRef) {
+    const n = await prisma.grantNotice.findFirst({
+      where: { OR: [{ id: noticeRef }, { externalKey: noticeRef }] },
+      select: BONUS_NOTICE_SELECT,
+    })
+    if (!n) return { error: "없는 공고입니다 — search_grant_notices 의 id 를 씁니다" }
+    return { text: noticeBonusText(n, certs) }
+  }
+  if (decisionRef) {
+    const d = await findDecision(decisionRef)
+    if (d === "many") return { error: "과제명이 여러 줄에 맞습니다 — list_grant_decisions 의 id 를 주세요" }
+    if (!d) return { error: "없는 과제 결정입니다 — list_grant_decisions 로 확인하세요" }
+    const links = (Array.isArray(d.noticeLinks) ? d.noticeLinks : []) as { export_key?: string }[]
+    const keys = [d.externalKey, ...links.map((l) => l.export_key).filter((k): k is string => !!k)]
+    const notices = await prisma.grantNotice.findMany({
+      where: { externalKey: { in: keys } },
+      select: BONUS_NOTICE_SELECT,
+    })
+    const n = pickDecisionNotice(d, new Map(notices.map((x) => [x.externalKey, x])))
+    if (!n) return { text: `${d.title} — 이어진 공고에서 뽑은 가점 항목이 없습니다.` }
+    return { text: noticeBonusText(n, certs, n.title !== d.title ? `${d.title} (공고: ${n.title})` : d.title) }
+  }
+  const limit = Math.min(Math.max(Number(args.limit) || 15, 1), 50)
+  const today = new Date(`${seoulYmd(new Date())}T00:00:00+09:00`)
+  const rows = await prisma.grantNotice.findMany({
+    where: { bonusStatus: "ok", OR: [{ deadlineAt: null }, { deadlineAt: { gte: today } }] },
+    select: BONUS_NOTICE_SELECT,
+  })
+  const ranked = rows
+    .map((n) => ({ n, m: bonusMatchOf(n, certs) }))
+    .filter((x): x is { n: (typeof rows)[number]; m: NonNullable<typeof x.m> } => !!x.m)
+    .sort((a, b) => b.m.expected - a.m.expected || a.m.possible - b.m.possible)
+  if (!ranked.length) return { text: "가점 항목을 뽑아 둔 접수 중 공고가 없습니다." }
+  const out = [`가점 항목이 있는 접수 중 공고 ${ranked.length}건 — 예상 가점 높은 순 · 공고마다 grant_bonus_match(notice=id)로 표를 본다`]
+  for (const { n, m } of ranked.slice(0, limit)) {
+    const got = m.rows.filter((r) => r.counted).map((r) => r.label)
+    out.push(
+      `- 예상 ${m.expected}점 / 최대 ${m.possible}점 · ${n.title} · 마감 ${n.deadlineAt ? seoulYmd(n.deadlineAt) : "미정"} · id ${n.id}` +
+        (got.length ? `\n  - 받는 항목: ${clip(got.join(" · "), 200)}` : "")
+    )
+  }
+  return { text: out.join("\n") }
+}
+
+function noticeBonusText(
+  n: Parameters<typeof bonusMatchOf>[0] & { id: string },
+  certs: Awaited<ReturnType<typeof loadOurCerts>>,
+  title = n.title
+): string {
+  if (n.bonusStatus === null) return `${title} — 아직 가점 항목을 뽑지 않은 공고입니다.`
+  const m = bonusMatchOf(n, certs)
+  if (!m) return `${title} — 인증 · 자격 가점 항목이 없습니다.`
+  return `${bonusMatchText(title, m)}\n기준일 ${n.deadlineAt ? `공고 마감 ${seoulYmd(n.deadlineAt)}` : "오늘"} · 공고 id ${n.id}`
 }
 
 // ─── 찾기 도우미 ───
