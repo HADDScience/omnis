@@ -6,8 +6,9 @@
 //   npm run kakao -- <csv...> --mobile Talk_….txt --mobile-room 방이름   휴대폰 「대화 내보내기」 txt 로 PC CSV 의 빠진 줄을 채운다
 //   npm run kakao -- <csv...> --dry                          쓰지 않고 무엇을 할지만 본다
 //   npm run kakao -- <csv...> --target prod                  프로덕션(Neon)에 적용
+//   npm run kakao -- <csv...> --no-refine                    카드 다듬기(무관한 글 떼기 · 제목에 대상)를 건너뛴다
 //
-// 단계: 수집 → 분류(Claude 병렬) → 메시지 → 구조화(Claude 순차) → 첨부 → 사진 설명(Codex·Claude 구독) → 임베딩
+// 단계: 수집 → 분류(Claude 병렬) → 메시지 → 구조화(Claude 순차) → 첨부 → 사진 설명(Codex·Claude 구독) → 카드 다듬기(Gemini) → 임베딩
 // 모든 단계가 멱등이다. 같은 CSV 를 두 번 주면 두 번째는 아무것도 하지 않는다.
 // 중간에 끊기면 다시 돌리면 이어진다 — 각 단계가 "아직 안 된 것" 만 고르기 때문이다.
 //
@@ -18,12 +19,12 @@ import { pointAtProd } from "./prod-env"
 
 interface Args {
   csv: string[]; mobile: { path: string; room: string }[]; media: string | null; mediaRoom: string | null; mediaNamesOnly: boolean; dry: boolean; target: "local" | "prod"
-  autoRooms: boolean; noEmbed: boolean; noStructure: boolean; workers: number; classifyModel: string; structureModel: string
+  autoRooms: boolean; noEmbed: boolean; noStructure: boolean; noRefine: boolean; workers: number; classifyModel: string; structureModel: string
 }
 
 function parseArgs(argv: string[]): Args {
   const a: Args = {
-    csv: [], mobile: [], media: null, mediaRoom: null, mediaNamesOnly: false, dry: false, autoRooms: false, target: "local", noEmbed: false, noStructure: false,
+    csv: [], mobile: [], media: null, mediaRoom: null, mediaNamesOnly: false, dry: false, autoRooms: false, target: "local", noEmbed: false, noStructure: false, noRefine: false,
     workers: 4, classifyModel: "sonnet", structureModel: "opus",
   }
   for (let i = 0; i < argv.length; i++) {
@@ -38,6 +39,7 @@ function parseArgs(argv: string[]): Args {
     else if (v === "--target") a.target = argv[++i] === "prod" ? "prod" : "local"
     else if (v === "--no-embed") a.noEmbed = true
     else if (v === "--no-structure") a.noStructure = true
+    else if (v === "--no-refine") a.noRefine = true
     else if (v === "--workers") a.workers = Number(argv[++i]) || 4
     else if (v === "--classify-model") a.classifyModel = argv[++i]
     else if (v === "--structure-model") a.structureModel = argv[++i]
@@ -71,6 +73,7 @@ async function main() {
   const { structure } = await import("./steps/structure")
   const { attachMedia } = await import("./steps/media")
   const { describeImportedPhotos } = await import("./steps/photos")
+  const { refineCards } = await import("./steps/refine")
   const { embed } = await import("./steps/embed")
 
   const t0 = Date.now()
@@ -86,7 +89,7 @@ async function main() {
   }
   const step = (n: number, title: string) => {
     closeStep()
-    console.log(`\n${n}/7 ${title}`)
+    console.log(`\n${n}/8 ${title}`)
     open = { label: title.split(" ")[0], at: Date.now() }
   }
 
@@ -104,7 +107,7 @@ async function main() {
   step(4, "구조화 — 업무 카드")
   if (args.noStructure) console.log("  --no-structure 로 건너뜀")
   else if (c.failed.length > 0 && !args.dry) console.log(`  분류 실패 ${c.failed.length}세션은 이번 라운드에 안 들어간다`)
-  const s = args.noStructure ? { created: 0, failedRounds: 0 } : await structure(sessions, { model: args.structureModel, dry: args.dry })
+  const s = args.noStructure ? { created: 0, failedRounds: 0, attached: [] } : await structure(sessions, { model: args.structureModel, dry: args.dry })
 
   step(5, "첨부 — 실물 파일 붙이기")
   const mediaRoom = args.mediaRoom ?? [...rooms.keys()][0]
@@ -115,7 +118,12 @@ async function main() {
   step(6, "사진 설명 — Codex·Claude 구독")
   const photos = await describeImportedPhotos(args.csv, { dry: args.dry, workers: args.workers })
 
-  step(7, "임베딩 — 옴니스 AI 색인")
+  step(7, "카드 다듬기 — 무관한 글 떼기 · 제목에 대상 넣기")
+  const refine = args.noRefine
+    ? (console.log("  --no-refine 로 건너뜀"), null)
+    : await refineCards(s.attached, { dry: args.dry })
+
+  step(8, "임베딩 — 옴니스 AI 색인")
   let photosLeft = 0
   if (args.noEmbed) console.log("  --no-embed 로 건너뜀")
   else photosLeft = (await embed({ dry: args.dry, photoIds: photos.ids })).photosLeft
@@ -132,6 +140,8 @@ async function main() {
     newRoom: registered.some((r) => r.newRoom),
     newExternals: registered.flatMap((r) => r.newExternals),
     newMembers: registered.flatMap((r) => r.newMembers),
+    // 판정 실패는 남은 일로 치지 않는다 — 카드는 지금 방식 그대로 남고, 다음 실행에서 같은 카드를 다시 보지 않는다
+    refine: refine ? { cards: refine.cards, judged: refine.judged, dropped: refine.dropped, unsure: refine.unsure, renamed: refine.renamed, failed: refine.failed } : null,
     leftover: { classify: c.failed.length, structure: s.failedRounds, media: media.failed, photos: photos.left, photoIndex: photosLeft },
     seconds,
   }))

@@ -90,6 +90,13 @@ export interface CallGeminiOptions {
   files?: { mimeType: string; data: string }[]
   /** 응답을 JSON 으로 강제한다(responseMimeType). 긴 배열에서 문자열 안 따옴표가 깨지는 것을 막는다 */
   json?: boolean
+  /** 응답 JSON 스키마(responseSchema, OpenAPI 부분집합). 주면 json 도 켠다 */
+  schema?: unknown
+  /**
+   * 생각 수준(thinkingLevel). 3.6-flash 같은 모델은 thinkingBudget: 0 을 400 으로 거절해 수준으로 준다
+   * (03-relevance-filter.md, 2026-11-26 — MINIMAL 에서 생각 토큰 0)
+   */
+  thinkingLevel?: "MINIMAL" | "LOW" | "MEDIUM" | "HIGH"
 }
 
 export async function callGemini(
@@ -116,7 +123,8 @@ export async function callGemini(
     generationConfig: {
       temperature,
       maxOutputTokens,
-      ...(opts.json ? { responseMimeType: "application/json" } : {}),
+      ...(opts.json || opts.schema ? { responseMimeType: "application/json" } : {}),
+      ...(opts.schema ? { responseSchema: opts.schema } : {}),
       // 구조화 추출은 깊은 추론이 불필요 → thinking 비활성으로 토큰 ~50%↓ + 속도↑ + 503 회피.
       // 번역은 thinking 토큰이 maxOutputTokens 를 먹어 긴 덱의 응답이 중간에 끊겼다(2026-09-08).
       // 그렇다고 0 으로 끄면 "현장" 을 "現場" 로 쓰는 오역이 고정돼, 작은 예산만 준다.
@@ -127,6 +135,7 @@ export async function callGemini(
             // maxOutputTokens 를 먹어 배열이 중간에 끊겼다(2026-10-16, 3회 연속)
             { thinkingConfig: { thinkingBudget: 1024 } }
           : {}),
+      ...(opts.thinkingLevel ? { thinkingConfig: { thinkingLevel: opts.thinkingLevel } } : {}),
     },
   })
   // 503(모델 과부하)·일시적 429(rate, spend cap 제외)는 재시도. spend cap 429는 즉시 중단.
