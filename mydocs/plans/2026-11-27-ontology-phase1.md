@@ -316,6 +316,8 @@ model ObjectField {
 model OptionValue {
   id          String    @id @default(uuid())
   setKey      String
+  /// 묶음 이름표(묶음 안 모든 줄이 같다)
+  setLabel    String
   key         String
   label       String
   sortOrder   Int       @default(0)
@@ -589,7 +591,7 @@ model ObjectChange {
 |---|---|---|---|---|---|
 | **P0** | 이 문서 | 없음 | 문서 | revert | frontmatter |
 | **P1** | `lib/objects/` 데이터 모듈: `defineType`, 유형 3개(`record` · `grant_decision` · `org`), 선택지(enum · text 매핑), Action 정의(기존 도구 이름만). DMMF 대조 시험 · 키 형식 시험 | 없음 | 코드만, 동작 변화 없음 | revert | `pnpm run verify` · `test:unit`. 아무 데서도 import 하지 않음 · 맞춤 화면 diff 0 |
-| **P2** | 정의 표 5개 + `objects:sync` | 새 표만 | `db:deploy` → `objects:sync` → 머지 | DROP TABLE 마이그레이션을 함께 둔다 | sync 두 번째가 변화 0(멱등) |
+| **P2** | 정의 표 5개 + `objects:sync` + 맞춤 화면 경로 CI 검사(`scripts/guard-custom-screens.txt`) | 새 표만(`20261127200000_object_definitions`, 다시 돌려도 되게) | `db:deploy` → `objects:sync -- --apply --prod` → 머지 | `prisma/rollbacks/20261127200000_object_definitions.down.sql`(표와 마이그레이션 기록 줄을 지운다 — `migrate resolve --rolled-back` 은 성공한 마이그레이션에 통하지 않는다) | sync 두 번째가 변화 0(멱등) |
 | **P3** | `Evidence` · `ObjectRevision` · `Proposal` + `lib/tenant.ts` 껍데기 | 새 표만 | `db:deploy` → 머지 | DROP | verify · test:unit |
 | **P4** | `ObjectChange` + 트리거 + 등록 3유형 테이블과 `ChatMessage` 에 트리거. `EmbeddingChunk.typeKey` · `visibility` · enum `OBJECT`(마이그레이션 둘). 소비기, backfill | **기존 표에 트리거 · 칼럼** | `db:deploy` → backfill → 머지. 쓰기 지연 실측 | 트리거 DROP 마이그레이션 | 로컬 스냅숏에서 맞춤 화면으로 고쳐 조각 갱신 확인. 트리거 전후 쓰기 p50 · p95(기준 +5ms, 추정). 연혁 · 국가과제 · CRM e2e |
 | **P5** | `describe_type` · `list_objects` · `get_object` + `canSee` + 음성 권한 시험. MCP · 앱 AI 에만 | 없음 | 머지 · 배포 | registry 줄 삭제 | 음성 시험 · 도구 수 상한 |
@@ -614,7 +616,7 @@ model ObjectChange {
 | AI 제안(P7 에서 바꾼다) | `app/(main)/omnis/proposals/**` | `app/api/company/record-proposals/**` | `components/omnis/proposal-list.tsx` · `components/company/record-proposal-list.tsx` |
 
 - 확인 명령: `git diff --name-only origin/main...HEAD | grep -E '^(app/\(main\)/(ip|crm|omnis/(grants|records|company|proposals))/|app/api/(ip|ip-mcp|grants|crm|company)/|components/(ip|grants|crm|company)/|components/omnis/proposal-list\.tsx)'` 가 아무것도 내지 않아야 한다.
-- CI 검사(`scripts/guard-custom-screens.txt` 와 PR diff 대조)는 P2 에서 넣는다. P0 · P1 은 위 명령을 PR 본문에 붙인다.
+- CI 검사: `.github/workflows/guard-custom-screens.yml` 이 PR 마다 `scripts/guard-custom-screens.txt` 와 PR diff 를 대조한다(P2). 걸리면 PR 본문에 「맞춤 화면 변경: <까닭>」 한 줄이 있어야 지나간다. P0 · P1 은 위 명령을 PR 본문에 붙였다.
 - 화면 동작: `pnpm test:e2e:affected`. 트리거가 들어가는 PR(P4 · P9 · P10)은 그 테이블을 쓰는 화면 e2e 전부.
 - 로컬 확인은 `next dev` 로만 한다(`next start` · `build` 는 운영 env 를 읽는다). e2e 는 운영 env 없는 워크트리에서 `omnis_test` DB 로.
 

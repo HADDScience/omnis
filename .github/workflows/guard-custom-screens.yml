@@ -1,0 +1,41 @@
+name: guard-custom-screens
+
+# 맞춤 화면 경로 diff 0 검사(공통 층 1단계) — scripts/guard-custom-screens.txt 의 경로를 바꾼 PR 은
+# 본문에 「맞춤 화면 변경: <까닭>」 이 있어야 지나간다. 계획: mydocs/plans/2026-11-27-ontology-phase1.md §8
+#
+# CI(ci.yml)와 따로 둔 까닭: 본문을 고치면(edited) 이 검사만 다시 돌아야 한다. ci.yml 에 edited 를 더하면
+# 본문 한 글자에 e2e 네 조각이 다시 돈다. 설치 없이 node 만 쓴다 — 30초 안쪽이다.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+concurrency:
+  group: guard-custom-screens-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: guard-custom-screens
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 바뀐 파일과 맞춤 화면 경로 대조
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' > "$RUNNER_TEMP/files.txt"
+          node scripts/guard-custom-screens.mjs < "$RUNNER_TEMP/files.txt"

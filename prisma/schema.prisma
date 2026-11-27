@@ -457,13 +457,13 @@ model Project {
   productId String?
   product   Product?  @relation(fields: [productId], references: [id])
 
-  tasks       Task[]
-  records     CompanyRecord[]
+  tasks          Task[]
+  records        CompanyRecord[]
   /// 이 프로젝트의 업무방을 모은 채팅방 폴더(사람마다)
-  chatFolders ChatFolder[]
+  chatFolders    ChatFolder[]
   grantDecisions GrantDecision[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@index([productId])
 }
@@ -1550,44 +1550,44 @@ enum RecordKind {
 /// 회사 연혁 · 실적. 연혁 표가 상위 집합이고, 지원사업 · 수상 · 학회 시트는 상세 칸이 붙는 부분집합이다.
 /// 날짜가 다르면 상세 시트가 정본 (2026-09-10 결정). 특허 · 상표는 ip 스키마가 정본이라 담지 않는다.
 model CompanyRecord {
-  id           String           @id @default(uuid())
+  id            String                @id @default(uuid())
   /// 이식 멱등 키 — kind · 제목 · 기관 · 시작일을 정규화해 만든다 (시작일이 비어도 겹치지 않게)
-  dedupeKey    String           @unique
-  kind         RecordKind
-  title        String
-  organizer    String?
-  startsOn     DateTime?
-  endsOn       DateTime?
+  dedupeKey     String                @unique
+  kind          RecordKind
+  title         String
+  organizer     String?
+  startsOn      DateTime?
+  endsOn        DateTime?
   /// 원문 기간 표기. 화면엔 이것을 보여 준다 — 형식이 20종이라 파싱값만 두면 뜻이 상한다
-  periodRaw    String?
+  periodRaw     String?
   /// 완료 · 진행중 · 발표완료 · 계획
-  status       String?
-  note         String?
-  subject      String?
-  role         String?
-  fundingKrw   BigInt?
-  ownCashKrw   BigInt?
-  ownInKindKrw BigInt?
-  grantNo      String?
-  prize        String?
-  venue        String?
+  status        String?
+  note          String?
+  subject       String?
+  role          String?
+  fundingKrw    BigInt?
+  ownCashKrw    BigInt?
+  ownInKindKrw  BigInt?
+  grantNo       String?
+  prize         String?
+  venue         String?
   /// 대리점 (EAS · 오리엔트바이오 · 준바이오텍). 비면 자사
-  partner      String?
+  partner       String?
   /// 엑셀 원문 카테고리 (주요 · 내부행사 · 포럼 · 교육 · 네트워킹)
-  category     String?
+  category      String?
   /// 어느 표에서 왔나 — 연혁 · 지원사업 · 수상 · 학회 · 노션 · 옴니스
-  source       String
-  projectId    String?
-  project      Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  source        String
+  projectId     String?
+  project       Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
   /// 공개범위. INTERNAL 은 대외비 — 외부 자료(기업현황카드 · IR · 홈페이지)에 쓰지 않는다.
   /// 이 칸이 생기기 전에는 제목 앞 [내부용·대외비] 와 비고로만 갈랐다 (2026-10-06)
-  visibility   RecordVisibility @default(PUBLIC)
+  visibility    RecordVisibility      @default(PUBLIC)
   /// 이 줄을 만든 AI 제안 (채택 · 자동 등록)
-  proposals    RecordProposal[]
+  proposals     RecordProposal[]
   /// 이 연혁이 취득 사건인 인증
   certification CompanyCertification?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 
   @@index([kind, startsOn])
   @@index([startsOn])
@@ -2118,40 +2118,40 @@ model AiUsage {
 /// 옴니스 에이전트가 「작업용 컴퓨터로 넘기기」 카드(start_workbench)로 만든다 → Workflow 가 세션을 열고 진행을 채팅방에 한 줄씩 →
 /// 끝나면 결과 파일을 File 로 받아 채팅방에 붙이고 세션 · vault · 단기 MCP 토큰을 지운다. 계획: lib/workbench/runner.ts 머리말
 model WorkbenchJob {
-  id            String    @id @default(uuid())
-  userId        String
+  id               String    @id @default(uuid())
+  userId           String
   /// 진행 · 결과가 붙는 방(요청한 옴니스 1:1 방)
-  roomId        String
+  roomId           String
   /// 카드를 띄운 옴니스 에이전트 실행
-  runId         String?
+  runId            String?
   /// 샌드박스 에이전트에게 넘긴 일(사람 말 그대로 + 옴니스 에이전트가 정리한 것)
-  request       String    @db.Text
-  model         String
+  request          String    @db.Text
+  model            String
   /// QUEUED · RUNNING · NEEDS_BUDGET · DONE · FAILED · CANCELLED
-  status        String    @default("QUEUED")
+  status           String    @default("QUEUED")
   /// 지금 세션 예산(원). 「계속」 하면 오른다
-  budgetKrw     Int
+  budgetKrw        Int
   /// 살아 있는 동안만 — 끝나면 지우고 null 로 둔다
-  sessionId     String?
-  vaultId       String?
+  sessionId        String?
+  vaultId          String?
   /// ip.oauth_tokens.id — 요청자 권한의 단기 MCP 토큰(원문은 저장하지 않는다)
-  tokenId       String?
+  tokenId          String?
   /// 마지막으로 가져온 이벤트의 processed_at
-  cursor        String?
-  lastMessage   String?   @db.Text
-  inputTokens   Int       @default(0)
-  cacheWriteTokens Int    @default(0)
-  cacheReadTokens Int     @default(0)
-  outputTokens  Int       @default(0)
-  activeSeconds Int       @default(0)
-  costUsd       Decimal   @default(0) @db.Decimal(12, 6)
-  costKrw       Decimal   @default(0) @db.Decimal(12, 2)
-  outputFileIds String[]  @default([])
-  error         String?
-  workflowRunId String?
-  createdAt     DateTime  @default(now())
-  startedAt     DateTime?
-  finishedAt    DateTime?
+  cursor           String?
+  lastMessage      String?   @db.Text
+  inputTokens      Int       @default(0)
+  cacheWriteTokens Int       @default(0)
+  cacheReadTokens  Int       @default(0)
+  outputTokens     Int       @default(0)
+  activeSeconds    Int       @default(0)
+  costUsd          Decimal   @default(0) @db.Decimal(12, 6)
+  costKrw          Decimal   @default(0) @db.Decimal(12, 2)
+  outputFileIds    String[]  @default([])
+  error            String?
+  workflowRunId    String?
+  createdAt        DateTime  @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
 
   @@index([userId, createdAt])
   @@index([status])
@@ -2434,7 +2434,6 @@ model CompanyCertification {
   @@index([status])
 }
 
-
 /// 국가과제에 대한 우리 결정(노션 「지원사업」 51건에서 시작). 공고 본문은 수집기 내보내기가 정본
 model GrantDecision {
   id             String               @id @default(uuid())
@@ -2533,3 +2532,136 @@ model GrantNotice {
   @@index([regionClass])
 }
 
+// ─── 공통 층 유형 정의 (2026-11-27, P2) — mydocs/plans/2026-11-27-ontology-phase1.md §3-1 ───
+// 정본은 코드(lib/objects/types)다. 이 표들은 `pnpm run objects:sync` 가 옮긴 결과일 뿐이고, 아직 읽는 코드가 없다.
+// 값 칸(storage · dataType · kind · risk …)은 enum 대신 text + CHECK 다(마이그레이션 SQL 에 직접 쓴다).
+// 되돌리기: prisma/rollbacks/20261127200000_object_definitions.down.sql
+
+/// 유형 정의 한 줄
+model ObjectType {
+  /// 바뀌지 않는 키. ^[a-z][a-z0-9_]{1,39}$. 회사가 만든 유형(2단계)은 c_ 로 시작
+  key              String    @id
+  label            String
+  labelPlural      String?
+  /// product | company(2단계)
+  origin           String    @default("product")
+  /// table | ledger | generic(2단계)
+  storage          String
+  /// table · ledger: "public.CompanyRecord" · "ip.trademarks"
+  backing          String?
+  version          Int       @default(1)
+  /// 정규화한 정의(칸 · 선택지 · Action 포함)의 sha256
+  defHash          String
+  llmDescription   String
+  /// [{ text, note? }] — 1개 이상
+  examples         Json
+  /// fixed | inherit | column
+  visibilityPolicy String
+  visibilityFixed  String[]  @default([])
+  aiPropose        Boolean   @default(false)
+  /// { groupBy, minDecided, minRate, streak } — null 이면 늘 사람이 본다
+  autoApply        Json?
+  /// [{ key, label, toType, via }]
+  links            Json      @default("[]")
+  hiddenAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  fields   ObjectField[]
+  actions  ActionType[]
+  versions ObjectTypeVersion[]
+}
+
+/// 유형의 칸
+model ObjectField {
+  id             String     @id @default(uuid())
+  typeKey        String
+  type           ObjectType @relation(fields: [typeKey], references: [key], onDelete: Cascade)
+  key            String
+  label          String
+  /// text | longtext | number | money_krw | date | datetime | bool | option | multi_option | ref | person | file | url
+  dataType       String
+  optionSetKey   String?
+  refTypeKey     String?
+  /// file 칸: { multiple, accept: ["image/*", "application/pdf"] }
+  fileRule       Json?
+  /// 공통 틀 칸: title | startsOn | endsOn | owner | org | visibility
+  frame          String?
+  /// table · ledger: 기대는 칼럼(Prisma 필드 이름)
+  column         String?
+  readOnly       Boolean    @default(false)
+  required       Boolean    @default(false)
+  filterable     Boolean    @default(false)
+  sortable       Boolean    @default(false)
+  aiExtract      Boolean    @default(false)
+  llmDescription String?
+  maxLength      Int?
+  /// 이 칸이 처음 생긴 유형 버전
+  sinceVersion   Int        @default(1)
+  /// 코드에서 빠지면 지우지 않고 숨긴다
+  hiddenAt       DateTime?
+
+  @@unique([typeKey, key])
+}
+
+/// 선택지 한 줄 — 여러 칸이 같은 묶음(setKey)을 쓸 수 있다
+model OptionValue {
+  id          String    @id @default(uuid())
+  setKey      String
+  /// 묶음 이름표(묶음 안 모든 줄이 같다)
+  setLabel    String
+  key         String
+  label       String
+  sortOrder   Int       @default(0)
+  /// 기존 enum · text 값 — "GRANT", "PREPARING"
+  legacyValue String?
+  hiddenAt    DateTime?
+
+  @@unique([setKey, key])
+  @@unique([setKey, legacyValue])
+}
+
+/// 유형의 동작 — 1단계는 모두 기존 도구(runTool)를 감싼다
+model ActionType {
+  id            String     @id @default(uuid())
+  typeKey       String
+  type          ObjectType @relation(fields: [typeKey], references: [key], onDelete: Cascade)
+  key           String
+  label         String
+  /// create | update | upsert | delete | transition | custom
+  kind          String
+  /// 감싼 기존 도구(lib/tools/registry.ts 의 이름)
+  tool          String?
+  /// 공통 층 칸 키 → 도구 인자(P10 에서 채운다)
+  argMap        Json       @default("{}")
+  inputSchema   Json       @default("{}")
+  /// read | write | ledger | destructive
+  risk          String
+  /// card | param (lib/tools/registry.ts 와 같은 뜻 — sync 가 레지스트리에서 옮긴다)
+  confirm       String?
+  /// { mcp, agent, ask } (P10 에서 채운다)
+  expose        Json       @default("{}")
+  maxRows       Int        @default(1)
+  transactional Boolean    @default(true)
+  aiAutoApply   Boolean    @default(false)
+  sinceVersion  Int        @default(1)
+  hiddenAt      DateTime?
+
+  @@unique([typeKey, key])
+}
+
+/// 유형 정의가 바뀔 때마다 한 줄 — 그때의 정의 전체
+model ObjectTypeVersion {
+  id          String     @id @default(uuid())
+  typeKey     String
+  type        ObjectType @relation(fields: [typeKey], references: [key], onDelete: Cascade)
+  version     Int
+  defHash     String
+  definition  Json
+  /// 칸 숨김 · 선택지 숨김 · 필수로 바꿈 · maxLength 줄임
+  breaking    Boolean    @default(false)
+  summary     String
+  publishedAt DateTime   @default(now())
+
+  @@unique([typeKey, version])
+}
