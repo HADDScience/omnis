@@ -8,6 +8,8 @@
  *
  * 기관·담당자·HRP·제품·견적·샘플요청·출고·재고 전부를 옮긴다.
  */
+// 쓴 쪽 = source(이식) — prisma 보다 먼저 둔다. 공통 층 트리거가 이식을 사람(screen)으로 세지 않게(lib/import-actor.ts)
+import "../lib/import-actor-env"
 import { readFileSync } from "fs"
 import * as XLSX from "xlsx"
 import {
@@ -20,6 +22,7 @@ import {
   CrmShipmentStatus,
   CrmStockDirection,
 } from "../generated/prisma"
+import { assertSourceActor } from "../lib/import-actor"
 
 const XLSX_PATH =
   process.env.CRM_XLSX ??
@@ -89,6 +92,7 @@ const notes: string[] = []
 const warn = (s: string) => notes.push(s)
 
 async function main() {
+  await assertSourceActor(prisma)
   const wb = XLSX.read(readFileSync(XLSX_PATH), { cellDates: true })
   console.log(`파일: ${XLSX_PATH}`)
   console.log(APPLY ? "모드: 실제 반영 (--apply)\n" : "모드: 미리보기 (쓰지 않음)\n")
