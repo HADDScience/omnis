@@ -9,12 +9,19 @@ import {
   isImportedDecision,
   parseWon,
   removeGrantDecision,
+  addCertificationCandidate,
   updateCertification,
   updateGrantDecision,
 } from "@/lib/grants"
+import { findCertification } from "@/lib/company-tools"
+import { readChecklist, readEvidence } from "@/lib/certs"
 import type { NoticeAttachment } from "@/lib/grants-import"
 import {
-  CERT_STATUS_LABEL,
+  CERT_STAGE_LABEL,
+  asCertStage,
+  isCertStage,
+  parseSeoulMinute,
+  seoulMinute,
   GRANT_STAGE_LABEL,
   REGION_GROUPS,
   seoulYmd,
@@ -30,7 +37,6 @@ import {
   readNoticeFilter,
   readStage,
 } from "@/lib/grants-query"
-import type { CertStatus } from "@/generated/prisma/client"
 import { bonusMatchText, totalsLabel } from "@/lib/grant-bonus"
 import {
   BONUS_NOTICE_SELECT,
@@ -314,22 +320,7 @@ function noticeBonusText(
 
 // ─── 찾기 도우미 ───
 
-async function findCert(ref: string) {
-  if (!ref) return null
-  const byId = await prisma.companyCertification.findUnique({
-    where: { id: ref },
-  })
-  if (byId) return byId
-  const list = await prisma.companyCertification.findMany({
-    where: { name: { contains: ref, mode: "insensitive" } },
-    take: 3,
-  })
-  return list.length === 1
-    ? list[0]
-    : list.length > 1
-      ? ("many" as const)
-      : null
-}
+const findCert = findCertification
 
 async function findDecision(ref: string) {
   if (!ref) return null
@@ -360,66 +351,120 @@ const planUpdateCert: Planner = async (args, caller: Caller) => {
   const T = "인증 고치기"
   const c = await findCert(str(args.certification))
   if (c === "many")
-    return blocked(
-      T,
-      str(args.certification),
-      "이름이 여러 인증에 맞습니다 — list_certifications 의 이름을 그대로 주세요"
-    )
-  if (!c)
-    return blocked(
-      T,
-      str(args.certification),
-      "없는 인증입니다 — list_certifications 로 확인하세요"
-    )
+    return blocked(T, str(args.certification), "이름이 여러 인증에 맞습니다 — list_certifications 의 id 를 주세요")
+  if (!c) return blocked(T, str(args.certification), "없는 인증입니다 — list_certifications 로 확인하세요")
+
+  // 옛 이름(NOT_ELIGIBLE)은 중단으로 읽는다
+  const rawStage = has(args, "status") ? str(args.status) : undefined
+  const status = rawStage === "NOT_ELIGIBLE" ? "STOPPED" : rawStage
+  if (status !== undefined && !isCertStage(status))
+    return blocked(T, c.name, "단계가 올바르지 않습니다 — CANDIDATE · PREPARING · APPLIED · REVIEWING · HELD · RENEWAL_DUE · EXPIRED · STOPPED")
+
+  let ownerId: string | null | undefined
+  let ownerName: string | null = null
+  if (has(args, "owner")) {
+    const name = str(args.owner)
+    if (!name) ownerId = null
+    else {
+      const users = await prisma.user.findMany({ where: { name, id: { not: "system" } }, select: { id: true, name: true } })
+      if (users.length !== 1) return blocked(T, c.name, users.length ? "같은 이름이 여럿입니다" : `${name} — 구성원 정식 이름(list_members)으로 주세요`)
+      ownerId = users[0].id
+      ownerName = users[0].name
+    }
+  }
+  const deadline = has(args, "deadline") ? str(args.deadline) : undefined
+  if (deadline !== undefined && parseSeoulMinute(deadline) === undefined)
+    return blocked(T, c.name, "접수 마감은 YYYY-MM-DD HH:mm(서울)로 줍니다")
+
+  // 준비물 — 더하기 · 끝냄 표시(글 일부로 찾는다)
+  const list = readChecklist(c.checklist)
+  const adds = (Array.isArray(args.checklist_add) ? args.checklist_add : []).map(String).map((x) => x.trim()).filter(Boolean)
+  const dones = (Array.isArray(args.checklist_done) ? args.checklist_done : []).map(String).map((x) => x.trim()).filter(Boolean)
+  const missing = dones.filter((d) => !list.some((x) => x.text.includes(d)))
+  if (missing.length) return blocked(T, c.name, `준비물에 없는 줄: ${missing.join(", ")} — get_certification 으로 확인하세요`)
+  const checklist =
+    adds.length || dones.length
+      ? [
+          ...list.map((x) => (dones.some((d) => x.text.includes(d)) ? { ...x, done: true } : x)),
+          ...adds.filter((t) => !list.some((x) => x.text === t)).map((text, i) => ({ id: `a${Date.now().toString(36)}${i}`, text, done: false })),
+        ]
+      : undefined
+  const url = has(args, "evidence_url") ? str(args.evidence_url) : ""
+  const evidence = url ? [...readEvidence(c.evidence), { kind: "url" as const, ref: url, label: "", at: new Date().toISOString() }] : undefined
+
   const patch = {
-    status: has(args, "status") ? str(args.status) : undefined,
+    status,
+    stageReason: has(args, "stage_reason") ? str(args.stage_reason) : undefined,
+    issuer: has(args, "issuer") ? str(args.issuer) : undefined,
+    deadline,
+    ownerId,
+    checklist,
+    evidence,
     note: has(args, "note") ? str(args.note) : undefined,
     acquiredOn: ymdArg(args, "acquired_on"),
     validUntil: ymdArg(args, "valid_until"),
   }
+  const textChange = (label: string, before: string | null, after: string | undefined) =>
+    after !== undefined && (after || null) !== before ? { label, before: before ?? "(없음)", after: after || "(지움)" } : null
   const changes = [
-    patch.status !== undefined && patch.status !== c.status
-      ? {
-          label: "상태",
-          before: CERT_STATUS_LABEL[c.status],
-          after: CERT_STATUS_LABEL[patch.status as CertStatus] ?? patch.status,
-        }
+    status !== undefined && status !== c.status
+      ? { label: "단계", before: CERT_STAGE_LABEL[asCertStage(c.status)], after: CERT_STAGE_LABEL[status] }
       : null,
-    patch.note !== undefined && (patch.note || null) !== c.note
-      ? {
-          label: "메모",
-          before: c.note ?? "(없음)",
-          after: patch.note || "(지움)",
-        }
+    textChange("사유", c.stageReason, patch.stageReason),
+    textChange("발급 기관", c.issuer, patch.issuer),
+    deadline !== undefined && seoulMinute(parseSeoulMinute(deadline) ?? null) !== seoulMinute(c.deadline)
+      ? { label: "접수 마감", before: seoulMinute(c.deadline) ?? "(없음)", after: seoulMinute(parseSeoulMinute(deadline) ?? null) ?? "(지움)" }
       : null,
-    patch.acquiredOn !== undefined &&
-    (patch.acquiredOn || null) !== seoulYmd(c.acquiredOn)
-      ? {
-          label: "취득일",
-          before: seoulYmd(c.acquiredOn) ?? "(없음)",
-          after: patch.acquiredOn || "(지움)",
-        }
+    ownerId !== undefined && ownerId !== c.ownerId
+      ? { label: "담당", before: c.owner?.name ?? "(없음)", after: ownerName ?? "(없음)" }
       : null,
-    patch.validUntil !== undefined &&
-    (patch.validUntil || null) !== seoulYmd(c.validUntil)
-      ? {
-          label: "유효기간",
-          before: seoulYmd(c.validUntil) ?? "(없음)",
-          after: patch.validUntil || "(지움)",
-        }
+    checklist ? { label: "준비물", before: `${list.length}줄`, after: [...adds.map((x) => `+ ${x}`), ...dones.map((x) => `끝냄 ${x}`)].join(" · ") } : null,
+    evidence ? { label: "근거", before: `${readEvidence(c.evidence).length}개`, after: `+ ${url}` } : null,
+    textChange("메모", c.note, patch.note),
+    patch.acquiredOn !== undefined && (patch.acquiredOn || null) !== seoulYmd(c.acquiredOn)
+      ? { label: "취득일", before: seoulYmd(c.acquiredOn) ?? "(없음)", after: patch.acquiredOn || "(지움)" }
+      : null,
+    patch.validUntil !== undefined && (patch.validUntil || null) !== seoulYmd(c.validUntil)
+      ? { label: "유효기간", before: seoulYmd(c.validUntil) ?? "(없음)", after: patch.validUntil || "(지움)" }
       : null,
   ].filter((x): x is NonNullable<typeof x> => x !== null)
   return {
     title: T,
     target: c.name,
     changes,
-    risk: "회사 정보 › 인증·가점 화면과 지원서 가점 판단에 쓰입니다. 활동 기록에 남습니다.",
+    risk: "아카이브 › 인증 탭과 공고 가점 판단에 쓰입니다. 활동 기록에 남습니다.",
     ...(changes.length === 0 ? { problem: "바뀌는 칸이 없습니다" } : {}),
     run: async () => {
       const r = await updateCertification(caller.userId, c.id, patch)
-      return r.ok
-        ? { ok: true, text: `고쳤습니다: ${c.name}`, id: c.id }
-        : { ok: false, error: r.error }
+      return r.ok ? { ok: true, text: `고쳤습니다: ${c.name}`, id: c.id } : { ok: false, error: r.error }
+    },
+  }
+}
+
+const planAddCert: Planner = async (args, caller: Caller) => {
+  const T = "인증 후보 올리기"
+  const name = str(args.name)
+  if (!name) return blocked(T, "", "인증명을 주세요")
+  const compact = (x: string) => x.replace(/\s+/g, "").toLowerCase()
+  const same = (await prisma.companyCertification.findMany({ select: { name: true, status: true } })).find(
+    (c) => compact(c.name) === compact(name)
+  )
+  if (same)
+    return blocked(T, name, `이미 있습니다 — ${same.name} (${CERT_STAGE_LABEL[asCertStage(same.status)]}). update_certification 으로 단계를 바꾸세요`)
+  const changes = [
+    { label: "인증명", before: "(없음)", after: name },
+    { label: "단계", before: "(없음)", after: CERT_STAGE_LABEL.CANDIDATE },
+    ...(str(args.issuer) ? [{ label: "발급 기관", before: "(없음)", after: str(args.issuer) }] : []),
+    ...(str(args.source) ? [{ label: "올린 곳", before: "(없음)", after: str(args.source) }] : []),
+  ]
+  return {
+    title: T,
+    target: name,
+    changes,
+    risk: "아카이브 › 인증 탭에 후보 한 줄이 생깁니다. 활동 기록에 남습니다.",
+    run: async () => {
+      const r = await addCertificationCandidate(caller.userId, { name, issuer: str(args.issuer), source: str(args.source) })
+      return r.ok ? { ok: true, text: `올렸습니다: ${r.value.name}`, id: r.value.id } : { ok: false, error: r.error }
     },
   }
 }
@@ -698,6 +743,7 @@ const planRemoveDecision: Planner = async (args, caller: Caller) => {
 
 export const GRANT_PLANNERS: Record<GrantWriteName, Planner> = {
   update_certification: planUpdateCert,
+  add_certification: planAddCert,
   update_grant_decision: planUpdateDecision,
   add_grant_decision: planAddDecision,
   remove_grant_decision: planRemoveDecision,

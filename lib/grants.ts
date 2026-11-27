@@ -3,10 +3,14 @@
 import { prisma } from "@/lib/db"
 import { writeActivity } from "@/lib/api"
 import { normalizeNasPath } from "@/lib/nas"
-import type { CertStatus, Prisma } from "@/generated/prisma/client"
+import type { Prisma } from "@/generated/prisma/client"
 import {
-  CERT_STATUSES,
-  CERT_STATUS_LABEL,
+  CERT_STAGE_LABEL,
+  CERT_START_STAGE,
+  asCertStage,
+  isCertStage,
+  parseSeoulMinute,
+  seoulMinute,
   GRANT_STAGE_LABEL,
   parseYmd,
   seoulYmd,
@@ -17,6 +21,13 @@ import {
   won,
 } from "@/lib/grants-labels"
 import { staleFields, type ExpectKind } from "@/lib/grants-expect"
+import {
+  checklistProgress,
+  normalizeChecklist,
+  normalizeEvidence,
+  readChecklist,
+  readEvidence,
+} from "@/lib/certs"
 
 export type OpResult<T = unknown> =
   | { ok: true; changed: string[]; value: T }
@@ -42,29 +53,61 @@ function conflict(
 
 const CERT_KINDS: Record<string, ExpectKind> = {
   status: "id",
+  stageReason: "text",
+  name: "text",
+  issuer: "text",
   note: "text",
   acquiredOn: "ymd",
   validUntil: "ymd",
+  deadline: "minute",
+  ownerId: "id",
+  checklist: "json",
+  evidence: "json",
 }
 const CERT_LABELS: Record<string, string> = {
-  status: "상태",
+  status: "단계",
+  stageReason: "사유",
+  name: "인증명",
+  issuer: "발급 기관",
   note: "메모",
   acquiredOn: "취득일",
   validUntil: "유효기간",
+  deadline: "접수 마감",
+  ownerId: "담당",
+  checklist: "준비물",
+  evidence: "근거",
 }
 
-// ─── 인증 ───
+// ─── 인증 (아카이브 › 인증 탭 · 도구 · 2026-11-28 단계) ───
 
 export interface CertPatch {
+  /** 단계(CERT_STAGES). 칼럼 이름이 status 라 칸 이름도 status 로 받는다 */
   status?: unknown
+  stageReason?: unknown
+  name?: unknown
+  issuer?: unknown
   note?: unknown
   acquiredOn?: unknown
   validUntil?: unknown
+  /** 접수 마감 — 「YYYY-MM-DD HH:mm」(서울) · 날짜만이면 그날 23:59 · 빈 값이면 지운다 */
+  deadline?: unknown
+  /** 담당 사용자 id — 빈 값이면 담당 없음 */
+  ownerId?: unknown
+  /** 준비물 목록 통째로 — [{ id?, text, done? }] */
+  checklist?: unknown
+  /** 근거 목록 통째로 — [{ kind, ref, roomId?, label?, at? }] */
+  evidence?: unknown
   /** 화면이 고치기 전에 본 값 — 주면 그새 바뀐 칸이 있는지 보고 409 */
   expect?: unknown
 }
 
-/** 인증 상태 · 메모 · 취득일 · 유효기간 고치기. 준 칸만 바꾼다 */
+const shortText = (v: unknown, cap: number) =>
+  typeof v === "string" ? v.trim().slice(0, cap) || null : null
+
+/**
+ * 인증 고치기 — 준 칸만 바꾼다. 화면(칸 하나씩 + expect) · 보드(단계 + expect) · 도구가 같이 부른다.
+ * 활동 기록의 바뀐 칸은 단계를 「상태 …」 로 적는다 — 이식 스크립트의 사람 손질 보호가 이 말머리로 찾는다(scripts/import-grants.ts)
+ */
 export async function updateCertification(
   userId: string,
   id: string,
@@ -74,27 +117,35 @@ export async function updateCertification(
   if (!before) return fail(404, "없는 인증입니다")
   const clash = conflict(patch.expect, before, CERT_KINDS, CERT_LABELS)
   if (clash) return clash
-  const data: Prisma.CompanyCertificationUpdateInput = {}
+  const data: Prisma.CompanyCertificationUncheckedUpdateInput = {}
   const changed: string[] = []
+  const stageOf = (s: string) => CERT_STAGE_LABEL[asCertStage(s)]
 
   if (patch.status !== undefined) {
-    if (!CERT_STATUSES.includes(patch.status as CertStatus))
-      return fail(400, "상태가 올바르지 않습니다")
+    if (!isCertStage(patch.status)) return fail(400, "단계가 올바르지 않습니다")
     if (patch.status !== before.status) {
-      data.status = patch.status as CertStatus
-      changed.push(
-        `상태 ${CERT_STATUS_LABEL[before.status]} → ${CERT_STATUS_LABEL[patch.status as CertStatus]}`
-      )
+      data.status = patch.status
+      changed.push(`상태 ${stageOf(before.status)} → ${CERT_STAGE_LABEL[patch.status]}`)
     }
   }
-  if (patch.note !== undefined) {
-    const note =
-      typeof patch.note === "string"
-        ? patch.note.trim().slice(0, 2000) || null
-        : null
-    if (note !== before.note) {
-      data.note = note
-      changed.push("메모")
+  for (const [key, label, cap] of [
+    ["stageReason", "사유", 500],
+    ["issuer", "발급 기관", 200],
+    ["note", "메모", 2000],
+  ] as const) {
+    if (patch[key] === undefined) continue
+    const v = shortText(patch[key], cap)
+    if (v !== before[key]) {
+      data[key] = v
+      changed.push(label)
+    }
+  }
+  if (patch.name !== undefined) {
+    const v = shortText(patch.name, 200)
+    if (!v) return fail(400, "인증명은 비울 수 없습니다")
+    if (v !== before.name) {
+      data.name = v
+      changed.push(`인증명 ${before.name} → ${v}`)
     }
   }
   for (const [key, label] of [
@@ -106,9 +157,43 @@ export async function updateCertification(
     if (d === undefined) return fail(400, `${label}은 YYYY-MM-DD 로 적습니다`)
     if (seoulYmd(d) !== seoulYmd(before[key])) {
       data[key] = d
-      changed.push(
-        `${label} ${seoulYmd(before[key]) ?? "없음"} → ${seoulYmd(d) ?? "지움"}`
-      )
+      changed.push(`${label} ${seoulYmd(before[key]) ?? "없음"} → ${seoulYmd(d) ?? "지움"}`)
+    }
+  }
+  if (patch.deadline !== undefined) {
+    const d = parseSeoulMinute(patch.deadline)
+    if (d === undefined) return fail(400, "접수 마감은 YYYY-MM-DD HH:mm 로 적습니다")
+    if (seoulMinute(d) !== seoulMinute(before.deadline)) {
+      data.deadline = d
+      changed.push(`접수 마감 ${seoulMinute(before.deadline) ?? "없음"} → ${seoulMinute(d) ?? "지움"}`)
+    }
+  }
+  if (patch.ownerId !== undefined) {
+    const owner = typeof patch.ownerId === "string" && patch.ownerId ? patch.ownerId : null
+    if (owner !== before.ownerId) {
+      if (owner) {
+        const u = await prisma.user.findUnique({ where: { id: owner }, select: { name: true } })
+        if (!u) return fail(400, "없는 사람입니다")
+        changed.push(`담당 → ${u.name}`)
+      } else changed.push("담당 지움")
+      data.ownerId = owner
+    }
+  }
+  if (patch.checklist !== undefined) {
+    const list = normalizeChecklist(patch.checklist)
+    if (typeof list === "string") return fail(400, list)
+    if (JSON.stringify(list) !== JSON.stringify(readChecklist(before.checklist))) {
+      data.checklist = list as unknown as Prisma.InputJsonValue
+      const p = checklistProgress(list)
+      changed.push(`준비물 ${p.done}/${p.total}`)
+    }
+  }
+  if (patch.evidence !== undefined) {
+    const list = normalizeEvidence(patch.evidence)
+    if (typeof list === "string") return fail(400, list)
+    if (JSON.stringify(list) !== JSON.stringify(readEvidence(before.evidence))) {
+      data.evidence = list as unknown as Prisma.InputJsonValue
+      changed.push(`근거 ${list.length}개`)
     }
   }
   if (changed.length === 0) return fail(400, "바뀌는 칸이 없습니다")
@@ -123,6 +208,51 @@ export async function updateCertification(
     metadata: { changed },
   })
   return { ok: true, changed, value: { id, name: row.name } }
+}
+
+export interface CertCandidateInput {
+  name?: unknown
+  issuer?: unknown
+  note?: unknown
+  /** 어디서 올렸나 — 「공고 가점표: ○○ 공고」 */
+  source?: unknown
+}
+
+/**
+ * 인증 후보 올리기 — 인증 탭 · 공고 가점표의 「후보로 올리기」 · 도구(add_certification).
+ * 같은 이름(공백 · 대소문자 무시)이 이미 있으면 새로 만들지 않고 그 인증을 돌려준다(중복을 만들지 않는다).
+ * 이식 멱등 키는 omnis:<uuid> — 수집기 이식(cert:…)과 겹치지 않는다
+ */
+export async function addCertificationCandidate(
+  userId: string,
+  input: CertCandidateInput
+): Promise<OpResult<{ id: string; name: string; existed: boolean }>> {
+  const name = shortText(input.name, 200)
+  if (!name) return fail(400, "인증명을 적습니다")
+  const compact = (s: string) => s.replace(/\s+/g, "").toLowerCase()
+  const same = (
+    await prisma.companyCertification.findMany({ select: { id: true, name: true } })
+  ).find((c) => compact(c.name) === compact(name))
+  if (same) return { ok: true, changed: [], value: { id: same.id, name: same.name, existed: true } }
+  const source = shortText(input.source, 300)
+  const row = await prisma.companyCertification.create({
+    data: {
+      externalKey: `omnis:${crypto.randomUUID()}`,
+      name,
+      issuer: shortText(input.issuer, 200),
+      note: shortText(input.note, 2000) ?? (source ? `올린 곳: ${source}` : null),
+      status: CERT_START_STAGE,
+    },
+  })
+  await writeActivity({
+    userId,
+    action: "company.certification.created",
+    entity: "COMPANY_CERTIFICATION",
+    entityId: row.id,
+    title: `인증 후보: ${row.name}`,
+    metadata: { source },
+  })
+  return { ok: true, changed: ["후보로 올림"], value: { id: row.id, name: row.name, existed: false } }
 }
 
 // ─── 국가과제 결정 ───

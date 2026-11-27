@@ -22,7 +22,7 @@ test("인증 상태 — 보유 · 미충족 · 나머지는 후보", () => {
   )
   assert.equal(
     certStatus({ key: "a", name: "a", research: { our_status: "미충족" } }),
-    "NOT_ELIGIBLE"
+    "STOPPED"
   )
   assert.equal(
     certStatus({ key: "a", name: "a", research: { our_status: "확인 필요" } }),

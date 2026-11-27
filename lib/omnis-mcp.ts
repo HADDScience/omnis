@@ -99,6 +99,7 @@ import {
   companyProfileText,
   companyRecordsText,
   certificationsText,
+  certificationText,
   contextText,
   decideRecordProposalText,
   deleteCompanyRecordText,
@@ -120,6 +121,7 @@ import { findOrCreateProduct } from "@/lib/project-resolve"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import { assignmentTargets } from "@/lib/notify-rules"
 import * as XLSX from "xlsx"
+import { CERT_STAGE } from "@/lib/tools/defs-grants"
 import { PUBLIC_FILE_WHERE, visibleFileWhere } from "@/lib/file-access"
 import { listCalendarText } from "@/lib/calendar/agent-tool"
 import { findVisibleFile } from "@/lib/file-access-server"
@@ -929,27 +931,39 @@ export const OMNIS_TOOLS = [
   {
     name: "list_certifications",
     description:
-      "회사 인증 · 가점 — 보유 · 갱신 필요 · 취득 후보 · 자격 안 됨으로 나눠 가점(메디바이오 · 중기부), 우리 회사 충족 여부와 이유, 신청기간, 걸리는 기간을 준다. 「우리 가점 뭐 있어」「벤처기업 인증 있어」「받을 만한 인증」 을 물으면 쓴다. 인증마다 TIPS(팁스 R&D) 일반 · 딥테크 트랙 가점과 지금(개인) · 법인 전환 뒤 우리 판정, 가점 합산 상한 · 접수 시기도 준다 — 「팁스 가점」 을 물으면 tips 로. detail 이면 자격조건 · 비용 · 유효기간 · 근거 링크까지.",
+      "회사 인증 · 가점 — 단계(후보 → 준비 → 신청 → 심사 중 → 보유 → 갱신 필요 → 만료, 어디서든 중단)별로 발급 기관 · 접수 마감 · 담당 · 준비물 진행, 가점 원문(메디바이오 · 중기부), 우리 회사 충족 여부와 이유, 신청기간, 걸리는 기간을 준다. 「우리 가점 뭐 있어」「벤처기업 인증 있어」「준비 중인 인증」「받을 만한 인증」 을 물으면 쓴다. 인증마다 TIPS(팁스 R&D) 일반 · 딥테크 트랙 가점과 지금(개인) · 법인 전환 뒤 우리 판정도 준다 — 「팁스 가점」 은 tips 로. detail 이면 준비물 · 근거 · 자격조건 · 비용 · 유효기간과 「이 인증을 따면 어느 공고에서 몇 점」(공고 가점을 거꾸로 묶은 것)까지. 한 건을 자세히는 get_certification.",
     inputSchema: {
       type: "object",
       properties: {
         status: {
-          type: "string",
-          enum: ["HELD", "RENEWAL_DUE", "EXPIRED", "CANDIDATE", "NOT_ELIGIBLE"],
-          description:
-            "HELD 보유 · RENEWAL_DUE 갱신 필요 · EXPIRED 만료 · CANDIDATE 취득 후보 · NOT_ELIGIBLE 자격 안 됨. 비우면 전부",
+          ...CERT_STAGE,
+          description: `${CERT_STAGE.description}. 비우면 전부. 옛 이름 NOT_ELIGIBLE 은 STOPPED 로 읽는다`,
         },
+        active: { type: "boolean", description: "진행 중(후보 · 준비 · 신청 · 심사 중)만 (기본 false)" },
+        owner: { type: "string", description: "담당 정식 이름" },
         query: { type: "string", description: "인증 이름 · 발급 기관 일부" },
         detail: {
           type: "boolean",
           description:
-            "자격조건 · 비용 · 유효기간 · 메모 · 근거까지 (기본 false)",
+            "준비물 · 근거 · 자격조건 · 비용 · 유효기간 · 메모 · 공고 가점(거꾸로)까지 (기본 false)",
         },
         tips: {
           type: "boolean",
           description: "TIPS 가점표(일반 · 딥테크)에 있는 항목만 (기본 false)",
         },
       },
+    },
+  },
+  {
+    name: "get_certification",
+    description:
+      "인증 한 건 전부 — 단계 · 사유 · 발급 기관 · 접수 마감 · 담당 · 준비물(끝낸 것 표시) · 근거(채팅 글 · 파일 · 링크) · 조사 원문, 그리고 이 인증을 따면 가점을 받는 접수 중 공고와 점수. update_certification 하기 전에 지금 값을 볼 때 쓴다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        certification: { type: "string", description: "인증 id 또는 이름 일부(list_certifications)" },
+      },
+      required: ["certification"],
     },
   },
   {
@@ -3400,6 +3414,8 @@ export async function runTool(
       return { text: await companyRecordsText(args) }
     case "list_certifications":
       return { text: await certificationsText(args) }
+    case "get_certification":
+      return { text: await certificationText(args) }
     case "save_company_record": {
       // MCP 는 snake_case, Zod 스키마는 camelCase 다 — 여기서 한 번만 맞춘다
       const map: Record<string, string> = {
