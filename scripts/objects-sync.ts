@@ -119,9 +119,14 @@ async function main() {
     else if (op.op === "update") console.log(`  ${op.table} ${"key" in op ? op.key : ""} ${"typeKey" in op ? op.typeKey + "." : ""}: ${Object.keys(op.data).join(", ")}`)
 
   if (!APPLY || !plan.ops.length) return
-  await prisma.$transaction(async (tx) => {
-    for (const op of plan.ops) await apply(tx, op)
-  })
+  // 한 건씩 차례로 보낸다 — 운영(Neon)은 왕복이 있어 기본 timeout 5초를 넘긴다(2026-11-27 첫 운영 실행이 82건 중
+  // 칸을 쓰다 P2028 로 되돌려졌다). 첫 등록 82건 × 왕복을 넉넉히 받게 60초를 준다
+  await prisma.$transaction(
+    async (tx) => {
+      for (const op of plan.ops) await apply(tx, op)
+    },
+    { timeout: 60_000, maxWait: 10_000 }
+  )
   const after = await readState()
   console.log(`썼다 — 유형 ${after.types.length} · 칸 ${after.fields.length} · 선택지 ${after.options.length} · Action ${after.actions.length} · 버전 ${after.latestVersions.length}`)
 }
