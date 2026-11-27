@@ -1,4 +1,4 @@
-// 이식 스크립트의 DB 연결에 「쓴 쪽 = source(이식)」 표시를 단다 — 공통 층(온톨로지) P4 의 트리거가 이 값을 읽는다.
+// 이식 스크립트의 DB 연결에 「쓴 쪽 = source(이식)」 표시를 단다 — 공통 층 P4 의 트리거가 이 값을 읽는다.
 // 계획: mydocs/plans/2026-11-27-ontology-phase1.md §2-3 · P11(이 한 줄만 P4 보다 먼저 넣었다)
 //
 // 트리거는 current_setting('omnis.actor_kind', true) 로 쓴 쪽을 가른다. 값이 없으면 screen(맞춤 화면 = 사람)이다.
