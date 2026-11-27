@@ -2886,3 +2886,25 @@ model ObjectChange {
   @@index([processedAt, id])
   @@index([tableName, rowId])
 }
+
+/// 수집기(gov-grants, GitHub Actions)가 운영 Neon govgrants 스키마에 남긴 실행 하나를 GrantNotice 로 옮긴 기록(lib/govgrants-sync.ts).
+/// runId 가 있으면 다시 옮기지 않는다(status ok). 실패(failed)는 다음 cron 에서 다시 한다. govgrants 쪽에는 쓰지 않는다(읽기 전용 연결)
+model GovgrantsImport {
+  id             String    @id @default(uuid())
+  /// govgrants.runs.id
+  runId          String    @unique
+  runStartedAt   DateTime?
+  /// ok | failed
+  status         String
+  /// 그 실행에 살아 있던 공고 수(removed_run 없음)
+  itemCount      Int       @default(0)
+  newCount       Int       @default(0)
+  /// 바뀐 칸이 있어 고친 공고 수
+  updatedCount   Int       @default(0)
+  unchangedCount Int       @default(0)
+  /// 칸마다 바뀐 공고 수 { title: 2, deadlineAt: 1 … }
+  fieldCounts    Json?
+  error          String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+}
