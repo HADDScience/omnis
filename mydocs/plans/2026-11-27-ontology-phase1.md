@@ -595,7 +595,7 @@ model ObjectChange {
 | **P1** | `lib/objects/` 데이터 모듈: `defineType`, 유형 3개(`record` · `grant_decision` · `org`), 선택지(enum · text 매핑), Action 정의(기존 도구 이름만). DMMF 대조 시험 · 키 형식 시험 | 없음 | 코드만, 동작 변화 없음 | revert | `pnpm run verify` · `test:unit`. 아무 데서도 import 하지 않음 · 맞춤 화면 diff 0 |
 | **P2** | 정의 표 5개 + `objects:sync` + 맞춤 화면 경로 CI 검사(`scripts/guard-custom-screens.txt`) | 새 표만(`20261127200000_object_definitions`, 다시 돌려도 되게) | `db:deploy` → `objects:sync -- --apply --prod` → 머지 | `prisma/rollbacks/20261127200000_object_definitions.down.sql`(표와 마이그레이션 기록 줄을 지운다 — `migrate resolve --rolled-back` 은 성공한 마이그레이션에 통하지 않는다) | sync 두 번째가 변화 0(멱등) |
 | **P3** | `Evidence` · `ObjectRevision` · `Proposal` + `lib/tenant.ts` 껍데기(`objects:sync` 를 감싼다) | 새 표만(`20261127230000_object_evidence`, 다시 돌려도 되게). 기존 표로 가는 외래키는 두지 않는다 — 사람 · 원천이 지워져도 판단 기록이 남게 | `db:deploy` → 머지 | `prisma/rollbacks/20261127230000_object_evidence.down.sql`. P2 되돌리기보다 먼저 돌린다(ObjectType 을 가리킨다) | verify · test:unit · 로컬 복제 DB 에서 CHECK · 외래키 · 되돌리기 왕복 |
-| **P4** | `ObjectChange` + 트리거 + 등록 3유형 테이블과 `ChatMessage` 에 트리거. `EmbeddingChunk.typeKey` · `visibility` · enum `OBJECT`(마이그레이션 둘). 소비기, backfill | **기존 표에 트리거 · 칼럼** | `db:deploy` → backfill → 머지. 쓰기 지연 실측 | 트리거 DROP 마이그레이션 | 로컬 스냅숏에서 맞춤 화면으로 고쳐 조각 갱신 확인. 트리거 전후 쓰기 p50 · p95(기준 +5ms, 추정). 연혁 · 국가과제 · CRM e2e |
+| **P4** | `ObjectChange` + 트리거 함수 + **등록 3유형 표(CompanyRecord · GrantDecision · CrmOrg)에만** 트리거(작업지시자 결정 2026-11-27 — `ChatMessage` 는 아래 「P4 다음」). 트리거가 바뀐 칼럼의 앞뒤 값(`oldValues` · `newValues`)도 남긴다 — 소비기가 값 이력을 만들려면 필요하다. `EmbeddingChunk.typeKey` · `visibility` · enum `OBJECT`(enum 은 마이그레이션을 따로). 소비기는 daily cron 끝에만(검색 직전 처리는 OBJECT 조각을 읽는 P5 와 함께), 매일 대조, 색인 칸 채우기 스크립트. 선행: 이식 스크립트 `actor_kind = source`(P11 의 한 줄, PR #288) | 있음(**기존 표에 트리거 · 칼럼**, `20261127235000_object_change` · `…235100_embedding_source_object` · `…235200_embedding_object_columns`, `lock_timeout 5s`) | #288 머지 → 운영 `db:deploy` → 색인 칸 채우기(건식 → `--apply --prod`) → 머지 → 첫 daily cron 결과 확인 | `prisma/rollbacks/20261127235000_object_change.down.sql`(트리거 · 함수 · outbox, 가장 먼저 돌린다) · `…235200_embedding_object_columns.down.sql`(칸까지 지울 때만). enum 값은 지울 수 없어 남는다 | 로컬 스냅숏 복제본에서 화면 쓰기 경로로 고쳐 outbox · 이력 · 조각 확인(`scripts/verify-object-change.ts`). 트리거 전후 쓰기 p50 · p95(`scripts/measure-object-writes.ts`, 기준 +5ms). 연혁 · 국가과제 · CRM e2e |
 | **P5** | `describe_type` · `list_objects` · `get_object` + `canSee` + 음성 권한 시험. MCP · 앱 AI 에만 | 없음 | 머지 · 배포 | registry 줄 삭제 | 음성 시험 · 도구 수 상한 |
 | **P6** | 질문 경로 「핵심 + 검색」, 도구 임베딩, `scripts/eval-tools.mts`, `askTier` | 없음 | 머지(기본 `all`) → 회귀 통과 → env `core_search` → 재배포 | env `all` | 회귀 표를 PR 에 |
 | **P7** | 제안 통합: 옛 제안 표 → `Proposal` 이전(Q1 (b)), 연혁 · 카드 제안 판단 화면 교체, `auto-apply.ts` 일반화, 서버 쪽 인용 대조, `/proposals` 통합 목록, `list_proposals` · `decide_proposal` | 있음(이전) | `db:deploy` → 이전 → 머지 | 이전 전 백업 · 옛 표는 한동안 남긴다 | 이전 건수 대조. 제안 화면 e2e 를 새 화면에 맞게 고친다 — **맞춤 화면 diff 0 의 예외**(제안 화면 경로) |
@@ -666,6 +666,12 @@ model ObjectChange {
 | Q10 회사가 만든 유형 키 | (a) `c_` 접두어 |
 | 우선 정리할 정보 | 과제 신청서 · 사업계획서에 쓰이는 회사 정보 |
 | 첫 새 유형 | **계약 · 협약(`agreement`)** — MOU · NDA · 공동연구 · 투자계약. 사업계획서 「협력 실적」 에 쓰인다 |
+
+## 11-1. P4 다음 — `ChatMessage` 트리거
+
+- P4 는 등록 3유형 표에만 트리거를 걸었다(작업지시자 결정 2026-11-27). `ChatMessage` 는 쓰기가 가장 많은 표이고, 카톡 이식(omnis-kakao 의 별도 스크립트)이 한 번에 수백~수천 줄을 넣는다.
+- 걸 때 할 일: 카톡 이식 1회분으로 트리거 전후 시간을 잰다. 이식 스크립트에도 `actor_kind = source` 를 단다(omnis-kakao 의 `kakao.ts` — 지금 #288 은 omnis 저장소의 세 표 이식만 다룬다). 소비기는 `deletedAt` · 본문 변경을 `Evidence.goneAt` 으로 옮긴다(§2-3). 카톡 `redact.ts` 가 가린 글도 이 경로로 근거에서 빠진다.
+- 그 전까지 `Evidence` 는 쓰는 곳이 없어(P7 부터) 근거가 사라진 것을 놓치는 일은 없다.
 
 ## 12. 다음 단계 메모 — 계약 · 협약(`agreement`)
 

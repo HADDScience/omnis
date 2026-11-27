@@ -82,6 +82,7 @@ Restore(시점 또는 LSN)로 이 시점의 브랜치를 만든다.
 | 11-27 10:33 | #280 `5444d2a` | 없음 | — | `dpl_3tmP43twzvevjWShs4LeaU3nGL9x` | |
 | 11-27 10:33 | #281 `4feac4b` | 없음 | — | `dpl_F42K8VFmRnUBWcY8unV4w2EWjpoE` | 카톡 이식 도구라 배포와 별개로 이식 체크아웃을 main 으로 옮겨야 켜진다 |
 | 11-27 13:39 | #282 `683db8f` | `20261127200000_object_definitions` (새 표 다섯) + `objects:sync --apply --prod` | 04:22:55 · `0/4E21A0D8` | `dpl_EEEWv3DptViznzMbgKcHv1rm5LrU` | deploy 04:23:03~09 UTC. 첫 sync(04:23:23)는 `P2028` 로 통째로 되돌려졌다 — 아래 함정. timeout 60초로 고쳐 04:39:31 에 82건 11초, 다시 건식 0건. 배포 뒤 error · fatal · 5xx 0건 |
+| 11-27 14:35 | #284 `3a39f67` | `20261127230000_object_evidence` (새 표 셋 · 외래키는 새 표 · `ObjectType` 으로만) | 05:21:17 · `0/4E29E260` | `dpl_ADsRHB394xhndjMWeYYmQgRox7n9` | deploy 05:21:23~27 UTC, exit 0. 새 표 CHECK · 외래키 · 색인 수를 마이그레이션과 대조, 행 0. `objects:sync` 건식 0건. main 에 #285 가 들어와 그 위로 올린 `6cf6641` 로 CI 뒤 머지. 배포 뒤 error · fatal · 5xx 0건 |
 
 ### 10/22 ~ 11/25 — 마이그레이션이 든 머지
 

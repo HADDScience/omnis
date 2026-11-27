@@ -852,6 +852,8 @@ enum EmbeddingSource {
   IP_CASE
   /// 사진 설명. sourceId 는 File.id
   PHOTO
+  /// 공통 층 유형의 조각(P4). sourceId 는 "<typeKey>:<id>", typeKey 칸에 유형 키
+  OBJECT
 }
 
 model EmbeddingChunk {
@@ -865,9 +867,14 @@ model EmbeddingChunk {
   embedding   Unsupported("vector(768)")?
   createdAt   DateTime                    @default(now())
   updatedAt   DateTime                    @updatedAt
+  /// 공통 층 유형 키(P4). 기존 원천은 backfill(OMNIS_CARD→card · TASK→task …), OBJECT 조각은 그 유형
+  typeKey     String?
+  /// 공개 범위 토큰(계획 §2-4). 새 일반 검색만 이 칸으로 거른다 — 기존 검색은 지금 방식 그대로
+  visibility  String[]                    @default([])
 
   @@unique([source, sourceId, chunkIndex])
   @@index([source, sourceId])
+  @@index([typeKey])
 }
 
 // ─── SSO (사내 도구 통합 로그인) ─────────────────────────────────────
@@ -2846,4 +2853,36 @@ model HomeSuggestionEvent {
 
   @@unique([runId, itemKey, kind])
   @@index([createdAt, trigger])
+}
+
+// ─── 공통 층 변경 이벤트 (2026-11-27, P4) — mydocs/plans/2026-11-27-ontology-phase1.md §6 ───
+// 등록 유형이 기대는 표(CompanyRecord · GrantDecision · CrmOrg)의 쓰기를 DB 트리거 omnis_capture_change() 가 여기에 남긴다
+// (transactional outbox). 맞춤 화면 · 이식 스크립트 · raw SQL 어디서 쓰든 같은 트랜잭션에 남는다.
+// 트리거를 건 표 목록은 레지스트리(lib/objects)와 시험이 대조한다. ChatMessage 는 이번에 걸지 않았다(계획서 다음 단계).
+// 소비기: lib/objects/consumer.ts(daily cron 끝). 되돌리기: prisma/rollbacks/20261127235000_object_change.down.sql
+
+/// 등록 유형 표의 변경 한 줄
+model ObjectChange {
+  id          BigInt    @id @default(autoincrement())
+  /// "public.CompanyRecord"
+  tableName   String
+  rowId       String
+  /// I | U | D
+  op          String
+  /// U 일 때 실제로 바뀐 칼럼. updatedAt 만 바뀌면 트리거가 남기지 않는다
+  changedCols String[]  @default([])
+  /// U: 바뀐 칼럼의 앞 값, D: 지운 행 전체
+  oldValues   Json?
+  /// U: 바뀐 칼럼의 새 값, I: 넣은 행 전체
+  newValues   Json?
+  /// current_setting('omnis.actor_kind') — screen(값 없음) · source(이식) · human · ai
+  actorKind   String    @default("screen")
+  txid        BigInt
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+  attempts    Int       @default(0)
+  lastError   String?
+
+  @@index([processedAt, id])
+  @@index([tableName, rowId])
 }
