@@ -9,6 +9,8 @@ import { syncWorksCalendars } from "@/lib/caldav/sync"
 import { purgeUiEvents } from "@/lib/ui-metrics/server"
 import { largeUploadEnabled, runTransferUpkeep } from "@/lib/large-upload/server"
 import { runHrUpkeep } from "@/lib/hr/upkeep"
+import { runObjectUpkeep } from "@/lib/objects/consumer"
+import { DEFAULT_TENANT, runForTenant } from "@/lib/tenant"
 
 /**
  * 하루 한 번 도는 일을 모두 여기서 차례로 한다 (`vercel.json` 의 crons 는 이것 하나).
@@ -113,6 +115,15 @@ export async function GET(req: Request) {
       console.error("[cron/daily] 큰 첨부 점검 실패", e)
       out.transfers = { ok: false }
     }
+  }
+
+  try {
+    // 공통 층(P4) — 세 표의 변경을 값 이력 · 색인으로 옮기고, 색인을 지금 행과 대조한다.
+    // 처음 한 번은 등록 유형 행 전부를 임베딩한다(수백 행, Gemini 임베딩 몇 번). 요청 밖 진입점이라 회사 한 겹으로 감싼다
+    out.objects = { ok: true, ...(await runForTenant(DEFAULT_TENANT, runObjectUpkeep)) }
+  } catch (e) {
+    console.error("[cron/daily] 공통 층 변경 처리 실패", e)
+    out.objects = { ok: false }
   }
 
   const ok = Object.values(out).every((v) => (v as { ok: boolean }).ok)

@@ -295,3 +295,20 @@ The migration from the database are not found locally in prisma/migrations:
 - 더 줄이려면 표마다 `createMany` 로 묶어 왕복 수를 줄인다(82번 → 표 수만큼).
 - 로컬에서 「잘 된다」는 것은 운영 시간의 근거가 아니다. 한 트랜잭션 안의 왕복 수 × 약 80ms 로 먼저 어림한다.
 - 실패해도 트랜잭션이라 반쯤 쓰인 상태는 남지 않는다. 고친 뒤 건식 → `--apply` → 다시 건식 0건 순서로 다시 돈다.
+
+---
+
+## 트리거는 Prisma 스키마에 보이지 않는다 — 공통 층 표에 대량 UPDATE 를 하면 outbox 가 그만큼 는다
+
+2026-11-27 공통 층 P4(`20261127235000_object_change`)부터 `CompanyRecord` · `GrantDecision` · `CrmOrg` 에
+`AFTER INSERT OR UPDATE OR DELETE FOR EACH ROW` 트리거 `omnis_capture_change` 가 있다. `schema.prisma` 에는 나타나지 않고,
+`prisma migrate diff` 도 트리거를 비교하지 않는다(P4 적용 뒤 DB ↔ 스키마 차이 0줄).
+
+- **대량 UPDATE 는 행마다 `ObjectChange` 한 줄을 남긴다.** 이식 · 일괄 고침을 하면 다음 daily cron 의 소비기가 그만큼 처리한다.
+  `updatedAt` 만 바꾸는 UPDATE 는 남기지 않는다.
+- **트리거가 실패하면 그 표의 쓰기가 실패한다**(예외를 삼키지 않는다). 쓰기 오류가 나면 먼저
+  `prisma/rollbacks/20261127235000_object_change.down.sql` 로 트리거를 걷고 원인을 본다.
+- **이식 스크립트는 연결에 `omnis.actor_kind=source` 를 단다**(`lib/import-actor.ts`). 새 이식 스크립트를 만들면 같은 것을 붙인다 —
+  안 붙이면 이식이 사람(screen)의 손질로 기록된다.
+- 트리거를 건 표 목록은 `lib/objects/change.test.ts` 가 등록 유형과 대조한다. 유형을 등록하면 그 표의 트리거 마이그레이션을 함께 낸다.
+- 성능: 같은 연결의 두 번째 쓰기부터 트리거 0.04~0.12ms, 연결마다 처음 한 번 함수 준비 약 1ms(로컬 스냅숏, EXPLAIN ANALYZE).
