@@ -191,6 +191,7 @@ export const TOOL_LABEL: Record<string, string> = {
   list_certifications: "인증·가점",
   list_grant_decisions: "국가과제 결정",
   search_grant_notices: "과제 후보",
+  grant_bonus_match: "공고 가점 비교",
   update_certification: "인증 고치기",
   update_grant_decision: "국가과제 결정 고치기",
   add_grant_decision: "국가과제 결정에 올리기",

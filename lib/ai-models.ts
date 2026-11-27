@@ -16,19 +16,22 @@ export interface ModelChoice {
   reasoning?: ReasoningEffort
 }
 
-export type AiFeature = "agent" | "photo"
+export type AiFeature = "agent" | "photo" | "grant_bonus"
 
 const DEFAULTS: Record<AiFeature, ModelChoice> = {
   // 0단계 실측 1위(완수율 100% · 건당 15.2원) — mydocs/working/2026-10-28-agent-bench.md
   agent: { vendor: "openai", model: "gpt-6.1-sol", reasoning: "medium" },
   // 지어냄 최소(22장 중 1건) · 민감정보 규칙 5/5 · 건당 4.0원 — mydocs/working/2026-10-29-photo-describe-bench.md
   photo: { vendor: "openai", model: "gpt-6.1-terra", reasoning: "low" },
+  // 공고 가점 뽑기(scripts/extract-grant-bonus.ts) — 옴니스 기본(agent)과 같은 모델, 표를 읽어 옮기는 일이라 추론은 낮게
+  grant_bonus: { vendor: "openai", model: "gpt-6.1-sol", reasoning: "low" },
 }
 
 /** 덮어쓰는 환경변수. 값은 "vendor:model" (예: anthropic:claude-sonnet-5-5) */
 const ENV: Record<AiFeature, { model: string; reasoning: string }> = {
   agent: { model: "OMNIS_AGENT_MODEL", reasoning: "OMNIS_AGENT_REASONING" },
   photo: { model: "OMNIS_PHOTO_MODEL", reasoning: "OMNIS_PHOTO_REASONING" },
+  grant_bonus: { model: "OMNIS_GRANT_BONUS_MODEL", reasoning: "OMNIS_GRANT_BONUS_REASONING" },
 }
 
 const VENDORS: readonly AiVendor[] = ["openai", "anthropic", "google"]

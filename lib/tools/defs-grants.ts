@@ -44,6 +44,22 @@ export const GRANT_TOOLS = [
     },
   },
   {
+    name: "grant_bonus_match",
+    description: [
+      "공고 가점 × 우리 인증 — 공고가 가점으로 인정하는 인증 · 자격(공고 본문 · 첨부에서 뽑은 항목, 근거 문장은 공고 원문)과 우리 인증(list_certifications)을 맞춘 표.",
+      "항목마다 점수 · 우리 상태(보유 · 유효기간 안 · 만료 · 없음) · 근거, 맨 위에 예상 가점 합계 / 최대(상한 적용). 기준일은 공고 마감.",
+      "notice 나 decision 을 주면 그 공고 표, 둘 다 비우면 가점 항목을 뽑아 둔 접수 중 공고를 예상 가점 높은 순으로. 「이 공고 가점 몇 점 받아?」「가점 받을 수 있는 공고」 를 물으면 쓴다.",
+    ].join(" "),
+    inputSchema: {
+      type: "object",
+      properties: {
+        notice: { type: "string", description: "공고 id 또는 key(search_grant_notices)" },
+        decision: { type: "string", description: "결정 id 또는 과제명 일부(list_grant_decisions) — 이어진 공고의 표" },
+        limit: { type: "integer", description: "목록일 때 기본 15, 최대 50" },
+      },
+    },
+  },
+  {
     name: "search_grant_notices",
     description: [
       "과제 후보 — 수집기가 모은 지원사업 · R&D 공고(대표 공고)를 판정(해당 · 애매 · 비해당) · 마감 · 지역으로 찾는다.",
@@ -187,6 +203,7 @@ export const GRANT_TOOLS = [
 export const GRANT_READ_NAMES = [
   "list_grant_decisions",
   "search_grant_notices",
+  "grant_bonus_match",
 ] as const
 export type GrantReadName = (typeof GRANT_READ_NAMES)[number]
 export type GrantWriteName = Exclude<
