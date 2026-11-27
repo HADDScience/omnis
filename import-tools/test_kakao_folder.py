@@ -359,6 +359,13 @@ class FileSummary(unittest.TestCase):
         self.assertIn("받은 파일 2개", summary([], {}, [], False, {"방": file_report(got=2)}))
         self.assertNotIn("파일", summary([], {}, [], False))
 
+    def test_summary_에_카드_다듬기_칸이_붙는다(self):
+        r = {"room": "전사방", "inserted": 5, "refine": {"cards": 3, "judged": 2, "dropped": 4, "unsure": 1, "renamed": 1, "failed": 0}}
+        self.assertIn("카드 다듬기 3장(뗀 글 4 · 애매 1 · 제목 1)", summary([r], {}, [], False))
+        self.assertIn("실패 2)", summary([{**r, "refine": {**r["refine"], "failed": 2}}], {}, [], False))
+        self.assertNotIn("카드 다듬기", summary([{**r, "refine": None}], {}, [], False))
+        self.assertNotIn("카드 다듬기", summary([{**r, "refine": {"cards": 0}}], {}, [], False))
+
 
 
 class Settle(unittest.TestCase):

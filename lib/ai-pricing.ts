@@ -20,7 +20,8 @@ const ANTHROPIC = "claude-api 스킬 요금표(2026-10-06 캐시), 0단계 벤�
 const GOOGLE = "bench/config.ts 2026-09-08 — 12/31 까지 할인가, 2027 부터 1.50 / 7.50"
 const GOOGLE_LITE = "bench/config.ts 2026-09-08(ai.google.dev 요금 페이지). 캐시 입력 단가는 확인 안 함 — 입력의 1/10 로 둔다"
 /** 요금을 확인하지 않은 모델 — 상한이 모자라게 재지 않도록 같은 계열의 더 비싼 단가로 둔다. 확인하면 고친다 */
-const ESTIMATE = "추정(확인 필요, 2026-11-10) — 운영 기본 모델이지만 요금표를 확인한 적이 없어 gemini-3.8-flash 단가로 넉넉히 잡는다"
+/** 2026-11-27 확인. 2027-01-01 부터 입력 1.50 · 캐시 0.15 · 출력 7.50 으로 오른다 — 그때 이 값을 고친다 */
+const GOOGLE_36 = "aistudio.google.com/docs/pricing(ai.google.dev/gemini-api/docs/pricing 이 옮겨 감), 2026-11-27 확인 — Standard 유료, 2026-12-31 까지 값. 출력은 생각 토큰 포함"
 const EMBED = "추정(확인 필요, 2026-11-10) — gemini-embedding-001 입력 단가. 출력 없음"
 
 /** key = "vendor:model" (lib/ai-models.ts 의 모양) */
@@ -33,7 +34,7 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "anthropic:claude-opus-5-5": { input: 4.0, cachedInput: 0.2, output: 20.0, source: ANTHROPIC },
   "google:gemini-3.8-flash": { input: 0.75, cachedInput: 0.075, output: 3.75, source: GOOGLE },
   "google:gemini-3.5-flash-lite": { input: 0.3, cachedInput: 0.03, output: 2.5, source: GOOGLE_LITE },
-  "google:gemini-3.6-flash": { input: 0.75, cachedInput: 0.075, output: 3.75, source: ESTIMATE },
+  "google:gemini-3.6-flash": { input: 0.75, cachedInput: 0.075, output: 3.75, source: GOOGLE_36 },
   "google:gemini-embedding-001": { input: 0.15, cachedInput: 0.15, output: 0, source: EMBED },
 }
 

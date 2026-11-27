@@ -56,6 +56,9 @@ export function toDraftLists(items: unknown[]): Map<string, Draft[]> {
   return out
 }
 
+/** 이번 실행에서 카드에 붙인 글 — 다음 「카드 다듬기」 단계(steps/refine.ts)가 판정한다 */
+export interface Attached { taskId: string; sourceIds: string[]; created: boolean }
+
 const taskSourceIdOf = (d: Draft) => `kakao-task:${d.id}${d.part ? `#${d.part}` : ""}`
 
 /**
@@ -220,6 +223,7 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
   })
   const stats = { created: 0, continued: 0, promoted: 0, skipped: 0, matched: 0, misc: 0, newProj: 0, noAssignee: 0, deadline: 0, dropped: 0 }
   const createdIds: string[] = []
+  const attached: Attached[] = []
 
   for (const d of drafts) {
     const s = sessions.get(d.id)
@@ -242,6 +246,7 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
       : null
     if (target) {
       await prisma.chatMessage.updateMany({ where: { sourceId: { in: pickedIds }, taskId: null }, data: { taskId: target.id } })
+      attached.push({ taskId: target.id, sourceIds: pickedIds, created: false })
       // 후속 세션이 완료 보고면 기존 카드를 올린다. 올리기만 한다 — 사람이 옴니스에서 바꾼 상태를 되돌리지 않게.
       const next = d.status && STATUSES.has(d.status) ? d.status : null
       if (next && RANK[next] > (RANK[target.status] ?? 99)) {
@@ -312,6 +317,7 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
     // 고른 메시지만 업무에 연결한다 — 스레드에서 원문이 보이게. 나머지는 카드 없는 채팅으로 남는다.
     await prisma.chatMessage.updateMany({ where: { sourceId: { in: pickedIds }, taskId: null }, data: { taskId: task.id } })
     createdIds.push(task.id)
+    attached.push({ taskId: task.id, sourceIds: pickedIds, created: true })
     stats.created++
   }
 
@@ -321,21 +327,22 @@ async function applyDrafts(drafts: Draft[], chunk: RawSession[]) {
   if (createdIds.length > 0) {
     await prisma.$executeRaw`UPDATE "Task" SET "updatedAt" = "createdAt" WHERE "id" IN (${Prisma.join(createdIds)})`
   }
-  return stats
+  return { ...stats, attached }
 }
 
-export async function structure(sessions: RawSession[], opts: { model: string; dry: boolean }): Promise<{ created: number; failedRounds: number }> {
+export async function structure(sessions: RawSession[], opts: { model: string; dry: boolean }): Promise<{ created: number; failedRounds: number; attached: Attached[] }> {
   const cache = loadDraftCache()
   const targets = await pendingForStructure(sessions, cache)
   const totalRounds = Math.ceil(targets.length / SIZE)
   const tailN = targets.filter((s) => s.id.includes("@")).length
   console.log(`  카드 없는 업무 세션 ${targets.length}개${tailN ? ` (그중 늘어난 뒷부분 ${tailN})` : ""} → ${totalRounds}라운드 × ≤${SIZE} · ${opts.model}`)
-  if (targets.length === 0 || opts.dry) return { created: 0, failedRounds: 0 }
+  if (targets.length === 0 || opts.dry) return { created: 0, failedRounds: 0, attached: [] }
 
   const template = readFileSync(`${import.meta.dirname}/../prompts/structure.md`, "utf8")
   mkdirSync(`${DIR}/in`, { recursive: true }); mkdirSync(`${DIR}/out`, { recursive: true })
   let created = 0
   let failedRounds = 0
+  const attached: Attached[] = []
   let round = nextRoundNumber()
 
   for (let i = 0; i < targets.length; i += SIZE) {
@@ -375,7 +382,8 @@ export async function structure(sessions: RawSession[], opts: { model: string; d
     const drafts = chunk.flatMap((s) => cache.get(s.id) ?? [])
     const st = await applyDrafts(drafts, chunk)
     created += st.created
+    attached.push(...st.attached)
     console.log(`  적용 — 생성 ${st.created} · 기존 업무에 붙임 ${st.continued} (상태 올림 ${st.promoted}) ·건너뜀 ${st.skipped} · 과제 매칭 ${st.matched} (신규 ${st.newProj}) · 기타 ${st.misc} · 담당자 없음 ${st.noAssignee} · 마감 ${st.deadline} (버림 ${st.dropped})`)
   }
-  return { created, failedRounds }
+  return { created, failedRounds, attached }
 }

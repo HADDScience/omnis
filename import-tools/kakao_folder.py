@@ -137,6 +137,11 @@ def summary(results, failed, not_started, dry, files=None):
         n = "같은 CSV — 건너뜀" if r.get("skipped") else f"{verb} {r.get('pending' if dry else 'inserted', 0)}건"
         if r.get("elapsed") is not None:
             n += f" · {r['elapsed']}초"
+        rf = r.get("refine")
+        if rf and rf.get("cards"):
+            # 카드 다듬기(steps/refine.ts) — 뗀 글 · 애매로 붙여 둔 글을 방별 결과에 한 칸으로 남긴다
+            n += f" · 카드 다듬기 {rf['cards']}장(뗀 글 {rf.get('dropped', 0)} · 애매 {rf.get('unsure', 0)} · 제목 {rf.get('renamed', 0)}"
+            n += f" · 실패 {rf['failed']})" if rf.get("failed") else ")"
         out.append(f"  {r['room']}: {n}")
     new_rooms = [r["room"] for r in results if r.get("newRoom")]
     externals = sorted({e for r in results for e in r.get("newExternals", [])})
