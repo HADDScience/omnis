@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
+  callForms, callsName, restItems,
   COMPANY_DAILY_AI, COOLDOWN_MS, SHOW, USER_DAILY_AI, buildPrompt, candidateHash, codeLine, codeOrder, decide, daysUntil,
   dueWord, parseAiOrder, seoulDay, toItems, type Candidate, type RunLite,
 } from "./rules"
@@ -89,4 +90,49 @@ test("AI 응답 — 순서 · 한 줄, 모르는 id 는 버리고 빠진 후보�
   assert.equal(toItems(r.ordered, NOW, r.lines)[1].line, "「task_due:a」 오늘 마감")
   assert.throws(() => parseAiOrder(JSON.stringify({ items: [{ id: "c9", line: "x" }] }), ids, cs))
   assert.throws(() => parseAiOrder("not json", ids, cs))
+})
+
+test("이름 부름 꼴 — 계정 이름에서 만들고, 성을 뺀 이름은 호칭을 붙일 때만", () => {
+  const f = callForms("가나다")
+  assert.ok(f.includes("가나다"))
+  assert.ok(f.includes("나다님") && f.includes("나다씨") && f.includes("나다야"))
+  assert.ok(!f.includes("나다"))
+  // 두 글자 이름은 전체 이름만
+  assert.deepEqual(callForms("라마"), ["라마"])
+  // 다른 이름(카톡 표시명)은 그대로 더한다
+  assert.ok(callForms("가나다", ["별명A", " "]).includes("별명A"))
+  assert.equal(callsName("나다님 이거 검토 부탁드려요", f), true)
+  assert.equal(callsName("@가나다 확인해 주세요", f), true)
+  assert.equal(callsName("나다라마바 회의", f), false)
+})
+
+test("본문 이름 부름은 AI 가 빼면 다시 붙이지 않는다 — 다른 종류는 붙인다", () => {
+  const cs = [c("task_due:a", "task_due", "2026-11-27T09:00:00Z"), c("name_call:b", "name_call", null), c("name_call:z", "name_call", null), c("approval:c", "approval", null)]
+  const { prompt, ids } = buildPrompt(cs, NOW)
+  assert.ok(prompt.includes("잡담"))
+  const r = parseAiOrder(JSON.stringify({ items: [{ id: "c2", line: "검토 요청에 답해야 합니다" }] }), ids, cs)
+  assert.deepEqual(r.ordered.map((x) => x.key), ["name_call:b", "task_due:a", "approval:c"])
+  // 이름 부름만 있고 AI 가 모두 뺐다 — 오류가 아니라 빈 결과
+  const only = [c("name_call:b", "name_call", null)]
+  const p2 = buildPrompt(only, NOW)
+  assert.deepEqual(parseAiOrder(JSON.stringify({ items: [] }), p2.ids, only).ordered, [])
+})
+
+test("이름 부름 한 줄 — 이름을 부른 글 · 내 글에 이어 쓴 글", () => {
+  assert.equal(codeLine({ ...c("name_call:a", "name_call", null), title: "가나다", detail: "나다님 검토 부탁해요" }, NOW), "가나다님이 이름을 부른 글 — 나다님 검토 부탁해요")
+  assert.equal(codeLine({ ...c("name_call:b", "name_call", null), title: "가나다", detail: "(내 글에 이어 쓴 글) 시안도 보내 줄래요?" }, NOW), "가나다님이 내 글에 이어 쓴 글 — 시안도 보내 줄래요?")
+})
+
+test("참여 중인 업무 한 줄 — 담당 아님 · 최근 글 남김", () => {
+  assert.equal(codeLine(c("participating_task:t", "participating_task", "2026-11-28T09:00:00Z"), NOW), "「participating_task:t」 내일 마감 · 담당 아님 · 최근 글 남김")
+})
+
+test("쉬어 가는 카드 — 날마다 바뀌는 두 장, 질문으로 이어진다", () => {
+  const a = restItems(NOW), b = restItems(new Date(NOW.getTime() + 86_400_000))
+  assert.equal(a.length, 2)
+  assert.notDeepEqual(a.map((x) => x.key), b.map((x) => x.key))
+  assert.deepEqual(restItems(new Date(NOW.getTime() + 3600_000)).map((x) => x.key), a.map((x) => x.key))
+  for (const it of a) { assert.equal(it.kind, "rest"); assert.equal(it.action.type, "ask") }
+  const all = new Set([0, 1, 2].flatMap((d) => restItems(new Date(NOW.getTime() + d * 86_400_000)).map((x) => x.line)))
+  assert.ok([...all].some((l) => l.includes("끝말잇기")) && [...all].some((l) => l.includes("휴가")))
 })

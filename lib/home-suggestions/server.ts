@@ -4,11 +4,12 @@ import { Prisma } from "@/generated/prisma"
 import { prisma } from "@/lib/db"
 import { callGemini } from "@/lib/ai"
 import { isHrReviewer } from "@/lib/hr/reviewers"
+import { readSetting } from "@/lib/app-settings"
 import { notificationHref } from "@/lib/schemas/notification"
 import { sourceHref } from "@/lib/source-facts"
 import {
-  APPLICATION_DAYS, GRANT_DAYS, HOME_SUGGESTIONS_FEATURE, MENTION_DAYS, SUGGESTION_SCHEMA,
-  buildPrompt, candidateHash, codeOrder, decide, parseAiOrder, seoulDay, toItems,
+  APPLICATION_DAYS, GRANT_DAYS, HOME_SUGGESTIONS_FEATURE, MENTION_DAYS, NAME_CALL_DAYS, PARTICIPATION_DAYS, PARTICIPATION_MIN_MESSAGES, SUGGESTION_SCHEMA,
+  FOLLOW_UP, buildPrompt, callForms, callsName, candidateHash, codeOrder, decide, parseAiOrder, restItems, seoulDay, toItems,
   type Candidate, type RunLite, type SuggestionItem, type Trigger,
 } from "./rules"
 
@@ -19,6 +20,20 @@ const homeModel = () => process.env.GEMINI_MODEL ?? "gemini-3.6-flash"
 const seoulMidnight = (day: string) => new Date(`${day}T00:00:00+09:00`)
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+
+/** 카톡 표시명처럼 이름에서 만들 수 없는 다른 이름 — 설정 home.nameAliases = { [userId]: string[] }. 없으면 빈 목록 */
+export const NAME_ALIASES_KEY = "home.nameAliases"
+async function aliasesOf(userId: string): Promise<string[]> {
+  const v = (await readSetting(NAME_ALIASES_KEY).catch(() => null)) as Record<string, unknown> | null
+  const list = v && typeof v === "object" ? v[userId] : null
+  return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : []
+}
+
+/** 내가 그 글 뒤로 같은 곳(업무 스레드면 그 업무, 아니면 그 방)에 쓴 글이 있나 — 있으면 답한 것으로 본다 */
+const repliedAfter = async (userId: string, msg: { roomId: string; taskId: string | null; createdAt: Date }) =>
+  (await prisma.chatMessage.count({
+    where: { ...(msg.taskId ? { taskId: msg.taskId } : { roomId: msg.roomId }), authorId: userId, deletedAt: null, createdAt: { gt: msg.createdAt } },
+  })) > 0
 
 /** 후보 모으기 — 이 사람이 볼 수 있는 것만. AI 를 부르지 않는다 */
 export async function gatherCandidates(userId: string, now = new Date()): Promise<Candidate[]> {
@@ -89,8 +104,7 @@ export async function gatherCandidates(userId: string, now = new Date()): Promis
     const msg = m.message
     if (seenMessages.has(msg.id)) continue
     seenMessages.add(msg.id)
-    const replied = await prisma.chatMessage.count({ where: { roomId: msg.roomId, authorId: userId, deletedAt: null, createdAt: { gt: msg.createdAt } } })
-    if (replied > 0) continue
+    if (await repliedAfter(userId, msg)) continue
     out.push({
       key: `mention:${msg.id}`, kind: "mention", title: msg.author.name, detail: clip(msg.content.replace(/\s+/g, " ").trim(), 160),
       due: null, at: msg.createdAt.toISOString(),
@@ -104,6 +118,83 @@ export async function gatherCandidates(userId: string, now = new Date()): Promis
       action: { type: "ask", prompt: `국가과제 「${g.title}」 준비 상황과 마감 전에 남은 일을 정리해 줘` },
     })
   }
+  // 6) 본문에서 내 이름 · 호칭을 부른 글 — @멘션이 아닌 것. 전사방과 내가 참여한 방만, 옴니스 대화는 뺀다.
+  //    요청이 아닌 잡담은 AI 순서 단계에서 뺀다(rules.ts buildPrompt). AI 를 따로 부르지 않는다
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
+  const forms = me ? callForms(me.name, await aliasesOf(userId)) : []
+  if (forms.length > 0) {
+    const called = await prisma.chatMessage.findMany({
+      where: {
+        createdAt: { gte: new Date(now.getTime() - NAME_CALL_DAYS * 86_400_000) },
+        deletedAt: null, authorId: { not: userId },
+        room: { kind: { not: "OMNIS_DM" }, OR: [{ kind: "COMPANY" }, { members: { some: { userId } } }] },
+        OR: forms.map((f) => ({ content: { contains: f } })),
+      },
+      select: { id: true, roomId: true, taskId: true, content: true, createdAt: true, author: { select: { name: true } }, externalSpeaker: { select: { name: true } } },
+      orderBy: { createdAt: "desc" }, take: 30,
+    })
+    const perRoom = new Map<string, number>()
+    for (const msg of called) {
+      if (seenMessages.has(msg.id) || !callsName(msg.content, forms)) continue
+      if ((perRoom.get(msg.roomId) ?? 0) >= 3) continue
+      if (await repliedAfter(userId, msg)) continue
+      seenMessages.add(msg.id)
+      perRoom.set(msg.roomId, (perRoom.get(msg.roomId) ?? 0) + 1)
+      out.push({
+        key: `name_call:${msg.id}`, kind: "name_call", title: msg.externalSpeaker?.name ?? msg.author.name,
+        detail: clip(msg.content.replace(/\s+/g, " ").trim(), 160), due: null, at: msg.createdAt.toISOString(),
+        action: { type: "link", href: sourceHref(msg) },
+      })
+    }
+  }
+
+  // 6-2) 내 글에 이어진 글 — 업무 스레드에서 내가 3일 안에 마지막으로 쓴 글 뒤에 다른 사람이 쓴 글(아직 답하지 않음).
+  //      이름을 부르지 않고 답 · 부탁을 잇는 일이 많다(「점심은 … 예약하샤요」). 잡담은 같은 AI 단계에서 뺀다
+  const since3 = new Date(now.getTime() - NAME_CALL_DAYS * 86_400_000)
+  const myLast = await prisma.chatMessage.groupBy({
+    by: ["taskId"], where: { authorId: userId, deletedAt: null, taskId: { not: null }, createdAt: { gte: since3 } }, _max: { createdAt: true },
+  })
+  for (const g of myLast.slice(0, 10)) {
+    if (!g.taskId || !g._max.createdAt) continue
+    const after = await prisma.chatMessage.findMany({
+      where: { taskId: g.taskId, deletedAt: null, authorId: { not: userId }, createdAt: { gt: g._max.createdAt } },
+      select: { id: true, roomId: true, taskId: true, content: true, createdAt: true, author: { select: { name: true } }, externalSpeaker: { select: { name: true } } },
+      orderBy: { createdAt: "asc" }, take: 3,
+    })
+    for (const msg of after) {
+      if (seenMessages.has(msg.id) || !msg.content.trim()) continue
+      seenMessages.add(msg.id)
+      out.push({
+        key: `name_call:${msg.id}`, kind: "name_call", title: msg.externalSpeaker?.name ?? msg.author.name,
+        detail: `${FOLLOW_UP} ${clip(msg.content.replace(/\s+/g, " ").trim(), 150)}`, due: null, at: msg.createdAt.toISOString(),
+        action: { type: "link", href: sourceHref(msg) },
+      })
+    }
+  }
+
+  // 7) 참여 중인 업무 — 담당은 아니지만 최근 2주 안에 내가 글을 2개 이상 남긴 업무, 마감이 오늘 · 내일
+  const mine = await prisma.chatMessage.groupBy({
+    by: ["taskId"],
+    where: { authorId: userId, deletedAt: null, taskId: { not: null }, createdAt: { gte: new Date(now.getTime() - PARTICIPATION_DAYS * 86_400_000) } },
+    _count: { _all: true },
+  })
+  const joined = mine.filter((g) => g.taskId && g._count._all >= PARTICIPATION_MIN_MESSAGES).map((g) => g.taskId!)
+  if (joined.length > 0) {
+    const ptasks = await prisma.task.findMany({
+      where: { id: { in: joined }, archived: false, status: { not: "DONE" }, assignees: { none: { userId } }, deadline: { gte: today, lt: dayAfterTomorrow } },
+      select: { id: true, name: true, deadline: true, updatedAt: true },
+      orderBy: { deadline: "asc" }, take: 5,
+    })
+    for (const t of ptasks) {
+      if (taskIdsInApprovals.has(t.id)) continue
+      out.push({
+        key: `participating_task:${t.id}`, kind: "participating_task", title: t.name, detail: "담당 아님 · 최근 2주 안에 내가 글을 남김",
+        due: t.deadline!.toISOString(), at: t.updatedAt.toISOString(),
+        action: { type: "link", href: `/chat/task/${encodeURIComponent(t.id)}` },
+      })
+    }
+  }
+
   if (hr.length > 0) {
     const jobs = [...new Set(hr.map((a) => a.jobTitle))]
     out.push({
@@ -120,7 +211,8 @@ export async function gatherCandidates(userId: string, now = new Date()): Promis
 export interface HomeSuggestions {
   runId: string | null
   trigger: string | null
-  source: "ai" | "code" | null
+  /** rest = 할 일이 없어 쉬어 가는 카드(AI 없음, 기록 없음) */
+  source: "ai" | "code" | "rest" | null
   items: SuggestionItem[]
   generatedAt: string | null
 }
@@ -150,19 +242,25 @@ export async function getHomeSuggestions(userId: string, now = new Date()): Prom
     lastAny: lastAny && toLite(lastAny), userAiToday, companyAiToday,
   })
 
-  if (d.kind === "empty") return { runId: null, trigger: null, source: null, items: [], generatedAt: null }
+  const rest = (): HomeSuggestions => ({ runId: null, trigger: null, source: "rest", items: restItems(now), generatedAt: null })
+  if (d.kind === "empty") return rest()
+  let r: HomeSuggestions
   if (d.kind === "reuse") {
-    const run = [lastAi, lastAny].find((r) => r?.id === d.run.id)!
+    const run = [lastAi, lastAttempt, lastAny].find((x) => x?.id === d.run.id)!
     const live = new Set(candidates.map((c) => c.key))
-    return {
+    r = {
       runId: run.id, trigger: run.trigger, source: run.source === "ai" ? "ai" : "code",
       items: (run.items as unknown as SuggestionItem[]).filter((i) => live.has(i.key)),
       generatedAt: run.createdAt.toISOString(),
     }
+  } else if (d.kind === "code") {
+    // 코드 순서 실행은 model 이 비어 있다 — 「부른 수」 에 세지 않는다
+    r = await save(userId, day, d.trigger, "code", hash, candidates, toItems(codeOrder(candidates), now), null, 0, d.reason)
+  } else {
+    r = await generate(userId, day, d.trigger, hash, candidates, now)
   }
-  if (d.kind === "code") return save(userId, day, d.trigger, "code", hash, candidates, toItems(codeOrder(candidates), now), null, 0, d.reason)
-  // 코드 순서 실행은 model 이 비어 있다 — 「부른 수」 에 세지 않는다
-  return generate(userId, day, d.trigger, hash, candidates, now)
+  // AI 가 본문 이름 부름을 모두 잡담으로 빼서 남은 카드가 없으면 쉬어 가는 카드
+  return r.items.length > 0 ? r : rest()
 }
 
 async function generate(userId: string, day: string, trigger: Trigger, hash: string, candidates: Candidate[], now: Date): Promise<HomeSuggestions> {

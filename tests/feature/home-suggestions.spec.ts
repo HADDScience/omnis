@@ -11,20 +11,21 @@ import { PrismaClient } from "../../generated/prisma/client"
 import { login } from "./_setup"
 
 test.describe("첫 화면 제안 @chat", () => {
-  test("제안 API 는 내 것만 돌려주고, 첫 화면은 카드나 예시 중 하나를 보인다", async ({ page }) => {
+  test("제안 API 는 내 것만 돌려주고, 첫 화면은 할 일 카드나 쉬어 가는 카드를 보인다", async ({ page }) => {
     await login(page, "사원1")
     const res = await page.request.get("/api/home/suggestions")
     expect(res.status()).toBe(200)
-    const body = (await res.json()) as { items: { key: string; line: string }[]; runId: string | null }
+    const body = (await res.json()) as { items: { key: string; line: string; kind: string }[]; runId: string | null; source: string | null }
     expect(Array.isArray(body.items)).toBe(true)
     expect(body.items.length).toBeLessThanOrEqual(4)
 
     await page.goto("/chat/new")
     const box = page.locator("[data-home-suggestions]")
-    // 스켈레톤이 끝나면 카드(source) 또는 예시(제안 없음)
+    // 스켈레톤이 끝나면 할 일 카드, 할 일이 없으면 쉬어 가는 카드(rest) — 예시 질문은 불러오지 못했을 때만
     await expect(page.locator('[data-home-suggestions="loading"]')).toHaveCount(0, { timeout: 20_000 })
-    if (body.items.length > 0) await expect(box.locator("[data-suggestion-kind]")).toHaveCount(body.items.length)
-    else await expect(page.getByRole("button", { name: "이번 주 마감인 업무 정리해 줘" })).toBeVisible()
+    expect(body.items.length).toBeGreaterThan(0)
+    await expect(box.locator("[data-suggestion-kind]")).toHaveCount(body.items.length)
+    if (body.source === "rest") await expect(box.locator('[data-suggestion-kind="rest"]')).toHaveCount(2)
 
     // 남의 실행 id 로는 기록되지 않는다
     const bad = await page.request.post("/api/home/suggestions/events", { data: { runId: "없는-실행", itemKey: "x", kind: "click" } })
@@ -40,6 +41,23 @@ test.describe("첫 화면 제안 @chat", () => {
     test.afterAll(async () => {
       if (taskId) await prisma.task.delete({ where: { id: taskId } }).catch(() => {})
       await prisma.$disconnect()
+    })
+
+    test("본문에서 내 이름을 부른 글이 카드로 뜬다 — @멘션이 아니어도", async ({ page }) => {
+      const other = await prisma.user.findFirstOrThrow({ where: { name: "부팀장" } })
+      const room = await prisma.chatRoom.findFirstOrThrow({ where: { kind: "COMPANY" } })
+      const text = `사원2님 오늘 안에 견적서 확인 부탁드려요 ${Date.now()}`
+      const msg = await prisma.chatMessage.create({ data: { roomId: room.id, authorId: other.id, content: text }, select: { id: true } })
+      try {
+        await login(page, "사원2")
+        const body = (await (await page.request.get("/api/home/suggestions")).json()) as { items: { key: string; kind: string }[] }
+        // 데모 시드의 사원2 는 다른 후보가 없다 — 이 글이 첫 카드가 된다(CI 는 AI 가 실패해 코드 순서라 잡담 거르기 없이 보인다)
+        expect(body.items.map((i) => i.key)).toContain(`name_call:${msg.id}`)
+        await page.goto("/chat/new")
+        await expect(page.locator('[data-suggestion-kind="name_call"]').first()).toBeVisible({ timeout: 20_000 })
+      } finally {
+        await prisma.chatMessage.delete({ where: { id: msg.id } }).catch(() => {})
+      }
     })
 
     test("오늘 마감인 내 업무가 카드로 뜨고, 누르면 그 업무로 간다 · 클릭이 남는다", async ({ page }) => {
