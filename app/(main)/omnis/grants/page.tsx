@@ -43,6 +43,12 @@ import {
   pickDecisionNotice,
 } from "@/lib/grant-bonus-view"
 import { DecisionBoard } from "@/components/grants/decision-board"
+import { GrantsSearch } from "@/components/grants/grants-search"
+import {
+  searchDecisionIds,
+  searchNoticeIds,
+  searchTerms,
+} from "@/lib/grants-search"
 import {
   BoardSkeleton,
   DecisionListSkeleton,
@@ -67,6 +73,8 @@ function attachmentViews(noticeId: string, raw: unknown): AttachmentView[] {
   )
 }
 type SP = Record<string, string | string[] | undefined>
+/** 찾는 말과 찾은 id — 찾는 말이 없으면 id 는 null(거르지 않음) */
+type Search = { q: string; decisionIds: string[] | null; noticeIds: string[] | null }
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
 
 /**
@@ -82,10 +90,20 @@ export default async function GrantsPage({
   const tab = one(sp.tab) === "notices" ? "notices" : "decisions"
   const view = readBoardView(one(sp.view))
   const board = tab === "decisions" && view === "board"
+  // 검색(?q=) — 두 탭 · 두 보기가 같은 찾는 말을 쓴다. 탭 건수도 찾은 것만
+  const q = (one(sp.q) ?? "").trim().slice(0, 100)
+  const terms = searchTerms(q)
+  const [decisionIds, noticeIds] = terms.length
+    ? await Promise.all([searchDecisionIds(terms), searchNoticeIds(terms)])
+    : [null, null]
+  const search: Search = { q, decisionIds, noticeIds }
   const [decisionCount, noticeOpen] = await Promise.all([
-    prisma.grantDecision.count(),
-    prisma.grantNotice.count({ where: noticeWhere(readNoticeFilter({})) }),
+    prisma.grantDecision.count({ where: decisionIds ? { id: { in: decisionIds } } : {} }),
+    prisma.grantNotice.count({
+      where: noticeWhere(readNoticeFilter({ query: q }), new Date(), noticeIds),
+    }),
   ])
+  const withQ = (href: string) => (q ? `${href}${href.includes("?") ? "&" : "?"}q=${encodeURIComponent(q)}` : href)
 
   return (
     <>
@@ -101,28 +119,28 @@ export default async function GrantsPage({
         </div>
         <nav aria-label="국가과제 보기" className="mb-4 flex items-center gap-1.5">
           <TabLink
-            href="/omnis/grants"
+            href={withQ("/omnis/grants")}
             active={tab === "decisions"}
             label="우리 결정"
             count={decisionCount}
           />
           <TabLink
-            href="/omnis/grants?tab=notices"
+            href={withQ("/omnis/grants?tab=notices")}
             active={tab === "notices"}
             label="과제 후보"
             count={noticeOpen}
           />
-          {tab === "decisions" && <ViewSwitch view={view} />}
+          {tab === "decisions" && <ViewSwitch view={view} q={q} />}
         </nav>
         {tab === "decisions" ? (
           <Suspense
             key={view}
             fallback={board ? <BoardSkeleton /> : <DecisionListSkeleton />}
           >
-            {board ? <Board /> : <Decisions sp={sp} />}
+            {board ? <Board search={search} /> : <Decisions sp={sp} search={search} />}
           </Suspense>
         ) : (
-          <Notices sp={sp} />
+          <Notices sp={sp} search={search} />
         )}
       </div>
     </>
@@ -165,7 +183,8 @@ function TabLink({
 }
 
 /** 우리 결정 목록 · 보드 전환 — 주소의 view 에 담는다(뒤로 가기 · 링크 공유) */
-function ViewSwitch({ view }: { view: BoardView }) {
+function ViewSwitch({ view, q }: { view: BoardView; q: string }) {
+  const qs = q ? `q=${encodeURIComponent(q)}` : ""
   return (
     <div
       role="group"
@@ -174,12 +193,12 @@ function ViewSwitch({ view }: { view: BoardView }) {
     >
       {(
         [
-          { key: "list", label: "목록", icon: MenuSquareIcon, href: "/omnis/grants" },
+          { key: "list", label: "목록", icon: MenuSquareIcon, href: qs ? `/omnis/grants?${qs}` : "/omnis/grants" },
           {
             key: "board",
             label: "보드",
             icon: DashboardBrowsingIcon,
-            href: "/omnis/grants?view=board",
+            href: `/omnis/grants?view=board${qs ? `&${qs}` : ""}`,
           },
         ] as const
       ).map((o) => (
@@ -232,11 +251,21 @@ function Chip({
 
 // ─── 우리 결정 ───
 
-async function Decisions({ sp }: { sp: SP }) {
+/** 단계 칩 주소 — 찾는 말은 그대로 */
+function stageHref(stage: string | null, q: string) {
+  const p = new URLSearchParams()
+  if (stage) p.set("stage", stage)
+  if (q) p.set("q", q)
+  const qs = p.toString()
+  return qs ? `/omnis/grants?${qs}` : "/omnis/grants"
+}
+
+async function Decisions({ sp, search }: { sp: SP; search: Search }) {
   const stage = readStage(one(sp.stage))
+  const found = search.decisionIds ? { id: { in: search.decisionIds } } : {}
   const [rows, counts, members, tasks, projects] = await Promise.all([
     prisma.grantDecision.findMany({
-      where: stage ? { stage } : {},
+      where: { ...found, ...(stage ? { stage } : {}) },
       orderBy: [{ deadline: { sort: "asc", nulls: "last" } }, { title: "asc" }],
       include: {
         owners: { include: { user: { select: { id: true, name: true } } } },
@@ -244,7 +273,7 @@ async function Decisions({ sp }: { sp: SP }) {
         project: { select: { id: true, name: true } },
       },
     }),
-    prisma.grantDecision.groupBy({ by: ["stage"], _count: true }),
+    prisma.grantDecision.groupBy({ by: ["stage"], where: found, _count: true }),
     prisma.user.findMany({
       where: { ...ACTIVE_MEMBER_WHERE, id: { not: "system" } },
       select: { id: true, name: true },
@@ -342,12 +371,13 @@ async function Decisions({ sp }: { sp: SP }) {
 
   return (
     <section aria-label="우리 결정">
+      <GrantsSearch count={view.length} className="mb-2.5" />
       <div className="mb-2.5 flex [scrollbar-width:none] gap-1.5 overflow-x-auto pb-0.5">
-        <Chip href="/omnis/grants" active={!stage}>
+        <Chip href={stageHref(null, search.q)} active={!stage}>
           전체 <span className="tabular-nums opacity-70">{total}</span>
         </Chip>
         {GRANT_STAGES.map((s) => (
-          <Chip key={s} href={`/omnis/grants?stage=${s}`} active={stage === s}>
+          <Chip key={s} href={stageHref(s, search.q)} active={stage === s}>
             {GRANT_STAGE_LABEL[s]}{" "}
             <span className="tabular-nums opacity-70">{countOf(s)}</span>
           </Chip>
@@ -364,8 +394,9 @@ async function Decisions({ sp }: { sp: SP }) {
 }
 
 /** 우리 결정 보드 — 단계 일곱 열, 전체 결정(단계 필터 없음) */
-async function Board() {
+async function Board({ search }: { search: Search }) {
   const rows = await prisma.grantDecision.findMany({
+    where: search.decisionIds ? { id: { in: search.decisionIds } } : {},
     orderBy: [{ deadline: { sort: "asc", nulls: "last" } }, { title: "asc" }],
     select: {
       id: true,
@@ -381,6 +412,7 @@ async function Board() {
   })
   return (
     <section aria-label="우리 결정 보드">
+      <GrantsSearch count={rows.length} className="mb-3" />
       <DecisionBoard
         rows={rows.map((r) => ({
           id: r.id,
@@ -420,7 +452,7 @@ function noticeHref(
   return `/omnis/grants?${q}`
 }
 
-async function Notices({ sp }: { sp: SP }) {
+async function Notices({ sp, search }: { sp: SP; search: Search }) {
   const f = readNoticeFilter({
     verdict: one(sp.verdict),
     deadline: one(sp.deadline),
@@ -429,7 +461,7 @@ async function Notices({ sp }: { sp: SP }) {
     profile: one(sp.profile),
   })
   const page = Math.max(1, Number(one(sp.page)) || 1)
-  const where = noticeWhere(f)
+  const where = noticeWhere(f, new Date(), search.noticeIds)
   const [total, rows] = await Promise.all([
     prisma.grantNotice.count({ where }),
     prisma.grantNotice.findMany({
@@ -475,6 +507,7 @@ async function Notices({ sp }: { sp: SP }) {
 
   return (
     <section aria-label="과제 후보">
+      <GrantsSearch count={total} className="mb-2.5" />
       <div className="mb-2 flex flex-wrap gap-1.5">
         {VERDICTS.map((v) => (
           <Chip
@@ -528,31 +561,7 @@ async function Notices({ sp }: { sp: SP }) {
         >
           법인 전환 뒤
         </Chip>
-        <form action="/omnis/grants" className="ml-auto flex w-full sm:w-auto">
-          <input type="hidden" name="tab" value="notices" />
-          {f.verdicts.join(",") !== "해당,애매" && (
-            <input type="hidden" name="verdict" value={f.verdicts.join(",")} />
-          )}
-          {f.deadline !== "open" && (
-            <input type="hidden" name="deadline" value={f.deadline} />
-          )}
-          {f.region && <input type="hidden" name="region" value={f.region} />}
-          {f.profile === "corp" && (
-            <input type="hidden" name="profile" value="corp" />
-          )}
-          <input
-            type="search"
-            name="q"
-            defaultValue={f.query}
-            placeholder="공고명 · 부처 · 기관"
-            aria-label="공고 찾기"
-            className="glass h-8 w-full rounded-full border-0 px-3.5 text-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring/50 sm:w-56 sm:text-[12.5px]"
-          />
-        </form>
       </div>
-      <p className="mb-2 text-[12px] text-muted-foreground tabular-nums">
-        {total}건
-      </p>
       <NoticeList rows={view} />
       {total > PAGE && (
         <nav

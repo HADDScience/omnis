@@ -52,9 +52,14 @@ export function readNoticeFilter(raw: {
   }
 }
 
+/**
+ * 공고 조건. matchIds 를 주면 찾는 말(query)은 그 id 로 거른다(lib/grants-search.ts searchNoticeIds — 띄어쓰기 무시 · AND · 본문 요약 · 가점 · 첨부까지).
+ * 주지 않으면 예전처럼 제목 · 부처 · 기관 부분 일치
+ */
 export function noticeWhere(
   f: NoticeFilter,
-  now = new Date()
+  now = new Date(),
+  matchIds?: string[] | null
 ): Prisma.GrantNoticeWhereInput {
   const verdictField = f.profile === "corp" ? "verdictCorp" : "verdictSole"
   const deadline: Prisma.GrantNoticeWhereInput =
@@ -77,7 +82,9 @@ export function noticeWhere(
       f.region
         ? { regionClass: { in: [...REGION_GROUPS[f.region].classes] } }
         : {},
-      f.query
+      f.query && matchIds
+        ? { id: { in: matchIds } }
+        : f.query
         ? {
             OR: [
               { title: { contains: f.query, mode: "insensitive" } },
