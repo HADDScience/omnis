@@ -81,7 +81,7 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [tech/request-budget.md](tech/request-budget.md) | canonical | Vercel 요청 한도 · 폴링 규칙(`useVisibleInterval`) · MCP 스트림 GET 405 · 조사하는 법 |
 | [tech/company-context.md](tech/company-context.md) | canonical | 회사 Context — 모델 · 확정/잠정/계획 · 세금계산서 올리기 · 회사 도구 · 서명·직인 보관 · 이식 |
 | [troubleshootings/supabase-limits.md](troubleshootings/supabase-limits.md) | canonical | Supabase 에서 무엇이 막혔고 어떻게 풀었나 |
-| [troubleshootings/migration-traps.md](troubleshootings/migration-traps.md) | reference | 이 작업에서 실제로 밟은 함정들 |
+| [troubleshootings/migration-traps.md](troubleshootings/migration-traps.md) | reference | 이 작업에서 실제로 밟은 함정들 (마이그레이션 이름 · 운영이 main 보다 앞섬 · 대화형 트랜잭션 5초) |
 | [troubleshootings/client-error-visibility.md](troubleshootings/client-error-visibility.md) | canonical | 화면이 흰 채로 죽는데 아무도 모르던 문제와 그 배관 |
 | [troubleshootings/large-file-upload.md](troubleshootings/large-file-upload.md) | investigation | 4MB 넘는 첨부가 메시지째 막힌다 — 이유 표시 · NAS 파일 연결 · 실패를 메일/이슈로. NAS 탐색기 함정(크기 · `&amp;` · NFD). 운영 확인 전 |
 | [tech/stack-and-conventions.md](tech/stack-and-conventions.md) | canonical | 스택·base-vega 관례·Gemini 함정 |
@@ -100,6 +100,7 @@ AI 와 함께 일할 때 가장 비싼 실수는 **없는 사실을 지어내는
 | [troubleshootings/narrow-viewport-traps.md](troubleshootings/narrow-viewport-traps.md) | reference | 좁은 뷰포트·터치 타깃에서 밟은 함정 (min-w-0 · rem 축소 · coarse 측정) |
 | [troubleshootings/room-open-latency.md](troubleshootings/room-open-latency.md) | reference | 채팅방이 늦게 열리던 원인 · A/B 측정 · 실험 중 찾은 버그 |
 | [troubleshootings/pr-traps-2026-09.md](troubleshootings/pr-traps-2026-09.md) | reference | PR #7~#17 에서 밟은 함정 (next start 운영 DB 사고 · zoom 좌표계 · 늦게 끝난 AI 재구성 · MCP GET 재연결 루프 · 요청 한도 · 🤖 작성자 · 외부 API 가 죽어야 통과하던 검증) |
+| [troubleshootings/gemini-tool-schema.md](troubleshootings/gemini-tool-schema.md) | reference | Gemini 도구 스키마 하나(숫자 enum · `additionalProperties`)가 질문 경로 전체를 400 으로 막던 것 — `geminiSchema` 로 보내기 전에 줄인다 (#267 · #268) |
 | [tech/calendar.md](tech/calendar.md) | canonical | 캘린더 — 옴니스 날짜 데이터 집계 · 웍스 CalDAV 실측(증분 동기화 됨 · 쓰기 막힘 · 반복은 우리가 펼친다) · 폴링 계층 · 폰으로 내보내는 ICS 구독 피드 |
 | [working/2026-10-28-calendar-works-sync.md](working/2026-10-28-calendar-works-sync.md) | snapshot | 캘린더 1~5단계 구현 실측 · 계획과 달라진 것 · 머지 전에 할 것(운영 마이그레이션 · 환경변수 넷) |
 
