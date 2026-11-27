@@ -11,6 +11,7 @@ import { largeUploadEnabled, runTransferUpkeep } from "@/lib/large-upload/server
 import { runHrUpkeep } from "@/lib/hr/upkeep"
 import { runObjectUpkeep } from "@/lib/objects/consumer"
 import { DEFAULT_TENANT, runForTenant } from "@/lib/tenant"
+import { importGovgrants } from "@/lib/govgrants-sync"
 
 /**
  * 하루 한 번 도는 일을 모두 여기서 차례로 한다 (`vercel.json` 의 crons 는 이것 하나).
@@ -124,6 +125,18 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("[cron/daily] 공통 층 변경 처리 실패", e)
     out.objects = { ok: false }
+  }
+
+  try {
+    // 수집기(gov-grants, 2주마다 월요일 07:00 KST)가 govgrants 스키마에 남긴 새 실행을 GrantNotice 로 — 화요일 이 시각에 옮긴다.
+    // 읽기 전용 역할(GOVGRANTS_READ_URL)이 없으면 건너뛴다. 실패는 lib/govgrants-sync.ts 가 기록하고 알린다
+    const r = await importGovgrants()
+    out.govgrants = r.configured
+      ? { ok: r.runs.every((x) => x.ok), pending: r.pending, runs: r.runs.map(({ runId, ok, new: n, updated, unchanged, error }) => ({ runId, ok, new: n, updated, unchanged, error })) }
+      : { ok: true, configured: false }
+  } catch (e) {
+    console.error("[cron/daily] 국가과제 공고 옮기기 실패", e)
+    out.govgrants = { ok: false }
   }
 
   const ok = Object.values(out).every((v) => (v as { ok: boolean }).ok)
