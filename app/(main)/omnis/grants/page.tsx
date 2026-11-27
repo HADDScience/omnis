@@ -1,5 +1,11 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import Link from "next/link"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  DashboardBrowsingIcon,
+  MenuSquareIcon,
+} from "@hugeicons/core-free-icons"
 import { Header } from "@/components/layout/header"
 import { prisma } from "@/lib/db"
 import { ACTIVE_MEMBER_WHERE } from "@/lib/active-members"
@@ -29,6 +35,12 @@ import {
   type DecisionView,
 } from "@/components/grants/decision-list"
 import { NoticeList, type NoticeView } from "@/components/grants/notice-list"
+import { DecisionBoard } from "@/components/grants/decision-board"
+import {
+  BoardSkeleton,
+  DecisionListSkeleton,
+} from "@/components/grants/decision-skeletons"
+import { readBoardView, type BoardView } from "@/lib/grants-board"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "국가과제 · HADD DB" }
@@ -61,6 +73,8 @@ export default async function GrantsPage({
 }) {
   const sp = await searchParams
   const tab = one(sp.tab) === "notices" ? "notices" : "decisions"
+  const view = readBoardView(one(sp.view))
+  const board = tab === "decisions" && view === "board"
   const [decisionCount, noticeOpen] = await Promise.all([
     prisma.grantDecision.count(),
     prisma.grantNotice.count({ where: noticeWhere(readNoticeFilter({})) }),
@@ -69,11 +83,16 @@ export default async function GrantsPage({
   return (
     <>
       <Header crumbs={["HADD DB", "국가과제"]} />
-      <div className="mx-auto w-full max-w-[1040px] px-4 py-6 sm:px-6">
+      <div
+        className={cn(
+          "mx-auto w-full px-4 py-6 sm:px-6",
+          board ? "max-w-[1480px]" : "max-w-[1040px]"
+        )}
+      >
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <h1 className="text-[18px] font-bold tracking-[-0.02em]">국가과제</h1>
         </div>
-        <nav aria-label="국가과제 보기" className="mb-4 flex gap-1.5">
+        <nav aria-label="국가과제 보기" className="mb-4 flex items-center gap-1.5">
           <TabLink
             href="/omnis/grants"
             active={tab === "decisions"}
@@ -86,8 +105,18 @@ export default async function GrantsPage({
             label="과제 후보"
             count={noticeOpen}
           />
+          {tab === "decisions" && <ViewSwitch view={view} />}
         </nav>
-        {tab === "decisions" ? <Decisions sp={sp} /> : <Notices sp={sp} />}
+        {tab === "decisions" ? (
+          <Suspense
+            key={view}
+            fallback={board ? <BoardSkeleton /> : <DecisionListSkeleton />}
+          >
+            {board ? <Board /> : <Decisions sp={sp} />}
+          </Suspense>
+        ) : (
+          <Notices sp={sp} />
+        )}
       </div>
     </>
   )
@@ -125,6 +154,46 @@ function TabLink({
         {count}
       </span>
     </Link>
+  )
+}
+
+/** 우리 결정 목록 · 보드 전환 — 주소의 view 에 담는다(뒤로 가기 · 링크 공유) */
+function ViewSwitch({ view }: { view: BoardView }) {
+  return (
+    <div
+      role="group"
+      aria-label="보기"
+      className="glass ml-auto inline-flex h-9 items-center rounded-full p-0.5"
+    >
+      {(
+        [
+          { key: "list", label: "목록", icon: MenuSquareIcon, href: "/omnis/grants" },
+          {
+            key: "board",
+            label: "보드",
+            icon: DashboardBrowsingIcon,
+            href: "/omnis/grants?view=board",
+          },
+        ] as const
+      ).map((o) => (
+        <Link
+          key={o.key}
+          href={o.href}
+          scroll={false}
+          aria-current={view === o.key ? "true" : undefined}
+          aria-label={o.label}
+          className={cn(
+            "touch-hit inline-flex h-8 min-w-11 items-center justify-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-colors",
+            view === o.key
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <HugeiconsIcon icon={o.icon} size={14} strokeWidth={2} aria-hidden />
+          <span className="sr-only sm:not-sr-only">{o.label}</span>
+        </Link>
+      ))}
+    </div>
   )
 }
 
@@ -273,6 +342,45 @@ async function Decisions({ sp }: { sp: SP }) {
         members={members}
         tasks={tasks}
         projects={projects}
+      />
+    </section>
+  )
+}
+
+/** 우리 결정 보드 — 단계 일곱 열, 전체 결정(단계 필터 없음) */
+async function Board() {
+  const rows = await prisma.grantDecision.findMany({
+    orderBy: [{ deadline: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+    select: {
+      id: true,
+      title: true,
+      stage: true,
+      deadline: true,
+      amount: true,
+      awardedAmount: true,
+      endsOn: true,
+      completedOn: true,
+      owners: { select: { role: true, user: { select: { id: true, name: true } } } },
+    },
+  })
+  return (
+    <section aria-label="우리 결정 보드">
+      <DecisionBoard
+        rows={rows.map((r) => ({
+          id: r.id,
+          title: r.title,
+          stage: asStage(r.stage),
+          deadline: r.deadline?.toISOString() ?? null,
+          amount: r.amount,
+          awardedAmount: r.awardedAmount?.toString() ?? null,
+          endsOn: r.endsOn?.toISOString() ?? null,
+          completedOn: r.completedOn?.toISOString() ?? null,
+          owners: r.owners.map((o) => ({
+            id: o.user.id,
+            name: o.user.name,
+            role: o.role,
+          })),
+        }))}
       />
     </section>
   )
