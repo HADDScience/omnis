@@ -77,14 +77,14 @@ test("우리 상태 — 보유 · 유효기간 안 · 만료 · 없음(기준일
   assert.deepEqual(stateOf(cert("a", "HELD", "2026-12-09T00:00:00+09:00"), REF), { state: "expired", note: "2026-12-09 만료" })
   assert.equal(stateOf(cert("a", "RENEWAL_DUE"), REF).note, "갱신 필요")
   assert.deepEqual(stateOf(cert("a", "CANDIDATE"), REF), { state: "none", note: "취득 후보" })
-  assert.equal(stateOf(cert("a", "NOT_ELIGIBLE"), REF).state, "none")
+  assert.equal(stateOf(cert("a", "STOPPED"), REF).state, "none")
 })
 
 test("표와 예상 가점 — 보유 · 유효만 더하고 상한을 넘지 않는다", () => {
   const certs = [
     cert("벤처기업 확인", "HELD", "2027-05-01T00:00:00+09:00"),
     cert("여성기업 확인", "HELD"),
-    cert("이노비즈 (INNO-BIZ)", "NOT_ELIGIBLE"),
+    cert("이노비즈 (INNO-BIZ)", "STOPPED"),
     cert("가족친화인증", "CANDIDATE"),
   ]
   const m = matchBonus(
@@ -120,7 +120,7 @@ test("여러 인증을 묶은 항목은 가장 나은 우리 상태 · 점수 �
   const m = matchBonus(
     [item("벤처 · 이노비즈 · 메인비즈 중 하나", 1), item("여성기업", null)],
     null,
-    [cert("이노비즈", "NOT_ELIGIBLE"), cert("벤처기업 확인", "HELD"), cert("여성기업 확인", "HELD")],
+    [cert("이노비즈", "STOPPED"), cert("벤처기업 확인", "HELD"), cert("여성기업 확인", "HELD")],
     REF
   )
   assert.equal(m.rows[0].state, "held")
@@ -222,7 +222,7 @@ test("단위가 %p 인 공고 — 점으로 적지 않고 점 합계에 섞지 �
       item("지식재산공제 가입기업", 10, { pointsText: null }),
     ],
     { points: 10, text: "최대 10%p", quote: "우대 최대 10%p" },
-    [cert("벤처기업 확인", "HELD"), cert("여성기업 확인", "HELD"), cert("이노비즈", "NOT_ELIGIBLE")],
+    [cert("벤처기업 확인", "HELD"), cert("여성기업 확인", "HELD"), cert("이노비즈", "STOPPED")],
     REF
   )
   assert.deepEqual(m.rows.map((r) => r.unit), ["%p", "%p", "%p", "%p"])

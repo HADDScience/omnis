@@ -1,6 +1,6 @@
 import type { BonusView } from "@/lib/grant-bonus-view"
-import { OUR_STATE_LABEL, type OurState } from "@/lib/grant-bonus"
-import { cn } from "@/lib/utils"
+import type { OurState } from "@/lib/grant-bonus"
+import { BonusCertState } from "@/components/grants/bonus-cert-state"
 
 const STATE_CHIP: Record<OurState, string> = {
   held: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
@@ -12,8 +12,9 @@ const STATE_CHIP: Record<OurState, string> = {
 /**
  * 공고 가점 × 우리 인증 — 가점 항목 · 점수 · 우리 상태 · 근거(공고 원문), 맨 아래 예상 합계.
  * 폰에서는 줄마다 항목 · 점수 · 상태를 한 줄에, 근거를 그 아래에 둔다.
+ * 우리 상태가 없음인 항목은 눌러 인증 탭 후보로 올리거나 그 인증으로 간다(bonus-cert-state).
  */
-export function BonusTable({ bonus }: { bonus: BonusView }) {
+export function BonusTable({ bonus, source = null }: { bonus: BonusView; source?: string | null }) {
   return (
     <section
       aria-label="가점 비교"
@@ -64,9 +65,13 @@ export function BonusTable({ bonus }: { bonus: BonusView }) {
                 {r.pointsLabel}
               </td>
               <td className="py-1.5 pr-3 max-sm:col-span-2 max-sm:p-0">
-                <span className={cn("rounded-full px-1.5 py-px text-[11px] font-medium", STATE_CHIP[r.state])}>
-                  {OUR_STATE_LABEL[r.state]}
-                </span>
+                <BonusCertState
+                  state={r.state}
+                  chip={STATE_CHIP[r.state]}
+                  label={r.label}
+                  certId={r.certId}
+                  source={bonus.noticeTitle ?? source}
+                />
                 {(r.cert || r.note) && (
                   <span className="ml-1 text-[11.5px] text-muted-foreground">
                     {[r.cert, r.note].filter(Boolean).join(" · ")}

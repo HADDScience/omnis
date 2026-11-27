@@ -39,6 +39,8 @@ import {
   type ProposalEdits,
 } from "@/lib/record-proposals"
 import type { Prisma, RecordKind } from "@/generated/prisma/client"
+import { CERT_STAGES, CERT_STAGE_LABEL, asCertStage, isCertStage, seoulMinute } from "@/lib/grants-labels"
+import { ACTIVE_STAGES, bonusForCert, checklistProgress, readChecklist, readEvidence, type CertBonusRow } from "@/lib/certs"
 
 const money = (v: bigint | number | null | undefined) =>
   v === null || v === undefined ? "—" : `${Number(v).toLocaleString("ko-KR")}원`
@@ -625,32 +627,122 @@ export async function decideRecordProposalText(
   }
 }
 
-// ─── 인증 · 가점 (CompanyCertification, 2026-11-25) ───
+// ─── 인증 · 가점 (CompanyCertification — 2026-11-25, 단계 2026-11-28 · 아카이브 › 인증 탭) ───
 
-const CERT_STATUS_LABEL = {
-  HELD: "보유",
-  RENEWAL_DUE: "갱신 필요",
-  EXPIRED: "만료",
-  CANDIDATE: "취득 후보",
-  NOT_ELIGIBLE: "자격 안 됨",
+const CERT_INCLUDE = {
+  record: { select: { title: true, startsOn: true } },
+  owner: { select: { name: true } },
 } as const
-type CertStatusKey = keyof typeof CERT_STATUS_LABEL
-const CERT_STATUSES = Object.keys(CERT_STATUS_LABEL) as CertStatusKey[]
 
-/** list_certifications — 상태별 인증 · 가점 · 우리 충족 여부. 조사 문장은 조사일 기준 원문 */
-export async function certificationsText(
-  args: Record<string, unknown>
-): Promise<string> {
-  const status = CERT_STATUSES.includes(args.status as CertStatusKey)
-    ? (args.status as CertStatusKey)
+/** 인증 이름 · id 로 한 건 — 이름이 여러 건에 맞으면 "many" */
+export async function findCertification(ref: string) {
+  if (!ref) return null
+  const byId = await prisma.companyCertification.findUnique({ where: { id: ref }, include: CERT_INCLUDE })
+  if (byId) return byId
+  const list = await prisma.companyCertification.findMany({
+    where: { OR: [{ name: { contains: ref, mode: "insensitive" } }, { officialName: { contains: ref, mode: "insensitive" } }] },
+    include: CERT_INCLUDE,
+    take: 3,
+  })
+  const exact = list.filter((c) => c.name.replace(/\s+/g, "") === ref.replace(/\s+/g, ""))
+  if (exact.length === 1) return exact[0]
+  return list.length === 1 ? list[0] : list.length > 1 ? ("many" as const) : null
+}
+
+/** 공고 가점을 거꾸로 묶을 때 읽는 공고(가점 뽑기가 끝난 것만) */
+const bonusNotices = () =>
+  prisma.grantNotice.findMany({
+    where: { bonusStatus: "ok" },
+    select: { id: true, title: true, deadlineAt: true, bonusStatus: true, bonusItems: true },
+  })
+
+type CertRow = Prisma.CompanyCertificationGetPayload<{ include: typeof CERT_INCLUDE }>
+
+/** 한 줄 요약 — 단계 · 발급 · 마감 · 담당 · 준비물 · 가점 원문 · 우리 충족 · 취득 · 유효 */
+function certLine(c: CertRow): string {
+  const r = (c.research ?? {}) as Record<string, unknown>
+  const b = (c.bonus ?? {}) as { medibio?: string | null; mss?: string | null }
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null)
+  const bonus = [b.medibio && `메디바이오 ${b.medibio}`, b.mss && `중기부 ${b.mss}`].filter(Boolean).join(" · ")
+  const check = checklistProgress(readChecklist(c.checklist))
+  return (
+    `- ${c.name}${c.issuer ? ` (${c.issuer})` : ""} · ${CERT_STAGE_LABEL[asCertStage(c.status)]}` +
+    `${c.stageReason ? ` (${c.stageReason.slice(0, 80)})` : ""}` +
+    `${c.deadline ? ` · 접수 마감 ${seoulMinute(c.deadline)}` : ""}` +
+    `${c.owner ? ` · 담당 ${c.owner.name}` : ""}` +
+    `${check.total ? ` · 준비물 ${check.done}/${check.total}` : ""}` +
+    `${c.priority ? ` · 우선 ${c.priority}` : ""}` +
+    `${bonus ? ` · 가점 ${bonus}` : ""}` +
+    `${str(r.our_status) ? ` · 우리 충족: ${str(r.our_status)}` : ""}` +
+    `${c.acquiredOn ? ` · 취득 ${ymd(c.acquiredOn)}` : c.record ? ` · 취득 ${ymd(c.record.startsOn) ?? c.record.title}` : ""}` +
+    `${c.validUntil ? ` · 유효 ${ymd(c.validUntil)} 까지` : ""} · id ${c.id}`
+  )
+}
+
+/** 조사 · TIPS · 준비물 · 근거 · 공고 가점(거꾸로) 줄 */
+function certDetailLines(c: CertRow, detail: boolean, bonusRows: CertBonusRow[] | null): string[] {
+  const r = (c.research ?? {}) as Record<string, unknown>
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null)
+  const tips = readTipsBonus(c.research)
+  const tipsLine = isTipsItem(tips)
+    ? [
+        tips!.general.applies && `일반 ${tips!.general.points ?? "가점"}`,
+        tips!.deeptech.applies && `딥테크 ${tips!.deeptech.points ?? "가점"}`,
+        !tips!.deeptech.applies && tips!.deeptech.points && `딥테크 ${tips!.deeptech.points}`,
+        tips!.sole && `지금(개인): ${tips!.sole}`,
+        tips!.corp && tips!.corp !== tips!.sole && `법인 전환 뒤: ${tips!.corp}`,
+      ]
+        .filter(Boolean)
+        .join(" · ")
     : null
+  const checklist = readChecklist(c.checklist)
+  const evidence = readEvidence(c.evidence)
+  const lines: [string, string | null][] = [
+    ["판정 이유", str(r.our_status_reason)],
+    ["TIPS 가점", tipsLine],
+    ["신청기간", str(r.window_2026_12_2027) ?? str(r.application_window)],
+    ["걸리는 기간", str(r.time_to_issue)],
+    ...(detail
+      ? ([
+          ["준비물", checklist.length ? checklist.map((x) => `${x.done ? "[x]" : "[ ]"} ${x.text}`).join(" / ") : null],
+          ["근거", evidence.length ? evidence.map((e) => `${e.label}${e.kind === "url" ? ` ${e.ref}` : ` (${e.kind === "message" ? "채팅 글" : "파일"} ${e.ref})`}`).join(" / ") : null],
+          ["자격조건", Array.isArray(r.requirements) ? (r.requirements as unknown[]).map(String).join(" / ") : null],
+          ["비용", str(r.cost)],
+          ["유효기간", str(r.validity)],
+          ["메모", c.note],
+          ["조사 근거", Array.isArray(r.sources) ? (r.sources as { url?: string }[]).map((x) => x.url).filter(Boolean).join(" ") : null],
+        ] as [string, string | null][])
+      : []),
+  ]
+  const out = lines.filter(([, v]) => v).map(([k, v]) => `  - ${k}: ${v}`)
+  if (bonusRows)
+    out.push(
+      bonusRows.length
+        ? `  - 이 인증을 따면 받는 공고 가점(접수 중 · 지난 공고 빼고): ${bonusRows
+            .slice(0, 8)
+            .map((b) => `${b.title}${b.deadline ? ` (마감 ${ymd(new Date(b.deadline))})` : ""} ${b.items.map((i) => i.pointsLabel).join("+")}`)
+            .join(" · ")}${bonusRows.length > 8 ? ` 외 ${bonusRows.length - 8}건` : ""}`
+        : "  - 이 인증을 가점으로 주는 접수 중 공고: 없음(가점을 뽑은 공고 기준)"
+    )
+  if (detail && c.researchedAt) out.push(`  - 조사일: ${ymd(c.researchedAt)}`)
+  return out
+}
+
+/** list_certifications — 단계별 인증 · 가점 · 우리 충족 여부. 조사 문장은 조사일 기준 원문 */
+export async function certificationsText(args: Record<string, unknown>): Promise<string> {
+  // 옛 상태 이름(NOT_ELIGIBLE)으로 물어도 새 단계로 읽는다
+  const raw = typeof args.status === "string" ? args.status : typeof args.stage === "string" ? args.stage : null
+  const stage = raw === "NOT_ELIGIBLE" ? "STOPPED" : isCertStage(raw) ? raw : null
   const q = typeof args.query === "string" ? args.query.trim() : ""
+  const owner = typeof args.owner === "string" ? args.owner.trim() : ""
   const detail = args.detail === true
   const tipsOnly = args.tips === true
-  const [all, rulesRaw] = await Promise.all([
+  const active = args.active === true
+  const [all, rulesRaw, notices] = await Promise.all([
     prisma.companyCertification.findMany({
       where: {
-        ...(status ? { status } : {}),
+        ...(stage ? { status: stage } : active ? { status: { in: [...ACTIVE_STAGES] } } : {}),
+        ...(owner ? { owner: { name: { contains: owner } } } : {}),
         ...(q
           ? {
               OR: [
@@ -661,105 +753,43 @@ export async function certificationsText(
             }
           : {}),
       },
-      orderBy: [{ status: "asc" }, { priority: "asc" }, { name: "asc" }],
-      include: { record: { select: { title: true, startsOn: true } } },
+      orderBy: [{ deadline: { sort: "asc", nulls: "last" } }, { priority: "asc" }, { name: "asc" }],
+      include: CERT_INCLUDE,
     }),
     readSetting(TIPS_RULES_KEY),
+    detail ? bonusNotices() : Promise.resolve(null),
   ])
-  const certs = tipsOnly
-    ? all.filter((c) => isTipsItem(readTipsBonus(c.research)))
-    : all
+  const certs = tipsOnly ? all.filter((c) => isTipsItem(readTipsBonus(c.research))) : all
   if (certs.length === 0) return "조건에 맞는 인증이 없습니다."
   const rules = asTipsRules(rulesRaw)
   const out: string[] = [
-    `인증 ${certs.length}건${tipsOnly ? "(TIPS 가점표 항목)" : ""} — 가점은 공고마다 다르니 지원 공고의 평가표로 다시 확인한다`,
+    `인증 ${certs.length}건${tipsOnly ? "(TIPS 가점표 항목)" : ""} — 단계: 후보 → 준비 → 신청 → 심사 중 → 보유 → 갱신 필요 → 만료, 어디서든 중단. 가점은 공고마다 다르니 지원 공고의 평가표로 다시 확인한다`,
   ]
-  if (
-    rules &&
-    (tipsOnly ||
-      detail ||
-      certs.some((c) => isTipsItem(readTipsBonus(c.research))))
-  )
+  if (rules && (tipsOnly || detail || certs.some((c) => isTipsItem(readTipsBonus(c.research)))))
     out.push(
       `TIPS 가점 규칙: ${[rules.generalCap && `일반 ${rules.generalCap}`, rules.deeptechCap && `딥테크 ${rules.deeptechCap}`].filter(Boolean).join(" · ")}` +
         `${rules.deeptechNote ? ` · ${rules.deeptechNote}` : ""}` +
         `${rules.window ? ` · 접수 ${rules.window}` : ""}` +
         `${rules.basisTitle ? ` · 근거 ${rules.basisTitle}${rules.basisUrl ? ` ${rules.basisUrl}` : ""}` : ""}`
     )
-  for (const s of CERT_STATUSES) {
-    const list = certs.filter((c) => c.status === s)
+  for (const s of CERT_STAGES) {
+    const list = certs.filter((c) => asCertStage(c.status) === s)
     if (!list.length) continue
-    out.push("", `# ${CERT_STATUS_LABEL[s]} ${list.length}`)
+    out.push("", `# ${CERT_STAGE_LABEL[s]} ${list.length}`)
     for (const c of list) {
-      const r = (c.research ?? {}) as Record<string, unknown>
-      const b = (c.bonus ?? {}) as {
-        medibio?: string | null
-        mss?: string | null
-      }
-      const str = (v: unknown) =>
-        typeof v === "string" && v.trim() ? v.trim() : null
-      const bonus = [
-        b.medibio && `메디바이오 ${b.medibio}`,
-        b.mss && `중기부 ${b.mss}`,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-      out.push(
-        `- ${c.name}${c.issuer ? ` (${c.issuer})` : ""}${c.priority ? ` · 우선 ${c.priority}` : ""}` +
-          `${bonus ? ` · 가점 ${bonus}` : ""}` +
-          `${str(r.our_status) ? ` · 우리 충족: ${str(r.our_status)}` : ""}` +
-          `${c.acquiredOn ? ` · 취득 ${ymd(c.acquiredOn)}` : c.record ? ` · 취득 ${ymd(c.record.startsOn) ?? c.record.title}` : ""}` +
-          `${c.validUntil ? ` · 유효 ${ymd(c.validUntil)} 까지` : ""}`
-      )
-      const tips = readTipsBonus(c.research)
-      const tipsLine = isTipsItem(tips)
-        ? [
-            tips!.general.applies && `일반 ${tips!.general.points ?? "가점"}`,
-            tips!.deeptech.applies &&
-              `딥테크 ${tips!.deeptech.points ?? "가점"}`,
-            !tips!.deeptech.applies &&
-              tips!.deeptech.points &&
-              `딥테크 ${tips!.deeptech.points}`,
-            tips!.sole && `지금(개인): ${tips!.sole}`,
-            tips!.corp &&
-              tips!.corp !== tips!.sole &&
-              `법인 전환 뒤: ${tips!.corp}`,
-          ]
-            .filter(Boolean)
-            .join(" · ")
-        : null
-      const lines: [string, string | null][] = [
-        ["판정 이유", str(r.our_status_reason)],
-        ["TIPS 가점", tipsLine],
-        ["신청기간", str(r.window_2026_12_2027) ?? str(r.application_window)],
-        ["걸리는 기간", str(r.time_to_issue)],
-        ...(detail
-          ? ([
-              [
-                "자격조건",
-                Array.isArray(r.requirements)
-                  ? (r.requirements as unknown[]).map(String).join(" / ")
-                  : null,
-              ],
-              ["비용", str(r.cost)],
-              ["유효기간", str(r.validity)],
-              ["메모", c.note],
-              [
-                "근거",
-                Array.isArray(r.sources)
-                  ? (r.sources as { url?: string }[])
-                      .map((x) => x.url)
-                      .filter(Boolean)
-                      .join(" ")
-                  : null,
-              ],
-            ] as [string, string | null][])
-          : []),
-      ]
-      for (const [k, v] of lines) if (v) out.push(`  - ${k}: ${v}`)
-      if (detail && c.researchedAt)
-        out.push(`  - 조사일: ${ymd(c.researchedAt)}`)
+      out.push(certLine(c))
+      out.push(...certDetailLines(c, detail, notices ? bonusForCert(c, notices) : null))
     }
   }
   return out.join("\n")
+}
+
+/** get_certification — 인증 한 건 전부(조사 · 준비물 · 근거 · 이 인증을 따면 받는 공고 가점) */
+export async function certificationText(args: Record<string, unknown>): Promise<string> {
+  const ref = typeof args.certification === "string" ? args.certification.trim() : ""
+  const c = await findCertification(ref)
+  if (c === "many") return "이름이 여러 인증에 맞습니다 — list_certifications 의 id 를 주세요"
+  if (!c) return "없는 인증입니다 — list_certifications 로 확인하세요"
+  const notices = await bonusNotices()
+  return [certLine(c), ...certDetailLines(c, true, bonusForCert(c, notices))].join("\n")
 }

@@ -232,7 +232,7 @@ function NoticeRow({
               <dd>{r.judgedBy === "llm" ? "공고 본문 검토" : "규칙"}</dd>
             </dl>
           </div>
-          {r.bonus && <BonusTable bonus={r.bonus} />}
+          {r.bonus && <BonusTable bonus={r.bonus} source={r.title} />}
           <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
           {r.url && (
             <a

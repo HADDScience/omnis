@@ -98,6 +98,7 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "chat/task-rooms/[taskId] GET": ["get_task"],
   "chat/threads/recent GET": system(UI),
   "company/certifications/[certId] PATCH": ["update_certification"],
+  "company/certifications POST": ["add_certification"],
   "company/profile PATCH": ["update_company_profile"],
   "company/record-proposals GET": ["list_record_proposals"],
   "company/record-proposals PATCH": ["decide_record_proposal"],

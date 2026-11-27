@@ -47,7 +47,7 @@ test.beforeAll(async () => {
     data: [
       { externalKey: certKeys[0], name: `벤처기업 확인 e2e${stamp}`, status: "HELD", validUntil: new Date("2099-01-01T00:00:00+09:00") },
       { externalKey: certKeys[1], name: `여성기업 확인 e2e${stamp}`, status: "EXPIRED", validUntil: new Date("2020-01-01T00:00:00+09:00") },
-      { externalKey: certKeys[2], name: `이노비즈 e2e${stamp}`, status: "NOT_ELIGIBLE" },
+      { externalKey: certKeys[2], name: `이노비즈 e2e${stamp}`, status: "STOPPED", stageReason: "자격 안 됨 — 업력 3년 미만" },
     ],
   })
   const d = await prisma.grantDecision.create({ data: { externalKey: KEY, title: `e2e 가점 결정 ${stamp}`, stage: "PREPARING" } })

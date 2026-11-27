@@ -21,12 +21,18 @@ const ITEMS: readonly Item[] = [
     isActive: (p) =>
       (p === "/omnis" || p.startsWith("/omnis/")) &&
       !p.startsWith("/omnis/nas") &&
-      !p.startsWith("/omnis/grants"),
+      !p.startsWith("/omnis/grants") &&
+      !p.startsWith("/omnis/certs"),
   },
   {
     href: "/omnis/grants",
     label: "국가과제",
     isActive: (p) => p.startsWith("/omnis/grants"),
+  },
+  {
+    href: "/omnis/certs",
+    label: "인증",
+    isActive: (p) => p.startsWith("/omnis/certs"),
   },
   {
     href: "/omnis/nas",
@@ -46,7 +52,7 @@ const ITEMS: readonly Item[] = [
 ]
 
 /**
- * 아카이브 탭 안에서 화면을 오간다 — 회사가 가진 것(지식·국가과제·파일·권리·거래처)을 한 탭에 모았다.
+ * 아카이브 탭 안에서 화면을 오간다 — 회사가 가진 것(지식·국가과제·인증·파일·권리·거래처)을 한 탭에 모았다.
  * 각 화면은 원래 경로 그대로고, 이 띠는 HADD DB(/omnis)와 CRM(/crm) 레이아웃이 함께 얹는다.
  */
 export function ArchiveNav() {

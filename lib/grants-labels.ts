@@ -1,14 +1,30 @@
 // 인증 · 국가과제 화면과 도구가 같이 쓰는 이름표. 데이터만 둔다(화면 · 시험 어디서든 읽게).
-import type { CertStatus } from "@/generated/prisma/client"
 
-export const CERT_STATUS_LABEL: Record<CertStatus, string> = {
+/**
+ * 인증 단계(2026-11-28) — 아카이브 › 인증 탭 · 도구 · 이식이 이 순서를 쓴다.
+ * 후보 → 준비 → 신청 → 심사 중 → 보유 → 갱신 필요 → 만료, 어디서든 → 중단.
+ * DB 는 text + CHECK(CompanyCertification_status_check) — 값을 바꾸면 마이그레이션의 CHECK 도 같이 바꾼다.
+ * 옛 enum CertStatus(HELD · RENEWAL_DUE · CANDIDATE · NOT_ELIGIBLE · EXPIRED)는 20261128100000_cert_stages 가 옮겼다
+ * (NOT_ELIGIBLE → STOPPED + 사유). 키는 공통 층에 유형으로 등록할 때(P9) 선택지의 기존 값이 된다 — 바꾸지 않는다.
+ */
+export const CERT_STAGE_LABEL = {
+  CANDIDATE: "후보",
+  PREPARING: "준비",
+  APPLIED: "신청",
+  REVIEWING: "심사 중",
   HELD: "보유",
   RENEWAL_DUE: "갱신 필요",
   EXPIRED: "만료",
-  CANDIDATE: "취득 후보",
-  NOT_ELIGIBLE: "자격 안 됨",
-}
-export const CERT_STATUSES = Object.keys(CERT_STATUS_LABEL) as CertStatus[]
+  STOPPED: "중단",
+} as const
+export type CertStage = keyof typeof CERT_STAGE_LABEL
+export const CERT_STAGES = Object.keys(CERT_STAGE_LABEL) as CertStage[]
+export const isCertStage = (v: unknown): v is CertStage =>
+  typeof v === "string" && (CERT_STAGES as string[]).includes(v)
+/** DB 값(text) → 단계. CHECK 가 막지만 모르는 값이면 후보로 본다 */
+export const asCertStage = (s: string): CertStage => (isCertStage(s) ? s : "CANDIDATE")
+/** 화면 · 도구가 새 인증을 올릴 때의 단계 */
+export const CERT_START_STAGE: CertStage = "CANDIDATE"
 
 /**
  * 국가과제 결정 상태(2026-11-26 v2) — 화면 · 도구 · 이식이 이 순서를 쓴다.
@@ -92,6 +108,26 @@ export function parseYmd(v: unknown): Date | null | undefined {
   const d = new Date(`${v}T00:00:00+09:00`)
   return Number.isNaN(d.getTime()) ? undefined : d
 }
+
+/**
+ * 「YYYY-MM-DD HH:mm」 · 「YYYY-MM-DDTHH:mm」(서울 시각) → Date. 날짜만이면 그날 23:59(그날까지 접수).
+ * 빈 값 → null(지운다), 모양이 틀리면 undefined. ISO 문자열(…Z · +09:00)도 받는다
+ */
+export function parseSeoulMinute(v: unknown): Date | null | undefined {
+  if (v === null || v === "") return null
+  if (typeof v !== "string") return undefined
+  const t = v.trim()
+  let d: Date
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) d = new Date(`${t}T23:59:00+09:00`)
+  else if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}$/.test(t)) d = new Date(`${t.replace(" ", "T")}:00+09:00`)
+  else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(t)) d = new Date(t)
+  else return undefined
+  return Number.isNaN(d.getTime()) ? undefined : d
+}
+
+/** Date → 서울 「2026-12-18 16:00」 */
+export const seoulMinute = (d: Date | string | null | undefined) =>
+  d ? new Date(d).toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16) : null
 
 /** Date → 서울 날짜 2026-11-25 */
 export const seoulYmd = (d: Date | string | null | undefined) =>

@@ -56,6 +56,8 @@ model User {
   aiDraftRevisions      AiDraftRevision[]
   staffProfile          StaffProfile?
   grantDecisionOwners   GrantDecisionOwner[]
+  /// 맡은 인증(아카이브 › 인증 탭의 담당)
+  ownedCertifications   CompanyCertification[] @relation("CertOwner")
 }
 
 enum Role {
@@ -2403,14 +2405,6 @@ model JobPostingMeta {
 // ─── 인증 · 국가과제 결정 (2026-11-25) ─────────────────────────
 // 설계: omnis-reports/gov-grants/omnis-cert-decision-proposal-261125.md. 이식 원천은 수집기 export/v1
 
-enum CertStatus {
-  HELD // 보유
-  RENEWAL_DUE // 갱신·재발급 필요(법인 전환 포함)
-  CANDIDATE // 취득 후보
-  NOT_ELIGIBLE // 지금은 자격 안 됨
-  EXPIRED
-}
-
 /// 회사 인증 · 가점. 연혁(CompanyRecord MILESTONE)은 취득 사건이고, 이 표는 지금 상태다
 model CompanyCertification {
   id           String         @id @default(uuid())
@@ -2419,7 +2413,21 @@ model CompanyCertification {
   name         String
   officialName String?
   issuer       String?
-  status       CertStatus
+  /// 단계 — CANDIDATE 후보 · PREPARING 준비 · APPLIED 신청 · REVIEWING 심사 중 · HELD 보유 · RENEWAL_DUE 갱신 필요 · EXPIRED 만료 · STOPPED 중단.
+  /// enum 이 아니라 text + CHECK(CompanyCertification_status_check) — 이름표 · 순서는 lib/grants-labels.ts CERT_STAGES.
+  /// 칼럼 이름은 옛 enum CertStatus 때의 status 그대로(칸 키는 stage — lib/certs.ts CERT_FIELDS). 옮긴 것: 20261128100000_cert_stages
+  status       String
+  /// 단계 사유(중단 까닭 · 옛 「자격 안 됨」 · 심사 메모)
+  stageReason  String?
+  /// 접수 마감(시각까지 — 「2026-12-18 16:00」)
+  deadline     DateTime?
+  /// 담당. 사람이 지워져도 인증은 남는다
+  ownerId      String?
+  owner        User?          @relation("CertOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  /// 준비물 [{ id, text, done }] — lib/certs.ts readChecklist
+  checklist    Json           @default("[]")
+  /// 근거 [{ kind: message|file|url, ref, roomId?, label, at }] — 글 본문은 복사하지 않는다(lib/certs.ts readEvidence)
+  evidence     Json           @default("[]")
   acquiredOn   DateTime?
   validUntil   DateTime?
   certNo       String?
@@ -2439,6 +2447,7 @@ model CompanyCertification {
   updatedAt    DateTime       @updatedAt
 
   @@index([status])
+  @@index([deadline])
 }
 
 /// 국가과제에 대한 우리 결정(노션 「지원사업」 51건에서 시작). 공고 본문은 수집기 내보내기가 정본

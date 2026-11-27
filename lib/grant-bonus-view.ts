@@ -15,7 +15,7 @@ import {
 
 export const loadOurCerts = (): Promise<OurCert[]> =>
   prisma.companyCertification.findMany({
-    select: { id: true, name: true, officialName: true, status: true, validUntil: true },
+    select: { id: true, name: true, officialName: true, status: true, validUntil: true, stageReason: true },
   })
 
 /** 표를 만드는 데 필요한 공고 칸 */
@@ -58,6 +58,7 @@ export interface BonusView {
     source: string | null
     state: OurState
     cert: string | null
+    certId: string | null
     note: string | null
     counted: boolean
   }[]
@@ -80,6 +81,7 @@ export function bonusView(m: BonusMatch | null, noticeTitle: string | null = nul
       source: readableSource(r.source),
       state: r.state,
       cert: r.cert,
+      certId: r.certId,
       note: r.note,
       counted: r.counted,
     })),

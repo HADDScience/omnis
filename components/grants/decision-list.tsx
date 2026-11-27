@@ -598,7 +598,7 @@ function DecisionDetail({
           ))}
         </ul>
       )}
-      {r.bonus && <BonusTable bonus={r.bonus} />}
+      {r.bonus && <BonusTable bonus={r.bonus} source={r.title} />}
       <GrantFiles attachments={r.attachments} nasFolder={r.nasFolder} />
       {!r.imported && (
         <RemoveDecision r={r} open={removing} onOpenChange={setRemoving} />

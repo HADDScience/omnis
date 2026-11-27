@@ -22,6 +22,14 @@ const STAGE = {
     "PREPARING 준비 · SUBMITTED 제출 완료 · SELECTED 선정됨 · REJECTED 미선정 · IN_PROGRESS 수행 중 · COMPLETED 완료 · STOPPED 중단(지원하지 않거나 도중에 그만둠, 어느 단계에서든)",
 } as const
 
+/** 인증 단계(2026-11-28) — lib/grants-labels.ts CERT_STAGES 와 같다(시험이 대조한다) */
+export const CERT_STAGE = {
+  type: "string",
+  enum: ["CANDIDATE", "PREPARING", "APPLIED", "REVIEWING", "HELD", "RENEWAL_DUE", "EXPIRED", "STOPPED"],
+  description:
+    "CANDIDATE 후보 · PREPARING 준비 · APPLIED 신청 · REVIEWING 심사 중 · HELD 보유 · RENEWAL_DUE 갱신 필요 · EXPIRED 만료 · STOPPED 중단(어느 단계에서든)",
+} as const
+
 export const GRANT_TOOLS = [
   // ─── 읽기 ───
   {
@@ -99,25 +107,49 @@ export const GRANT_TOOLS = [
   // ─── 쓰기 ───
   {
     name: "update_certification",
-    description:
-      "인증 · 가점 한 줄을 고친다 — 상태(HELD 보유 · RENEWAL_DUE 갱신 필요 · EXPIRED 만료 · CANDIDATE 취득 후보 · NOT_ELIGIBLE 자격 안 됨) · 메모 · 취득일 · 유효기간. 준 칸만 바뀐다. 화면 회사 정보 › 인증·가점과 같다.",
+    description: [
+      "인증 한 건을 고친다 — 단계(CANDIDATE 후보 · PREPARING 준비 · APPLIED 신청 · REVIEWING 심사 중 · HELD 보유 · RENEWAL_DUE 갱신 필요 · EXPIRED 만료 · STOPPED 중단, 어느 단계에서든 중단할 수 있다) · 사유 · 발급 기관 · 접수 마감 · 담당 · 준비물 · 근거 · 메모 · 취득일 · 유효기간. 준 칸만 바뀐다.",
+      "단계를 바꾸려면 status 를 준다(중단이면 stage_reason 에 까닭). 준비물은 checklist_add(새 줄) · checklist_done(끝낸 줄 글 일부) 로 고친다. 화면 아카이브 › 인증 탭과 같다.",
+    ].join(" "),
     inputSchema: {
       type: "object",
       properties: {
         certification: {
           type: "string",
-          description: "인증 id 또는 이름 일부(list_certifications)",
+          description: "인증 id 또는 이름 일부(list_certifications · get_certification)",
         },
-        status: {
+        status: CERT_STAGE,
+        stage_reason: { type: "string", description: "단계 사유 — 중단 까닭 · 심사 메모. 빈 문자열이면 지운다" },
+        issuer: TEXT,
+        deadline: {
           type: "string",
-          enum: ["HELD", "RENEWAL_DUE", "EXPIRED", "CANDIDATE", "NOT_ELIGIBLE"],
+          description: "접수 마감 YYYY-MM-DD HH:mm(서울). 날짜만이면 그날 23:59. 빈 문자열이면 지운다",
         },
+        owner: { type: "string", description: "담당 정식 이름(list_members). 빈 문자열이면 담당 없음" },
+        checklist_add: { type: "array", items: { type: "string" }, description: "준비물에 더할 줄" },
+        checklist_done: { type: "array", items: { type: "string" }, description: "끝낸 준비물(글 일부)" },
+        evidence_url: { type: "string", description: "근거로 더할 링크(http · https)" },
         note: TEXT,
         acquired_on: YMD,
         valid_until: YMD,
         confirm: CONFIRM_PROP,
       },
       required: ["certification"],
+    },
+  },
+  {
+    name: "add_certification",
+    description:
+      "인증 후보를 올린다 — 인증 탭의 후보 단계로. 같은 이름이 이미 있으면 새로 만들지 않고 그 인증을 알려 준다. 「NEP 인증 따 보자」「이 가점 인증 후보로 올려」 처럼 말하면 쓴다. 공고 가점표에서 우리 상태가 없음인 항목을 올릴 때도 쓴다(source 에 공고 이름).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "인증명(「신제품 인증(NEP)」)" },
+        issuer: TEXT,
+        source: { type: "string", description: "어디서 나왔나 — 「공고 가점표: ○○ 공고」 같은 한 줄" },
+        confirm: CONFIRM_PROP,
+      },
+      required: ["name"],
     },
   },
   {

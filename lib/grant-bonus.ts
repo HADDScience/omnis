@@ -2,7 +2,7 @@
 //
 // 흐름: 수집기 공고 본문 · 첨부 텍스트 → bonusExcerpt(가점 문맥만 잘라 붙임) → 모델이 항목을 뽑음 → parseBonusOutput
 // (근거 문장이 원문에 없으면 버림) → GrantNotice.bonusItems 에 저장 → matchBonus 가 우리 인증(CompanyCertification)과 맞춘다.
-import type { CertStatus } from "@/generated/prisma/client"
+import { CERT_STAGE_LABEL, asCertStage } from "@/lib/grants-labels"
 
 /** 공고가 주는 가점 한 항목 — 근거는 공고문 원문 그대로 */
 export interface BonusItem {
@@ -238,6 +238,9 @@ export const CERT_KEYS: readonly (readonly [string, RegExp])[] = [
   ["social", /사회적\s*(?:기업|경제\s*기업)|협동\s*조합/],
   ["senior", /고령자\s*친화\s*기업/],
   ["green", /녹색\s*(?:기술\s*)?인증/],
+  // 신제품 인증(NEP) · 신기술 인증(NET) — 산업통상부(KOAT)가 지정한다(2026-11-28 인증 탭 첫 건)
+  ["nep", /신\s*제품\s*(?:인증|지정)|\bNEP\b/],
+  ["net", /신\s*기술\s*(?:인증|지정)|\bNET\b/],
   ["med_device", /혁신형\s*의료\s*기기\s*기업/],
   ["pharma", /혁신형\s*제약\s*기업/],
   ["esg_field", /ESG\s*분야/i],
@@ -271,8 +274,11 @@ export interface OurCert {
   id: string
   name: string
   officialName: string | null
-  status: CertStatus
+  /** 단계(text — lib/grants-labels CERT_STAGES) */
+  status: string
   validUntil: Date | string | null
+  /** 단계 사유 — 중단이면 앞부분(「자격 안 됨」)을 우리 상태 메모로 보인다 */
+  stageReason?: string | null
 }
 
 /** 우리 인증 → 키. 이름으로 먼저 보고, 이름에서 안 나오면 공식 이름(설명이 길어 다른 제도 이름이 섞이므로 뒤로) */
@@ -294,7 +300,8 @@ const ymd = (d: Date | string) =>
 
 /** 기준일(공고 마감, 없으면 오늘)에 이 인증이 어떤가 */
 export function stateOf(c: OurCert, ref: Date): { state: OurState; note: string | null } {
-  switch (c.status) {
+  const stage = asCertStage(c.status)
+  switch (stage) {
     case "HELD":
       if (!c.validUntil) return { state: "held", note: null }
       return ymd(c.validUntil) >= ymd(ref)
@@ -304,10 +311,11 @@ export function stateOf(c: OurCert, ref: Date): { state: OurState; note: string 
       return { state: "expired", note: c.validUntil ? `${ymd(c.validUntil)} 만료` : null }
     case "RENEWAL_DUE":
       return { state: "expired", note: "갱신 필요" }
-    case "CANDIDATE":
-      return { state: "none", note: "취득 후보" }
-    case "NOT_ELIGIBLE":
-      return { state: "none", note: "자격 안 됨" }
+    // 아직 없는 단계 — 후보 · 준비 · 신청 · 심사 중 · 중단
+    case "STOPPED":
+      return { state: "none", note: c.stageReason?.split(" — ")[0].trim().slice(0, 40) || CERT_STAGE_LABEL.STOPPED }
+    default:
+      return { state: "none", note: stage === "CANDIDATE" ? "취득 후보" : CERT_STAGE_LABEL[stage] }
   }
 }
 
@@ -332,6 +340,8 @@ export interface BonusRow extends BonusItem {
   state: OurState
   /** 맞춘 우리 인증 이름 */
   cert: string | null
+  /** 맞춘 우리 인증 id — 공고 가점표에서 인증 탭으로 잇는다 */
+  certId: string | null
   note: string | null
   /** 예상 합계에 들어가는가(보유 · 유효기간 안 + 점수가 있음) */
   counted: boolean
@@ -393,6 +403,7 @@ export function matchBonus(
       ...it,
       state,
       cert: best?.c.name ?? null,
+      certId: best?.c.id ?? null,
       note: best?.note ?? null,
       counted: (state === "held" || state === "valid") && it.points !== null,
       unit,

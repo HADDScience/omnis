@@ -2,7 +2,8 @@
  * 수집기 내보내기(export/v1) → 옴니스 인증 · 과제 결정 행. DB 를 건드리지 않는 변환만 둔다 —
  * scripts/import-grants.ts 가 이것으로 건식 대조와 실제 쓰기를 한다.
  */
-import type { CertStatus, Prisma } from "@/generated/prisma/client"
+import type { Prisma } from "@/generated/prisma/client"
+import type { CertStage } from "@/lib/grants-labels"
 import type { GrantStage } from "@/lib/grants-labels"
 
 export type CertItem = {
@@ -56,11 +57,14 @@ const STAGES: Record<string, GrantStage> = {
   중단: "STOPPED",
 }
 
-/** 보유 → HELD, 조사에서 미충족 → NOT_ELIGIBLE, 나머지(충족 · 확인 필요) → 취득 후보 */
-export function certStatus(item: CertItem): CertStatus {
+/**
+ * 보유 → HELD, 조사에서 미충족 → STOPPED(중단, 2026-11-28 인증 단계 — 옛 NOT_ELIGIBLE), 나머지(충족 · 확인 필요) → 후보.
+ * 준비 · 신청 · 심사 중은 사람이 인증 탭에서 정한다 — 이식은 그 단계를 만들지 않고, 사람이 고친 단계는 덮지 않는다(scripts/import-grants.ts)
+ */
+export function certStatus(item: CertItem): CertStage {
   const our = item.research?.our_status
   if (item.held || our === "보유") return "HELD"
-  if (our === "미충족") return "NOT_ELIGIBLE"
+  if (our === "미충족") return "STOPPED"
   return "CANDIDATE"
 }
 
