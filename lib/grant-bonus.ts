@@ -311,6 +311,23 @@ export function stateOf(c: OurCert, ref: Date): { state: OurState; note: string 
   }
 }
 
+/**
+ * 가점 단위 — 대부분 평가 점수(점)지만, 우대 비율을 「%p」 「%」 로 주는 공고가 있다(2026-11-27 IP투자연계 — 벤처 5%p).
+ * 단위가 다른 것은 섞어 더하지 않는다. 저장은 그대로 두고 points_text 원문에서 읽는다(다시 뽑지 않아도 된다)
+ */
+export type BonusUnit = "점" | "%p" | "%"
+export const BONUS_UNITS: readonly BonusUnit[] = ["점", "%p", "%"]
+
+/** 원문에서 단위 — 「%p」 「%포인트」 → %p, 「%」 「퍼센트」 → %, 「점」 → 점, 표시가 없으면 null */
+export function unitOf(text: string | null | undefined): BonusUnit | null {
+  if (!text) return null
+  const t = readableQuote(text)
+  if (/[%％]\s*(?:p\b|P\b|포인트)|퍼센트\s*포인트|%p/i.test(t)) return "%p"
+  if (/[%％]|퍼센트/.test(t)) return "%"
+  if (/\d\s*점/.test(t)) return "점"
+  return null
+}
+
 export interface BonusRow extends BonusItem {
   state: OurState
   /** 맞춘 우리 인증 이름 */
@@ -318,15 +335,27 @@ export interface BonusRow extends BonusItem {
   note: string | null
   /** 예상 합계에 들어가는가(보유 · 유효기간 안 + 점수가 있음) */
   counted: boolean
+  unit: BonusUnit
+}
+
+/** 단위 하나의 합계 — 예상(보유 · 유효만) · 최대(모든 항목), 상한은 같은 단위일 때만 */
+export interface BonusTotal {
+  unit: BonusUnit
+  expected: number
+  possible: number
 }
 
 export interface BonusMatch {
   rows: BonusRow[]
   cap: BonusCap | null
-  /** 받을 수 있는 가점 합(상한 적용) */
+  /** 상한의 단위(상한이 없으면 null) */
+  capUnit: BonusUnit | null
+  /** 점 단위 항목끼리의 예상 합(상한 적용) — 목록 정렬 · 비교용 */
   expected: number
-  /** 공고가 주는 가점 합(상한 적용) — 표의 「최대」 */
+  /** 점 단위 항목끼리의 최대(상한 적용) */
   possible: number
+  /** 단위별 합계 — 점이 먼저. 숫자가 있는 항목이 하나도 없으면 점 0 / 0 하나 */
+  totals: BonusTotal[]
   /** 점수를 모르는 항목이 있다 */
   unknownPoints: boolean
 }
@@ -346,7 +375,11 @@ export function matchBonus(
     const k = keyOfCert(c)
     if (k) byKey.set(k, [...(byKey.get(k) ?? []), c])
   }
+  // 단위가 적히지 않은 항목(「10」 · 원문 없음)은 이 공고의 다른 항목이 모두 같은 단위일 때 그 단위로, 아니면 점으로 본다
+  const marked = new Set(items.map((it) => unitOf(it.pointsText)).filter((u): u is BonusUnit => !!u))
+  const fallback: BonusUnit = marked.size === 1 ? [...marked][0] : "점"
   const rows: BonusRow[] = items.map((it) => {
+    const unit = unitOf(it.pointsText) ?? fallback
     const keys = certKeysOf(`${it.label} ${it.condition ?? ""}`)
     let found = keys.flatMap((k) => byKey.get(k) ?? [])
     // 키가 없는 항목은 우리 인증 이름이 항목 이름에 통째로 들어 있을 때만 잇는다
@@ -362,31 +395,47 @@ export function matchBonus(
       cert: best?.c.name ?? null,
       note: best?.note ?? null,
       counted: (state === "held" || state === "valid") && it.points !== null,
+      unit,
     }
   })
+  const capUnit: BonusUnit | null = cap ? (unitOf(cap.text) ?? unitOf(cap.quote) ?? fallback) : null
   const sum = (rs: BonusRow[]) => round(rs.reduce((a, r) => a + (r.points ?? 0), 0))
-  const limit = (n: number) => (cap?.points != null ? Math.min(n, cap.points) : n)
+  const total = (unit: BonusUnit): BonusTotal => {
+    const of = rows.filter((r) => r.unit === unit)
+    const limit = (n: number) => (cap?.points != null && capUnit === unit ? Math.min(n, cap.points) : n)
+    return { unit, expected: limit(sum(of.filter((r) => r.counted))), possible: limit(sum(of)) }
+  }
+  const present = BONUS_UNITS.filter((u) => rows.some((r) => r.unit === u && r.points !== null))
+  const points = total("점")
   return {
     rows,
     cap,
-    expected: limit(sum(rows.filter((r) => r.counted))),
-    possible: limit(sum(rows)),
+    capUnit,
+    expected: points.expected,
+    possible: points.possible,
+    totals: present.length ? present.map(total) : [points],
     unknownPoints: rows.some((r) => r.points === null),
   }
 }
 
-/** 점수 한 칸 — 「2점」 「최대 2점」(원문 우선), 모르면 「—」 */
-export function pointsLabel(r: Pick<BonusItem, "points" | "pointsText">): string {
+/** 합계 한 줄 — 「예상 3점 / 최대 20점 · 예상 10%p / 최대 10%p」(단위마다 따로) */
+export const totalsLabel = (totals: BonusTotal[]) =>
+  totals.map((t) => `예상 ${t.expected}${t.unit} / 최대 ${t.possible}${t.unit}`).join(" · ")
+
+/** 점수 한 칸 — 「2점」 「최대 2점」 「5%p」(원문 우선, 숫자만 있으면 단위를 붙인다), 모르면 「—」 */
+export function pointsLabel(r: Pick<BonusItem, "points" | "pointsText"> & { unit?: BonusUnit }): string {
+  const unit = r.unit ?? unitOf(r.pointsText) ?? "점"
   const t = r.pointsText ? readableQuote(r.pointsText) : ""
-  if (t) return /^\d+(?:\.\d+)?$/.test(t) ? `${t}점` : t
-  return r.points !== null ? `${r.points}점` : "—"
+  if (t) return /^\d+(?:\.\d+)?$/.test(t) ? `${t}${unit}` : t
+  return r.points !== null ? `${r.points}${unit}` : "—"
 }
 
 /** 도구 · 보고용 글 표 */
 export function bonusMatchText(title: string, m: BonusMatch): string {
   if (!m.rows.length) return `${title} — 인증 · 자격 가점 항목이 없습니다.`
   const out = [
-    `${title} — 가점 ${m.rows.length}개 · 예상 ${m.expected}점 / 최대 ${m.possible}점${m.cap ? ` (상한: ${m.cap.text})` : ""}${m.unknownPoints ? " · 점수 모르는 항목 있음" : ""}`,
+    `${title} — 가점 ${m.rows.length}개 · ${totalsLabel(m.totals)}${m.cap ? ` (상한: ${m.cap.text})` : ""}` +
+      `${m.totals.length > 1 ? " · 단위가 달라 따로 셈" : ""}${m.unknownPoints ? " · 점수 모르는 항목 있음" : ""}`,
     "| 가점 항목 | 점수 | 우리 상태 | 근거 |",
     "|---|---|---|---|",
   ]
