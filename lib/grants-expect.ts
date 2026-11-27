@@ -1,6 +1,6 @@
 // 칸 단위 저장의 충돌 확인 — 화면이 「고치기 전에 본 값」(expect)을 함께 보내면, 그새 그 칸이 바뀌었는지 본다.
 // expect 를 안 보내는 호출(AI 도구 등)은 전과 같이 그대로 덮어쓴다.
-import { seoulYmd } from "@/lib/grants-labels"
+import { parseSeoulMinute, seoulYmd } from "@/lib/grants-labels"
 
 /** 키 순서를 맞춘 JSON — 같은 값이면 같은 글자 */
 function stable(v: unknown): string {
@@ -31,11 +31,12 @@ const norm = (kind: ExpectKind, v: unknown): string | null => {
       return Array.isArray(v)
         ? [...new Set(v.map(String))].sort().join(",")
         : ""
-    // 시각 — 분까지(인증 접수 마감 「2026-12-18 16:00」). 서울 시각 글 · ISO · Date 모두 같은 분이면 같다
+    // 시각 — 분까지(인증 접수 마감 「2026-12-18 16:00」). 화면이 보내는 글은 서울 시각이다 — 서버 시간대(운영 UTC)로
+    // 읽으면 9시간 어긋나 늘 충돌이 된다(2026-11-28 CI 에서 잡힘). 서울 시각 글 · ISO · Date 모두 같은 분이면 같다
     case "minute": {
       if (v === null || v === undefined || v === "") return null
-      const d = v instanceof Date ? v : new Date(String(v))
-      return Number.isNaN(d.getTime()) ? String(v) : String(Math.floor(d.getTime() / 60_000))
+      const d = v instanceof Date ? v : parseSeoulMinute(String(v))
+      return d ? String(Math.floor(d.getTime() / 60_000)) : String(v)
     }
     // 목록(준비물 · 근거) — 키 순서를 맞춘 JSON
     case "json":
